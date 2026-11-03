@@ -8,6 +8,7 @@
 //   handler, answers the ui/* requests as the measured host does, and shows what the View sends to the conversation.
 // URL parameters: t=<seconds into the story> theme=light|dark w=<px> mode=inline|fullscreen balance=1 session=1
 //                 forced=off|waiting|game_without_telemetry|incompatible cut=1 plan=1 scroll=<px>
+//                 conn=disconnected|menu|closed|online  (the connection read from Game.log)
 //                 specs=ready|unknown|ambiguous|pending|error|none  (the ship sheet from the wiki; default ready; the figures
 //                 are synthetic, see src/dashboard/testing/specsFixtures.ts; the story's ship is always the same Cutter)
 import http from "node:http";
@@ -56,6 +57,16 @@ const scenario = new Scenario(Date.now() - seek * 1000);
 scenario.advanceTo(seek * 1000);
 if (q.get("forced")) scenario.forced = q.get("forced");
 if (q.get("cut")) scenario.cut = true;
+// conn=disconnected|menu|closed|online: what Game.log says (3 minutes ago); a kick for inactivity when disconnected.
+if (q.get("conn")) {
+  const state = q.get("conn");
+  scenario.connection = {
+    state,
+    since: new Date(scenario.now - 185000).toISOString(),
+    code: state === "disconnected" ? 30028 : null,
+    reason: state === "disconnected" ? "Remote Disconnect - player inactive" : null,
+  };
+}
 const frame = document.getElementById("frame");
 const $ = (id) => document.getElementById(id);
 $("theme").value = q.get("theme") ?? "dark";

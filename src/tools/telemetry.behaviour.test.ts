@@ -7,6 +7,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HttpClient } from "../core/http.js";
 import { FleetStore } from "../providers/fleet/store.js";
+import { ConnectionTracker } from "../providers/gamelog/connection.js";
 import { GameLog } from "../providers/gamelog/reader.js";
 import { createProbes } from "../providers/probes.js";
 import { NO_NETWORK } from "../providers/probes.testing.js";
@@ -377,5 +378,80 @@ describe("Feature: reading the live game through the tools", () => {
       expect(text).not.toContain("IGNORE");
       expect(text).toContain("(unrecognised name)");
     });
+  });
+});
+
+describe("Feature: the tools say when the player is no longer connected (read from Game.log)", () => {
+  const stamp = (clock: string) => `<2026-11-03T22:${clock}Z>`;
+  const JOINED = [
+    `${stamp("01:00.271")} [Notice] <Join PU> address[203.0.113.9] port[1] shard[x] [Team_GameServices]`,
+    `${stamp("01:00.354")} [Notice] <CDisciplineServiceExternal::BeginSession> Beginning session [Team_GameSec]`,
+  ];
+  const KICKED = [
+    `${stamp("40:52.743")} [Notice] <Channel Disconnected> cause=30028 reason="Remote Disconnect - player inactive" frame=1 isRemote=1 gamerules="SC_Default" hostType="Replicant"`,
+  ];
+
+  async function withLog() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-conn-tools-"));
+    cleanup.push(async () => fs.rmSync(dir, { recursive: true, force: true }));
+    const file = path.join(dir, "Game.log");
+    fs.writeFileSync(file, JOINED.join("\n") + "\n");
+    const game = await startFakeGame();
+    cleanup.push(() => game.close());
+    const telemetry = createTelemetry({
+      enabled: true,
+      options: {
+        endpointForTests: { host: "127.0.0.1", port: game.port },
+        reader: { retryMs: [20, 20], connectTimeoutMs: 500 },
+      },
+    });
+    cleanup.push(() => telemetry.stop());
+    const gameLog = new GameLog({ logPath: file });
+    let clock = 1_000_000;
+    const connection = new ConnectionTracker(gameLog, () => (clock += 1000));
+    const world = await connect({ ...clients(telemetry, gameLog), connection });
+    await waitFor(
+      async () => (await world.call("sc_live_status")).json.data.state === "connected",
+      "connected",
+    );
+    game.send(
+      frame(
+        vehicleField({ name: "DRAK_Cutter_1", speed: 180, lights: { shld: "nominal" } }),
+        actorField({ health: 90 }),
+      ),
+    );
+    await waitFor(
+      async () => (await world.call("sc_live_status")).json.data.state === "live",
+      "live",
+    );
+    return { ...world, file };
+  }
+
+  it("Given the player is online, Then both tools report it and the values stay as they are", async () => {
+    const { call } = await withLog();
+    const status = await call("sc_live_status");
+    expect(status.json.data.connection).toMatchObject({ state: "online" });
+    const state = await call("sc_live_state");
+    expect(state.json.data.connection.state).toBe("online");
+    expect(state.json.data.ship.instruments.speed_ms).toBeCloseTo(180);
+  });
+
+  it("Given the server kicked the player for inactivity, Then the tools say it, with the meaning, even though frames keep coming", async () => {
+    const { call, file } = await withLog();
+    fs.appendFileSync(file, KICKED.join("\n") + "\n");
+    const status = await call("sc_live_status");
+    expect(status.json.data.state).toBe("live");
+    expect(status.json.data.connection).toMatchObject({ state: "disconnected", code: 30028 });
+    expect(status.json.data.connection.meaning).toMatch(/inactivity/);
+    expect(status.json.data.connection.meaning).toMatch(/NOT current/);
+    const state = await call("sc_live_state");
+    expect(state.json.data.connection.state).toBe("disconnected");
+    expect(state.json.data.conditions).toEqual([]);
+  });
+
+  it("Given no game log, Then nothing about the connection is invented", async () => {
+    const { call } = await liveWorld();
+    expect((await call("sc_live_status")).json.data).not.toHaveProperty("connection");
+    expect((await call("sc_live_state")).json.data).not.toHaveProperty("connection");
   });
 });

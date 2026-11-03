@@ -149,6 +149,65 @@ export function shipTitle(ship: any): string {
 // Stream state
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * What to tell the player when Game.log says they are not in a server session, or null when it says nothing alarming
+ * (online, unknown). Never claims the game is not running: only `closed` (the game's own quit line) says it.
+ */
+export function connectionInfo(conn: any, now: number): any {
+  const since = typeof conn.since === "string" ? Date.parse(conn.since) : NaN;
+  const ago = Number.isFinite(since) ? formatAge(Math.max(0, now - since)) : "";
+  const when = ago ? ", il y a " + ago : "";
+  switch (conn.state) {
+    case "disconnected": {
+      const inactive = conn.code === 30028;
+      const why = inactive
+        ? "Renvoyé du serveur pour inactivité"
+        : "Le serveur a coupé la connexion" + (conn.code ? " (code " + conn.code + ")" : "");
+      const reason =
+        !inactive && conn.reason ? " Raison donnée par le jeu : " + conn.reason + "." : "";
+      return {
+        id: "disconnected",
+        tone: "bad",
+        label: "Déconnecté du serveur",
+        detail:
+          why +
+          when +
+          "." +
+          reason +
+          " Les valeurs affichées sont les dernières reçues ; le suivi reprend dès que tu es de nouveau en partie.",
+        grey: true,
+        help: "",
+      };
+    }
+    case "menu":
+      return {
+        id: "menu",
+        tone: "neutral",
+        label: "Dans les menus",
+        detail:
+          "Pas de partie en cours" +
+          when +
+          ". Les valeurs affichées sont les dernières reçues ; le suivi reprend dès que tu rejoins un serveur.",
+        grey: true,
+        help: "",
+      };
+    case "closed":
+      return {
+        id: "closed",
+        tone: "neutral",
+        label: "Jeu fermé",
+        detail:
+          "Le jeu a écrit sa ligne de fermeture" +
+          when +
+          ". Le suivi reprendra au prochain lancement.",
+        grey: true,
+        help: "",
+      };
+    default:
+      return null;
+  }
+}
+
 /** What to tell the player about the stream, in French. `grey` means: dim every value, they are not current. */
 export function streamInfo(view: any, now: number): any {
   const cfg = viewConfig();
@@ -184,6 +243,16 @@ export function streamInfo(view: any, now: number): any {
       grey: true,
       help: "",
     };
+  }
+  // Game.log knows what the stream cannot say (kicked, back in the menu, game closed): it wins over the frames,
+  // which may keep repeating the last values. Never applies to the states that mean "no telemetry at all".
+  if (
+    poll &&
+    poll.connection &&
+    (state === "live" || state === "connected" || state === "waiting")
+  ) {
+    const away = connectionInfo(poll.connection, now);
+    if (away) return away;
   }
   switch (state) {
     case "off":
@@ -398,7 +467,12 @@ export function reducePoll(prev: any, incoming: any, now: number): any {
     "heart",
   ];
   const series: any = Object.assign({}, prev.series);
-  if (poll.state === "live" && age !== null && age <= cfg.staleAfterMs) {
+  const outOfSession =
+    !!poll.connection &&
+    (poll.connection.state === "disconnected" ||
+      poll.connection.state === "menu" ||
+      poll.connection.state === "closed");
+  if (poll.state === "live" && age !== null && age <= cfg.staleAfterMs && !outOfSession) {
     const values = seriesValues(poll);
     for (const key of seriesKeys) {
       // A switched-off ship reports zeros that are not measurements: nothing is added to its curves.
@@ -1381,6 +1455,29 @@ export function cleanPoll(raw: any): any {
   out.received_at = typeof p.received_at === "string" ? p.received_at.slice(0, 40) : null;
   set(out, "last_seq", num(p.last_seq));
 
+  // Where the player stands towards the servers (from Game.log): a known state, a UTC time, a numeric code and a short
+  // reason in a fixed charset. Anything else is dropped.
+  const conn = obj(p.connection);
+  if (conn && ["unknown", "menu", "online", "disconnected", "closed"].indexOf(conn.state) >= 0) {
+    const c: any = { state: conn.state };
+    c.since =
+      typeof conn.since === "string" && /^\d{4}-\d\d-\d\dT[\d:.]{1,16}Z$/.test(conn.since)
+        ? conn.since
+        : null;
+    c.code =
+      typeof conn.code === "number" &&
+      Number.isInteger(conn.code) &&
+      conn.code >= 0 &&
+      conn.code < 1e7
+        ? conn.code
+        : null;
+    c.reason =
+      typeof conn.reason === "string" && /^[A-Za-z0-9 ._:\-/()]{1,80}$/.test(conn.reason)
+        ? conn.reason
+        : null;
+    out.connection = c;
+  }
+
   const ship = obj(p.ship);
   out.ship = null;
   if (ship) {
@@ -2070,6 +2167,7 @@ export const VIEW_FUNCTIONS = [
   isSafeId,
   shipTitle,
   frameAge,
+  connectionInfo,
   streamInfo,
   initialViewState,
   seriesValues,
