@@ -18,7 +18,7 @@
 | --- | --- | --- | --- | --- | --- |
 | [`sc_data_status`](#sc_data_status) | core, trade, data, local | sc-copilot-mcp | computed | structured | Check how fresh and reliable this server's data is: the LIVE and PTU game versions each source reports (UEX, Star Citizen Wiki, patch dumps, local files), how old each is, differences between them, and which sources are down or not configured. |
 | [`uex_get_commodities`](#uex_get_commodities) | trade | uex | crowdsourced | structured | List the ~200 commodities UEX tracks (name, code, kind, buyable/sellable, illegal, base prices). |
-| [`uex_get_commodity_prices`](#uex_get_commodity_prices) | core, trade | uex | crowdsourced | structured | Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced: check provenance.data_age). |
+| [`uex_get_commodity_prices`](#uex_get_commodity_prices) | core, trade | uex | crowdsourced | structured | Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced). |
 | [`uex_get_commodity_averages`](#uex_get_commodity_averages) | trade | uex | crowdsourced | structured | Average buy and sell price of one commodity across terminals, with price history, from UEX. |
 | [`uex_get_terminals`](#uex_get_terminals) | trade | uex | crowdsourced | structured | List UEX terminals (shops, trading posts, refineries) with their place (system, planet, station), faction and what they offer (ship shop, FPS shop, refuel, repair). |
 | [`uex_get_trade_routes`](#uex_get_trade_routes) | core, trade | uex | crowdsourced | structured | Best trade routes (buy here, sell there) from UEX, sorted by profit. |
@@ -82,7 +82,7 @@ No parameters.
 
 ### uex_get_commodity_prices
 
-Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced: check provenance.data_age). Optionally narrow by star system, planet or terminal with exact names. Use for 'where do I sell X' and 'what does X cost at Y'.
+Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced). Two lists: buy_locations (cheapest first) and sell_locations (best first), each cut to `limit` rows (default 15) with totals; `side` keeps one. Rows older than UEX's LIVE version are left out and counted (excluded_older_version) unless include_older_versions; newer (PTU) rows are kept and counted. Rows reported by players come before UEX estimates (is_estimate). Each row has updated_at. Optionally narrow by star system, planet or terminal with exact names. Use for 'where do I sell X' and 'what does X cost at Y'.
 
 *Source:* uex · *Kind:* crowdsourced · *Trust:* structured · *Profiles:* core, trade
 
@@ -92,6 +92,9 @@ Where one commodity is bought and sold: per-terminal buy/sell prices, stock and 
 | `star_system_name` | string | no | Optional: Filter by star system (e.g., 'Stanton', 'Pyro'). |
 | `planet_name` | string | no | Optional: Filter by planet name. |
 | `terminal_name` | string | no | Optional: Filter by terminal name. |
+| `side` | `buy` \| `sell` \| `both` | no | buy = where the player can BUY it (cheapest first), sell = where the player can SELL it (best price first), both = two lists (default). |
+| `limit` | number | no | Rows per list (default 15, max 50). The total count is always given. |
+| `include_older_versions` | boolean | no | Also return rows from an older game version than LIVE (default false: they are left out and counted). |
 
 ### uex_get_commodity_averages
 
@@ -116,7 +119,7 @@ List UEX terminals (shops, trading posts, refineries) with their place (system, 
 
 ### uex_get_trade_routes
 
-Best trade routes (buy here, sell there) from UEX, sorted by profit. UEX requires an ORIGIN: give at least one of commodity_name, origin_terminal_name or origin_planet_name, otherwise the call fails. Size the answer to the ship with ship_name (for example one from sc_fleet_get: its cargo capacity is used) or cargo_capacity in SCU, and to the budget with investment (aUEC). Profit is computed for the cargo that fits (profit_for_cargo), not UEX's figure for the route's maximum volume. Each route shows how many player reports back its prices (reports_origin, reports_destination; 0 means UEX's own estimate). Crowdsourced prices: check provenance.data_age and sanity-check a route before flying it.
+Best trade routes (buy here, sell there) from UEX, sorted by profit. UEX requires an ORIGIN: give at least one of commodity_name, origin_terminal_name or origin_planet_name, otherwise the call fails. Size it to a ship with ship_name (e.g. from sc_fleet_get) or cargo_capacity in SCU, and to the budget with investment (aUEC). Profit is computed for the cargo that fits (profit_for_cargo), not UEX's figure for the route's maximum volume. Each route shows its player reports (reports_origin, reports_destination) and is_estimate: true when an end has 0 reports, i.e. a UEX estimate no player saw (estimated_sides says which). Reported routes come first, estimates after, each by profit; min_reports drops routes with fewer reports at either end (default 0). Crowdsourced: data_age is null when UEX dates no route; sanity-check a route before flying it.
 
 *Source:* uex · *Kind:* crowdsourced · *Trust:* structured · *Profiles:* core, trade
 
@@ -129,6 +132,7 @@ Best trade routes (buy here, sell there) from UEX, sorted by profit. UEX require
 | `cargo_capacity` | number | no | Cargo capacity in SCU (e.g. 696). Wins over ship_name when both are given. |
 | `ship_name` | string | no | A ship to haul with (e.g. 'C2 Hercules Starlifter'): its cargo capacity in SCU is used. Matched by words; several ships that fit are listed instead of guessed. |
 | `limit` | number | no | Routes to return, best profit first (default 10, max 50). |
+| `min_reports` | number | no | Drop routes that have fewer than this many player reports at the origin OR at the destination (default 0: keep UEX estimates, but rank them after reported routes). 1 = only routes both ends of which a player has reported. |
 
 ### uex_get_commodity_ranking
 

@@ -4,6 +4,21 @@ All notable changes to this fork. The history of the original project (voidput/S
 [docs/UPSTREAM_CHANGELOG.md](docs/UPSTREAM_CHANGELOG.md). Format: [Keep a Changelog](https://keepachangelog.com/);
 versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **`provenance.data_age` is now the age of the data itself**, from dates the source gives (UEX `date_modified` of the
+  rows returned, the SCMDB channel's `generated_at`); `null` with `data_age_note` when the source gives none. The old
+  meaning (age of the fetch or cache) is the new `provenance.cache_age`, also used by `sc_data_status`.
+- `uex_get_commodity_prices` answers `buy_locations` and `sell_locations` (cheapest / best first, `limit` default 15,
+  max 50, with totals; `side` keeps one), leaves out rows of an older game version than LIVE and counts them
+  (`excluded_older_version`, `include_older_versions` to keep them), and adds `updated_at` to each row. Rows of a
+  version newer than LIVE are kept and counted (`newer_than_live`); without a known LIVE version nothing is excluded.
+  Rows reported by players come before UEX estimates (`is_estimate`, `estimates` count per list).
+- `uex_get_trade_routes` ranks routes with a UEX estimate (`is_estimate`, 0 reports at an end) after reported ones;
+  new `min_reports` drops them. UEX dates no route price (its `date_added` is the recalculation time), so route
+  answers have `data_age: null`. Only `date_modified` is read as a date; ship price rows carry `updated_at`.
+
 ## [2.0.0] - 2026-11-03
 
 First release of the fork. Licence treated as GPLv3 (see THIRD_PARTY.md).

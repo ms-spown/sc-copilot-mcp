@@ -201,7 +201,8 @@ describe("provenance envelope", () => {
       trust: "structured",
     });
     expect(typeof provenance.fetched_at).toBe("string");
-    expect(typeof provenance.data_age).toBe("string");
+    expect(typeof provenance.cache_age).toBe("string");
+    expect(provenance.data_age).toBeNull(); // UEX gave no date: the fetch age is not passed off as the data age
     expect(notice).toBeUndefined();
     expect(data.live).toBe("4.10.2");
   });
