@@ -18,6 +18,23 @@ touche, n'automatise rien et n'écrit jamais dans le dossier du jeu. Le seul fic
 > traité comme GPLv3 (voir [THIRD_PARTY.md](THIRD_PARTY.md)). Rien n'est publié sur npm ou Docker Hub depuis ce dépôt :
 > l'image `voidput/scmcp` appartient à l'auteur d'origine.
 
+## Ce que vous pouvez demander
+
+| Besoin | Exemples | Outils principaux |
+| --- | --- | --- |
+| Commerce | « Meilleur transport depuis ArcCorp pour mon C2 ? » | `uex_get_trade_routes`, `uex_get_commodity_prices` |
+| Vaisseaux | « Cutlass Black ou Freelancer ? Où l'acheter ? » | `scw_get_ship_comparison`, `scw_get_vehicle`, `uex_get_ship_prices` |
+| Missions | « Quelles missions donnent un plan à Pyro ? » | `scmdb_search_missions`, `scmdb_search_crafting` |
+| Minage | « Où est la Quantainium et quel laser la supporte ? » | `scmdb_search_mining` |
+| Patchs | « Qu'est-ce qui a changé dans la dernière mise à jour ? » | `sc_patch_notes`, `scmdb_changes` |
+| Votre jeu | « Que suis-je en train de faire ? Bilan de ma dernière session. » | `sc_log_context`, `sc_log_sessions` |
+| Votre flotte | « Lequel de mes vaisseaux porte 300 SCU ? » | `sc_fleet_get` |
+| Votre vaisseau, en direct (désactivé par défaut) | « Mon train d'atterrissage est-il sorti ? Combien d'hydrogène reste-t-il ? » | `sc_live_status`, `sc_live_state` |
+| Fraîcheur | « Ces données sont-elles à jour ? » | `sc_data_status` |
+
+Cinq prompts prêts à l'emploi les enchaînent pour vous (voir [Prompts](#prompts)). Toutes les capacités, avec leur
+source, leur fraîcheur, leurs limites et leurs prérequis : **[docs/CAPABILITIES.md](docs/CAPABILITIES.md)** (en anglais).
+
 ## Ce que vous obtenez
 
 Chaque réponse indique d'où proviennent les données. Les résultats d'outils ont la forme `{ provenance, data }` :
@@ -81,7 +98,9 @@ npm run build
    aucun secret n'est affiché. `npm run check:sources` interroge chaque source de données sur sa version et vérifie les
    fichiers et champs attendus par les outils. Dans Claude, demandez `sc_data_status`.
 
-## Outils (42)
+## Outils (45)
+
+Claude en voit 43 par défaut : `sc_live_state` et `sc_live_events` ne sont listés que lorsque la télémétrie en direct est activée.
 
 Référence complète des paramètres : **[docs/TOOLS.md](docs/TOOLS.md)** (générée depuis le code). Par thème :
 
@@ -136,6 +155,7 @@ données :
 | `UEXTOKEN`                                                       | Jeton bearer UEX dans `.env`. Envoyé uniquement aux hôtes UEX                                                                                                                              |
 | `SCMCP_PROFILES`, `SCMCP_TOOLS`                                  | Quels outils exposer (voir ci-dessus)                                                                                                                                                      |
 | `SC_INSTALL_DIR`                                                 | Dossier d'un canal tel que `…\StarCitizen\LIVE` : active `sc_log_*` sur son `Game.log`. Désactivé si non défini                                                                            |
+| `SC_TELEMETRY`                                                   | `on` active la télémétrie en direct optionnelle, côté serveur. Désactivée si absente (voir plus bas)                                                            |
 | `SC_GAME_LOG_PATH`                                               | Un fichier `.log` précis à la place (seuls les fichiers `.log` sont acceptés)                                                                                                              |
 | `SCMCP_FLEET_FILE`                                               | Fichier de flotte (par défaut `%APPDATA%\sc-copilot-mcp\fleet.json`)                                                                                                                       |
 | `SCMCP_CACHE_DIR`, `SCMCP_DATA_DIR`, `SCMCP_CONFIG_DIR`          | Dossiers de cache (réponses HTTP, dumps, SCMDB), de données (snapshots wiki) et de configuration. Par utilisateur par défaut (`%LOCALAPPDATA%` / `%APPDATA%` sous Windows, XDG sous Linux) |
@@ -163,6 +183,28 @@ portefeuille, position exacte, décès. Chaque champ de contexte correspond à �
 et non à une lecture temps réel. Les lignes inconnues sont ignorées et comptabilisées. CIG ne garantit pas la stabilité
 du format ; `npm run check:sources` vérifie que l'en-tête se parse toujours.
 
+## Télémétrie en direct (optionnelle, désactivée par défaut)
+
+Le jeu contient un serveur de télémétrie local non documenté. Si vous le choisissez, ce serveur peut le lire pour que
+Claude réponde sur votre vaisseau et votre personnage à l'instant : vitesse, altitude, hydrogène, train
+d'atterrissage, alimentation, voyants, santé, faim, soif.
+
+- **Désactivée tant que vous n'activez pas deux choses :** `SC_TELEMETRY=on` dans l'entrée du serveur, et
+  `GRPC_CLIENT_SERVER_ENABLED=true` dans l'environnement du RSI Launcher. Rien n'est réglé par l'installation ni par
+  une mise à jour. Sans le premier, aucune connexion n'est jamais tentée.
+- **Une commande :** `npm run telemetry -- status` montre les deux interrupteurs sans rien changer.
+  `npm run telemetry -- enable` est une simulation, `npm run telemetry -- enable --apply` l'exécute et
+  `npm run telemetry -- disable --apply` annule ce qu'elle a réglé. Quittez ensuite complètement le RSI Launcher
+  (icône de la barre des tâches comprise) et relancez-le.
+- **Ce qu'elle ne fait jamais :** parler à autre chose que `127.0.0.1:2942`, envoyer au jeu autre chose qu'une requête
+  vide, ni journaliser, stocker ou envoyer les trames. Tout reste en mémoire.
+- **Ce qu'elle ne voit pas :** position, valeur des boucliers, coque, chaleur, munitions, répartition de puissance ou
+  carburant quantique. Une santé à 0 veut dire à terre ou mort. Le solde aUEC n'est pas transmis à Claude sans votre
+  accord (`include_balance`).
+- **Lisez d'abord les risques.** C'est une fonction non documentée du jeu. À notre connaissance, CIG ne l'a ni
+  autorisée ni interdite, les conditions de RSI s'appliquent à vous, et le risque est le vôtre. Tout est dans
+  [docs/TELEMETRY.md](docs/TELEMETRY.md) (en anglais).
+
 ## Limites à connaître
 
 - **Les prix participatifs peuvent être erronés.** Lisez `data_age` (`null` signifie qu'UEX n'a fourni aucune date) et le `updated_at` de chaque ligne, et vérifiez la
@@ -176,8 +218,21 @@ du format ; `npm run check:sources` vérifie que l'en-tête se parse toujours.
 - **`sc_*_local` lit uniquement les fichiers dont vous disposez déjà** dans `SCMCP_GAME_DATA_DIR`. Ce projet n'extrait
   aucun fichier du jeu et ne documente pas comment le faire ; la sûreté d'une telle extraction vis-à-vis de votre
   compte n'est pas vérifiée (voir [SECURITY.md](SECURITY.md)).
+- **La télémétrie en direct n'est pas un tableau de bord complet.** Ni position, ni boucliers, ni coque, ni chaleur,
+  ni munitions ; les véhicules terrestres n'envoient rien et les événements sont déduits (voir
+  [docs/TELEMETRY.md](docs/TELEMETRY.md)).
 - La recherche de noms sur le wiki est stricte ; l'outil de flotte effectue une correspondance par mots et propose des
   candidats en cas d'ambiguïté.
+
+## Documentation
+
+- [docs/CAPABILITIES.md](docs/CAPABILITIES.md) : tout ce que le serveur sait faire, par besoin
+- [docs/TOOLS.md](docs/TOOLS.md) : chaque outil et chaque paramètre (généré)
+- [docs/TELEMETRY.md](docs/TELEMETRY.md) : la télémétrie en direct optionnelle, ses données et ses risques
+- [docs/USING_WITH_CLAUDE.fr.md](docs/USING_WITH_CLAUDE.fr.md) : le bloc à coller dans un projet Claude
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
+  [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md) et [SECURITY.md](SECURITY.md)
 
 ## Dépannage
 

@@ -7,7 +7,7 @@ English · [Français](README.fr.md)
 
 A local, **read-only** [Model Context Protocol](https://modelcontextprotocol.io) server that turns Claude
 into a Star Citizen copilot: market and trade routes, ships, missions, crafting, mining, the patch you are
-on, what your own game just logged, and your fleet.
+on, what your own game just logged, your fleet, and, only if you turn it on, what your ship reports live.
 
 It runs on your PC over stdio. It does not touch the game: it never reads game memory, sends keys,
 automates anything, or writes to the game folder. The only file of the game it can read is the `Game.log`
@@ -17,6 +17,23 @@ you point it at, and only if you do.
 > `LICENSE` file is GPLv3 while its `package.json` and README said ISC; this fork is treated as GPLv3 (see
 > [THIRD_PARTY.md](THIRD_PARTY.md)). Nothing is published to npm or Docker Hub from here: the `voidput/scmcp`
 > image belongs to the upstream author.
+
+## What you can ask
+
+| Need | Examples | Main tools |
+| --- | --- | --- |
+| Trade | "Best haul from ArcCorp for my C2?" | `uex_get_trade_routes`, `uex_get_commodity_prices` |
+| Ships | "Cutlass Black or Freelancer? Where can I buy it?" | `scw_get_ship_comparison`, `scw_get_vehicle`, `uex_get_ship_prices` |
+| Missions | "Which missions pay a blueprint in Pyro?" | `scmdb_search_missions`, `scmdb_search_crafting` |
+| Mining | "Where is Quantainium and which laser copes with it?" | `scmdb_search_mining` |
+| Patches | "What changed in the last update?" | `sc_patch_notes`, `scmdb_changes` |
+| Your game | "What am I doing right now? Debrief my last session." | `sc_log_context`, `sc_log_sessions` |
+| Your fleet | "Which of my ships carries 300 SCU?" | `sc_fleet_get` |
+| Your ship, live (off by default) | "Is my landing gear down? How much hydrogen is left?" | `sc_live_status`, `sc_live_state` |
+| Freshness | "Is this data current?" | `sc_data_status` |
+
+Five ready-made prompts chain these for you (see [Prompts](#prompts)). Every capability, with its source, its
+freshness, its limits and what it needs: **[docs/CAPABILITIES.md](docs/CAPABILITIES.md)**.
 
 ## What you get
 
@@ -79,7 +96,9 @@ npm run build
    `npm run check:sources` asks every data source for its version and verifies the files and fields the tools rely
    on. In Claude, ask for `sc_data_status`.
 
-## Tools (42)
+## Tools (45)
+
+Claude sees 43 of them by default: `sc_live_state` and `sc_live_events` are listed only when live telemetry is on.
 
 Full parameter reference: **[docs/TOOLS.md](docs/TOOLS.md)** (generated from the code). By theme:
 
@@ -131,6 +150,7 @@ the right tools in the right order and telling Claude to state how fresh the dat
 | `UEXTOKEN`                                                       | UEX bearer token, in `.env`. Only ever sent to UEX hosts                                                                                                        |
 | `SCMCP_PROFILES`, `SCMCP_TOOLS`                                  | Which tools to advertise (see above)                                                                                                                            |
 | `SC_INSTALL_DIR`                                                 | A channel folder such as `…\StarCitizen\LIVE`: enables `sc_log_*` on its `Game.log`. Off if unset                                                               |
+| `SC_TELEMETRY`                                                   | `on` switches the optional live telemetry on, server side. Off if unset (see below)                                                                             |
 | `SC_GAME_LOG_PATH`                                               | A specific `.log` file instead (only `.log` files are accepted)                                                                                                 |
 | `SCMCP_FLEET_FILE`                                               | Fleet file (default `%APPDATA%\sc-copilot-mcp\fleet.json`)                                                                                                      |
 | `SCMCP_CACHE_DIR`, `SCMCP_DATA_DIR`, `SCMCP_CONFIG_DIR`          | Cache (HTTP responses, dumps, SCMDB), data (wiki snapshots) and config folders. Defaults are per-user (`%LOCALAPPDATA%` / `%APPDATA%` on Windows, XDG on Linux) |
@@ -155,6 +175,26 @@ left, and jump-point transits between systems. `sc_log_context` turns these into
 death. Every context field is "the last time the game logged it", not a live reading. Unknown lines are ignored and
 counted. CIG does not guarantee the format; `npm run check:sources` shows if the header still parses.
 
+## Live telemetry (optional, off by default)
+
+The game has an undocumented local telemetry server. If you choose, this server can read it so that Claude can
+answer about your ship and character right now: speed, altitude, hydrogen, landing gear, power, warning lights,
+health, hunger, thirst.
+
+- **Off unless you switch on two things:** `SC_TELEMETRY=on` in the server entry, and
+  `GRPC_CLIENT_SERVER_ENABLED=true` in the environment of the RSI Launcher. Nothing is set by installing or
+  updating. Without the first, no connection is ever attempted.
+- **One command:** `npm run telemetry -- status` shows both switches and changes nothing. `npm run telemetry -- enable`
+  is a dry run, `npm run telemetry -- enable --apply` does it and `npm run telemetry -- disable --apply` undoes
+  what it set. Then quit the RSI Launcher completely (tray icon too) and start it again.
+- **What it never does:** talk to anything but `127.0.0.1:2942`, send the game anything except an empty request, or
+  log, store or send the frames. Everything stays in memory.
+- **What it cannot see:** position, shield level, hull, heat, ammo, power distribution or quantum fuel. Health 0
+  means down or dead. The aUEC balance is withheld from Claude unless you agree (`include_balance`).
+- **Read the risks first.** It is an undocumented game feature. As far as we know CIG has neither allowed nor
+  forbidden using it, the RSI terms apply to you, and the risk is yours. Everything is in
+  [docs/TELEMETRY.md](docs/TELEMETRY.md).
+
 ## Limits you should know
 
 - **Crowdsourced prices can be wrong.** Read `data_age` (null means UEX gave no date) and the per-row `updated_at`, and sanity-check a route before flying 696 SCU.
@@ -165,7 +205,19 @@ counted. CIG does not guarantee the format; `npm run check:sources` shows if the
 - **`sc_*_local` read files you already have** in `SCMCP_GAME_DATA_DIR`. This project does not extract game
   files and does not document how; whether doing so is safe for your account is unverified (see
   [SECURITY.md](SECURITY.md)).
+- **Live telemetry is not a full instrument panel.** No position, shields, hull, heat or ammo, ground vehicles send
+  nothing, and events are inferred (see [docs/TELEMETRY.md](docs/TELEMETRY.md)).
 - Wiki name lookups are strict; the fleet tool matches by words and lists candidates when unsure.
+
+## Documentation
+
+- [docs/CAPABILITIES.md](docs/CAPABILITIES.md): everything it can do, need by need
+- [docs/TOOLS.md](docs/TOOLS.md): every tool and parameter (generated)
+- [docs/TELEMETRY.md](docs/TELEMETRY.md): the optional live telemetry, its data and its risks
+- [docs/USING_WITH_CLAUDE.md](docs/USING_WITH_CLAUDE.md): the block to paste into a Claude project
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
+  [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md)
 
 ## Troubleshooting
 
