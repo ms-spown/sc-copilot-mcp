@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { fetchWithCache } from "../core/cache.js";
 import { formatOutput, formatOutputRaw } from "../core/format.js";
+import { resolveShip } from "../providers/fleet/resolve.js";
 import type { HttpClient } from "../core/http.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
@@ -170,7 +171,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
     {
       name: "uex_get_trade_routes",
       description:
-        "Best trade routes (buy here, sell there) from UEX, sorted by profit. UEX requires an ORIGIN: give at least one of commodity_name, origin_terminal_name or origin_planet_name, otherwise the call fails. Use cargo_capacity (SCU) and investment (aUEC) to size the answer to the ship and budget. Crowdsourced prices: check provenance.data_age before trusting them.",
+        "Best trade routes (buy here, sell there) from UEX, sorted by profit. UEX requires an ORIGIN: give at least one of commodity_name, origin_terminal_name or origin_planet_name, otherwise the call fails. Size the answer to the ship with ship_name (for example one from sc_fleet_get: its cargo capacity is used) or cargo_capacity in SCU, and to the budget with investment (aUEC). Each route shows how many player reports back its prices (reports_origin, reports_destination; 0 means UEX's own estimate). Crowdsourced prices: check provenance.data_age and sanity-check a route before flying it.",
       inputSchema: {
         type: "object",
         properties: {
@@ -193,7 +194,13 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
           },
           cargo_capacity: {
             type: "number",
-            description: "Cargo capacity in SCU (e.g. 696).",
+            description:
+              "Cargo capacity in SCU (e.g. 696). Wins over ship_name when both are given.",
+          },
+          ship_name: {
+            type: "string",
+            description:
+              "A ship to haul with (e.g. 'C2 Hercules Starlifter'): its cargo capacity in SCU is used. Matched by words; several ships that fit are listed instead of guessed.",
           },
           limit: {
             type: "number",
@@ -207,7 +214,8 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
           origin_terminal_name,
           origin_planet_name,
           investment,
-          cargo_capacity,
+          cargo_capacity: requestedScu,
+          ship_name,
           limit,
         } = z
           .object({
@@ -216,9 +224,33 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             origin_planet_name: z.string().optional(),
             investment: z.number().optional(),
             cargo_capacity: z.number().optional(),
+            ship_name: z.string().optional(),
             limit: z.number().optional(),
           })
           .parse(args || {});
+
+        // A ship stands in for a cargo size: its SCU comes from UEX's own vehicle list.
+        let cargo_capacity = requestedScu;
+        let ship: { name: unknown; scu: number } | undefined;
+        if (ship_name) {
+          const vehicles = (await fetchWithCache(uexClient, "/vehicles")).data.data;
+          const found = resolveShip(ship_name, Array.isArray(vehicles) ? vehicles : []);
+          if (found.match === "not_found") {
+            throw new Error(`No ship matches "${ship_name}" in UEX's vehicle list.`);
+          }
+          if (found.match === "ambiguous") {
+            const names = found.candidates.map((c) => c.name_full ?? c.name).join("; ");
+            throw new Error(`"${ship_name}" fits several ships (${names}). Say which one.`);
+          }
+          const scu = Number(found.vehicle.scu);
+          if (!(scu > 0)) {
+            throw new Error(
+              `${found.vehicle.name_full ?? found.vehicle.name} has no cargo capacity.`,
+            );
+          }
+          ship = { name: found.vehicle.name_full ?? found.vehicle.name, scu };
+          cargo_capacity = requestedScu ?? scu;
+        }
 
         if (!commodity_name && !origin_terminal_name && !origin_planet_name) {
           throw new Error(
@@ -281,6 +313,8 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             margin: r.price_margin,
             roi: r.price_roi,
             scu_reachable: r.scu_reachable,
+            reports_origin: r.price_origin_users_rows,
+            reports_destination: r.price_destination_users_rows,
             investment: r.investment,
             profit: r.profit,
             distance: r.distance,
@@ -297,6 +331,8 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
               type: "text",
               // Not formatOutput: it would drop zero margins and ids that are real values here.
               text: formatOutputRaw({
+                ...(ship ? { ship } : {}),
+                cargo_scu_used: cargo_capacity ?? null,
                 total_routes: rows.length,
                 shown: routes.length,
                 sorted_by: "profit, descending",

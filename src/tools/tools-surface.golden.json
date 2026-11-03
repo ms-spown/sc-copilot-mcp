@@ -926,7 +926,11 @@
         },
         "cargo_capacity": {
           "type": "number",
-          "description": "Cargo capacity in SCU (e.g. 696)."
+          "description": "Cargo capacity in SCU (e.g. 696). Wins over ship_name when both are given."
+        },
+        "ship_name": {
+          "type": "string",
+          "description": "A ship to haul with (e.g. 'C2 Hercules Starlifter'): its cargo capacity in SCU is used. Matched by words; several ships that fit are listed instead of guessed."
         },
         "limit": {
           "type": "number",
