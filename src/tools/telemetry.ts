@@ -111,7 +111,7 @@ export function telemetryTools({
           });
         }
         await addLogContext();
-        const status = await telemetry.status();
+        const status = await telemetry.status(true);
         if (status.last_frame_age_ms !== undefined) {
           recordFetch({ fetchedAt: Date.now() - status.last_frame_age_ms, cache: "network" });
         }
@@ -147,14 +147,17 @@ export function telemetryTools({
         if (!telemetry || !enabled()) return off();
         const { sections, include_balance } = z
           .object({
-            sections: z.array(z.enum(["ship", "pilot", "weapons"])).optional(),
+            sections: z
+              .array(z.enum(["ship", "pilot", "weapons"]))
+              .min(1)
+              .optional(),
             include_balance: z.boolean().optional(),
           })
           .parse(args || {});
         await addLogContext();
         const snapshot = await telemetry.snapshot();
         if (!snapshot) {
-          const status = await telemetry.status();
+          const status = await telemetry.status(true);
           return ok({
             available: false,
             reason:
@@ -232,13 +235,16 @@ export function telemetryTools({
           .parse(args || {});
         await addLogContext();
         const max = Math.min(Math.max(Math.floor(limit ?? 30), 1), 100);
-        const result = await telemetry.events(after_seq ?? 0, max);
-        const status = await telemetry.status(false);
-        const events = result.events.filter(
+        // Filter BEFORE the cap: limit=1 must give the newest event that is allowed, not an empty answer.
+        const result = await telemetry.events(
+          after_seq ?? 0,
+          max,
           (e) =>
             (confidence !== "confirmed" || e.confidence === "confirmed") &&
             (include_balance === true || e.type !== "uec_changed"),
         );
+        const status = await telemetry.status(false);
+        const events = result.events;
         if (status.last_frame_age_ms !== undefined) {
           recordFetch({ fetchedAt: Date.now() - status.last_frame_age_ms, cache: "network" });
         }
