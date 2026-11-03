@@ -11,7 +11,7 @@ It runs on your PC over stdio. It does not touch the game: it never reads game m
 automates anything, or writes to the game folder. The only file of the game it can read is the `Game.log`
 you point it at, and only if you do.
 
-> Fork of [voidput/SCMCP](https://github.com/voidput/SCMCP) v1.5.0, hardened and extended. The upstream
+> Fork of [voidput/SCMCP](https://github.com/voidput/SCMCP) v1.5.0, hardened and extended (see [CHANGELOG](CHANGELOG.md)). The upstream
 > `LICENSE` file is GPLv3 while its `package.json` and README said ISC; this fork is treated as GPLv3 (see
 > [THIRD_PARTY.md](THIRD_PARTY.md)). Nothing is published to npm or Docker Hub from here: the `voidput/scmcp`
 > image belongs to the upstream author.
@@ -162,6 +162,10 @@ counted. CIG does not guarantee the format; `npm run check:sources` shows if the
   files and does not document how; whether doing so is safe for your account is unverified (see
   [SECURITY.md](SECURITY.md)).
 - Wiki name lookups are strict; the fleet tool matches by words and lists candidates when unsure.
+
+## Troubleshooting
+
+See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). First steps: `npm run doctor`, then `npm run check:sources`.
 
 ## Development
 
