@@ -6,6 +6,19 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Dashboard gauges against the ship's real limits.** The flown ship (class name of the stream, for example
+  `AEGS_Vanguard_Harbinger`) is matched in the background to its Star Citizen Wiki sheet: one search per ship and per
+  session, never in the poll's hot path, never while telemetry is off, retried at most every five minutes after a
+  failure, no new host. Only one candidate is accepted (the row carrying the very class name, or a single match by
+  words); several candidates give `ambiguous` with their names, none gives `unknown`. `sc_live_poll` carries the
+  optional `specs` field (status, name, SCM and maximum speed, cargo SCU, shield and hull points, age, candidates);
+  no tool parameter changed. The speed bar gets SCM and maximum marks and a value in percent of the SCM speed, says
+  when the speed is beyond the frame (above the sheet's maximum, quantum jump), and otherwise keeps a scale deduced
+  from the highest speed seen with one line saying why. Values of 0 are not provided. The hydrogen tank capacity is
+  not confirmed in the wiki data and is not shown: the hydrogen endurance stays the labelled estimate. Documented in
+  `docs/TELEMETRY.md` and `docs/TELEMETRY.fr.md`.
+
 ### Fixed
 - **Telemetry no longer says the game is off when it is not.** Measured with the real game: the first
   `sc_live_status` or `sc_live_state` call started the reader and answered `waiting` before the first connection

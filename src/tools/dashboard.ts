@@ -3,6 +3,8 @@ import { DASHBOARD_URI, PLAN_TEXT_MAX, UI_MIME_TYPE } from "../dashboard/constan
 import { dashboardHtml } from "../dashboard/page.js";
 import { parsePlan } from "../dashboard/plan.js";
 import { DashboardService } from "../dashboard/service.js";
+import { ShipSpecsResolver } from "../dashboard/specs.js";
+import type { HttpClient } from "../core/http.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
 import type { ResourceDefinition, ToolDefinition, ToolResult } from "./types.js";
 
@@ -44,8 +46,19 @@ export function dashboardResources({ telemetry }: { telemetry?: Telemetry }): Re
   ];
 }
 
-export function dashboardTools({ telemetry }: { telemetry?: Telemetry }): ToolDefinition[] {
-  const service = new DashboardService(telemetry);
+export function dashboardTools({
+  telemetry,
+  scwClient,
+}: {
+  telemetry?: Telemetry;
+  scwClient?: HttpClient;
+}): ToolDefinition[] {
+  // The wiki client only serves the ship sheet lookup (background, one search per ship, never while telemetry is off).
+  const service = new DashboardService(
+    telemetry,
+    Date.now,
+    scwClient ? new ShipSpecsResolver(scwClient) : undefined,
+  );
   const enabled = () => telemetry?.enabled === true;
 
   return [

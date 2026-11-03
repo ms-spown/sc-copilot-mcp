@@ -206,8 +206,10 @@ d'atterrissage, alimentation, voyants, santé, faim, soif.
 - **Un tableau de bord en direct (optionnel).** Avec la télémétrie activée, Claude Desktop peut afficher un tableau
   de bord en direct dans la conversation (`sc_live_dashboard`) : vaisseau, vitesse, hydrogène, santé et état du flux
   en vue compacte ; instruments, voyants, armes, événements et chronologie de session en plein écran. Chaque valeur
-  indique son âge, le solde aUEC reste masqué tant que vous ne cliquez pas, et rien n'est envoyé au jeu. Claude Code
-  ne l'affiche pas. Voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#tableau-de-bord-en-direct).
+  indique son âge, le solde aUEC reste masqué tant que vous ne cliquez pas, et rien n'est envoyé au jeu. Le cadran de
+  vitesse utilise les limites du vaisseau prises sur le Star Citizen Wiki quand une seule fiche correspond au
+  vaisseau (étiquetée « wiki »), et le dit quand il garde sa propre échelle. Claude Code ne l'affiche pas. Voir
+  [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#tableau-de-bord-en-direct).
 - **Lisez d'abord les risques.** C'est une fonction non documentée du jeu. À notre connaissance, CIG ne l'a ni
   autorisée ni interdite, les conditions de RSI s'appliquent à vous, et le risque est le vôtre. Tout est dans
   [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md).

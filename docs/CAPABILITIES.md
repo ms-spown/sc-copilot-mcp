@@ -195,7 +195,10 @@ What to know before you switch it on:
 - **A live dashboard, in Claude Desktop only.** `sc_live_dashboard` shows the stream as a small page in the
   conversation, inline or in full screen, with the age of each value, what the stream lacks, a session timeline
   and, if Claude passes a route plan, planned next to measured profit. Claude Code does not render it and never
-  lists its tools. The balance stays hidden in the page until you click. See
+  lists its tools. The balance stays hidden in the page until you click. The speed gauge is drawn against the
+  ship's own limits (SCM and maximum speed from its Star Citizen Wiki page, found in the background, one search per
+  ship, only when exactly one sheet fits) and says so when it keeps a scale deduced from what was seen; the
+  hydrogen tank capacity is not known, so the hydrogen endurance stays an estimate. See
   [TELEMETRY.md](TELEMETRY.md#live-dashboard).
 - **Your balance is withheld by default.** Tool results become part of your conversation with Claude, which goes
   to Anthropic. The aUEC balance (and balance-change events) is returned only when `include_balance` is true,

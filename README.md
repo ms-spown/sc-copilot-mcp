@@ -196,8 +196,9 @@ health, hunger, thirst.
 - **A live dashboard (optional).** With telemetry on, Claude Desktop can show a live dashboard in the conversation
   (`sc_live_dashboard`): ship, speed, hydrogen, health and the state of the stream in a compact view; instruments,
   warning lights, weapons, events and a session timeline in full screen. Every value shows its age, the aUEC balance
-  stays hidden until you click, and nothing is sent to the game. Claude Code does not display it. See
-  [docs/TELEMETRY.md](docs/TELEMETRY.md#live-dashboard).
+  stays hidden until you click, and nothing is sent to the game. The speed gauge uses the ship's limits from the
+  Star Citizen Wiki when exactly one sheet fits the ship (labelled "wiki"), and says so when it keeps its own
+  scale. Claude Code does not display it. See [docs/TELEMETRY.md](docs/TELEMETRY.md#live-dashboard).
 - **Read the risks first.** It is an undocumented game feature. As far as we know CIG has neither allowed nor
   forbidden using it, the RSI terms apply to you, and the risk is yours. Everything is in
   [docs/TELEMETRY.md](docs/TELEMETRY.md).

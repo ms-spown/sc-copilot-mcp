@@ -225,6 +225,13 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.tiles = el("div", "tiles");
     R.tShip = tile("Vaisseau");
     R.tSpeed = tile("Vitesse");
+    // Ship sheet (specsView.ts): SCM and max marks on the speed bar, and one line that says where the scale comes from.
+    R.speedTicks = { scm: el("span", "tick"), max: el("span", "tick") };
+    R.speedTicks.scm.setAttribute("data-kind", "scm");
+    R.speedTicks.max.setAttribute("data-kind", "max");
+    add(R.tSpeed.bar, R.speedTicks.scm, R.speedTicks.max);
+    R.speedScale = el("div", "tile-scale", "");
+    add(R.tSpeed.root, R.speedScale);
     R.tHydrogen = tile("Hydrogène");
     R.tHealth = tile("Santé");
     R.tBalance = tile("Solde");
@@ -247,6 +254,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.pinTiles[key] = t;
       add(R.tiles, t.root);
     }
+
+    // The sheet of the ship, from the wiki (specsView.ts)
+    R.specsLine = el("p", "specs-line", "");
 
     // Full screen: cards
     R.full = el("div", "full");
@@ -273,6 +283,17 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     add(cIns.body, R.heading.root);
     R.insNote = el("p", "note", "");
     add(cIns.body, R.insNote);
+
+    // Ship sheet card
+    const cSpecs = card("Fiche du vaisseau (wiki)");
+    R.specsRows = [];
+    for (let i = 0; i < 6; i++) {
+      const r = row("");
+      R.specsRows.push(r);
+      add(cSpecs.body, r.root);
+    }
+    R.specsNote = el("p", "note", "");
+    add(cSpecs.body, R.specsNote);
 
     // Energy and flight
     const cEn = card("Énergie et vol");
@@ -514,6 +535,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     add(
       R.full,
       cIns.root,
+      cSpecs.root,
       cEn.root,
       cLights.root,
       cWeap.root,
@@ -536,7 +558,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.sr.setAttribute("role", "status");
     R.sr.setAttribute("aria-live", "polite");
 
-    add(root, R.top, R.notice, R.alerts, R.tiles, R.full, R.live, R.sr);
+    add(root, R.top, R.notice, R.alerts, R.tiles, R.specsLine, R.full, R.live, R.sr);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -597,12 +619,23 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.tShip.value._long = longName;
       R.tShip.value.className = "tile-value" + (longName ? " long" : "");
     }
-    // Speed
+    // Speed: against the limits of the ship's wiki sheet when there is one, else against the highest speed seen
+    const gauge = L.speedGauge(
+      p && p.specs,
+      ins ? ins.speed_ms : null,
+      L.speedObservedMax(view.series.speed),
+      !!(p && p.derived && p.derived.in_quantum_mode),
+    );
     setTile(
       R.tSpeed,
       ins ? L.fmtNum(ins.speed_ms, 0) + "\u00a0m/s" : "\u2014",
-      ins ? (ship.landed ? "à l\u2019arrêt au sol" : "") : "pas de données de vaisseau",
+      ins ? (ship.landed ? "à l\u2019arrêt au sol" : gauge.sub) : "pas de données de vaisseau",
+      ins ? { fraction: gauge.fraction, level: "" } : null,
     );
+    renderSpeedMarks(gauge, !!ins);
+    const sheet = L.specsInfo(p && ship ? p.specs : null);
+    setText(R.specsLine, sheet.line);
+    show(R.specsLine, !!sheet.line);
     // Hydrogen
     const h = fractionOf(p, "hydrogen");
     setTile(R.tHydrogen, h.text, ins ? "" : "pas de données de vaisseau", h);
@@ -662,6 +695,19 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       L.estimateText(L.trendEstimate(view.series.hydrogen, now, 90000)),
       "estimation",
     );
+  }
+
+  /** Marks on the speed bar (SCM, max), the overflow flag and the scale line, from L.speedGauge. */
+  function renderSpeedMarks(g: any, haveShip: boolean) {
+    const sheet = haveShip && g.source === "sheet";
+    setAttr(R.tSpeed.bar, "data-marks", sheet ? "1" : "0");
+    setAttr(R.tSpeed.bar, "data-over", haveShip ? g.over : "none");
+    show(R.speedTicks.scm, sheet && g.scmMark !== null && g.maxMark !== null);
+    show(R.speedTicks.max, sheet && g.maxMark !== null);
+    if (g.scmMark !== null) {
+      setVar(R.speedTicks.scm, "--at", String(Math.round(g.scmMark * 1000) / 1000));
+    }
+    setText(R.speedScale, haveShip ? g.scale : "");
   }
 
   function renderAlerts(now: number) {
@@ -765,6 +811,27 @@ export function dashboardMain(win: any, doc: any, L: any): any {
           : mode.id === "foot"
             ? "À pied : seules les données du personnage sont disponibles. Les instruments apparaissent quand vous êtes assis dans un vaisseau."
             : "Pas de données de vaisseau pour l’instant (véhicule terrestre, ou pas encore envoyées : 6 à 9 s après être assis dans un vaisseau).",
+    );
+
+    // Ship sheet card
+    const sheetInfo = L.specsInfo(ship ? p.specs : null);
+    for (let i = 0; i < R.specsRows.length; i++) {
+      const r = sheetInfo.rows[i];
+      show(R.specsRows[i].root, !!r);
+      if (r) {
+        setText(R.specsRows[i].label, r[0]);
+        setRow(R.specsRows[i], r[1]);
+      }
+    }
+    setText(
+      R.specsNote,
+      !ship
+        ? "Pas de vaisseau : pas de fiche."
+        : sheetInfo.status === "none"
+          ? "Pas de fiche du vaisseau pour l\u2019instant. " + sheetInfo.note
+          : sheetInfo.status === "ready" || sheetInfo.status === "ambiguous"
+            ? sheetInfo.note
+            : L.specsScaleReason(p.specs) + ". " + sheetInfo.note,
     );
 
     // Energy and flight

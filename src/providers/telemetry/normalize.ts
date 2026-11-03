@@ -114,7 +114,7 @@ export interface NormalizedFrame {
   broken: string[];
 }
 
-const MANUFACTURERS: Record<string, string> = {
+export const MANUFACTURERS: Record<string, string> = {
   AEGS: "Aegis",
   ANVL: "Anvil",
   ARGO: "Argo",

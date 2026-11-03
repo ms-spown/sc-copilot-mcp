@@ -1,6 +1,7 @@
 import type { TelemetryEvent } from "../providers/telemetry/events.js";
 import type { Pilot, Ship, Weapons } from "../providers/telemetry/normalize.js";
 import type { TelemetrySnapshot, TelemetryStatusReport } from "../providers/telemetry/service.js";
+import type { ShipSpecs } from "./specs.js";
 
 /**
  * What the View receives from sc_live_poll (as `structuredContent`, which the host does not add to the model's
@@ -62,6 +63,8 @@ export interface PollResult {
   session: SessionSummary;
   /** Present only when the View asked for it (after the player clicked "show balance"). */
   balance?: { uec: number | string; delta: number | null; since: string | null };
+  /** The wiki sheet of the ship (specs.ts). Present only while a ship is flown. Third-party figures, bounded. */
+  specs?: ShipSpecs;
   not_in_stream: readonly string[];
   /** Present only when the answer had to be cut to stay bounded. */
   truncated?: string;
@@ -188,6 +191,8 @@ export interface PollInput {
   session: SessionState;
   includeBalance: boolean;
   nowMs: number;
+  /** What the wiki says about the ship being flown (specs.ts). Never fetched here: the caller passes what it has. */
+  specs?: ShipSpecs;
 }
 
 const publicEvent = (e: TelemetryEvent): PublicEvent => ({
@@ -254,6 +259,7 @@ export function buildPoll(input: PollInput): PollResult {
       state?.ship?.landed === false,
     ),
     ...(balance ? { balance } : {}),
+    ...(input.specs && state?.ship ? { specs: input.specs } : {}),
     not_in_stream: status.not_in_stream,
   };
 }

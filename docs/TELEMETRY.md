@@ -193,6 +193,39 @@ server provides and that the client renders next to the chat.
 - **No network, no package.** The page is one file inside this server: no CDN, no font, no request. It declares
   its own restrictive content policy and sets every text with `textContent`.
 
+### Gauges from the ship sheet
+
+The speed gauge can be drawn against the real limits of the ship instead of against what was seen so far. The
+limits do not come from the game: they come from the ship's page on the Star Citizen Wiki, community-written and
+labelled "wiki" wherever they are shown.
+
+- **How the ship is found.** The stream gives a class name such as `AEGS_Vanguard_Harbinger`. The server turns it
+  into words (the maker is derived from the prefix: Aegis; the ship is "Vanguard Harbinger") and asks the wiki,
+  in the background and once per ship and per session, for the ships whose name contains the longest of those
+  words. If exactly one row carries that very class name (`class_name`), it is the ship. Otherwise the words go
+  through the same word matching as `sc_fleet_get` and only a single candidate is accepted. With several
+  candidates nothing is chosen (`ambiguous`, with their names); with none the ship is `unknown`. A wiki that does
+  not answer gives `error` and is asked again at most every five minutes. The poll never waits for the wiki: the
+  first answers say `pending`.
+- **What is read.** Speed in standard cruise mode (SCM) and maximum speed, cargo in SCU, shield and hull points.
+  A value of 0 in the sheet means "not provided" and is never used as a limit. The sheet comes with its age
+  (when this server read it), the date the wiki last changed it and the game version it is stamped with, when the
+  wiki gives them. The figures are carried in `sc_live_poll` under `specs`; no tool has a new parameter.
+- **What the gauge does with them.** The speed bar runs from 0 to the maximum speed of the sheet, with a mark at the
+  SCM speed, and the value is given as a share of the SCM speed ("87 % of the SCM speed"). Above the SCM speed it
+  says so; above the maximum of the sheet, and during a quantum jump, the speed is out of the frame and the View
+  says that instead of cutting the bar silently.
+- **What is not known.** The capacity of the hydrogen tank is not confirmed in the wiki data this project reads,
+  so it is neither shown nor deduced: the hydrogen endurance stays the labelled straight-line estimate. The stream
+  has no shield level or hull state either, so the sheet's shield and hull points are only a reference, not a
+  gauge.
+- **When the scale stays observed.** If the sheet is pending, unknown, ambiguous, unavailable, or gives no speed,
+  the bar is scaled to the highest speed seen and one line says why ("échelle déduite : fiche du vaisseau
+  introuvable"). A modified ship, a variant or a patch can differ from the wiki: check the age and the date before
+  relying on a number.
+- **Third-party text.** Names and versions from the wiki are cleaned and capped on the server, and shown as plain
+  text. No new host is contacted: the wiki is already on the list of hosts this server may reach.
+
 The dashboard shows what the stream shows and inherits every limit and risk of this page. We do not claim it is
 approved by Cloud Imperium Games.
 
