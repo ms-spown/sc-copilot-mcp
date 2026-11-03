@@ -49,6 +49,20 @@ Anti-Cheat and offline file reading. Reading files from disk is not what anti-ch
 but that is a general expectation, not a verified fact for this game. This project therefore ships no extraction
 code and gives no instructions for it. If you do it yourself, you accept that risk.
 
+## Repository protection
+
+Set on GitHub, not in the code, so the review rule in the threat model is enforced and not only promised:
+
+- A ruleset on `main`: changes arrive by pull request only (squash merge), the four CI checks must pass (lint, tests
+  and build on Ubuntu and Windows; dependency audit; CodeQL analysis), and force pushes and deletion are refused.
+  No one is exempt from it.
+- Workflow runs of pull requests from outside contributors wait for a maintainer's approval, every time.
+- Only GitHub Actions pinned by commit SHA may run.
+- Private vulnerability reporting, secret scanning with push protection, Dependabot alerts and CodeQL are on.
+
+A maintainer who is alone on the project reviews their own changes with the CI and with independent read-only review
+passes; there is no second human. That is a limit, and it is stated here on purpose.
+
 ## Reporting a vulnerability
 
 Open a private security advisory on this repository (Security tab, "Report a vulnerability"), or contact the
