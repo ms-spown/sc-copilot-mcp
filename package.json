@@ -19,7 +19,8 @@
     "typecheck": "tsc --noEmit",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "test:coverage": "vitest run --coverage",
-    "golden:update": "node scripts/update-golden.mjs"
+    "golden:update": "node scripts/update-golden.mjs",
+    "doctor": "node scripts/doctor.mjs"
   },
   "repository": {
     "type": "git",
@@ -56,6 +57,6 @@
     "minimatch": "^11.0.1"
   },
   "engines": {
-    "node": "^22.14.0 || >=24.10.0"
+    "node": "^20.19.0 || ^22.13.0 || >=24.0.0"
   }
 }

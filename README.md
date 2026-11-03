@@ -34,7 +34,7 @@ never as an empty answer. A rejected token (HTTP 401/403) is never hidden behind
 
 ## Install
 
-You need Node.js 22.14+ (or 24.10+) and Git.
+You need Node.js 20.19+ (or 22.13+, or 24+) and Git.
 
 ```bash
 git clone https://github.com/ms-spown/sc-copilot-mcp.git
@@ -71,8 +71,10 @@ npm run build
    }
    ```
 
-3. **Check it.** `npm run check:sources` asks every source for its version and verifies the files and fields
-   the tools rely on. In Claude, ask for `sc_data_status`.
+3. **Check it.** `npm run doctor` checks your installation (Node, build, token, Claude config, game log, fleet
+   file) and says how to fix each problem; nothing is sent anywhere and no secret is printed.
+   `npm run check:sources` asks every data source for its version and verifies the files and fields the tools rely
+   on. In Claude, ask for `sc_data_status`.
 
 ## Tools (42)
 
