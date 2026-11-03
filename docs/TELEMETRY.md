@@ -1,5 +1,7 @@
 # Live telemetry
 
+English · [Français](TELEMETRY.fr.md)
+
 An optional, **off by default** way for sc-copilot-mcp to see what the running game reports about your ship and
 your character: speed, altitude, fuel, power, warning lights, health, wallet. Read this whole page before you
 switch it on, in particular [Risks](#risks).
