@@ -25,6 +25,11 @@ export const LEDGER_REFRESH_MS = 5000;
 export const LEDGER_LOOKBEHIND_BYTES = 16 * 1024;
 /** Bytes of the beginning of the file that identify a game session. */
 export const LEDGER_HEAD_BYTES = 256;
+/**
+ * An incremental read never takes more than this many bytes (like the reader's own tail): when the log grew by more
+ * than that since the last read, a full read (the end of the log) is done instead.
+ */
+export const LEDGER_MAX_INCREMENTAL_BYTES = 8 * 1024 * 1024;
 /** The events kept (only the types the ledger uses); the oldest go first. */
 export const LEDGER_MAX_EVENTS = 4000;
 
@@ -80,6 +85,7 @@ export function ledgerLogFrom(gameLog: GameLog): LedgerLogSource {
       }),
     bytes: (start, end) =>
       withFile(gameLog, async (h) => {
+        if (end - start > LEDGER_MAX_INCREMENTAL_BYTES) throw new Error("range too large");
         const buffer = Buffer.alloc(Math.max(0, end - start));
         const { bytesRead } = await h.read(buffer, 0, buffer.length, start);
         return buffer.subarray(0, bytesRead);
@@ -87,7 +93,22 @@ export function ledgerLogFrom(gameLog: GameLog): LedgerLogSource {
   };
 }
 
-const eventKey = (e: LogEvent) => JSON.stringify(e);
+/**
+ * What makes two events the same one. The game repeats a hauling line hundreds of times with a new time each time, and
+ * a read re-parses a look-behind: the first occurrence of a step is the only one kept (no time in its key). Every other
+ * event is identified by its whole content, time included.
+ */
+const eventKey = (e: LogEvent) =>
+  e.type === "hauling_objective"
+    ? `h|${String(e.mission_id)}|${String(e.kind)}|${String(e.location)}|${String(e.cargo)}`
+    : JSON.stringify(e);
+
+/** A read error that says "try again", as opposed to a log that is gone or not a log. */
+function isTransient(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  const text = `${code ?? ""} ${error instanceof Error ? error.message : ""}`;
+  return /\b(EBUSY|EPERM|EACCES|EAGAIN|EMFILE|ENFILE|EIO)\b/.test(text);
+}
 
 export class LedgerService {
   private current: LedgerBase = { ...EMPTY_LEDGER, status: "loading" };
@@ -111,6 +132,11 @@ export class LedgerService {
     private readonly now: () => number = Date.now,
     private readonly refreshMs: number = LEDGER_REFRESH_MS,
   ) {}
+
+  /** How many events are kept (for tests and diagnostics). */
+  get eventCount(): number {
+    return this.events.length;
+  }
 
   /** The last computed ledger. Synchronous. May start a background refresh; never waits for it. */
   state(): LedgerBase {
@@ -154,8 +180,8 @@ export class LedgerService {
     let stat: { mtimeMs: number; size: number };
     try {
       stat = await source.stat();
-    } catch {
-      this.unreadable();
+    } catch (error) {
+      this.failed(error);
       return;
     }
     if (this.current.status === "ok" && stat.mtimeMs === this.lastModified) return;
@@ -170,9 +196,15 @@ export class LedgerService {
         partial: this.partial,
         contracts: buildContracts(this.events),
       };
-    } catch {
-      this.unreadable();
+    } catch (error) {
+      this.failed(error);
     }
+  }
+
+  /** A transient error keeps the contracts known so far (the next look tries again); anything else is unreadable. */
+  private failed(error: unknown): void {
+    if (this.current.status === "ok" && isTransient(error)) return;
+    this.unreadable();
   }
 
   private async readFully(source: LedgerLogSource, size: number): Promise<void> {
@@ -194,6 +226,7 @@ export class LedgerService {
       return false;
     }
     if (size < this.offset) return false; // the file is shorter than before: renewed or truncated
+    if (size - this.offset > LEDGER_MAX_INCREMENTAL_BYTES) return false; // grew a lot: the end of the log, in full
     if ((await source.head()).toString("hex") !== this.head) return false; // another game session
     const start = Math.max(0, this.offset - LEDGER_LOOKBEHIND_BYTES);
     const buffer = await source.bytes(start, size);
