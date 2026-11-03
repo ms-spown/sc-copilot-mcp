@@ -7,7 +7,8 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # milestone-* so that stacked PRs (one milestone on top of the previous) are checked too.
+    branches: [main, "milestone-*"]
   workflow_dispatch:
 
 # Least privilege for every job. Nothing here needs to write to the repository.
