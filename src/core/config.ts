@@ -17,6 +17,11 @@ export interface Config {
   enabledTools: Set<string> | null;
   /** SCMCP_PROFILES, comma-separated (core, trade, data, local). Used when SCMCP_TOOLS is unset. */
   profiles: string[] | null;
+  /**
+   * SC_TELEMETRY=on switches on the server side of the live telemetry reader. Off unless set explicitly; the
+   * game-side switch is separate and never touched by this process.
+   */
+  telemetry: boolean;
 }
 
 /** Read the configuration from the environment. Throws if a base URL points outside its allowlist. */
@@ -53,5 +58,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
           .map((p) => p.trim().toLowerCase())
           .filter(Boolean)
       : null,
+    telemetry: /^(on|1|true|yes)$/i.test(env.SC_TELEMETRY?.trim() ?? ""),
   };
 }
