@@ -833,7 +833,11 @@ export function cleanPlan(input: any): any {
     const v = input[k];
     if (typeof v === "string") {
       const t = v
-        .replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ")
+        .replace(
+          // eslint-disable-next-line no-misleading-character-class
+          /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Cn}\p{Zl}\p{Zp}\p{Variation_Selector}]|\u{34f}|[\u{115f}\u{1160}\u{17b4}\u{17b5}\u{2800}\u{3164}\u{ffa0}]/gu,
+          " ",
+        )
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 60);

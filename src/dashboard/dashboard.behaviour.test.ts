@@ -345,7 +345,7 @@ describe("Feature: the poll carries the live state as a structured object", () =
     game.send(
       frame(
         vehicleField({ name: "DRAK_Cutter_1", speed: 120, lights: { shld: "nominal" } }),
-        actorField({ health: 0, uec: 777 }),
+        actorField({ health: 0, uec: 8675309 }),
       ),
     );
     await untilState("live");
@@ -357,7 +357,7 @@ describe("Feature: the poll carries the live state as a structured object", () =
     expect(sc!["pilot"].health).toMatchObject({ current: 0 });
     expect(sc!["pilot"]).not.toHaveProperty("uec_balance");
     expect(sc!["ship"]).not.toHaveProperty("unverified");
-    expect(JSON.stringify(sc)).not.toContain("777");
+    expect(JSON.stringify(sc)).not.toContain("8675309");
     expect(sc!["not_in_stream"]).toContain("shield_level");
     expect(sc!["session"]).toMatchObject({ started_at: null, flight_ms_is_estimate: true });
   });

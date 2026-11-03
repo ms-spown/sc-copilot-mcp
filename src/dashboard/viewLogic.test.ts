@@ -526,6 +526,13 @@ describe("Feature: the server-side plan and session summaries", () => {
       scu: 0,
       expected_profit_auec: 1_000_000_000_000,
     });
+    // The same invisible characters as core/untrusted.ts, on the server and again in the View.
+    const hidden = [0x34f, 0x3164, 0xfe0f, 0xe0041, 0xe000, 0x17b4].map((c) =>
+      String.fromCodePoint(c),
+    );
+    const dirty = `La${hidden.join("")}ranite`;
+    expect(parsePlan({ commodity: dirty })).toEqual({ commodity: "Laranite" });
+    expect(L.cleanPlan({ commodity: dirty })!.commodity.replace(/ /g, "")).toBe("Laranite");
     expect(parsePlan("no")).toBeUndefined();
     expect(parsePlan({ note: "   " })).toBeUndefined();
   });

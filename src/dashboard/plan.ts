@@ -1,3 +1,4 @@
+import { stripInvisible } from "../core/untrusted.js";
 import { PLAN_TEXT_MAX } from "./constants.js";
 
 /**
@@ -16,12 +17,10 @@ export interface Plan {
 
 const TEXT_FIELDS = ["commodity", "buy_terminal", "sell_terminal", "note"] as const;
 
-/** Control, format (bidi, zero width), line and paragraph separator characters are removed. */
-const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cn}]/gu;
-
 export function cleanPlanText(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
-  const cleaned = value.replace(INVISIBLE, " ").replace(/\s+/g, " ").trim();
+  // The one rule of the server for invisible and direction-changing characters (core/untrusted.ts), then spaces.
+  const cleaned = stripInvisible(value).replace(/\s+/g, " ").trim();
   if (!cleaned) return undefined;
   return [...cleaned].slice(0, PLAN_TEXT_MAX).join("");
 }
