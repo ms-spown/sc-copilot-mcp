@@ -9,6 +9,7 @@ import type { HttpClient } from "../core/http.js";
 import { FleetStore } from "../providers/fleet/store.js";
 import { GameLog } from "../providers/gamelog/reader.js";
 import { createGameVersionResolver, createProbes } from "../providers/probes.js";
+import { NO_NETWORK } from "../providers/probes.testing.js";
 import { Scmdb } from "../providers/scmdb/store.js";
 import { createMcpServer } from "../server.js";
 import { allTools, createRegistry, type Selection } from "../tools/registry.js";
@@ -72,9 +73,13 @@ describe("Feature: Claude uses the Star Citizen tools", () => {
       gameLog: new GameLog({}),
       fleet: new FleetStore(path.join(dir, "fleet.json")),
     };
-    const registry = createRegistry(allTools(clients, createProbes(clients)), selection, {
-      gameVersionFor: createGameVersionResolver(clients),
-    });
+    const registry = createRegistry(
+      allTools(clients, createProbes(clients, NO_NETWORK)),
+      selection,
+      {
+        gameVersionFor: createGameVersionResolver(clients),
+      },
+    );
     const server = createMcpServer(registry);
     const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
     await server.connect(serverSide);

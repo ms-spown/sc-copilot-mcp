@@ -6,6 +6,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- The test suite no longer reaches the network. A status test ran the dump-repository probe against GitHub and timed
+  out on a loaded CI; probes now take their sources as an argument, and `vitest.setup.ts` makes any test that opens a
+  socket to another host fail, even if the code under test swallows the error. This found and fixed a second test that
+  called a GitHub-backed tool for real.
+
 ### Added
 - **Live dashboard (an MCP App), optional.** With live telemetry on, Claude Desktop can show a live dashboard in the
   conversation: ship, speed, hydrogen, health, state of the stream and recent alerts inline; instruments, warning

@@ -9,6 +9,7 @@ import type { HttpClient } from "../core/http.js";
 import { FleetStore } from "../providers/fleet/store.js";
 import { GameLog } from "../providers/gamelog/reader.js";
 import { createProbes } from "../providers/probes.js";
+import { NO_NETWORK } from "../providers/probes.testing.js";
 import { Scmdb } from "../providers/scmdb/store.js";
 import { createTelemetry, type Telemetry } from "../providers/telemetry/index.js";
 import {
@@ -54,7 +55,7 @@ async function waitFor(check: () => boolean | Promise<boolean>, what: string, ms
 }
 
 async function connect(c: ToolClients) {
-  const registry = createRegistry(allTools(c, createProbes(c)), {});
+  const registry = createRegistry(allTools(c, createProbes(c, NO_NETWORK)), {});
   const client = new Client({ name: "test", version: "1" });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await Promise.all([createMcpServer(registry).connect(a), client.connect(b)]);

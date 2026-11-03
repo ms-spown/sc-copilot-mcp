@@ -14,14 +14,16 @@ import { GAME_DATA_DIR, listDatasets } from "./local/localdata.js";
 const quiet = { record: false } as const;
 const WIKI_PROBE = { params: { "page[number]": 1, "page[size]": 1 } };
 
-export function createProbes({
-  uexClient,
-  scwClient,
-  sctClient,
-  scmdb,
-  gameLog,
-  telemetry,
-}: ToolClients): StatusProbe[] {
+/** What a probe reaches outside the clients. Tests replace it so that no probe touches the network. */
+export interface ProbeSources {
+  listBuilds?: typeof listBuilds;
+}
+
+export function createProbes(
+  { uexClient, scwClient, sctClient, scmdb, gameLog, telemetry }: ToolClients,
+  sources: ProbeSources = {},
+): StatusProbe[] {
+  const builds = sources.listBuilds ?? listBuilds;
   return [
     {
       id: "uex",
@@ -97,10 +99,10 @@ export function createProbes({
     {
       id: "sc-gamedata-dumps",
       run: async () => {
-        const builds = await listBuilds(5);
+        const found = await builds(5);
         return {
           status: "ok",
-          unlabelled: builds.map((b) => ({
+          unlabelled: found.map((b) => ({
             version: cleanLabel(b.version),
             as_of: cleanLabel(b.date),
           })),
