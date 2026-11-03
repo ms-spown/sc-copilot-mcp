@@ -176,9 +176,13 @@ export class EventBuffer {
     return event;
   }
 
-  /** Events newer than `afterSeq`, oldest first, at most `limit` (the newest ones when there are more). */
-  since(afterSeq = 0, limit = 50): TelemetryEvent[] {
-    const fresh = this.items.filter((e) => e.seq > afterSeq);
+  /** Events newer than `afterSeq` that pass `keep`, oldest first, at most `limit` (the newest when there are more). */
+  since(
+    afterSeq = 0,
+    limit = 50,
+    keep: (event: TelemetryEvent) => boolean = () => true,
+  ): TelemetryEvent[] {
+    const fresh = this.items.filter((e) => e.seq > afterSeq && keep(e));
     return fresh.slice(Math.max(0, fresh.length - limit));
   }
 

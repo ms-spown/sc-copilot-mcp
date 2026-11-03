@@ -183,6 +183,65 @@
     }
   },
   {
+    "name": "sc_live_events",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "after_seq": {
+          "type": "number",
+          "description": "Only events with a higher seq (default 0)."
+        },
+        "limit": {
+          "type": "number",
+          "description": "At most this many, the newest (default 30, max 100)."
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "confirmed",
+            "all"
+          ],
+          "description": "'confirmed' hides unverified events (default all)."
+        },
+        "include_balance": {
+          "type": "boolean",
+          "description": "Include balance-change events (default false)."
+        }
+      }
+    }
+  },
+  {
+    "name": "sc_live_state",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "ship",
+              "pilot",
+              "weapons"
+            ]
+          },
+          "description": "Only these parts (default all). Smaller answers cost less."
+        },
+        "include_balance": {
+          "type": "boolean",
+          "description": "Include the aUEC balance and its change since the reader started. Default false: the result goes into the conversation."
+        }
+      }
+    }
+  },
+  {
+    "name": "sc_live_status",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
     "name": "sc_local_datasets",
     "inputSchema": {
       "type": "object",

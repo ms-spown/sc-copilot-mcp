@@ -384,7 +384,7 @@ describe("Feature: switched off, nothing is loaded and nothing connects", () => 
     const connect = vi.spyOn(http2, "connect");
     const telemetry = createTelemetry({ enabled: false });
     expect(telemetry.enabled).toBe(false);
-    expect((await telemetry.status()).state).toBe("off");
+    expect((await telemetry.status(true)).state).toBe("off");
     expect(await telemetry.snapshot()).toBeNull();
     expect(await telemetry.events()).toEqual({ events: [], last_seq: 0 });
     await telemetry.resetUecDelta();
@@ -406,9 +406,9 @@ describe("Feature: switched off, nothing is loaded and nothing connects", () => 
       options: { endpointForTests: { host: "127.0.0.1", port: g.port }, reader: FAST },
     });
     cleanup.push(() => telemetry.stop());
-    await telemetry.status();
+    await telemetry.status(true);
     await waitFor(() => g.connections() === 1, "one connection");
-    await telemetry.status();
+    await telemetry.status(true);
     await telemetry.snapshot();
     expect(g.connections()).toBe(1);
   });

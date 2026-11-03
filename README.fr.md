@@ -22,13 +22,13 @@ touche, n'automatise rien et n'écrit jamais dans le dossier du jeu. Le seul fic
 
 Chaque réponse indique d'où proviennent les données. Les résultats d'outils ont la forme `{ provenance, data }` :
 
-| Champ `provenance`        | Signification                                                                                                                           |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `source`, `kind`          | Quelle source, et s'il s'agit de `datamined`, `crowdsourced`, `editorial`, `local_log`, `user` ou `computed`                            |
-| `channel`, `game_version` | `live`, `ptu` ou `unknown` (jamais deviné), ainsi que le numéro de build lorsque la source le fournit                                   |
-| `fetched_at`, `data_age`  | Date de récupération des données et leur ancienneté                                                                                     |
+| Champ `provenance`        | Signification                                                                                                                            |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `source`, `kind`          | Quelle source, et s'il s'agit de `datamined`, `crowdsourced`, `editorial`, `local_log`, `user` ou `computed`                             |
+| `channel`, `game_version` | `live`, `ptu` ou `unknown` (jamais deviné), ainsi que le numéro de build lorsque la source le fournit                                    |
+| `fetched_at`, `data_age`  | Date de récupération des données et leur ancienneté                                                                                      |
 | `trust`                   | `untrusted_text` pour le texte rédigé par des joueurs ou éditeurs web : nettoyé, raccourci, à lire comme donnée et jamais comme consigne |
-| `stale`, `stale_reason`   | Présents uniquement lorsque la requête en direct a échoué et que la dernière copie valide en cache a été servie                         |
+| `stale`, `stale_reason`   | Présents uniquement lorsque la requête en direct a échoué et que la dernière copie valide en cache a été servie                          |
 
 `sc_data_status` affiche la version servie par chaque source, son ancienneté, les écarts entre sources (par exemple
 les builds LIVE `12881860` et `12913470`) et celles qui sont indisponibles. Une source en panne est signalée avec son
@@ -84,16 +84,17 @@ npm run build
 
 Référence complète des paramètres : **[docs/TOOLS.md](docs/TOOLS.md)** (générée depuis le code). Par thème :
 
-| Thème                                   | Outils                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Fraîcheur**                           | `sc_data_status` : version du jeu par source, ancienneté, écarts entre sources et sources indisponibles                                                                                                                                                                                                                                                                                                                                   |
-| **Commerce** (UEX)                      | `uex_get_trade_routes` (adapté à votre vaisseau ou à votre soute, profit calculé pour la cargaison qui rentre, relevés joueurs derrière chaque prix), `uex_get_commodity_prices`, `uex_get_commodity_averages`, `uex_get_commodity_ranking`, `uex_get_commodities`, `uex_get_terminals`, `uex_get_terminal_inventory`, `uex_search_marketplace`, `uex_get_ship_prices`, `uex_get_game_versions`, `scw_search_ships_by_vendor`             |
-| **Vaisseaux et objets** (Wiki)          | `scw_get_vehicle`, `scw_get_item`, `scw_get_ship_comparison`, `scw_list_vehicles`, `scw_list_items`, `scw_get_filters`, `scw_search`, `scw_snapshot_save`, `scw_snapshot_list`, `scw_snapshot_diff`, `sc_get_vocabulary`                                                                                                                                                                                                                  |
-| **Missions, artisanat, minage** (SCMDB) | `scmdb_search_missions`, `scmdb_search_crafting`, `scmdb_search_mining`, `scmdb_changes`                                                                                                                                                                                                                                                                                                                                                  |
-| **Patchs et lore**                      | `sc_patch_notes` (notes d'une mise à jour, par section ou mot-clé), `sct_search`, `sct_get_article`, `sc_list_builds`, `sc_diff_versions`                                                                                                                                                                                                                                                                                                 |
-| **Votre journal de jeu** (désactivé par défaut) | `sc_log_context` (ce que vous faites actuellement), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`                                                                                                                                                                                                                                                                                                                    |
-| **Votre flotte**                        | `sc_fleet_get`, `sc_fleet_upsert`, `sc_fleet_remove`                                                                                                                                                                                                                                                                                                                                                                                      |
-| **Vos propres fichiers de données**     | `sc_local_datasets`, `sc_search_local`, `sc_read_local_collection`                                                                                                                                                                                                                                                                                                                                                                        |
+| Thème                                            | Outils                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Fraîcheur**                                    | `sc_data_status` : version du jeu par source, ancienneté, écarts entre sources et sources indisponibles                                                                                                                                                                                                                                                                                                                       |
+| **Commerce** (UEX)                               | `uex_get_trade_routes` (adapté à votre vaisseau ou à votre soute, profit calculé pour la cargaison qui rentre, relevés joueurs derrière chaque prix), `uex_get_commodity_prices`, `uex_get_commodity_averages`, `uex_get_commodity_ranking`, `uex_get_commodities`, `uex_get_terminals`, `uex_get_terminal_inventory`, `uex_search_marketplace`, `uex_get_ship_prices`, `uex_get_game_versions`, `scw_search_ships_by_vendor` |
+| **Vaisseaux et objets** (Wiki)                   | `scw_get_vehicle`, `scw_get_item`, `scw_get_ship_comparison`, `scw_list_vehicles`, `scw_list_items`, `scw_get_filters`, `scw_search`, `scw_snapshot_save`, `scw_snapshot_list`, `scw_snapshot_diff`, `sc_get_vocabulary`                                                                                                                                                                                                      |
+| **Missions, artisanat, minage** (SCMDB)          | `scmdb_search_missions`, `scmdb_search_crafting`, `scmdb_search_mining`, `scmdb_changes`                                                                                                                                                                                                                                                                                                                                      |
+| **Patchs et lore**                               | `sc_patch_notes` (notes d'une mise à jour, par section ou mot-clé), `sct_search`, `sct_get_article`, `sc_list_builds`, `sc_diff_versions`                                                                                                                                                                                                                                                                                     |
+| **Votre journal de jeu** (désactivé par défaut)  | `sc_log_context` (ce que vous faites actuellement), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`                                                                                                                                                                                                                                                                                                                |
+| **Télémétrie en direct** (désactivée par défaut) | `sc_live_status` (toujours listé : l'état et comment l'activer), `sc_live_state`, `sc_live_events` (listés seulement avec `SC_TELEMETRY=on`)                                                                                                                                                                                                                                                                                  |
+| **Votre flotte**                                 | `sc_fleet_get`, `sc_fleet_upsert`, `sc_fleet_remove`                                                                                                                                                                                                                                                                                                                                                                          |
+| **Vos propres fichiers de données**              | `sc_local_datasets`, `sc_search_local`, `sc_read_local_collection`                                                                                                                                                                                                                                                                                                                                                            |
 
 ### Profils
 
@@ -102,12 +103,12 @@ est toujours inclus. `SCMCP_TOOLS` (liste explicite de noms) l'emporte sur les p
 serveur au démarrage au lieu d'exposer une liste vide. Ce filtrage sert à la rapidité, pas à la sécurité : un outil non
 listé reste appelable.
 
-| Profil    | Outils | Usage                                                                                               |
-| --------- | ------ | --------------------------------------------------------------------------------------------------- |
-| **core**  | 14     | Le copilote au quotidien : statut, vaisseaux, bases du commerce, missions, notes de patch, flotte   |
-| **trade** | 12     | La boîte à outils complète du marché UEX                                                            |
-| **data**  | 16     | Données de référence, artisanat, minage, historique des patchs, navigation sur le wiki              |
-| **local** | 11     | Votre journal de jeu, votre flotte, vos propres fichiers de données                                 |
+| Profil    | Outils | Usage                                                                                             |
+| --------- | ------ | ------------------------------------------------------------------------------------------------- |
+| **core**  | 14     | Le copilote au quotidien : statut, vaisseaux, bases du commerce, missions, notes de patch, flotte |
+| **trade** | 12     | La boîte à outils complète du marché UEX                                                          |
+| **data**  | 16     | Données de référence, artisanat, minage, historique des patchs, navigation sur le wiki            |
+| **local** | 11     | Votre journal de jeu, votre flotte, vos propres fichiers de données                               |
 
 Le choix des profils et instructions recommandées est détaillé dans
 [docs/USING_WITH_CLAUDE.fr.md](docs/USING_WITH_CLAUDE.fr.md) ; la description de chaque outil précise ce qu'il renvoie
@@ -119,28 +120,28 @@ Le serveur propose également des prompts prêts à l'emploi (dans Claude Deskto
 sélectionnables), chacun enchaînant les bons outils dans le bon ordre et demandant à Claude d'indiquer la fraîcheur des
 données :
 
-| Prompt | Fonction |
-| --- | --- |
-| `haul_plan` | Les 3 meilleures routes commerciales pour l'un de vos vaisseaux, avec les risques (peu de relevés, données anciennes, profit suspect, cargaison illégale) |
-| `patch_briefing` | Ce que la dernière mise à jour a changé et ce que cela implique pour vous et votre flotte |
-| `session_debrief` | Ce que vous avez fait lors de votre dernière session d'après votre journal de jeu, et quoi faire ensuite |
-| `mining_prep` | Les statistiques et gisements d'un minerai, le bon laser et les bons modules, et où le vendre |
-| `mission_hunt` | Missions par lieu, faction, récompense ou plan (blueprint), et quel vaisseau de votre flotte convient |
+| Prompt            | Fonction                                                                                                                                                  |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `haul_plan`       | Les 3 meilleures routes commerciales pour l'un de vos vaisseaux, avec les risques (peu de relevés, données anciennes, profit suspect, cargaison illégale) |
+| `patch_briefing`  | Ce que la dernière mise à jour a changé et ce que cela implique pour vous et votre flotte                                                                 |
+| `session_debrief` | Ce que vous avez fait lors de votre dernière session d'après votre journal de jeu, et quoi faire ensuite                                                  |
+| `mining_prep`     | Les statistiques et gisements d'un minerai, le bon laser et les bons modules, et où le vendre                                                             |
+| `mission_hunt`    | Missions par lieu, faction, récompense ou plan (blueprint), et quel vaisseau de votre flotte convient                                                     |
 
 ## Configuration
 
-| Variable                                                         | Rôle                                                                                                                                                                     |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `UEXTOKEN`                                                       | Jeton bearer UEX dans `.env`. Envoyé uniquement aux hôtes UEX                                                                                                            |
-| `SCMCP_PROFILES`, `SCMCP_TOOLS`                                  | Quels outils exposer (voir ci-dessus)                                                                                                                                    |
-| `SC_INSTALL_DIR`                                                 | Dossier d'un canal tel que `…\StarCitizen\LIVE` : active `sc_log_*` sur son `Game.log`. Désactivé si non défini                                                          |
-| `SC_GAME_LOG_PATH`                                               | Un fichier `.log` précis à la place (seuls les fichiers `.log` sont acceptés)                                                                                            |
-| `SCMCP_FLEET_FILE`                                               | Fichier de flotte (par défaut `%APPDATA%\sc-copilot-mcp\fleet.json`)                                                                                                     |
+| Variable                                                         | Rôle                                                                                                                                                                                       |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `UEXTOKEN`                                                       | Jeton bearer UEX dans `.env`. Envoyé uniquement aux hôtes UEX                                                                                                                              |
+| `SCMCP_PROFILES`, `SCMCP_TOOLS`                                  | Quels outils exposer (voir ci-dessus)                                                                                                                                                      |
+| `SC_INSTALL_DIR`                                                 | Dossier d'un canal tel que `…\StarCitizen\LIVE` : active `sc_log_*` sur son `Game.log`. Désactivé si non défini                                                                            |
+| `SC_GAME_LOG_PATH`                                               | Un fichier `.log` précis à la place (seuls les fichiers `.log` sont acceptés)                                                                                                              |
+| `SCMCP_FLEET_FILE`                                               | Fichier de flotte (par défaut `%APPDATA%\sc-copilot-mcp\fleet.json`)                                                                                                                       |
 | `SCMCP_CACHE_DIR`, `SCMCP_DATA_DIR`, `SCMCP_CONFIG_DIR`          | Dossiers de cache (réponses HTTP, dumps, SCMDB), de données (snapshots wiki) et de configuration. Par utilisateur par défaut (`%LOCALAPPDATA%` / `%APPDATA%` sous Windows, XDG sous Linux) |
-| `SCMCP_UEX_BASE_URL`, `SCMCP_SCW_BASE_URL`, `SCMCP_SCT_BASE_URL` | Remplace une URL de base d'API. Doit être en https sur un hôte autorisé, sinon le serveur refuse de démarrer                                                             |
-| `SCMCP_SCMDB_REPO`, `SCMCP_DATA_REPO`, `SCMCP_DATA_REPO_PATH`    | Dépôts d'où sont lus SCMDB et les dumps de patch                                                                                                                         |
-| `SCMCP_GITHUB_TOKEN`                                             | Optionnel, augmente la limite de requêtes GitHub. Dédié : un `GITHUB_TOKEN` ambiant n'est jamais utilisé                                                                 |
-| `SCMCP_GAME_DATA_DIR`                                            | Dossier contenant les fichiers `game-*.json` dont vous disposez déjà, pour `sc_*_local` (voir limites)                                                                   |
+| `SCMCP_UEX_BASE_URL`, `SCMCP_SCW_BASE_URL`, `SCMCP_SCT_BASE_URL` | Remplace une URL de base d'API. Doit être en https sur un hôte autorisé, sinon le serveur refuse de démarrer                                                                               |
+| `SCMCP_SCMDB_REPO`, `SCMCP_DATA_REPO`, `SCMCP_DATA_REPO_PATH`    | Dépôts d'où sont lus SCMDB et les dumps de patch                                                                                                                                           |
+| `SCMCP_GITHUB_TOKEN`                                             | Optionnel, augmente la limite de requêtes GitHub. Dédié : un `GITHUB_TOKEN` ambiant n'est jamais utilisé                                                                                   |
+| `SCMCP_GAME_DATA_DIR`                                            | Dossier contenant les fichiers `game-*.json` dont vous disposez déjà, pour `sc_*_local` (voir limites)                                                                                     |
 
 ## Le journal de jeu
 

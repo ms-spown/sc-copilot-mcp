@@ -288,8 +288,12 @@ export class TelemetryService {
     this.uecBaseline = typeof balance === "number" ? { start: balance, since: this.now() } : null;
   }
 
-  recentEvents(afterSeq = 0, limit = 50): { events: TelemetryEvent[]; last_seq: number } {
+  recentEvents(
+    afterSeq = 0,
+    limit = 50,
+    keep?: (event: TelemetryEvent) => boolean,
+  ): { events: TelemetryEvent[]; last_seq: number } {
     this.ensureStarted();
-    return { events: this.events.since(afterSeq, limit), last_seq: this.events.lastSeq };
+    return { events: this.events.since(afterSeq, limit, keep), last_seq: this.events.lastSeq };
   }
 }

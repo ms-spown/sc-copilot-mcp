@@ -6,6 +6,7 @@ import { CATALOG } from "./catalog.js";
 import { GameLog } from "../providers/gamelog/reader.js";
 import { FleetStore } from "../providers/fleet/store.js";
 import { Scmdb } from "../providers/scmdb/store.js";
+import { createTelemetry } from "../providers/telemetry/index.js";
 import { allTools, createRegistry, type Selection, type ToolClients } from "./registry.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
@@ -71,7 +72,8 @@ describe("tool surface (non-regression)", () => {
   ) as { name: string; inputSchema: unknown }[];
 
   it("keeps every tool name and input schema as frozen in the golden file", () => {
-    const listed = registryWith()
+    // Telemetry on (it never connects without a call): its optional tools are part of the frozen surface.
+    const listed = registryWith({ telemetry: createTelemetry({ enabled: true }) })
       .list()
       .map(({ name, inputSchema }) => ({ name, inputSchema }))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -106,8 +108,11 @@ describe("scoping: SCMCP_TOOLS, SCMCP_PROFILES", () => {
       .map((t) => t.name)
       .sort();
 
-  it("advertises everything by default", () => {
-    expect(names({})).toHaveLength(allTools(clientsWith()).length);
+  it("advertises everything by default, except the optional tools whose feature is off", () => {
+    // Live telemetry is off by default: sc_live_state and sc_live_events are not listed (sc_live_status is).
+    expect(names({})).toHaveLength(allTools(clientsWith()).length - 2);
+    expect(names({})).toContain("sc_live_status");
+    expect(names({})).not.toContain("sc_live_state");
   });
 
   it("scopes to explicit tools, and always adds sc_data_status", () => {

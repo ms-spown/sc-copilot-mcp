@@ -16,11 +16,13 @@ import type {
 
 export interface Telemetry {
   readonly enabled: boolean;
-  status(start?: boolean): Promise<TelemetryStatusReport>;
+  /** `start` is required on purpose: true starts the reader (a real request), false only peeks. */
+  status(start: boolean): Promise<TelemetryStatusReport>;
   snapshot(): Promise<TelemetrySnapshot | null>;
   events(
     afterSeq?: number,
     limit?: number,
+    keep?: (event: TelemetryEvent) => boolean,
   ): Promise<{ events: TelemetryEvent[]; last_seq: number }>;
   resetUecDelta(): Promise<void>;
   stop(): Promise<void>;
@@ -62,9 +64,9 @@ export function createTelemetry(config: TelemetryConfig): Telemetry {
   };
   return {
     enabled: true,
-    status: async (start = true) => (await load()).status(start),
+    status: async (start) => (await load()).status(start),
     snapshot: async () => (await load()).snapshot(),
-    events: async (afterSeq, limit) => (await load()).recentEvents(afterSeq, limit),
+    events: async (afterSeq, limit, keep) => (await load()).recentEvents(afterSeq, limit, keep),
     resetUecDelta: async () => (await load()).resetUecDelta(),
     // Nothing was loaded, nothing to stop: do not import the reader just to close it.
     stop: async () => {

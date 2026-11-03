@@ -20,6 +20,7 @@ export function createProbes({
   sctClient,
   scmdb,
   gameLog,
+  telemetry,
 }: ToolClients): StatusProbe[] {
   return [
     {
@@ -133,6 +134,26 @@ export function createProbes({
               : { unlabelled: [info] }),
           fetchedAt: r.modifiedAt,
           note: "The game on this PC, from its own log header. Its file version has a different format from the public version number; compare builds.",
+        };
+      },
+    },
+    {
+      id: "live-telemetry",
+      run: async () => {
+        if (!telemetry?.enabled) {
+          return {
+            status: "not_configured",
+            state: "off",
+            note: "Live telemetry is off (the default). sc_live_status explains how to enable it; nothing is read or connected while it is off.",
+          };
+        }
+        // Peek only: asking for the status of the sources must not start the reader.
+        const s = await telemetry.status(false);
+        return {
+          status: s.state === "incompatible" ? "degraded" : "ok",
+          state: s.state,
+          ...(s.state === "incompatible" ? { error: s.cause } : {}),
+          note: `${s.cause} The game-side switch is separate (GRPC_CLIENT_SERVER_ENABLED); see sc_live_status.`,
         };
       },
     },

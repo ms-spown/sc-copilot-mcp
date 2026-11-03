@@ -177,6 +177,18 @@ const num = (d: Decoded | undefined, key: string): number => {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 };
 const bool = (d: Decoded | undefined, key: string): boolean => d?.[key] === true;
+
+/**
+ * Names the game sends (ship, seat, weapon, class) are identifiers such as DRAK_Cutter_907038284543. They reach the
+ * model as `structured`, so only that shape is let through: anything else (spaces, punctuation, a long sentence from
+ * a local program pretending to be the game) is replaced, never passed on as text.
+ */
+export const UNRECOGNISED_NAME = "(unrecognised name)";
+const GAME_ID = /^[A-Za-z0-9_.-]{1,64}$/;
+const gameId = (d: Decoded | undefined, key: string): string => {
+  const v = typeof d?.[key] === "string" ? (d[key] as string) : "";
+  return v === "" || GAME_ID.test(v) ? v : UNRECOGNISED_NAME;
+};
 const str = (d: Decoded | undefined, key: string): string =>
   typeof d?.[key] === "string" ? (d[key] as string) : "";
 const enm = (d: Decoded | undefined, key: string): string | undefined =>
@@ -210,7 +222,7 @@ function readPilot(actor: Decoded): Pilot {
   if (state) {
     pilot.locomotion = enm(state, "locomotion") ?? "unspecified";
     pilot.crew_role = enm(state, "crew_role") ?? "unspecified";
-    pilot.seat = str(state, "seat_name");
+    pilot.seat = gameId(state, "seat_name");
     const uec = state["uec_balance"];
     pilot.uec_balance =
       typeof uec === "bigint" ? uec.toString() : typeof uec === "number" ? uec : 0;
@@ -243,9 +255,9 @@ function readPilot(actor: Decoded): Pilot {
 function readShip(vehicle: Decoded): Ship | null {
   const state = msg(vehicle, "state");
   if (!state) return null;
-  const name = str(state, "name");
+  const name = gameId(state, "name");
   const [classFromName, instance] = splitInstance(name);
-  const className = str(state, "class_name") || classFromName;
+  const className = gameId(state, "class_name") || classFromName;
   const ship: Ship = {
     name,
     lights_on: bool(state, "lights_enabled"),
@@ -328,7 +340,7 @@ function readShip(vehicle: Decoded): Ship | null {
       ship.unverified["quantum_fuel"] = num(instruments, "quantum_fuel");
     }
   }
-  if (str(state, "manufacturer")) ship.unverified["manufacturer"] = str(state, "manufacturer");
+  if (str(state, "manufacturer")) ship.unverified["manufacturer"] = gameId(state, "manufacturer");
   if (msg(state, "doors")) ship.unverified["doors"] = msg(state, "doors");
   return ship;
 }
@@ -337,7 +349,7 @@ function readWeapons(weapons: Decoded): Weapons {
   const settings = msg(weapons, "settings");
   const out: Weapons = {
     weapons: list(weapons, "weapons").map((w) => {
-      const [name, instance] = splitInstance(str(w, "name"));
+      const [name, instance] = splitInstance(gameId(w, "name"));
       return {
         name,
         ...(instance ? { instance_id: instance } : {}),
