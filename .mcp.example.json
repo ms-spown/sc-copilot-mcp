@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "sc-copilot": {
+      "command": "node",
+      "args": ["/absolute/path/to/sc-copilot-mcp/dist/index.js"],
+      "env": {
+        "SCMCP_PROFILES": "core,trade,data,local",
+        "SC_INSTALL_DIR": "/path/to/StarCitizen/LIVE"
+      }
+    }
+  }
+}
