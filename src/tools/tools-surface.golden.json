@@ -190,6 +190,22 @@
     }
   },
   {
+    "name": "sc_log_context",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string",
+          "enum": [
+            "current",
+            "previous"
+          ],
+          "description": "'current' = Game.log (default); 'previous' = newest file in logbackups."
+        }
+      }
+    }
+  },
+  {
     "name": "sc_log_recent_events",
     "inputSchema": {
       "type": "object",
@@ -217,7 +233,13 @@
               "shop_purchase_requested",
               "shop_purchase_result",
               "insurance_claim_requested",
-              "hangar_request_completed"
+              "hangar_request_completed",
+              "hangar_queue_joined",
+              "blueprint_received",
+              "ship_channel_joined",
+              "ship_channel_left",
+              "jump_point_transit",
+              "hauling_objective"
             ]
           },
           "description": "Only these event types."
@@ -233,6 +255,18 @@
             "previous"
           ],
           "description": "'current' = Game.log (default); 'previous' = newest file in logbackups."
+        }
+      }
+    }
+  },
+  {
+    "name": "sc_log_sessions",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "number",
+          "description": "Sessions to list (default 8, max 30)."
         }
       }
     }

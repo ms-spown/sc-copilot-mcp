@@ -125,7 +125,15 @@ export class GameLog {
   ): Promise<ReadResult> {
     const source = this.source();
     const file = which === "previous" ? await this.newestBackup(source) : source.file;
+    return this.readAt(file, which === "current", tailBytes);
+  }
 
+  /** Read and parse one log file (the current one, or a backup). */
+  async readAt(
+    file: string,
+    isCurrent: boolean,
+    tailBytes = DEFAULT_TAIL_BYTES,
+  ): Promise<ReadResult> {
     let handle;
     try {
       handle = await fs.open(file, "r"); // read-only; Node/libuv shares read, write and delete
@@ -163,7 +171,9 @@ export class GameLog {
         // header; only the events come from the tail, so nothing is counted twice.
         text = text.slice(text.indexOf("\n") + 1);
         parsed = parseLog(text);
-        const header = parseLog(decodeLog(head)).session;
+        const headParsed = parseLog(decodeLog(head));
+        const header = headParsed.session;
+        parsed.span.first = headParsed.span.first;
         for (const key of Object.keys(header) as (keyof typeof header)[]) {
           if (
             key !== "clean_exit" &&
@@ -181,10 +191,47 @@ export class GameLog {
         bytes: size,
         modifiedAt: stat.mtimeMs,
         truncated,
-        running: which === "current" && this.now() - stat.mtimeMs < RUNNING_WINDOW_MS,
+        running: isCurrent && this.now() - stat.mtimeMs < RUNNING_WINDOW_MS,
       };
     } finally {
       await handle.close();
     }
+  }
+
+  /**
+   * The newest sessions, newest first: the current Game.log, then logbackups by modification time.
+   * A file over `maxBytes` is summarised from its header and the end only, and says so.
+   */
+  async sessions(
+    limit = 8,
+    maxBytes = 40 * 1024 * 1024,
+  ): Promise<{ file: string; truncated: boolean; running: boolean; parsed: ParsedLog }[]> {
+    const source = this.source();
+    const candidates: { file: string; mtime: number; current: boolean }[] = [];
+    try {
+      candidates.push({
+        file: source.file,
+        mtime: (await fs.stat(source.file)).mtimeMs,
+        current: true,
+      });
+    } catch {
+      // No current log yet: backups only.
+    }
+    try {
+      for (const name of await fs.readdir(source.backupsDir)) {
+        if (!/\.log$/i.test(name)) continue;
+        const file = path.join(source.backupsDir, name);
+        candidates.push({ file, mtime: (await fs.stat(file)).mtimeMs, current: false });
+      }
+    } catch {
+      // No backups folder: just the current log.
+    }
+    candidates.sort((a, b) => b.mtime - a.mtime);
+    const out = [];
+    for (const c of candidates.slice(0, Math.min(Math.max(limit, 1), 30))) {
+      const r = await this.readAt(c.file, c.current, maxBytes);
+      out.push({ file: c.file, truncated: r.truncated, running: r.running, parsed: r.parsed });
+    }
+    return out;
   }
 }

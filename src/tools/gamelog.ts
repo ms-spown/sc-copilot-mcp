@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { formatOutputRaw } from "../core/format.js";
 import { addNote, recordFetch, setChannel, setGameVersion } from "../core/provenance.js";
+import { deriveContext, summarizeSession } from "../providers/gamelog/context.js";
 import { EVENT_TYPES, type LogEvent, type SessionInfo } from "../providers/gamelog/parser.js";
 import { type GameLog, shortPath, suggestedInstallDirs } from "../providers/gamelog/reader.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
@@ -145,6 +146,61 @@ export function gameLogTools({ gameLog }: { gameLog: GameLog }): ToolDefinition[
           events: shown,
           lines: r.parsed.stats,
           only_the_end_was_read: r.truncated,
+        });
+      },
+    },
+    {
+      name: "sc_log_context",
+      description:
+        "What the player is doing right now, as far as Game.log can tell: jurisdiction, whether they are in an armistice zone or monitored space, the ship they last boarded, last jump-point transit between systems, active and finished contracts (with the latest objective and hauling pickups and drops), blueprints received, purchases, insurance claims and hangar requests this session. Every field is the last time the game logged it, not a live reading: there is no position or ship telemetry. Use it to answer 'what am I doing' or to tailor advice to the current contract. Read-only.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          session: {
+            type: "string",
+            enum: ["current", "previous"],
+            description: "'current' = Game.log (default); 'previous' = newest file in logbackups.",
+          },
+        },
+      },
+      handler: async (args: unknown): Promise<ToolResult> => {
+        const { session } = z
+          .object({ session: z.enum(["current", "previous"]).optional() })
+          .parse(args || {});
+        const r = await gameLog.read(session ?? "current");
+        noteProvenance(r.parsed.session, r.modifiedAt);
+        if (r.truncated)
+          addNote(
+            "Only the end of a large log was read; older events of this session may be missing.",
+          );
+        return ok({
+          session: sessionView(r.parsed.session, r.running),
+          context: deriveContext(r.parsed),
+        });
+      },
+    },
+    {
+      name: "sc_log_sessions",
+      description:
+        "A table of the player's recent play sessions from Game.log and its backups, newest first: start time, game version and build, LIVE or PTU, duration, clean quit or not, contracts accepted and completed, purchases, blueprints, jump-point transits and jurisdictions visited. Use it for 'how did my last sessions go' or to find the session where something happened. Read-only; very large logs are summarised from their end.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          limit: { type: "number", description: "Sessions to list (default 8, max 30)." },
+        },
+      },
+      handler: async (args: unknown): Promise<ToolResult> => {
+        const { limit } = z.object({ limit: z.number().optional() }).parse(args || {});
+        const list = await gameLog.sessions(limit ?? 8);
+        if (list[0]) noteProvenance(list[0].parsed.session, Date.now());
+        return ok({
+          count: list.length,
+          sessions: list.map((s, i) => ({
+            file: s.file.split(/[\\/]/).pop(),
+            current: i === 0 && s.running,
+            ...summarizeSession(s.parsed),
+            ...(s.truncated ? { note: "Large log: counts cover the end of the file only." } : {}),
+          })),
         });
       },
     },

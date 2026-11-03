@@ -142,6 +142,21 @@ export const CATALOG: Record<string, CatalogEntry> = {
     profiles: ["local"],
   },
 
+  sc_log_context: {
+    source: "Game.log (local)",
+    kind: "local_log",
+    trust: "untrusted_text",
+    channel: "unknown",
+    profiles: ["local"],
+  },
+  sc_log_sessions: {
+    source: "Game.log (local)",
+    kind: "local_log",
+    trust: "structured",
+    channel: "unknown",
+    profiles: ["local"],
+  },
+
   sc_local_datasets: { ...local, profiles: ["local"] },
   sc_search_local: { ...local, profiles: ["local"] },
   sc_read_local_collection: { ...local, profiles: ["local"] },

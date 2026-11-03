@@ -10,8 +10,9 @@
  * not capture them.
  *
  * Seen in real logs but deliberately NOT turned into events, because the log does not state
- * them: quantum travel, combat and kills, wallet balance, the player's position, a death (only
- * corpse/hospital bookkeeping lines exist).
+ * them: ordinary quantum travel, combat and kills, wallet balance, the player's position, a
+ * death (only corpse/hospital bookkeeping lines exist). Jump-point transits between systems
+ * (Stanton <-> Pyro) ARE logged, by the jump drive's state machine, and are reported.
  */
 
 export type EventType =
@@ -29,7 +30,13 @@ export type EventType =
   | "shop_purchase_requested"
   | "shop_purchase_result"
   | "insurance_claim_requested"
-  | "hangar_request_completed";
+  | "hangar_request_completed"
+  | "hangar_queue_joined"
+  | "blueprint_received"
+  | "ship_channel_joined"
+  | "ship_channel_left"
+  | "jump_point_transit"
+  | "hauling_objective";
 
 export const EVENT_TYPES: EventType[] = [
   "session_start",
@@ -47,6 +54,12 @@ export const EVENT_TYPES: EventType[] = [
   "shop_purchase_result",
   "insurance_claim_requested",
   "hangar_request_completed",
+  "hangar_queue_joined",
+  "blueprint_received",
+  "ship_channel_joined",
+  "ship_channel_left",
+  "jump_point_transit",
+  "hauling_objective",
 ];
 
 export interface LogEvent {
@@ -75,6 +88,8 @@ export interface ParsedLog {
   session: SessionInfo;
   events: LogEvent[];
   stats: { lines: number; recognized: number; ignored: number };
+  /** First and last timestamps in the text: the session's span, by the log's own clock (UTC). */
+  span: { first: string | null; last: string | null };
 }
 
 const TS = /^<(\d{4}-\d{2}-\d{2}T[\d:.]+Z)>/;
@@ -84,6 +99,7 @@ const ZONES: [RegExp, string, string][] = [
   [/^Entering Armistice Zone/, "armistice", "enter"],
   [/^Leaving Armistice Zone/, "armistice", "leave"],
   [/^Entered Monitored Space/, "monitored_space", "enter"],
+  [/^Exited Monitored Space/, "monitored_space", "leave"],
   [/^Entering Private Property/, "private_property", "enter"],
   [/^Leaving Private Property/, "private_property", "leave"],
   [/^Restricted Area/, "restricted_area", "warning"],
@@ -97,6 +113,12 @@ function splitNotification(text: string): [string, string] {
   if (i < 0) return [clean, ""];
   return [clean.slice(0, i).trim(), clean.slice(i + 1).trim()];
 }
+
+/** First 8 characters of a mission id: enough to link events of one mission, short to read. */
+const shortId = (guid: string) => guid.slice(0, 8);
+
+const notifKey = (ts: string | null, text: string) =>
+  `${(ts ?? "").slice(0, 19)}|${text.replace(/\s+/g, " ").trim()}`;
 
 function field(line: string, name: string): string | null {
   const m = line.match(new RegExp(`${name}\\[([^\\]]*)\\]`));
@@ -118,12 +140,25 @@ export function parseLog(text: string): ParsedLog {
   let recognized = 0;
   let counted = 0;
   let firstTime: string | null = null;
+  let lastTime: string | null = null;
+
+  // A notification is logged on three lines; only the "Added notification" one carries the
+  // mission it belongs to. Collect those first so the notification's own line can be linked.
+  const missionOfNotification = new Map<string, string>();
+  for (const line of lines) {
+    const added = line.match(
+      /<SHUDEvent_OnNotification> Added notification "([^"]*)"\s*\[\d+\].*MissionId: \[([0-9a-f-]{36})\]/,
+    );
+    if (added) missionOfNotification.set(notifKey(line.match(TS)?.[1] ?? null, added[1]), added[2]);
+  }
+  const seenHauling = new Set<string>();
 
   for (const line of lines) {
     if (!line.trim()) continue;
     counted += 1;
     const ts = line.match(TS)?.[1] ?? null;
     if (ts && !firstTime) firstTime = ts;
+    if (ts) lastTime = ts;
     const body = ts ? line.slice(line.indexOf(">") + 1) : line;
     const push = (type: EventType, detail: Record<string, unknown> = {}) => {
       recognized += 1;
@@ -173,8 +208,41 @@ export function parseLog(text: string): ParsedLog {
       push("session_end", { exit_code: Number(m[1]) });
       continue;
     }
-    if ((m = body.match(/<MissionEnded>.*(MISSION_STATE_[A-Z_]+)/))) {
-      push("mission_ended", { state: m[1].replace("MISSION_STATE_", "").toLowerCase() });
+    if ((m = body.match(/<MissionEnded>.*?mission_id ([0-9a-f-]{36}).*(MISSION_STATE_[A-Z_]+)/))) {
+      push("mission_ended", {
+        mission_id: shortId(m[1]),
+        state: m[2].replace("MISSION_STATE_", "").toLowerCase(),
+      });
+      continue;
+    }
+    if (
+      (m = body.match(
+        /<Jump Drive State Changed> Now (Entering|Transiting|Exiting)\b[^|]*\|[^|]*\|\s*(NOT AUTH|AUTH)\s*\|\s*([A-Za-z0-9_]+)\s*\|/,
+      ))
+    ) {
+      push("jump_point_transit", {
+        phase: m[1].toLowerCase(),
+        system: m[3],
+        authoritative: m[2] === "AUTH",
+      });
+      continue;
+    }
+    if (
+      (m = body.match(
+        /<CreateHaulingObjectiveHandler> (Pick|Dropoff) created.*?sourcename: (\S+?),\s*missionId: ([0-9a-f-]{36}).*?\[([A-Za-z0-9_]+)\]/,
+      ))
+    ) {
+      // The log repeats these hundreds of times per mission: keep each objective once.
+      const key = `${m[3]}|${m[1]}|${m[4]}`;
+      if (!seenHauling.has(key)) {
+        seenHauling.add(key);
+        push("hauling_objective", {
+          kind: m[1] === "Pick" ? "pickup" : "dropoff",
+          location: m[4],
+          cargo: m[2].replace(/,$/, ""),
+          mission_id: shortId(m[3]),
+        });
+      }
       continue;
     }
     if (/<CWallet::ProcessClaimToNextStep> New Insurance Claim Request/.test(body)) {
@@ -200,13 +268,29 @@ export function parseLog(text: string): ParsedLog {
 
     // --- HUD notifications, read from their own quoted line (the same text is logged twice more)
     if ((m = line.match(/^<[^>]+>\s+"([^"]*)(?:"\s*\[\d+\])?\s*$/))) {
-      const [title, detail] = splitNotification(m[1]);
-      if (title === "Contract Accepted") push("mission_accepted", { title: detail });
-      else if (title === "Contract Complete") push("mission_completed", { title: detail });
-      else if (title === "New Objective") push("objective_new", { objective: detail });
-      else if (title === "Objective Complete") push("objective_completed", { objective: detail });
+      const text = m[1];
+      const missionGuid = missionOfNotification.get(notifKey(ts, text));
+      const mission = missionGuid ? { mission_id: shortId(missionGuid) } : {};
+      const [title, detail] = splitNotification(text);
+      let channel: RegExpMatchArray | null;
+      if (title === "Contract Accepted") push("mission_accepted", { title: detail, ...mission });
+      else if (title === "Contract Complete")
+        push("mission_completed", { title: detail, ...mission });
+      else if (title === "New Objective") push("objective_new", { objective: detail, ...mission });
+      else if (title === "Objective Complete")
+        push("objective_completed", { objective: detail, ...mission });
+      else if (title === "Received Blueprint")
+        push("blueprint_received", { blueprint: detail, ...mission });
       else if (title === "Hangar Request Completed") push("hangar_request_completed");
-      else if ((m = m[1].match(/^Entered (.+?) Jurisdiction/))) {
+      else if (/^Joined hangar queue/.test(title)) push("hangar_queue_joined");
+      else if (
+        (channel = text.match(/^You have (joined|left)(?: the)? channel '([^']*?) : [^']*'/))
+      ) {
+        // "<ship> : <player>": only the ship is kept, the player's name after the colon is dropped.
+        push(channel[1] === "joined" ? "ship_channel_joined" : "ship_channel_left", {
+          ship: channel[2],
+        });
+      } else if ((m = text.match(/^Entered (.+?) Jurisdiction/))) {
         push("jurisdiction_entered", { jurisdiction: m[1] });
       } else {
         const zone = ZONES.find(([re]) => re.test(title));
@@ -219,6 +303,7 @@ export function parseLog(text: string): ParsedLog {
     session,
     events,
     stats: { lines: counted, recognized, ignored: counted - recognized },
+    span: { first: firstTime, last: lastTime },
   };
 }
 
