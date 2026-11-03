@@ -164,7 +164,7 @@ describe("Feature: with a real file, only a change of its date makes it read aga
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-"));
   });
   afterEach(() => {
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   it("Given a made-up Game.log in a temporary folder, Then it is parsed once, re-parsed after a new date, and never written", async () => {
