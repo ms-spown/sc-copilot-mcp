@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "./core/config.js";
 import { VERSION } from "./core/useragent.js";
 import { createGameVersionResolver, createProbes } from "./providers/probes.js";
+import { FleetStore, fleetFilePath } from "./providers/fleet/store.js";
 import { GameLog, gameLogConfigFromEnv } from "./providers/gamelog/reader.js";
 import { createScmdb } from "./providers/scmdb/client.js";
 import { createSctClient } from "./providers/sctools/client.js";
@@ -29,6 +30,7 @@ const clients = {
   sctClient: createSctClient(config.sctBaseUrl),
   scmdb: createScmdb(),
   gameLog: new GameLog(gameLogConfigFromEnv()),
+  fleet: new FleetStore(fleetFilePath()),
 };
 
 // A bad SCMCP_TOOLS or SCMCP_PROFILES throws here, at startup, rather than listing nothing.

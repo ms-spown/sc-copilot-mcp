@@ -9,6 +9,7 @@ import { allTools, createRegistry } from "../../tools/registry.js";
 import type { ToolResult } from "../../tools/types.js";
 import { searchCrafting, searchMining, searchMissions, summarizeChanges } from "./queries.js";
 import { GameLog } from "../gamelog/reader.js";
+import { FleetStore } from "../fleet/store.js";
 import { Scmdb } from "./store.js";
 
 // ---- synthetic fixtures: tiny, hand-made, nothing copied from game data ------------------
@@ -490,6 +491,7 @@ describe("SCMDB tools through the registry", () => {
         sctClient: empty,
         scmdb: makeScmdb(),
         gameLog: new GameLog({}),
+        fleet: new FleetStore("unused-fleet.json"),
       }),
       {},
     );

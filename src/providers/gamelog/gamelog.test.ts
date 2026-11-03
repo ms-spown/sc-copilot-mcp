@@ -8,6 +8,7 @@ import { allTools, createRegistry } from "../../tools/registry.js";
 import { Scmdb } from "../scmdb/store.js";
 import { decodeLog, parseLog } from "./parser.js";
 import { GameLog, GameLogError, shortPath } from "./reader.js";
+import { FleetStore } from "../fleet/store.js";
 
 /**
  * A hand-made log in the shapes seen in real logs. Every name, id and path is invented; the
@@ -300,6 +301,7 @@ describe("GameLog reader", () => {
           sctClient: empty,
           scmdb: new Scmdb({ raw: empty, api: empty, repo: "o/r", cacheDir: () => dir }),
           gameLog,
+          fleet: new FleetStore("unused-fleet.json"),
         }),
         {},
       );

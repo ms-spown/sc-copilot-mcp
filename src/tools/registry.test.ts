@@ -4,6 +4,7 @@ import { clearCache, configureDiskCache } from "../core/cache.js";
 import type { HttpClient } from "../core/http.js";
 import { CATALOG } from "./catalog.js";
 import { GameLog } from "../providers/gamelog/reader.js";
+import { FleetStore } from "../providers/fleet/store.js";
 import { Scmdb } from "../providers/scmdb/store.js";
 import { allTools, createRegistry, type Selection, type ToolClients } from "./registry.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
@@ -35,6 +36,7 @@ function clientsWith(overrides: Partial<ToolClients> = {}): ToolClients {
     sctClient: empty,
     scmdb,
     gameLog: new GameLog({}),
+    fleet: new FleetStore("unused-fleet.json"),
     ...overrides,
   };
 }
@@ -129,8 +131,7 @@ describe("scoping: SCMCP_TOOLS, SCMCP_PROFILES", () => {
   });
 
   it("keeps the core profile under 15 tools, with room for the milestones to come", () => {
-    // sc_fleet_get (milestone 5) will join core: today's count plus that one must stay < 15.
-    expect(names({ profiles: ["core"] }).length + 1).toBeLessThan(15);
+    expect(names({ profiles: ["core"] }).length).toBeLessThan(15);
   });
 
   it("refuses an unknown profile or tool at startup instead of listing nothing", () => {

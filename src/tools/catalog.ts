@@ -103,6 +103,29 @@ export const CATALOG: Record<string, CatalogEntry> = {
     profiles: ["data"],
   },
 
+  // The player's own list, in a local file: nothing here comes from a website.
+  sc_fleet_get: {
+    source: "fleet file (local) + uex + star-citizen.wiki",
+    kind: "user",
+    trust: "structured",
+    channel: "unknown",
+    profiles: ["core", "local"],
+  },
+  sc_fleet_upsert: {
+    source: "fleet file (local)",
+    kind: "user",
+    trust: "structured",
+    channel: "unknown",
+    profiles: ["local"],
+  },
+  sc_fleet_remove: {
+    source: "fleet file (local)",
+    kind: "user",
+    trust: "structured",
+    channel: "unknown",
+    profiles: ["local"],
+  },
+
   sc_log_status: {
     source: "Game.log (local)",
     kind: "local_log",

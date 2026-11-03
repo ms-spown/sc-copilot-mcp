@@ -60,6 +60,77 @@
     }
   },
   {
+    "name": "sc_fleet_get",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "origin": {
+          "type": "string",
+          "enum": [
+            "pledge",
+            "in_game"
+          ],
+          "description": "Only ships with this origin."
+        },
+        "enrich": {
+          "type": "boolean",
+          "description": "Add public stats to each ship (default true). false lists the file as is, with no network."
+        }
+      }
+    }
+  },
+  {
+    "name": "sc_fleet_remove",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name exactly as listed in the fleet (case does not matter)."
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "pledge",
+            "in_game"
+          ],
+          "description": "Needed only when the name exists under both origins."
+        }
+      },
+      "required": [
+        "name"
+      ]
+    }
+  },
+  {
+    "name": "sc_fleet_upsert",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Ship name, e.g. 'Drake Vulture' or 'C2 Hercules Starlifter'."
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "pledge",
+            "in_game"
+          ],
+          "description": "'pledge' for a ship bought with real money, 'in_game' for one bought with aUEC."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional note, up to 500 characters (loadout idea, role, location)."
+        }
+      },
+      "required": [
+        "name",
+        "origin"
+      ]
+    }
+  },
+  {
     "name": "sc_get_vocabulary",
     "inputSchema": {
       "type": "object",
