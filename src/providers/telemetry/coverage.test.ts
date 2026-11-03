@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildPoll } from "../../dashboard/poll.js";
+import { fullAnswers } from "../../dashboard/testing/fullPoll.js";
 import { COVERAGE, REASONS, WIDGETS } from "./coverage.js";
-import type { Decoded } from "./decode.js";
-import { TelemetryHandler } from "./handler.js";
-import { normalizeFrame, NO_PLANET_ALTITUDE } from "./normalize.js";
-import { ENUMS, MESSAGES, ROOT_MESSAGE, type FieldSpec } from "./schema.js";
+import { NO_PLANET_ALTITUDE } from "./normalize.js";
+import { MESSAGES } from "./schema.js";
 
 /**
  * The coverage table (coverage.ts) must name every field of the schema, nothing else, and every `exposed:` path must
@@ -42,79 +40,8 @@ describe("Feature: every field of the stream has a decision", () => {
   });
 });
 
-// --- a frame in which every field is filled ---------------------------------------------------------------------
-
-const shortEnum = (enumName: string, full: string): string => {
-  const prefix = enumName.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toUpperCase() + "_";
-  return (full.startsWith(prefix) ? full.slice(prefix.length) : full).toLowerCase();
-};
-
-function sample(message: string, field: FieldSpec): unknown {
-  const t = field.type;
-  if (t.startsWith("msg:")) return fill(t.slice(4));
-  if (t.startsWith("enum:")) {
-    const name = t.slice(5);
-    const values = ENUMS[name]!;
-    const first = Number(Object.keys(values).find((n) => Number(n) !== 0));
-    return shortEnum(name, values[first]!);
-  }
-  switch (t) {
-    case "bool":
-      return true;
-    case "float":
-      if (field.name === "altitude") return 1500;
-      if (field.name === "radar_altitude") return 1200;
-      if (field.name === "heading") return 90;
-      if (field.name === "max") return 1;
-      return 0.5;
-    case "string":
-      return message === "VehicleState" && field.name === "manufacturer" ? "AEGS" : "AEGS_Test_123";
-    case "int64":
-      return 123_456;
-    default:
-      return 3;
-  }
-}
-
-function fill(message: string): Decoded {
-  const out: Decoded = {};
-  for (const field of Object.values(MESSAGES[message]!)) {
-    const value = sample(message, field);
-    out[field.name] = field.repeated ? [value] : value;
-  }
-  return out;
-}
-
 function answers() {
-  const frame = fill(ROOT_MESSAGE);
-  const handler = new TelemetryHandler();
-  handler.update(normalizeFrame(frame), 1000);
-  const state = handler.latest!;
-  const poll = buildPoll({
-    status: {
-      state: "live",
-      cause: "x",
-      frames_received: 1,
-      frames_rejected: 0,
-      reconnects: 0,
-      unknown_fields: [],
-      anomalies: [],
-      not_in_stream: [],
-      idle_stop_ms: 1,
-    },
-    snapshot: {
-      state,
-      frame_age_ms: 10,
-      received_at: new Date(1000).toISOString(),
-      uec_session: { start: 1, current: 2, delta: 1, since: new Date(0).toISOString() },
-    },
-    events: [],
-    lastSeq: 0,
-    sessionEvents: [],
-    session: { startedAt: null, endedAt: null, startSeq: 0, endSeq: null, markers: [] },
-    includeBalance: true,
-    nowMs: 1010,
-  });
+  const { poll, state } = fullAnswers();
   return {
     poll: JSON.parse(JSON.stringify(poll)) as unknown,
     state: JSON.parse(JSON.stringify(state)) as unknown,

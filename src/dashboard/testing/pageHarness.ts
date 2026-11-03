@@ -118,6 +118,97 @@ export function findAll(root: FakeNode, predicate: (n: FakeNode) => boolean): Fa
 
 type TimerEntry = { id: number; at: number; fn: () => void; every?: number };
 
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+/** A virtual clock with its timers, shareable by several pages so that Views of one conversation see one time. */
+export class VirtualClock {
+  now: number;
+  timers: TimerEntry[] = [];
+  private nextTimer = 1;
+  constructor(epoch: number) {
+    this.now = epoch;
+  }
+  add(fn: () => void, ms: number, every?: number): number {
+    const id = this.nextTimer++;
+    this.timers.push({ id, at: this.now + ms, fn, ...(every ? { every } : {}) });
+    return id;
+  }
+  clear(id: number): void {
+    const i = this.timers.findIndex((t) => t.id === id);
+    if (i >= 0) this.timers.splice(i, 1);
+  }
+  async advance(ms: number): Promise<void> {
+    const target = this.now + ms;
+    for (;;) {
+      this.timers.sort((a, b) => a.at - b.at || a.id - b.id);
+      const next = this.timers[0];
+      if (!next || next.at > target) break;
+      this.now = Math.max(this.now, next.at);
+      if (next.every) next.at += next.every;
+      else this.timers.shift();
+      next.fn();
+      await flush();
+    }
+    this.now = target;
+    await flush();
+  }
+}
+
+class FakeChannel {
+  private listeners: ((event: { data: unknown }) => void)[] = [];
+  closed = false;
+  constructor(
+    readonly bus: FakeBus,
+    readonly name: string,
+  ) {
+    bus.channels.add(this);
+  }
+  postMessage(data: unknown): void {
+    if (this.closed) throw new Error("postMessage on a closed channel");
+    this.bus.log.push({ name: this.name, data });
+    this.bus.deliver(this.name, data, this);
+  }
+  addEventListener(type: string, fn: (event: { data: unknown }) => void): void {
+    if (type === "message") this.listeners.push(fn);
+  }
+  removeEventListener(type: string, fn: (event: { data: unknown }) => void): void {
+    this.listeners = this.listeners.filter((l) => l !== fn);
+  }
+  close(): void {
+    this.closed = true;
+    this.bus.channels.delete(this);
+  }
+  receive(data: unknown): void {
+    for (const fn of this.listeners) fn({ data });
+  }
+}
+
+/** A BroadcastChannel bus shared by the pages of one test: same name, other channels, asynchronous, cloned. */
+export class FakeBus {
+  channels = new Set<FakeChannel>();
+  /** Everything ever posted, as the pages posted it. */
+  log: { name: string; data: unknown }[] = [];
+  get open(): number {
+    return this.channels.size;
+  }
+  deliver(name: string, data: unknown, from: FakeChannel | null): void {
+    const copy = JSON.stringify(data);
+    for (const c of [...this.channels]) {
+      if (c === from || c.name !== name) continue;
+      queueMicrotask(() => {
+        if (!c.closed) c.receive(JSON.parse(copy));
+      });
+    }
+  }
+  /** A message from some other page of the same origin that is not one of ours. */
+  inject(name: string, data: unknown): void {
+    this.deliver(name, data, null);
+  }
+  create(name: string): FakeChannel {
+    return new FakeChannel(this, name);
+  }
+}
+
 export interface PageWorld {
   host: FakeHost;
   scenario: Scenario;
@@ -140,6 +231,7 @@ export interface PageWorld {
   setHidden: (hidden: boolean) => void;
   setIntersecting: (on: boolean) => void;
   pendingTimers: () => number;
+  bus: FakeBus | null;
 }
 
 export interface WorldOptions {
@@ -148,6 +240,10 @@ export interface WorldOptions {
   scenario?: Scenario;
   /** Skip the automatic ui/initialize answer (never needed today). */
   start?: number;
+  /** Share a clock between several pages (Views of one conversation). */
+  clock?: VirtualClock;
+  /** The BroadcastChannel bus: omitted = a private one, null = the browser has no BroadcastChannel. */
+  bus?: FakeBus | null;
 }
 
 /**
@@ -166,13 +262,11 @@ export function extractElement(html: string, tag: string): string | null {
   return html.slice(openEnd + 1, close);
 }
 
-const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
-
 export async function startPage(options: WorldOptions = {}): Promise<PageWorld> {
   const scenario = options.scenario ?? new Scenario();
-  const clock = { now: scenario.epoch };
-  const timers: TimerEntry[] = [];
-  let nextTimer = 1;
+  const vclock = options.clock ?? new VirtualClock(scenario.epoch);
+  const clock = vclock;
+  const bus = options.bus === undefined ? new FakeBus() : options.bus;
   const posted: any[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
 
   const listeners: Record<string, ((event: unknown) => void)[]> = {};
@@ -196,22 +290,26 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
       (listeners[type] ??= []).push(fn);
     },
     setTimeout(fn: () => void, ms: number) {
-      const id = nextTimer++;
-      timers.push({ id, at: clock.now + ms, fn });
-      return id;
+      return vclock.add(fn, ms);
     },
     clearTimeout(id: number) {
-      const i = timers.findIndex((t) => t.id === id);
-      if (i >= 0) timers.splice(i, 1);
+      vclock.clear(id);
     },
     setInterval(fn: () => void, ms: number) {
-      const id = nextTimer++;
-      timers.push({ id, at: clock.now + ms, fn, every: ms });
-      return id;
+      return vclock.add(fn, ms, ms);
     },
     clearInterval(id: number) {
-      win.clearTimeout(id);
+      vclock.clear(id);
     },
+    ...(bus
+      ? {
+          BroadcastChannel: class {
+            constructor(name: string) {
+              return bus!.create(name);
+            }
+          },
+        }
+      : {}),
     IntersectionObserver: class {
       constructor(cb: (entries: unknown[]) => void) {
         observers.push({ kind: "intersection", cb });
@@ -260,21 +358,7 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     }
   }
 
-  const advance = async (ms: number) => {
-    const target = clock.now + ms;
-    for (;;) {
-      timers.sort((a, b) => a.at - b.at || a.id - b.id);
-      const next = timers[0];
-      if (!next || next.at > target) break;
-      clock.now = Math.max(clock.now, next.at);
-      if (next.every) next.at += next.every;
-      else timers.shift();
-      next.fn();
-      await flush();
-    }
-    clock.now = target;
-    await flush();
-  };
+  const advance = (ms: number) => vclock.advance(ms);
 
   const html = dashboardHtml();
   const script = extractElement(html, "script");
@@ -305,6 +389,7 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
         o.cb([{ isIntersecting: on }]);
       }
     },
-    pendingTimers: () => timers.length,
+    pendingTimers: () => vclock.timers.length,
+    bus,
   };
 }

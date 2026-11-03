@@ -38,6 +38,14 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   let lastStreamId = "";
   let lastSize = "";
   const pins: Record<string, boolean> = {};
+  // Several Views of one conversation: only the leader polls (see viewLogic.electLeader).
+  const viewId: string = L.makeViewId(clock(), Math.random());
+  let rank = clock();
+  let peers: any = {};
+  let channel: any = null;
+  let leaderId: string | null = viewId;
+  let heartbeats = 0;
+  let lastShareAt = 0;
 
   // ---------------------------------------------------------------------------------------------
   // Protocol: JSON-RPC 2.0 over postMessage, written by hand
@@ -206,6 +214,12 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.noticeCmd = el("code", "notice-cmd", "");
     R.btnResume = button("Reprendre", () => resume(), "primary");
     add(R.notice, R.noticeText, R.noticeCmd, R.btnResume);
+
+    // Shown while another, more recent dashboard polls for everybody
+    R.supersede = el("div", "notice");
+    R.supersedeText = el("p", "notice-text", "Remplacé par un tableau de bord plus récent");
+    R.btnLead = button("Reprendre ici", () => takeLead(), "primary");
+    add(R.supersede, R.supersedeText, R.btnLead);
 
     // Alerts band
     R.alerts = el("div", "alerts");
@@ -546,7 +560,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.sr.setAttribute("role", "status");
     R.sr.setAttribute("aria-live", "polite");
 
-    add(root, R.top, R.notice, R.alerts, R.tiles, R.full, R.live, R.sr);
+    add(root, R.top, R.supersede, R.notice, R.alerts, R.tiles, R.full, R.live, R.sr);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -744,6 +758,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     }
     show(R.noticeCmd, !!info.help && !retired);
     show(R.btnResume, retired);
+    show(R.supersede, isFollower() && !retired);
     return info;
   }
 
@@ -1105,6 +1120,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       hidden,
       offscreen,
       awaySince,
+      follower: isFollower(),
+      noChannel: channel === null,
       now: clock(),
       state: p ? p.state : view.link === "init" ? "live" : "off",
       failures: view.failures,
@@ -1121,6 +1138,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
         const sc = r && r.structuredContent;
         if (!r || r.isError || !sc || typeof sc !== "object") throw new Error("réponse vide");
         view = L.reducePoll(view, sc, clock());
+        share();
       } catch (err: any) {
         view = L.reducePollError(view, err && err.message ? err.message : "erreur", clock());
       }
@@ -1168,7 +1186,16 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   function startTicker() {
     if (ticker !== null || tornDown || retired) return;
     ticker = win.setInterval(() => {
-      if (!tornDown && !hidden && !offscreen) render();
+      if (tornDown || hidden || offscreen) return;
+      // The heartbeat lets the others know this View is alive (and notice when the leader is not).
+      if (
+        channel !== null &&
+        ++heartbeats % Math.max(1, Math.round(cfg.heartbeatMs / 1000)) === 0
+      ) {
+        announce("hello");
+      }
+      reelect();
+      render();
     }, 1000);
   }
 
@@ -1177,6 +1204,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     if (!initialised || tornDown || retired) return;
     const d = decision();
     if (!d.run) {
+      // A follower stays on screen and keeps its clock (ages, durations) going; it only does not call the server.
+      if (d.reason === "follower") startTicker();
       schedule();
       return;
     }
@@ -1195,14 +1224,17 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     if (away && awaySince === null) {
       awaySince = clock();
       stopTimers();
+      announce("hello"); // visible: false, so the others do not wait for this View
     } else if (!away && awaySince !== null) {
       const gone = clock() - awaySince;
       awaySince = null;
-      if (gone >= cfg.retireAfterMs) {
+      if (gone >= (channel === null ? cfg.noChannelRetireMs : cfg.retireAfterMs)) {
         retired = true;
         render();
         return;
       }
+      announce("hello");
+      reelect();
       resumeIfAllowed();
     }
   }
@@ -1212,6 +1244,101 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     awaySince = null;
     render();
     resumeIfAllowed();
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Coordination between the Views of this connector: BroadcastChannel, no network. Everything that arrives
+  // on it is data from another page: parseChannelMessage checks it, and it never reaches the JSON-RPC handler.
+  // ---------------------------------------------------------------------------------------------
+  function isFollower(): boolean {
+    return channel !== null && leaderId !== null && leaderId !== viewId;
+  }
+
+  function channelSend(message: any) {
+    if (channel === null) return;
+    try {
+      channel.postMessage(message);
+    } catch {
+      /* a closed or broken channel: this View simply works alone */
+    }
+  }
+
+  function announce(kind: string) {
+    channelSend({ t: kind, id: viewId, rank, visible: !hidden && !offscreen && !tornDown });
+  }
+
+  /** The leader shares what it knows, at most about once a second, and only when somebody can listen. */
+  function share() {
+    if (channel === null || isFollower() || !view.poll) return;
+    if (Object.keys(peers).length === 0 || clock() - lastShareAt < cfg.snapshotMinMs) return;
+    lastShareAt = clock();
+    channelSend({ t: "snapshot", id: viewId, rank, poll: L.sharablePoll(view.poll) });
+  }
+
+  function reelect() {
+    if (channel === null) return;
+    const was = isFollower();
+    const res = L.electLeader({ id: viewId, rank, visible: !hidden && !offscreen }, peers, clock());
+    leaderId = res.leaderId;
+    const now = isFollower();
+    if (now === was) return;
+    if (now) {
+      // Replaced: stop calling the server, forget the balance (it is not shared), show the banner.
+      if (timer !== null) win.clearTimeout(timer);
+      timer = null;
+      showBalance = false;
+      view = Object.assign({}, view, {
+        poll: view.poll ? Object.assign({}, view.poll, { balance: undefined }) : view.poll,
+      });
+      if (!hidden && !offscreen) startTicker();
+      render();
+    } else {
+      render();
+      resumeIfAllowed();
+    }
+  }
+
+  function takeLead() {
+    if (channel === null) return;
+    rank = L.claimRank(peers, clock());
+    announce("claim");
+    reelect();
+  }
+
+  function onChannelMessage(event: any) {
+    if (tornDown) return;
+    const m = L.parseChannelMessage(event && event.data, clock());
+    if (!m || m.id === viewId) return;
+    const known = peers[m.id] !== undefined;
+    peers = L.notePeer(peers, m, clock());
+    reelect();
+    // A View that has just appeared does not know the others yet: say hello back once.
+    if (m.t === "hello" && !known && !hidden && !offscreen) announce("hello");
+    if (m.t === "snapshot" && isFollower() && m.id === leaderId) {
+      view = L.reducePoll(view, m.poll, clock());
+      render();
+    }
+  }
+
+  function closeChannel() {
+    if (channel === null) return;
+    announce("bye");
+    try {
+      channel.close();
+    } catch {
+      /* already closed */
+    }
+    channel = null;
+  }
+
+  function openChannel() {
+    try {
+      if (typeof win.BroadcastChannel !== "function") return;
+      channel = new win.BroadcastChannel(cfg.channelName);
+      channel.addEventListener("message", onChannelMessage);
+    } catch {
+      channel = null; // not available here (opaque origin, old browser): the old behaviour applies
+    }
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1273,6 +1400,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   }
 
   function toggleBalance() {
+    // A View that follows another one never gets the balance (it is not shared): taking over comes first.
+    if (isFollower()) takeLead();
     showBalance = !showBalance;
     if (!showBalance && view.poll) {
       // Hidden again: forget it here too. The next answers will not carry it.
@@ -1348,6 +1477,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       } else if (m.method === "ui/resource-teardown") {
         tornDown = true;
         stopTimers();
+        closeChannel();
         send({ id: m.id, result: {} });
       } else {
         send({ id: m.id, error: { code: -32601, message: "Method not found" } });
@@ -1387,6 +1517,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   // Start
   // ---------------------------------------------------------------------------------------------
   build();
+  openChannel();
+  announce("hello");
+  win.addEventListener("pagehide", () => closeChannel());
   renderModeUi();
   render();
   (async () => {
@@ -1414,6 +1547,18 @@ export function dashboardMain(win: any, doc: any, L: any): any {
 
   return {
     /** For the tests only. */
-    debug: () => ({ view, showBalance, displayMode, hidden, offscreen, tornDown, retired, gate }),
+    debug: () => ({
+      view,
+      showBalance,
+      displayMode,
+      hidden,
+      offscreen,
+      tornDown,
+      retired,
+      gate,
+      viewId,
+      leaderId,
+      follower: isFollower(),
+    }),
   };
 }

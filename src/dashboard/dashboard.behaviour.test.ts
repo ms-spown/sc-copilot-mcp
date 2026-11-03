@@ -163,6 +163,9 @@ describe("Feature: the dashboard tools are listed only to clients that can show 
     expect(dashboard).toContain("sc_live_state");
     expect(dashboard).toMatch(/never call sc_live_poll/);
     expect(dashboard).toMatch(/no cargo/);
+    expect(dashboard).toMatch(
+      /already open in this conversation, do not open it again unless the player explicitly asks/,
+    );
     const poll = tools.find((t) => t.name === "sc_live_poll")!.description!;
     expect(poll).toMatch(/not for the model/);
   });
@@ -216,7 +219,12 @@ describe("Feature: opening the dashboard", () => {
     expect(typeof sc).toBe("object");
     expect(Array.isArray(sc)).toBe(false);
     expect(sc).toMatchObject({ view: "sc_live_dashboard" });
-    expect(JSON.stringify(sc).length).toBeLessThan(400);
+    expect(JSON.stringify(sc).length).toBeLessThan(900);
+    // The model is told not to open a second copy: the open one updates by itself.
+    expect(sc?.["hint"]).toMatch(
+      /already open[^.]*do not open another one unless the player explicitly asks/,
+    );
+    expect(text).toContain(String(sc?.["hint"]));
     expect(text).toContain("sc_live_state");
     expect(text).toContain("provenance");
   });

@@ -19,6 +19,10 @@ import type { ResourceDefinition, ToolDefinition, ToolResult } from "./types.js"
 const OPEN_META = { ui: { resourceUri: DASHBOARD_URI }, "ui/resourceUri": DASHBOARD_URI };
 const APP_ONLY_META = { ui: { resourceUri: DASHBOARD_URI, visibility: ["app"] } };
 
+/** Told to the model with every opening: a second copy is clutter, and the old one keeps updating. */
+export const OPEN_HINT =
+  "If a dashboard is already open in this conversation, do not open another one unless the player explicitly asks for it: the open one updates by itself.";
+
 const off = (): ToolResult => ({
   content: [
     {
@@ -52,7 +56,7 @@ export function dashboardTools({ telemetry }: { telemetry?: Telemetry }): ToolDe
     {
       name: "sc_live_dashboard",
       description:
-        "Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance stays hidden until the player clicks). Call it when the player asks to see their ship or session live. Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Waiting or connected means no data yet (menus, loading): never say the game is not running or that something is wrong, no troubleshooting unless it shows a game launched without telemetry or an unknown format. On foot only character data exists; ship instruments need the player seated in a ship. Optional plan: after uex_get_trade_routes, pass the route so the View compares planned and measured profit.",
+        "Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance stays hidden until the player clicks). Call it when the player asks to see their ship or session live. If a dashboard is already open in this conversation, do not open it again unless the player explicitly asks for a new one: it updates by itself, and each extra copy stays on screen (only the most recent one calls the server, the others show a banner). Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Waiting or connected means no data yet (menus, loading): never say the game is not running or that something is wrong, no troubleshooting unless it shows a game launched without telemetry or an unknown format. On foot only character data exists; ship instruments need the player seated in a ship. Optional plan: after uex_get_trade_routes, pass the route so the View compares planned and measured profit.",
       inputSchema: {
         type: "object",
         properties: {
@@ -82,12 +86,13 @@ export function dashboardTools({ telemetry }: { telemetry?: Telemetry }): ToolDe
           content: [
             {
               type: "text",
-              text: "The live dashboard is open in the conversation and updates by itself. For questions, call sc_live_state. Do not call sc_live_poll.",
+              text: `The live dashboard is open in the conversation and updates by itself. For questions, call sc_live_state. Do not call sc_live_poll. ${OPEN_HINT}`,
             },
           ],
           structuredContent: {
             view: "sc_live_dashboard",
             opened_at: new Date().toISOString(),
+            hint: OPEN_HINT,
             ...(clean ? { plan: clean } : {}),
           },
         };

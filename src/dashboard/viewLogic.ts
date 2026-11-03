@@ -38,6 +38,22 @@ export function viewConfig() {
     sampleMinGapMs: 400,
     requestTimeoutMs: 8000,
     alertWindowMs: 180000,
+    /** Channel shared by the Views of this connector (same sandbox origin). No network is involved. */
+    channelName: "sc-copilot-dashboard-v2",
+    /** A peer not heard for this long is gone (its heartbeat is every heartbeatMs). */
+    peerTtlMs: 6000,
+    heartbeatMs: 2000,
+    /** The leader shares its answer with the other Views at most this often. */
+    snapshotMinMs: 900,
+    /** Without BroadcastChannel nothing can be coordinated: a View away this long retires. */
+    noChannelRetireMs: 30000,
+    /** Peers remembered at most (a hostile page on the channel must not grow the table). */
+    maxPeers: 32,
+    /** A rank (creation time) further in the future than this is refused. */
+    maxRankSkewMs: 60000,
+    /** Plain series kept for a sparkline, and for the estimates (ms). */
+    sparkKeepMs: 62000,
+    maxSamples: 800,
   };
 }
 
@@ -381,13 +397,17 @@ export function pollingDecision(s: any): any {
   const cfg = viewConfig();
   if (s.tornDown) return { run: false, delayMs: 0, reason: "teardown", retire: false };
   if (s.retired) return { run: false, delayMs: 0, reason: "retired", retire: false };
+  // Another View is the leader: it polls for everybody, this one only shows what the leader shares.
+  if (s.follower && !s.hidden && !s.offscreen) {
+    return { run: false, delayMs: 0, reason: "follower", retire: false };
+  }
   if (s.hidden || s.offscreen) {
     const since = typeof s.awaySince === "number" ? s.awaySince : s.now;
     return {
       run: false,
       delayMs: 0,
       reason: s.hidden ? "hidden" : "offscreen",
-      retire: s.now - since >= cfg.retireAfterMs,
+      retire: s.now - since >= (s.noChannel ? cfg.noChannelRetireMs : cfg.retireAfterMs),
     };
   }
   let delay = cfg.pollMs;
@@ -1062,6 +1082,352 @@ export function safeStyleVariables(vars: any): any[] {
   return out;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Several Views in one conversation: one of them polls (the leader), the others follow
+// ---------------------------------------------------------------------------------------------
+
+/** A short random identifier for this View. `random` is a number in [0, 1) given by the caller. */
+export function makeViewId(now: number, random: number): string {
+  const a = Math.floor(Math.abs(random) * 1e9).toString(36);
+  const b = Math.floor(Math.abs(now)).toString(36);
+  return ("v" + a + b + "00000000").slice(0, 16).toLowerCase();
+}
+
+/**
+ * Who polls? Among the Views that are visible and have been heard recently (self included when visible), the one
+ * with the highest rank, then the highest id when ranks are equal. The rank is the creation time of the View, or the
+ * time of the last "take over here" click: the most recent View wins, and the others stop calling the server.
+ * A View that is hidden or off screen is never a candidate, so it never polls and never blocks another one; when the
+ * leader disappears (closed, hidden, or silent for peerTtlMs) the next one in line takes over.
+ *   self  = { id, rank, visible }
+ *   peers = { [id]: { id, rank, visible, seenAt } }
+ */
+export function electLeader(self: any, peers: any, now: number): any {
+  const cfg = viewConfig();
+  let best: any = self.visible ? { id: self.id, rank: self.rank } : null;
+  for (const key of Object.keys(peers || {})) {
+    const p = peers[key];
+    if (!p || p.id === self.id || !p.visible) continue;
+    if (!(now - p.seenAt <= cfg.peerTtlMs)) continue;
+    if (!best || p.rank > best.rank || (p.rank === best.rank && p.id > best.id)) {
+      best = { id: p.id, rank: p.rank };
+    }
+  }
+  return { leaderId: best ? best.id : null, isLeader: !!best && best.id === self.id };
+}
+
+/** Peers after one message: updated or added (hello, claim, snapshot), or removed (bye). Pure; bounded. */
+export function notePeer(peers: any, msg: any, now: number): any {
+  const cfg = viewConfig();
+  const next: any = {};
+  for (const key of Object.keys(peers || {})) {
+    const p = peers[key];
+    if (p && now - p.seenAt <= cfg.peerTtlMs * 5) next[key] = p;
+  }
+  if (msg.t === "bye") {
+    delete next[msg.id];
+    return next;
+  }
+  next[msg.id] = { id: msg.id, rank: msg.rank, visible: msg.visible, seenAt: now };
+  const ids = Object.keys(next);
+  if (ids.length > cfg.maxPeers) {
+    ids.sort((a, b) => next[a].seenAt - next[b].seenAt);
+    for (let i = 0; i < ids.length - cfg.maxPeers; i++) delete next[ids[i] as string];
+  }
+  return next;
+}
+
+/** The rank that wins over every peer known now ("take over here"). */
+export function claimRank(peers: any, now: number): number {
+  let top = now;
+  for (const key of Object.keys(peers || {})) {
+    const p = peers[key];
+    if (p && typeof p.rank === "number" && p.rank >= top) top = p.rank + 1;
+  }
+  return top;
+}
+
+/** The answer as it may be shared with the other Views: no balance, and no wallet event (their text has amounts). */
+export function sharablePoll(poll: any): any {
+  if (!poll || typeof poll !== "object") return null;
+  const out: any = Object.assign({}, poll);
+  delete out.balance;
+  delete out.hash;
+  delete out.unchanged;
+  out.events = (Array.isArray(poll.events) ? poll.events : []).filter(
+    (e: any) => e && e.type !== "uec_changed" && e.group !== "wallet",
+  );
+  return out;
+}
+
+/**
+ * A message from the channel, checked. Anything on the channel is data from another page of the same origin, not
+ * a trusted peer: types, ranges and lengths are verified, and the answer in a snapshot is rebuilt field by field
+ * (cleanPoll). Returns null for anything that does not fit.
+ */
+export function parseChannelMessage(data: any, now: number): any {
+  const cfg = viewConfig();
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const t = data.t;
+  if (t !== "hello" && t !== "bye" && t !== "claim" && t !== "snapshot") return null;
+  if (typeof data.id !== "string" || !/^[a-z0-9]{8,32}$/.test(data.id)) return null;
+  if (typeof data.rank !== "number" || !Number.isFinite(data.rank)) return null;
+  if (data.rank < 0 || data.rank > now + cfg.maxRankSkewMs) return null;
+  const out: any = { t, id: data.id, rank: data.rank, visible: true };
+  if (t === "hello" || t === "claim") {
+    if (typeof data.visible !== "boolean") return null;
+    out.visible = data.visible;
+  }
+  if (t === "snapshot") {
+    const poll = cleanPoll(data.poll);
+    if (!poll) return null;
+    out.poll = poll;
+  }
+  return out;
+}
+
+/**
+ * Rebuilds an answer of the server from untrusted data: only known fields, right types, capped lengths and counts.
+ * Nothing is copied wholesale, so a hostile object cannot bring an unexpected field or a huge string into the page.
+ * The balance is never accepted. Returns null when the object is not an answer at all.
+ */
+export function cleanPoll(raw: any): any {
+  const obj = (x: any): any => (x && typeof x === "object" && !Array.isArray(x) ? x : null);
+  const num = (x: any): number | undefined =>
+    typeof x === "number" && Number.isFinite(x) ? x : undefined;
+  const text = (x: any, max: number): string | undefined =>
+    typeof x === "string" ? x.slice(0, max) : undefined;
+  const bool = (x: any): boolean | undefined => (typeof x === "boolean" ? x : undefined);
+  const word = (x: any): string | undefined =>
+    typeof x === "string" && /^[a-z0-9_]{1,40}$/.test(x) ? x : undefined;
+  const gameId = (x: any): string | undefined =>
+    typeof x === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(x) ? x : undefined;
+  const keysOf = (o: any, max: number): string[] => {
+    const keys: string[] = [];
+    for (const k in o) {
+      if (keys.length >= max) break;
+      if (Object.prototype.hasOwnProperty.call(o, k) && /^[a-z0-9_]{1,40}$/.test(k)) keys.push(k);
+    }
+    return keys;
+  };
+  const list = (x: any, max: number): any[] => (Array.isArray(x) ? x.slice(0, max) : []);
+  const set = (o: any, k: string, v: any) => {
+    if (v !== undefined) o[k] = v;
+  };
+  const scalar = (x: any): any => {
+    if (typeof x === "number") return Number.isFinite(x) ? x : undefined;
+    if (typeof x === "boolean") return x;
+    if (typeof x === "string") return x.slice(0, 80);
+    return undefined;
+  };
+  const scalarMap = (x: any, max: number, depth: number): any => {
+    const source = obj(x);
+    if (!source) return undefined;
+    const out: any = {};
+    for (const k of keysOf(source, max)) {
+      const v =
+        depth > 0 && obj(source[k]) ? scalarMap(source[k], 8, depth - 1) : scalar(source[k]);
+      set(out, k, v);
+    }
+    return out;
+  };
+  const gauge = (x: any): any => {
+    const g = obj(x);
+    if (!g) return undefined;
+    const out: any = {};
+    set(out, "current", num(g.current));
+    set(out, "max", num(g.max));
+    set(out, "percent", num(g.percent));
+    return out;
+  };
+
+  const p = obj(raw);
+  if (!p || p.v !== 1) return null;
+  const states = ["off", "waiting", "game_without_telemetry", "connected", "live", "incompatible"];
+  if (states.indexOf(p.state) < 0) return null;
+  const out: any = { v: 1, state: p.state };
+  set(out, "at", num(p.at));
+  set(out, "enabled", bool(p.enabled));
+  set(out, "cause", text(p.cause, 400));
+  out.frame_age_ms = num(p.frame_age_ms) === undefined ? null : p.frame_age_ms;
+  out.received_at = typeof p.received_at === "string" ? p.received_at.slice(0, 40) : null;
+  set(out, "last_seq", num(p.last_seq));
+
+  const ship = obj(p.ship);
+  out.ship = null;
+  if (ship) {
+    const s: any = {};
+    set(s, "name", gameId(ship.name));
+    set(s, "instance_id", gameId(ship.instance_id));
+    set(s, "class_name", gameId(ship.class_name));
+    set(s, "manufacturer_derived", text(ship.manufacturer_derived, 40));
+    set(s, "type", word(ship.type));
+    set(s, "lights_on", bool(ship.lights_on));
+    set(s, "landed", bool(ship.landed));
+    set(s, "gear", word(ship.gear));
+    set(s, "vtol", word(ship.vtol));
+    const ins = obj(ship.instruments);
+    if (ins) {
+      const i: any = {};
+      for (const k of [
+        "speed_ms",
+        "vertical_speed_ms",
+        "hydrogen_fuel",
+        "atmospheric_density",
+        "altitude_m",
+        "radar_altitude_m",
+        "heading_deg",
+      ]) {
+        set(i, k, num(ins[k]));
+      }
+      const boost = obj(ins.boost);
+      if (boost) {
+        const b: any = {};
+        set(b, "engaged", bool(boost.engaged));
+        set(b, "output", num(boost.output));
+        set(b, "reserves", num(boost.reserves));
+        set(b, "critical", bool(boost.critical));
+        i.boost = b;
+      }
+      const g = obj(ins.g);
+      if (g) i.g = { current: num(g.current), max: num(g.max) };
+      s.instruments = i;
+    }
+    const modes = obj(ship.flight_modes);
+    if (modes) {
+      s.flight_modes = {};
+      for (const k of keysOf(modes, 16)) {
+        const m = obj(modes[k]);
+        if (m) s.flight_modes[k] = { enabled: bool(m.enabled), active: bool(m.active) };
+      }
+    }
+    const power = obj(ship.power);
+    if (power) {
+      s.power = {};
+      for (const k of keysOf(power, 16)) set(s.power, k, bool(power[k]));
+    }
+    const lights = obj(ship.warning_lights);
+    if (lights) {
+      s.warning_lights = {};
+      for (const k of keysOf(lights, 16)) set(s.warning_lights, k, word(lights[k]));
+    }
+    out.ship = s;
+  }
+
+  const pilot = obj(p.pilot);
+  out.pilot = null;
+  if (pilot) {
+    const q: any = {};
+    set(q, "locomotion", word(pilot.locomotion));
+    set(q, "crew_role", word(pilot.crew_role));
+    set(q, "seat", pilot.seat === "" ? "" : gameId(pilot.seat));
+    for (const k of ["health", "hunger", "thirst"]) set(q, k, gauge(pilot[k]));
+    for (const k of ["heart_rate_bpm", "gravity_g", "pressure", "outside_temperature_c"]) {
+      set(q, k, num(pilot[k]));
+    }
+    set(q, "breathable_atmosphere", bool(pilot.breathable_atmosphere));
+    out.pilot = q;
+  }
+
+  const weapons = obj(p.weapons);
+  out.weapons = null;
+  if (weapons) {
+    const w: any = { weapons: [], countermeasures: {} };
+    for (const item of list(weapons.weapons, 64)) {
+      const it = obj(item);
+      if (!it) continue;
+      const entry: any = {};
+      set(entry, "name", gameId(it.name));
+      set(entry, "instance_id", gameId(it.instance_id));
+      set(entry, "powered", bool(it.powered));
+      set(entry, "ready", bool(it.ready));
+      w.weapons.push(entry);
+    }
+    set(w, "gimbals_locked", bool(weapons.gimbals_locked));
+    const cms = obj(weapons.countermeasures);
+    if (cms) for (const k of keysOf(cms, 8)) set(w.countermeasures, k, num(cms[k]));
+    out.weapons = w;
+  }
+
+  const derived = obj(p.derived);
+  out.derived = null;
+  if (derived) {
+    out.derived = {};
+    for (const k of keysOf(derived, 16)) {
+      const v = derived[k];
+      if (typeof v === "boolean") out.derived[k] = v;
+      else if (typeof v === "string") out.derived[k] = v.slice(0, 40);
+    }
+  }
+
+  out.conditions = [];
+  for (const item of list(p.conditions, 24)) {
+    const c = obj(item);
+    if (!c || !word(c.id)) continue;
+    if (c.level !== "info" && c.level !== "warning" && c.level !== "critical") continue;
+    const entry: any = { id: c.id, level: c.level };
+    entry.confidence = c.confidence === "unverified" ? "unverified" : "confirmed";
+    set(entry, "since", num(c.since));
+    const data = scalarMap(c.data, 4, 0);
+    if (data) entry.data = data;
+    out.conditions.push(entry);
+  }
+
+  out.unverified = {};
+  const unverified = obj(p.unverified);
+  if (unverified) {
+    for (const side of ["ship", "pilot"]) {
+      const m = scalarMap(unverified[side], 12, 1);
+      if (m && Object.keys(m).length > 0) out.unverified[side] = m;
+    }
+  }
+
+  out.not_available = [];
+  for (const item of list(p.not_available, 12)) {
+    const v = text(item, 40);
+    if (v !== undefined) out.not_available.push(v);
+  }
+  if (Array.isArray(p.not_in_stream)) {
+    out.not_in_stream = [];
+    for (const item of list(p.not_in_stream, 40)) {
+      const v = text(item, 40);
+      if (v !== undefined) out.not_in_stream.push(v);
+    }
+  }
+
+  out.events = [];
+  for (const item of list(p.events, 60)) {
+    const e = obj(item);
+    if (!e || num(e.seq) === undefined || !word(e.type)) continue;
+    if (e.type === "uec_changed" || e.group === "wallet") continue;
+    const entry: any = { seq: e.seq, type: e.type };
+    set(entry, "group", word(e.group));
+    entry.confidence = e.confidence === "unverified" ? "unverified" : "confirmed";
+    set(entry, "at", text(e.at, 40));
+    set(entry, "text", text(e.text, 200));
+    entry.data = scalarMap(e.data, 4, 0) || {};
+    out.events.push(entry);
+  }
+
+  const session = obj(p.session);
+  if (session) {
+    const s: any = {};
+    s.started_at = typeof session.started_at === "string" ? session.started_at.slice(0, 40) : null;
+    s.ended_at = typeof session.ended_at === "string" ? session.ended_at.slice(0, 40) : null;
+    for (const k of ["takeoffs", "landings", "jumps", "flight_ms"]) set(s, k, num(session[k]));
+    s.flight_ms_is_estimate = true;
+    s.markers = [];
+    for (const item of list(session.markers, 40)) {
+      const m = obj(item);
+      if (!m || (m.kind !== "start" && m.kind !== "end" && m.kind !== "reset_delta")) continue;
+      const at = text(m.at, 40);
+      if (at !== undefined) s.markers.push({ kind: m.kind, at });
+    }
+    out.session = s;
+  }
+  return out;
+}
+
 /** The names the page needs, in the order they are serialised. */
 export const VIEW_FUNCTIONS = [
   viewConfig,
@@ -1108,4 +1474,11 @@ export const VIEW_FUNCTIONS = [
   initialContextGate,
   contextDecision,
   safeStyleVariables,
+  makeViewId,
+  electLeader,
+  notePeer,
+  claimRank,
+  sharablePoll,
+  parseChannelMessage,
+  cleanPoll,
 ];
