@@ -163,3 +163,50 @@ export function editEnvKeyText(
     addMember(text, entry.value, "env", `{ ${JSON.stringify(key)}: ${valueText} }`),
   );
 }
+
+/** The text of a value laid out in the style of the file around it (indent unit, line ending). */
+function layout(t: string, value: unknown, gap: string | null): string {
+  const newline = gap === null ? -1 : gap.lastIndexOf("\n");
+  if (gap === null || newline < 0) return JSON.stringify(value);
+  const indent = gap.slice(newline + 1);
+  const eol = t.includes("\r\n") ? "\r\n" : "\n";
+  // The first indented line of the file is one indent step; two spaces when the file has none.
+  const unit = /\n([ \t]+)\S/.exec(t)?.[1] ?? "  ";
+  return JSON.stringify(value, null, unit)
+    .split("\n")
+    .map((line, i) => (i === 0 ? line : indent + line))
+    .join(eol);
+}
+
+/**
+ * Sets mcpServers[server] to a whole entry, as text: replaces the entry when it exists, adds it to
+ * mcpServers when that exists, adds mcpServers to the file otherwise. Everything else is kept byte for byte
+ * (`text` must not start with a BOM). The new entry follows the file's own indentation and line endings.
+ * The caller proves the result against the expected content before writing it.
+ */
+export function editServerEntryText(text: string, server: string, entry: unknown): string {
+  const root = parseValue(text, skipWs(text, 0));
+  const servers = find(root, "mcpServers");
+  const existing = find(servers?.value, server);
+  if (existing) {
+    return apply(text, {
+      from: existing.valueStart,
+      to: existing.valueEnd,
+      insert: layout(text, entry, styleOf(text, existing).gap),
+    });
+  }
+  const gapOf = (obj: Node | undefined) => {
+    const last = obj?.members?.at(-1);
+    return last ? styleOf(text, last).gap : null;
+  };
+  if (servers?.value.members) {
+    return apply(
+      text,
+      addMember(text, servers.value, server, layout(text, entry, gapOf(servers.value))),
+    );
+  }
+  return apply(
+    text,
+    addMember(text, root, "mcpServers", layout(text, { [server]: entry }, gapOf(root))),
+  );
+}

@@ -6,6 +6,43 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+Fixes for the findings of an independent security audit (each checked by a test that builds its attack from code
+points and uses no network).
+- **Invisible characters are removed by Unicode category**, not from a list of ranges: format, private-use,
+  surrogate, unassigned and control characters, and variation selectors. The tag block U+E0000-E007F ("ASCII
+  smuggling"), U+FE00-FE0F, U+E0100-E01EF, U+061C, U+206A-206F, soft hyphen, the Hangul, Khmer and braille blanks and
+  the combining grapheme joiner no longer get through; NEL, U+2028 and U+2029 become a newline.
+- **Errors are no longer outside the envelope.** What a remote server says in an error (the UEX `status` and
+  `message`, the starcitizen.tools error text, a remote error body) is cleaned, cut at 300 characters and fenced
+  like untrusted text; names quoted in "fits several ships" errors are fenced; no error message, including one a
+  tool builds itself, keeps an invisible character or grows without bound. Our own wording stays readable.
+- **Third-party text under `structured` trust.** Game and build versions from UEX, the wiki, the game log, local
+  files and the dump repository are cleaned and cut at 80 characters where they enter, so `provenance.game_version`
+  and `sc_data_status` cannot carry a sentence; the per-row versions of `uex_get_trade_routes` and
+  `uex_get_terminal_inventory` get the same treatment. A patch-dump tag that is not a plain build string (a sentence)
+  is dropped, and the collection names a dump lists are fenced in the errors that quote them. **Trust changes you
+  will see (nine tools now `untrusted_text`, with the notice and cleaned, bounded strings):** `sc_list_builds` and
+  `sc_diff_versions` (the dump repository is configurable), `scw_get_filters`, and the UEX tools that hand rows back
+  unprojected: `uex_get_commodity_prices` and `uex_get_ship_prices` (both in the `core` profile),
+  `uex_get_commodities`, `uex_get_commodity_averages`, `uex_get_commodity_ranking`, `uex_get_terminals`. New guard
+  tests fail if free text from UEX, the wiki or the dump repository reaches a `structured` tool, as one already did
+  for SCMDB.
+- **The installer no longer rewrites the whole Claude Desktop config.** `npm run install:claude` inserts or replaces
+  only the `sc-copilot` entry, as text (CRLF, indentation, BOM, `1.0` and integers above 2^53 of the other servers are
+  kept); when the result is not exactly what was expected it writes nothing and prints the entry to add by hand.
+- **The installer preview no longer prints a secret** already in the file: for an entry it replaces it shows the
+  names of its `env` keys, never the values (other keys and arguments that name a secret are hidden too).
+- **A collection name could leave the build cache folder** (`ships__../../../x` in `sc_diff_versions`). It is now
+  restricted to letters, digits, `_`, `-` and `.` without `..`, and the resolved path must stay inside the cache;
+  the dataset name of `collectLabels` gets the same check as the other local readers.
+
+### Fixed
+- Tools no longer show full local paths (they hold the Windows user name): `scw_snapshot_save`, `scw_snapshot_list`,
+  `sc_local_datasets` and the vocabulary source show the last three parts, as the log tools do; an unknown snapshot
+  label no longer puts the full path in its error. `shortPath` moved to `core/paths.ts` (still re-exported by the log
+  reader).
+
 ## [2.1.0] - 2026-11-03
 
 ### Added

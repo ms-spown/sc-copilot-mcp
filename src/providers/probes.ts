@@ -1,6 +1,6 @@
 import { fetchWithCache } from "../core/cache.js";
 import type { ToolMeta } from "../core/provenance.js";
-import { cleanString } from "../core/untrusted.js";
+import { cleanLabel } from "../core/untrusted.js";
 import type { StatusProbe } from "../tools/status.js";
 import type { ToolClients } from "../tools/registry.js";
 import { listBuilds } from "./dumps/versions.js";
@@ -31,8 +31,9 @@ export function createProbes({
         const stale = r.cache === "stale-disk";
         return {
           status: stale ? "degraded" : "ok",
-          live: { version: v.live ?? null },
-          ptu: { version: v.ptu ?? null },
+          // UEX and the wiki are third parties: their versions are cleaned and bounded here.
+          live: { version: cleanLabel(v.live) },
+          ptu: { version: cleanLabel(v.ptu) },
           fetchedAt: r.fetchedAt,
           ...(stale ? { error: r.staleReason } : {}),
         };
@@ -46,7 +47,7 @@ export function createProbes({
         const stale = r.cache === "stale-disk";
         return {
           status: stale ? "degraded" : "ok",
-          live: { version: row?.version ?? null, as_of: row?.updated_at ?? null },
+          live: { version: cleanLabel(row?.version), as_of: cleanLabel(row?.updated_at) },
           ptu: { version: null },
           note: "The wiki API serves one environment (LIVE); it has no PTU data.",
           fetchedAt: r.fetchedAt,
@@ -79,8 +80,8 @@ export function createProbes({
           const c = manifest.channels[name];
           // sc_data_status is a structured tool: strings that come from a third-party file are cleaned.
           return {
-            version: c?.version ? cleanString(c.version, 80) : null,
-            as_of: c?.generated_at ? cleanString(c.generated_at, 80) : null,
+            version: cleanLabel(c?.version),
+            as_of: cleanLabel(c?.generated_at),
           };
         };
         return {
@@ -100,8 +101,8 @@ export function createProbes({
         return {
           status: "ok",
           unlabelled: builds.map((b) => ({
-            version: cleanString(b.version, 80),
-            as_of: b.date ? cleanString(b.date, 80) : null,
+            version: cleanLabel(b.version),
+            as_of: cleanLabel(b.date),
           })),
           note: "Build tags do not say LIVE or PTU, so they are listed, not classified. Tags can be republished: results are cached by commit.",
           fetchedAt: Date.now(),
@@ -120,10 +121,10 @@ export function createProbes({
         const r = await gameLog.read();
         const s = r.parsed.session;
         const info = {
-          version: s.game_version
-            ? `${s.game_version}${s.build ? ` (build ${s.build})` : ""}`
-            : null,
-          as_of: s.started_local,
+          version: cleanLabel(
+            s.game_version ? `${s.game_version}${s.build ? ` (build ${s.build})` : ""}` : null,
+          ),
+          as_of: cleanLabel(s.started_local),
         };
         return {
           status: "ok",
@@ -170,7 +171,7 @@ export function createProbes({
         const info = build_version as { version?: string; launcherVersion?: string } | undefined;
         return {
           status: "ok",
-          unlabelled: [{ version: info?.launcherVersion ?? info?.version ?? null }],
+          unlabelled: [{ version: cleanLabel(info?.launcherVersion ?? info?.version) }],
           note: "Build the local game-*.json files say they come from; it may lag the installed game.",
           fetchedAt: Date.now(),
         };
@@ -184,11 +185,11 @@ export function createGameVersionResolver({ uexClient, scwClient }: ToolClients)
   return async (meta: ToolMeta): Promise<string | null> => {
     if (meta.source === "uex") {
       const r = await fetchWithCache(uexClient, "/game_versions", undefined, quiet);
-      return r.data?.data?.live ?? null;
+      return cleanLabel(r.data?.data?.live);
     }
     if (meta.source.startsWith("star-citizen.wiki")) {
       const r = await fetchWithCache(scwClient, "/vehicles", WIKI_PROBE, quiet);
-      return r.data?.data?.[0]?.version ?? null;
+      return cleanLabel(r.data?.data?.[0]?.version);
     }
     return null;
   };

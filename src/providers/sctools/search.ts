@@ -1,5 +1,6 @@
 import { isObject } from "../../core/format.js";
 import { stripTags } from "../../core/text.js";
+import { remoteText } from "../../core/untrusted.js";
 
 /** One readable search hit. The text is community-written: the registry fences it as untrusted. */
 export interface SearchResult {
@@ -70,7 +71,10 @@ export function parseSearchResults(data: unknown, baseURL?: string): SearchResul
     const code =
       typeof data.error.code === "string" ? cleanSnippet(data.error.code, 60) : "unknown";
     const info = typeof data.error.info === "string" ? cleanSnippet(data.error.info, 200) : "";
-    throw new Error(`starcitizen.tools search failed (${code})${info ? `: ${info}` : ""}`);
+    // What the wiki said is third-party text: fenced inside our own sentence.
+    throw new Error(
+      `starcitizen.tools search failed (${remoteText(code, "starcitizen.tools", 60)})${info ? `: ${remoteText(info, "starcitizen.tools")}` : ""}`,
+    );
   }
 
   if (isObject(data) && isObject(data.query) && Array.isArray(data.query.search)) {

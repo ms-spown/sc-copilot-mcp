@@ -198,7 +198,9 @@ describe("UEX client", () => {
       uexAnswering(200, { status: "requests_limit_reached", data: null, message: "slow down" }).get(
         "/x",
       ),
-    ).rejects.toThrow("UEX error requests_limit_reached: slow down");
+    ).rejects.toThrow(
+      "UEX error requests_limit_reached: <<<UNTRUSTED_TEXT source=uex>>> slow down <<<END_UNTRUSTED_TEXT>>>",
+    );
   });
 
   it("says what UEX said on a 400, keeping the axios error and its status", async () => {
@@ -209,7 +211,9 @@ describe("UEX client", () => {
     })
       .get("/x")
       .catch((e) => e);
-    expect(error.message).toBe("UEX 400 missing_one_required_inputs: Missing required inputs");
+    expect(error.message).toBe(
+      "UEX 400 missing_one_required_inputs: <<<UNTRUSTED_TEXT source=uex>>> Missing required inputs <<<END_UNTRUSTED_TEXT>>>",
+    );
     expect(error.response.status).toBe(400);
   });
 });

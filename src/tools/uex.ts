@@ -4,6 +4,7 @@ import { formatOutput, formatOutputRaw, MAX_OUTPUT_CHARS, optimizeData } from ".
 import { resolveShip } from "../providers/fleet/resolve.js";
 import { reportRowDates, rowUpdatedAt, splitByVersion } from "../providers/uex/freshness.js";
 import type { HttpClient } from "../core/http.js";
+import { cleanLabel, remoteText } from "../core/untrusted.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
 /**
@@ -407,12 +408,14 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
           }
           if (found.match === "ambiguous") {
             const names = found.candidates.map((c) => c.name_full ?? c.name).join("; ");
-            throw new Error(`"${ship_name}" fits several ships (${names}). Say which one.`);
+            throw new Error(
+              `"${ship_name}" fits several ships (${remoteText(names, "uex")}). Say which one.`,
+            );
           }
           const scu = Number(found.vehicle.scu);
           if (!(scu > 0)) {
             throw new Error(
-              `${found.vehicle.name_full ?? found.vehicle.name} has no cargo capacity.`,
+              `${remoteText(found.vehicle.name_full ?? found.vehicle.name, "uex")} has no cargo capacity.`,
             );
           }
           ship = { name: found.vehicle.name_full ?? found.vehicle.name, scu };
@@ -540,8 +543,8 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             distance: r.distance,
             origin_status: r.status_origin,
             destination_status: r.status_destination,
-            game_version_origin: r.game_version_origin,
-            game_version_destination: r.game_version_destination,
+            game_version_origin: cleanLabel(r.game_version_origin),
+            game_version_destination: cleanLabel(r.game_version_destination),
             is_estimate: estimated.length > 0,
             estimated_sides: estimated,
           };
@@ -679,8 +682,9 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             {
               type: "text",
               text: formatOutput({
-                live: versions.live ?? "unknown",
-                ptu: versions.ptu ?? "no active PTU build",
+                // Version labels are third-party text: cleaned and bounded where they enter.
+                live: cleanLabel(versions.live) ?? "unknown",
+                ptu: cleanLabel(versions.ptu) ?? "no active PTU build",
               }),
             },
           ],
@@ -876,7 +880,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
               system: t.star_system_name,
               sells: sells.length > 0 ? sells : "nothing matching that filter",
               faction: t.faction_name,
-              game_version: t.game_version,
+              game_version: cleanLabel(t.game_version),
             };
           });
 
@@ -1028,5 +1032,7 @@ function pickOne(
   if (partial.length === 1) return partial[0];
   if (partial.length === 0) throw new Error(`No UEX ${what} matches "${wanted}".`);
   const names = partial.slice(0, 8).map((r) => String(r.name ?? r.fullname ?? r.id));
-  throw new Error(`"${wanted}" matches several ${what}s (${names.join("; ")}). Be more specific.`);
+  throw new Error(
+    `"${wanted}" matches several ${what}s (${remoteText(names.join("; "), "uex")}). Be more specific.`,
+  );
 }

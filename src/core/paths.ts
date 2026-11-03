@@ -55,3 +55,12 @@ export function userConfigDir(
   if (platform === "darwin") return path.join(home, "Library", "Application Support", APP);
   return path.join(env.XDG_CONFIG_HOME || path.join(home, ".config"), APP);
 }
+
+/**
+ * The last three path parts: enough to recognise a file, without the user's folder names (which
+ * include their Windows user name). Every path a tool shows the model goes through this.
+ */
+export function shortPath(file: string): string {
+  const parts = file.split(/[\\/]+/).filter(Boolean);
+  return `…/${parts.slice(-3).join("/")}`;
+}

@@ -11,6 +11,7 @@ import {
   type ToolMeta,
 } from "../core/provenance.js";
 import {
+  cleanString,
   DEFAULT_MAX_TEXT,
   delimitText,
   sanitizeUntrusted,
@@ -151,6 +152,14 @@ function envelope(
   };
 }
 
+/** An error a handler built itself: no invisible characters, and a bound on its length. */
+function cleanErrorResult(result: ToolResult): ToolResult {
+  return {
+    ...result,
+    content: result.content.map((c) => ({ ...c, text: cleanString(c.text, 2000) })),
+  };
+}
+
 /**
  * @param selection scopes the LISTING only (latency, not access control): a tool that is not
  *   advertised can still be called by name.
@@ -182,7 +191,8 @@ export function createRegistry(
         const meta = CATALOG[name];
         return await runWithProvenance(async (ctx) => {
           const result = await tool.handler(args);
-          if (result.isError || !meta) return result;
+          if (result.isError) return cleanErrorResult(result);
+          if (!meta) return result;
           let gameVersion: string | null = null;
           if (options.gameVersionFor && ctx.gameVersion === undefined) {
             try {
