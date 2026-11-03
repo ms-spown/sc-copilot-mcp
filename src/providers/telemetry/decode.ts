@@ -25,6 +25,28 @@ export interface DecodeReport {
 
 const MAX_NOTES = 32;
 const MAX_STRING_BYTES = 512;
+
+/**
+ * Hard limits against a local program that pretends to be the game. The message size limit (1 MiB, reader.ts) alone
+ * still allows 500 000 two-byte weapons in one frame.
+ *
+ * A real frame has a few hundred fields and a handful of weapons: these ceilings are far above any real use.
+ */
+/** Fields read in ONE frame, nested messages included, known or not. Beyond it the frame is refused (WireError). */
+export const MAX_FIELDS_PER_FRAME = 5000;
+/** Entries kept per repeated field and per message. The surplus is not decoded; an anomaly says so. */
+export const MAX_REPEATED: Readonly<Record<string, number>> = {
+  "WeaponsFrame.weapons": 64,
+  "WeaponsFrame.countermeasures": 16,
+  "EventsFrame.events": 32,
+};
+/** Any repeated field the table above does not name (a newer schema). */
+const DEFAULT_MAX_REPEATED = 64;
+
+/** Shared by every message of one frame. */
+interface Budget {
+  fields: number;
+}
 const decoder = new TextDecoder("utf-8");
 
 /** "ANNUNCIATOR_STATE_MINOR_ON" for enum AnnunciatorState -> "minor_on". */
@@ -39,8 +61,13 @@ function expectedWire(type: FieldSpec["type"]): number {
   return WIRE_VARINT; // bool, int32, uint32, int64, enum
 }
 
-function decodeValue(type: FieldSpec["type"], raw: RawField, report: DecodeReport): unknown {
-  if (type.startsWith("msg:")) return decodeMessage(type.slice(4), raw.bytes!, report);
+function decodeValue(
+  type: FieldSpec["type"],
+  raw: RawField,
+  report: DecodeReport,
+  budget: Budget,
+): unknown {
+  if (type.startsWith("msg:")) return decodeMessage(type.slice(4), raw.bytes!, report, budget);
   if (type.startsWith("enum:")) {
     const name = type.slice(5);
     const n = Number(BigInt.asIntN(32, raw.varint!));
@@ -72,11 +99,19 @@ function note(list: string[], text: string): void {
   if (list.length < MAX_NOTES && !list.includes(text)) list.push(text);
 }
 
-function decodeMessage(name: string, buf: Uint8Array, report: DecodeReport): Decoded {
+function decodeMessage(
+  name: string,
+  buf: Uint8Array,
+  report: DecodeReport,
+  budget: Budget,
+): Decoded {
   const spec = MESSAGES[name];
   if (!spec) throw new WireError(`no schema for message ${name}`);
   const out: Decoded = {};
   for (const raw of readFields(buf)) {
+    if (++budget.fields > MAX_FIELDS_PER_FRAME) {
+      throw new WireError(`more than ${MAX_FIELDS_PER_FRAME} fields in one frame`);
+    }
     const field = spec[raw.num];
     if (!field) {
       note(report.unknown, `${name}.${raw.num}`);
@@ -86,13 +121,18 @@ function decodeMessage(name: string, buf: Uint8Array, report: DecodeReport): Dec
       note(report.anomalies, `${name}.${field.name}: wire type ${raw.wire}`);
       continue;
     }
-    const value = decodeValue(field.type, raw, report);
     if (field.repeated) {
       const list = (out[field.name] as unknown[] | undefined) ?? [];
-      list.push(value);
+      const cap = MAX_REPEATED[`${name}.${field.name}`] ?? DEFAULT_MAX_REPEATED;
+      if (list.length >= cap) {
+        // Not decoded at all: the cost of the surplus is one counted field.
+        note(report.anomalies, `${name}.${field.name}: more than ${cap} entries, the rest ignored`);
+        continue;
+      }
+      list.push(decodeValue(field.type, raw, report, budget));
       out[field.name] = list;
     } else {
-      out[field.name] = value;
+      out[field.name] = decodeValue(field.type, raw, report, budget);
     }
   }
   return out;
@@ -101,12 +141,12 @@ function decodeMessage(name: string, buf: Uint8Array, report: DecodeReport): Dec
 /** One message of a known type by name, for tests and tools. Throws WireError on malformed bytes. */
 export function decodeAs(name: string, buf: Uint8Array): { value: Decoded; report: DecodeReport } {
   const report: DecodeReport = { anomalies: [], unknown: [] };
-  return { value: decodeMessage(name, buf, report), report };
+  return { value: decodeMessage(name, buf, report, { fields: 0 }), report };
 }
 
 /** One TelemetryStreamResponse. Throws WireError when the bytes are not a well-formed message. */
 export function decodeFrame(buf: Uint8Array): { frame: Decoded; report: DecodeReport } {
   const report: DecodeReport = { anomalies: [], unknown: [] };
-  const frame = decodeMessage(ROOT_MESSAGE, buf, report);
+  const frame = decodeMessage(ROOT_MESSAGE, buf, report, { fields: 0 });
   return { frame, report };
 }

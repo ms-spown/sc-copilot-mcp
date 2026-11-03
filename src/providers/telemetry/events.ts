@@ -144,13 +144,29 @@ export interface TelemetryEvent {
   data: Record<string, string | number>;
 }
 
+/** Text kept in an event's data. Names already come through a 64-character identifier filter; this is the backstop. */
+export const MAX_EVENT_DATA_CHARS = 80;
+const MAX_EVENT_DATA_KEYS = 4;
+
+function boundedData(data: Record<string, string | number>): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  for (const [key, value] of Object.entries(data).slice(0, MAX_EVENT_DATA_KEYS)) {
+    out[key.slice(0, 32)] =
+      typeof value === "string" && value.length > MAX_EVENT_DATA_CHARS
+        ? value.slice(0, MAX_EVENT_DATA_CHARS)
+        : value;
+  }
+  return out;
+}
+
 export function makeEvent(
   seq: number,
   type: EventType,
   nowMs: number,
-  data: Record<string, string | number> = {},
+  rawData: Record<string, string | number> = {},
 ): TelemetryEvent {
   const spec: EventSpec = EVENT_SPECS[type];
+  const data = boundedData(rawData);
   return {
     seq,
     type,
