@@ -7,6 +7,9 @@
 export const LEDGER_CSS = `
 .lg-line { margin: var(--sp-2) 0 0; padding: var(--sp-2) var(--sp-3); background: var(--tint-info); color: var(--sc-info); border-radius: var(--r-m); font-size: var(--fs-s); font-weight: 600; overflow-wrap: anywhere; }
 
+/* Greyed with the rest of the dashboard when the stream is not live (the card is inside .full, already greyed). */
+[data-grey="1"] .lg-line { opacity: 0.5; filter: grayscale(1); }
+
 .lg-message { margin: 0 0 var(--sp-3); font-size: var(--fs-s); color: var(--sc-text2); }
 .lg-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: var(--sp-2); }
 .lg-contract { background: var(--sc-bg3); border-radius: var(--r-m); padding: var(--sp-3); min-width: 0; display: flex; flex-direction: column; gap: 6px; }

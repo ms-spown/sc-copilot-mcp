@@ -1,3 +1,4 @@
+import type { ConnectionInfo } from "../providers/gamelog/connectionState.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
 import { POLL_CACHE_MS, POLL_EVENT_COUNT } from "./constants.js";
 import { buildLedgerPayload, EMPTY_LEDGER, type PlanForLedger } from "./ledger.js";
@@ -51,6 +52,8 @@ export class DashboardService {
     private readonly now: () => number = Date.now,
     /** Looks up the wiki sheet of the flown ship in the background (specs.ts). Absent: no `specs` in the answer. */
     private readonly specs?: ShipSpecsResolver,
+    /** Where the player stands towards the servers, from Game.log (one `stat` per poll). Absent: no `connection`. */
+    private readonly connection?: { current(): Promise<ConnectionInfo | null> },
     /** The transport ledger's reader (ledgerService.ts). Without one the ledger says it is off. */
     private readonly ledger?: LedgerService,
   ) {}
@@ -109,11 +112,14 @@ export class DashboardService {
     const specs = className ? this.specs?.current(className, nowMs) : undefined;
     // The ledger is built for THIS balance choice: the shared answer (and its hash) never mixes the two.
     const ledger = await this.ledgerPayload(telemetry, includeBalance, nowMs);
+    // A failed log read must never break the poll: the connection is then simply not reported.
+    const connection = await this.connection?.current().catch(() => null);
     const answer = buildPoll({
       status,
       snapshot,
       ...(specs ? { specs } : {}),
       ledger,
+      ...(connection ? { connection } : {}),
       events: recent.events,
       lastSeq: recent.last_seq,
       sessionEvents,

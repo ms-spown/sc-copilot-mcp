@@ -100,7 +100,7 @@ async function readyService(telemetry: Telemetry, text = transportLogText(EPOCH)
   const ledger = new LedgerService(ledgerLogFrom(logFile(text)), () => at(nowS));
   ledger.state();
   await ledger.settled();
-  return new DashboardService(telemetry, () => at(nowS), undefined, ledger);
+  return new DashboardService(telemetry, () => at(nowS), undefined, undefined, ledger);
 }
 
 describe("Feature: the balance never reaches an answer that did not ask for it", () => {
@@ -177,6 +177,7 @@ describe("Feature: the poll never waits for the game log", () => {
       stubTelemetry(),
       () => at(1),
       undefined,
+      undefined,
       new LedgerService(source, () => at(1)),
     );
     const poll = await service.poll({ includeBalance: false });
@@ -197,7 +198,7 @@ describe("Feature: the poll never waits for the game log", () => {
     const state = vi.fn();
     const ledger = { state, settled: async () => undefined } as unknown as LedgerService;
     const off = { enabled: false } as Telemetry;
-    const poll = await new DashboardService(off, () => at(1), undefined, ledger).poll({
+    const poll = await new DashboardService(off, () => at(1), undefined, undefined, ledger).poll({
       includeBalance: true,
     });
     expect(poll).not.toHaveProperty("ledger");

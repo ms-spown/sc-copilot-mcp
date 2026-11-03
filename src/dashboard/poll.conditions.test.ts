@@ -51,4 +51,45 @@ describe("Feature: the poll answer carries the conditions of the moment", () => 
     expect(p.state).not.toBe("live");
     expect(p.conditions).toEqual([]);
   });
+
+  it("Given Game.log says the player was disconnected, Then conditions are empty and the connection is reported, even with fresh frames", () => {
+    const s = new Scenario();
+    s.advanceTo(53_000);
+    expect(s.poll(false).conditions.length).toBeGreaterThan(0);
+    s.connection = {
+      state: "disconnected",
+      since: new Date(s.now - 4000).toISOString(),
+      code: 30028,
+      reason: "Remote Disconnect - player inactive",
+    };
+    const p = s.poll(false);
+    expect(p.state).toBe("live");
+    expect(p.frame_age_ms).toBeLessThan(1500);
+    expect(p.conditions).toEqual([]);
+    expect(p.connection).toEqual(s.connection);
+  });
+
+  it("Given the player is online or the log cannot say, Then conditions stay and no connection is invented", () => {
+    const s = new Scenario();
+    s.advanceTo(53_000);
+    const none = s.poll(false);
+    expect(none.connection).toBeUndefined();
+    s.connection = {
+      state: "online",
+      since: new Date(s.now).toISOString(),
+      code: null,
+      reason: null,
+    };
+    const online = s.poll(false);
+    expect(online.connection?.state).toBe("online");
+    expect(online.conditions).toEqual(none.conditions);
+  });
+
+  it("Given a connection state, Then it never changes the hash of a section (it travels outside the sections)", () => {
+    const s = new Scenario();
+    s.advanceTo(30_000);
+    const before = s.poll(false).hash;
+    s.connection = { state: "menu", since: null, code: null, reason: null };
+    expect(s.poll(false).hash).toEqual(before);
+  });
 });

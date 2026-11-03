@@ -1006,7 +1006,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     void now;
   }
 
-  function renderAlerts(now: number, conds: any[]) {
+  /** `current` is false when the values are greyed: an empty list then means "unknown", never "no alert". */
+  function renderAlerts(now: number, conds: any[], current: boolean) {
     for (let i = 0; i < R.condList.length; i++) {
       const slot = R.condList[i];
       const c = conds[i];
@@ -1028,7 +1029,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       3,
       L.coveredAlertKeys(view.poll),
     );
-    show(R.alertsEmpty, list.length === 0 && conds.length === 0);
+    show(R.alertsEmpty, current && list.length === 0 && conds.length === 0);
     for (let i = 0; i < R.alertList.length; i++) {
       const slot = R.alertList[i];
       const a = list[i];
@@ -1458,7 +1459,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const info = renderStatus(now, conds);
     streamLive = !info.grey;
     renderContext(now);
-    renderAlerts(now, conds);
+    renderAlerts(now, conds, !info.grey);
     R.ledger.render(view.poll && view.poll.ledger, {
       showBalance,
       fullscreen: displayMode === "fullscreen",

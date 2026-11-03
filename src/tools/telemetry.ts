@@ -2,6 +2,12 @@ import { z } from "zod";
 import { MAX_OUTPUT_CHARS, formatOutputRaw } from "../core/format.js";
 import { TELEMETRY_WARNING } from "../core/telemetryNotice.js";
 import { addNote, recordFetch, setChannel, setGameVersion } from "../core/provenance.js";
+import {
+  describeConnection,
+  notInSession,
+  type ConnectionInfo,
+  type ConnectionTracker,
+} from "../providers/gamelog/connection.js";
 import type { GameLog } from "../providers/gamelog/reader.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
 import type { Weapons } from "../providers/telemetry/normalize.js";
@@ -109,12 +115,32 @@ function stripBalance(snapshot: TelemetrySnapshot, include: boolean) {
   };
 }
 
+/** The connection read from Game.log, with what it means for the data: absent when the log cannot say. */
+async function connectionReport(connection: ConnectionTracker | undefined) {
+  let info: ConnectionInfo | null;
+  try {
+    info = (await connection?.current()) ?? null;
+  } catch {
+    info = null;
+  }
+  if (!info) return undefined;
+  // The game's own `reason` text stays out of what the model reads: the code and the fixed meaning say it all.
+  return {
+    state: info.state,
+    since: info.since,
+    code: info.code,
+    meaning: describeConnection(info),
+  };
+}
+
 export function telemetryTools({
   telemetry,
   gameLog,
+  connection,
 }: {
   telemetry?: Telemetry;
   gameLog?: GameLog;
+  connection?: ConnectionTracker;
 }): ToolDefinition[] {
   const enabled = () => telemetry?.enabled === true;
   const addLogContext = logContext(gameLog);
@@ -132,7 +158,7 @@ export function telemetryTools({
     {
       name: "sc_live_status",
       description:
-        "State of the optional live telemetry: off, waiting, game_without_telemetry, connected, live or incompatible, the cause, the age of the last frame and, when not live, how to enable it. Always safe to call. Telemetry is OFF by default (it needs SC_TELEMETRY=on on the server AND a game-side variable) and is an undocumented game feature; this tool never changes any setting. When it is off, nothing is read and no connection is made. In waiting or connected there is simply no data yet (normal in menus and loading): never say the game is not running or that something is wrong, and offer no troubleshooting unless the state is game_without_telemetry or incompatible. On foot only character data exists; ship data needs the player seated in a ship.",
+        "State of the optional live telemetry: off, waiting, game_without_telemetry, connected, live or incompatible, the cause, the age of the last frame and, when not live, how to enable it. Always safe to call; it never changes a setting. Off by default (needs SC_TELEMETRY=on AND a game-side variable); an undocumented game feature. When off, nothing is read. In waiting or connected there is simply no data yet (normal in menus and loading): never say the game is not running or that something is wrong, and offer no troubleshooting unless the state is game_without_telemetry or incompatible. On foot only character data exists. `connection` (from Game.log, when configured): online, menu, disconnected (for example kicked for inactivity) or closed; if not online the values are not current, say so.",
       inputSchema: { type: "object", properties: {} },
       handler: async (): Promise<ToolResult> => {
         if (!telemetry || !enabled()) {
@@ -149,9 +175,11 @@ export function telemetryTools({
         if (status.last_frame_age_ms !== undefined) {
           recordFetch({ fetchedAt: Date.now() - status.last_frame_age_ms, cache: "network" });
         }
+        const conn = await connectionReport(connection);
         return ok({
           enabled: true,
           ...status,
+          ...(conn ? { connection: conn } : {}),
           ...(status.state === "live" ? {} : { how_to_enable: HOW_TO_ENABLE }),
           limits: LIMITS,
         });
@@ -160,7 +188,7 @@ export function telemetryTools({
     {
       name: "sc_live_state",
       description:
-        "Snapshot of the running game from its local telemetry, only when the user enabled it: ship (name, speed, altitude, heading, hydrogen, boost, g-force, gear, flight modes, power flags, warning lights), weapons per seat, countermeasures, and the pilot (locomotion, health, hunger, thirst, heart rate, atmosphere). Say how old it is (frame_age_ms); fields not sent are left out, never zero. NOT in the stream: position, shield level, hull, heat, ammo, power distribution, quantum fuel. Health 0 is 'down or dead'. The UEC balance is withheld unless include_balance is true (ask the player first). available=false (waiting or connected) means no data yet, normal in menus and loading: never say the game is not running or that something is wrong. On foot only pilot data exists; ship data needs the player seated in a ship. Not advertised when telemetry is off.",
+        "Snapshot of the running game from its local telemetry, only when the user enabled it: ship (name, speed, altitude, heading, hydrogen, boost, g-force, gear, flight modes, power flags, warning lights), weapons per seat, countermeasures, and the pilot (locomotion, health, hunger, thirst, heart rate, atmosphere). Say how old it is (frame_age_ms); fields not sent are left out, never zero. NOT in the stream: position, shield level, hull, heat, ammo, power distribution, quantum fuel. Health 0 is 'down or dead'. The UEC balance is withheld unless include_balance is true (ask the player first). available=false (waiting or connected) means no data yet, normal in menus and loading: never say the game is not running or that something is wrong. On foot only pilot data exists; ship data needs the player seated in a ship. When the game log is configured, `connection` says if the player is online, in the menus, disconnected (for example kicked for inactivity) or has quit: if it is not online, the values are the last ones held and are not current. Not advertised when telemetry is off.",
       inputSchema: {
         type: "object",
         properties: {
@@ -220,19 +248,24 @@ export function telemetryTools({
         if (wanted.has("weapons") && !state.weapons)
           unavailable.push("weapons (no weapons frame: not seated at a weapons seat)");
         if (wanted.has("pilot") && !state.pilot) unavailable.push("pilot");
+        const conn = await connectionReport(connection);
+        const out = notInSession(conn);
         const answer = {
           stream: {
             state: status.state,
             frame_age_ms: snapshot.frame_age_ms,
             received_at: snapshot.received_at,
           },
+          // Present only when Game.log can say it. When the player is not in a server session, everything below is
+          // the last thing the stream held, not the present.
+          ...(conn ? { connection: conn } : {}),
           ...(wanted.has("ship") && state.ship ? { ship: state.ship } : {}),
           ...(wanted.has("pilot") && state.pilot ? { pilot: state.pilot } : {}),
           ...(wanted.has("weapons") && state.weapons
             ? { weapons: cutWeapons(state.weapons, MAX_WEAPONS_SHOWN) }
             : {}),
           derived: state.derived,
-          conditions: state.conditions,
+          conditions: out ? [] : state.conditions,
           ...(include_balance && view.uec_session ? { uec_session: view.uec_session } : {}),
           ...(!include_balance ? { uec_balance: view.uec_balance } : {}),
           not_available: unavailable,

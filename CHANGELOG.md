@@ -23,6 +23,13 @@ versions follow [Semantic Versioning](https://semver.org/).
   history of balance changes for it (no tool returns it). Without the game log the panel says so and points to
   `sc_log_status`. Steps are ticked from the count of objective notices (an estimate) and the balance is read 10 s
   after a contract ends (an assumption); neither has been measured with the real game.
+- **Connection state from `Game.log`.** The stream does not signal a disconnection (a player kicked for inactivity
+  still saw a calm dashboard). A small state machine reads the game's own lines (joined a server, channel cut by the
+  server with its code, back in the menu, quit) and reports `online`, `menu`, `disconnected` (30028 = inactivity) or
+  `closed`: `sc_live_status` and `sc_live_state` carry `connection` with its meaning, `conditions` are emptied, and the
+  dashboard shows a red "Déconnecté du serveur" banner at once, greys the values, feeds no curve and never says "no
+  alert". Checked against a real log: both kicks of the session were found, with the menu and rejoin in between.
+  One `stat` per poll, incremental read, no personal data kept; absent when the log is not configured.
 - **Dashboard v2.** A cockpit for the live dashboard: compact view with three dials, the ship banner, conditions and
   a one-line verdict; full screen with a speed dial (deduced, labelled scale), a G dial, altitude, vertical speed bar,
   compass (only when the heading is valid), 60 second curves, hydrogen with an estimated range, boost, power diagram,

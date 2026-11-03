@@ -7,6 +7,7 @@ import { DashboardService } from "../dashboard/service.js";
 import type { GameLog } from "../providers/gamelog/reader.js";
 import { ShipSpecsResolver } from "../dashboard/specs.js";
 import type { HttpClient } from "../core/http.js";
+import type { ConnectionTracker } from "../providers/gamelog/connection.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
 import { NOT_IN_STREAM } from "../providers/telemetry/normalize.js";
 import type { ResourceDefinition, ToolDefinition, ToolResult } from "./types.js";
@@ -56,10 +57,12 @@ export function dashboardResources({ telemetry }: { telemetry?: Telemetry }): Re
 export function dashboardTools({
   telemetry,
   scwClient,
+  connection,
   gameLog,
 }: {
   telemetry?: Telemetry;
   scwClient?: HttpClient;
+  connection?: ConnectionTracker;
   gameLog?: GameLog;
 }): ToolDefinition[] {
   // The game log only serves the transport ledger: read-only, opt-in, refreshed at most every 5 s in the background.
@@ -69,6 +72,7 @@ export function dashboardTools({
     telemetry,
     Date.now,
     scwClient ? new ShipSpecsResolver(scwClient) : undefined,
+    connection,
     ledger,
   );
   const enabled = () => telemetry?.enabled === true;

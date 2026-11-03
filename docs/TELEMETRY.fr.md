@@ -289,6 +289,20 @@ Ce que devient chaque champ du flux. `poll.` est la réponse de `sc_live_poll` (
 jeu tourne, `Game.log` n'a pas de ligne d'enregistrement : relancez le launcher), `connected` (la session HTTP/2 avec le jeu est ouverte, pas encore
 de trames), `live`, `incompatible` (le jeu répond sous une forme que nous ne connaissons pas : un patch l'a changée).
 
+**État de connexion (depuis `Game.log`).** Le flux ne dit pas quand le joueur est coupé du jeu : il se tait ou répète
+ses dernières valeurs. Quand le journal du jeu est configuré (`SC_INSTALL_DIR` ou `SC_GAME_LOG_PATH`),
+`sc_live_status`, `sc_live_state` et le tableau de bord lisent aussi où en est le joueur vis-à-vis des serveurs, à
+partir des lignes que le jeu écrit (marqueurs vus dans un vrai journal : deux renvois, le menu et la
+reconnexion entre les deux ; chacun est reconnu sur l'étiquette propre de la ligne, donc un mot-marqueur dans un
+texte libre ne peut pas forger un état) : serveur rejoint
+(`online`), coupé par le serveur (`disconnected`, avec le code du jeu, par exemple 30028 pour l'inactivité), retour
+aux menus (`menu`), jeu quitté (`closed`). Quand ce n'est pas `online`, le tableau de bord le dit aussitôt en
+rouge, grise toutes les valeurs et n'affiche plus « Aucune alerte », et les outils disent que les dernières valeurs
+ne sont pas actuelles. Seuls un état, une heure et un code numérique parviennent aux outils (le texte de raison du jeu reste dans la
+page, en simple texte) ; aucun pseudo, aucune adresse, aucun identifiant de session. Un départ volontaire vers le
+menu et un changement de serveur ne sont pas encore vérifiés sur un vrai journal. Un `stat` par interrogation, et seuls les octets ajoutés depuis la
+dernière lecture sont analysés. Sans journal configuré, rien n'est annoncé, ni dans un sens ni dans l'autre.
+
 Le lecteur démarre à la première requête, se reconnecte avec un délai croissant, s'arrête après cinq minutes sans
 requête, et garde tout en mémoire uniquement. Les événements n'existent que pendant le temps où le serveur tournait
 tandis que le jeu envoyait des trames, et ils sont déduits, non rapportés par le jeu.

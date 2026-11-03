@@ -230,6 +230,30 @@ describe("Feature: polling is bounded, adaptive and suspended when nobody looks"
     expect(polls(w).length - start).toBeLessThanOrEqual(15);
   });
 
+  it("Given Game.log says the server kicked the player while frames keep coming, Then the View marks it at once and never says 'Aucune alerte'", async () => {
+    const w = await live();
+    expect(visibleText(w.root)).not.toContain("Déconnecté du serveur");
+    w.scenario.connection = {
+      state: "disconnected",
+      since: new Date(w.scenario.now).toISOString(),
+      code: 30028,
+      reason: "Remote Disconnect - player inactive",
+    };
+    await w.advance(3 * SECOND);
+    expect(w.root.attrs["data-grey"]).toBe("1");
+    expect(w.root.attrs["data-stream"]).toBe("disconnected");
+    const text = visibleText(w.root);
+    expect(text).toContain("Déconnecté du serveur");
+    expect(text).toContain("Renvoyé du serveur pour inactivité");
+    expect(text).not.toContain("Aucune alerte");
+    expect(text).not.toMatch(/En direct/);
+    // Back in a session: the View comes back by itself.
+    w.scenario.connection = { state: "online", since: null, code: null, reason: null };
+    await w.advance(3 * SECOND);
+    expect(w.root.attrs["data-grey"]).toBe("0");
+    expect(visibleText(w.root)).not.toContain("Déconnecté du serveur");
+  });
+
   it("Given the window is hidden, Then polling stops at once; when it comes back, polling resumes", async () => {
     const w = await live();
     w.setHidden(true);
