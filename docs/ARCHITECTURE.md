@@ -69,7 +69,7 @@ ask for by installing the server:
 
 ## The live dashboard (an MCP App)
 
-`sc_live_dashboard` points at a `ui://` resource: one self-contained HTML page that the client renders in an iframe
+`sc_live_dashboard` points at a resource of type ui: one self-contained HTML page that the client renders in an iframe
 and that talks to the host with JSON-RPC over `postMessage` (hand-written, no package). The page calls two tools
 that only it may call (`visibility: ["app"]`): `sc_live_poll` (state, events, session counters as
 `structuredContent`) and `sc_live_mark` (session markers, in memory).

@@ -8,7 +8,7 @@ import type { ResourceDefinition, ToolDefinition, ToolResult } from "./types.js"
 
 /**
  * The live dashboard: an MCP App. `sc_live_dashboard` is the tool the model calls; Claude Desktop then renders the
- * View (one self-contained page, served as the ui:// resource below) in the conversation. The View refreshes itself
+ * View (one self-contained page, served as the resource below, whose address starts with ui:) in the conversation. The View refreshes itself
  * through `sc_live_poll` and writes its session markers through `sc_live_mark`; both are reserved to the View
  * (`visibility: ["app"]`) and the model is told not to call them.
  *
