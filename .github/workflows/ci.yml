@@ -44,6 +44,8 @@ jobs:
       - run: npm ci --ignore-scripts --no-fund
 
       - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
       - run: npm test
       # tsc is both the build and the type gate.
       - run: npm run build

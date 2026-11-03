@@ -1,0 +1,28 @@
+name: Feature request
+description: A tool or improvement that would help players
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do in the game?
+      description: Describe the situation, not the solution ("I want to know which of my ships can haul X to Y").
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like Claude to be able to answer or do?
+  - type: textarea
+    id: source
+    attributes:
+      label: Where could the data come from?
+      description: >
+        A public API, an open dataset, or the player's own files. Scraping websites, reading game memory, automating the
+        game and writing to remote services are out of scope (see SECURITY.md).
+  - type: checkboxes
+    id: willing
+    attributes:
+      label: Contributing
+      options:
+        - label: I would like to try implementing this (see docs/ADDING_A_TOOL.md)

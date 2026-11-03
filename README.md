@@ -74,20 +74,36 @@ npm run build
 3. **Check it.** `npm run check:sources` asks every source for its version and verifies the files and fields
    the tools rely on. In Claude, ask for `sc_data_status`.
 
-## Tools (39), by profile
+## Tools (42)
+
+Full parameter reference: **[docs/TOOLS.md](docs/TOOLS.md)** (generated from the code). By theme:
+
+| Theme                                  | Tools                                                                                                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Freshness**                          | `sc_data_status`: game version per source, age, disagreements, which sources are down                                                                                                                                                                                                                                                                                                           |
+| **Trading** (UEX)                      | `uex_get_trade_routes` (sized to your ship or cargo, profit for the cargo that fits, player reports behind each price), `uex_get_commodity_prices`, `uex_get_commodity_averages`, `uex_get_commodity_ranking`, `uex_get_commodities`, `uex_get_terminals`, `uex_get_terminal_inventory`, `uex_search_marketplace`, `uex_get_ship_prices`, `uex_get_game_versions`, `scw_search_ships_by_vendor` |
+| **Ships and items** (Wiki)             | `scw_get_vehicle`, `scw_get_item`, `scw_get_ship_comparison`, `scw_list_vehicles`, `scw_list_items`, `scw_get_filters`, `scw_search`, `scw_snapshot_save`, `scw_snapshot_list`, `scw_snapshot_diff`, `sc_get_vocabulary`                                                                                                                                                                        |
+| **Missions, crafting, mining** (SCMDB) | `scmdb_search_missions`, `scmdb_search_crafting`, `scmdb_search_mining`, `scmdb_changes`                                                                                                                                                                                                                                                                                                        |
+| **Patches and lore**                   | `sc_patch_notes` (notes of an update, by section or keyword), `sct_search`, `sct_get_article`, `sc_list_builds`, `sc_diff_versions`                                                                                                                                                                                                                                                             |
+| **Your game log** (off by default)     | `sc_log_context` (what you are doing now), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`                                                                                                                                                                                                                                                                                           |
+| **Your fleet**                         | `sc_fleet_get`, `sc_fleet_upsert`, `sc_fleet_remove`                                                                                                                                                                                                                                                                                                                                            |
+| **Your own data files**                | `sc_local_datasets`, `sc_search_local`, `sc_read_local_collection`                                                                                                                                                                                                                                                                                                                              |
+
+### Profiles
 
 `SCMCP_PROFILES` picks what is advertised (comma-separated; unset advertises everything). `sc_data_status`
 is always included. `SCMCP_TOOLS` (explicit names) wins over profiles; an unknown name stops the server
 at startup instead of listing nothing. Scoping is for speed, not security: an unlisted tool can still be called.
 
-| Profile        | Tools                                                                                                                                                                                                                                                                                                             |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **core** (14)  | `sc_data_status`, `uex_get_game_versions`, `uex_get_commodity_prices`, `uex_get_trade_routes`, `uex_get_ship_prices`, `scw_get_vehicle`, `scw_get_item`, `scw_get_ship_comparison`, `scw_search`, `sct_search`, `sct_get_article`, `scmdb_search_missions`, `scmdb_changes`, `sc_fleet_get`                       |
-| **trade** (12) | `sc_data_status`, `uex_get_game_versions`, `uex_get_commodity_prices`, `uex_get_trade_routes`, `uex_get_ship_prices`, `uex_get_commodities`, `uex_get_commodity_averages`, `uex_get_commodity_ranking`, `uex_get_terminals`, `uex_get_terminal_inventory`, `scw_search_ships_by_vendor`, `uex_search_marketplace` |
-| **data** (14)  | `sc_data_status`, `scw_list_vehicles`, `scw_list_items`, `scw_get_filters`, `scw_snapshot_save`, `scw_snapshot_list`, `scw_snapshot_diff`, `scmdb_search_missions`, `scmdb_changes`, `scmdb_search_crafting`, `scmdb_search_mining`, `sc_list_builds`, `sc_diff_versions`, `sc_get_vocabulary`                    |
-| **local** (9)  | `sc_data_status`, `sc_fleet_get`, `sc_fleet_upsert`, `sc_fleet_remove`, `sc_log_status`, `sc_log_recent_events`, `sc_local_datasets`, `sc_search_local`, `sc_read_local_collection`                                                                                                                               |
+| Profile   | Tools | For                                                                                  |
+| --------- | ----- | ------------------------------------------------------------------------------------ |
+| **core**  | 14    | The everyday copilot: status, ships, trade basics, missions, patch notes, your fleet |
+| **trade** | 12    | The full UEX market toolbox                                                          |
+| **data**  | 16    | Reference data, crafting, mining, patch history, wiki browsing                       |
+| **local** | 11    | Your game log, your fleet, your own data files                                       |
 
-When to use which is in [CLAUDE.md](CLAUDE.md); each tool's description says what it returns and its limits.
+When to use which is in [docs/USING_WITH_CLAUDE.md](docs/USING_WITH_CLAUDE.md); each tool's description says
+what it returns and its limits.
 
 ## Configuration
 
@@ -106,13 +122,19 @@ When to use which is in [CLAUDE.md](CLAUDE.md); each tool's description says wha
 
 ## The game log
 
-Off until you set `SC_INSTALL_DIR` or `SC_GAME_LOG_PATH`. Read-only, no lock (the game keeps writing),
-no network code, personal data never captured (no handle, account id or personal path in any answer).
-Reported, because they were seen in real logs of this install across patches 4.0 to 4.10: session start and
-quit, login, jurisdiction and zone changes, contracts accepted and completed, objectives, shop purchases,
-insurance claims, hangar requests. **Not in the log, so never reported:** quantum travel, combat and kills,
-wallet balance, your position, a death. Unknown lines are ignored and counted. CIG does not guarantee the
-format; `npm run check:sources` shows if the header still parses.
+Off until you set `SC_INSTALL_DIR` or `SC_GAME_LOG_PATH`. Read-only, no lock (the game keeps writing), no
+network code, personal data never captured (no handle, account id or personal path in any answer).
+
+Reported, because each was seen in real logs of this install across patches 4.0 to 4.10: session start and quit,
+login, jurisdiction and zone changes (armistice, monitored space, private property), contracts accepted, completed,
+failed or abandoned (followed through their mission id), objectives, hauling pickups and drop-offs, blueprints
+received, shop purchases, insurance claims, hangar requests and queue, the ship whose comms channel you joined or
+left, and jump-point transits between systems. `sc_log_context` turns these into "what am I doing now", and
+`sc_log_sessions` into a table of your recent sessions.
+
+**Not in the log, so never reported:** ordinary quantum travel, combat and kills, wallet balance, your position, a
+death. Every context field is "the last time the game logged it", not a live reading. Unknown lines are ignored and
+counted. CIG does not guarantee the format; `npm run check:sources` shows if the header still parses.
 
 ## Limits you should know
 

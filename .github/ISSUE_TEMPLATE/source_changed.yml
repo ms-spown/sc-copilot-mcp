@@ -1,0 +1,35 @@
+name: A data source changed or broke
+description: UEX, the wiki, SCMDB or the game log format moved after a patch
+labels: ["data-source"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the most useful kind of report after a patch. Run `npm run check:sources` first: it names the file and
+        field that changed. Do not paste raw game logs; a few lines with your handle, ids and paths removed are enough.
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source
+      options: [UEX, Star Citizen Wiki API, starcitizen.tools, SCMDB, Patch dumps, Game.log, Other]
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Game version and build
+      description: For example 4.10.2, build 12881860
+    validations:
+      required: true
+  - type: textarea
+    id: what-changed
+    attributes:
+      label: What changed
+      description: The failing check line, or the error message ("unexpected shape at …"), and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: sample
+    attributes:
+      label: A small anonymised sample of the new shape, if you have one
+      render: text

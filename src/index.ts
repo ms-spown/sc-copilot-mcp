@@ -1,10 +1,7 @@
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import dotenv from "dotenv";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./core/config.js";
-import { VERSION } from "./core/useragent.js";
 import { createGameVersionResolver, createProbes } from "./providers/probes.js";
 import { FleetStore, fleetFilePath } from "./providers/fleet/store.js";
 import { GameLog, gameLogConfigFromEnv } from "./providers/gamelog/reader.js";
@@ -12,6 +9,7 @@ import { createScmdb } from "./providers/scmdb/client.js";
 import { createSctClient } from "./providers/sctools/client.js";
 import { createUexClient } from "./providers/uex/client.js";
 import { createScwClient } from "./providers/wiki/client.js";
+import { createMcpServer } from "./server.js";
 import { allTools, createRegistry } from "./tools/registry.js";
 
 // The .env next to the package, never the one in the working directory: Claude starts the
@@ -40,24 +38,7 @@ const registry = createRegistry(
   { gameVersionFor: createGameVersionResolver(clients) },
 );
 
-const server = new Server(
-  {
-    name: "star-citizen-mcp",
-    version: VERSION,
-  },
-  {
-    capabilities: {
-      tools: {},
-    },
-  },
-);
-
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: registry.list() }));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-  return registry.call(name, args);
-});
+const server = createMcpServer(registry);
 
 /**
  * Start the server.

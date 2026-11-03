@@ -3,12 +3,24 @@
 This is a small personal project; changes go straight to `main` while only the maintainer works on it.
 Keep commits small and clear.
 
+## Where to start
+
+- **Architecture and rules:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- **Adding a tool, step by step:** [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md).
+- **Good first issues:** after a patch, run `npm run check:sources` and fix what it flags; or improve a tool's
+  description or its tests. Please read the [code of conduct](CODE_OF_CONDUCT.md) and, before touching anything
+  that reaches the network or handles text from players, [SECURITY.md](SECURITY.md).
+- **Style:** behaviour is specified as Given/When/Then scenarios in `*.behaviour.test.ts` files; commits are small,
+  with a message that says why. Formatting is Prettier (`npm run format`), checked in CI.
+
 ## Before you commit
 
 ```bash
 npm ci --ignore-scripts
-npm run lint && npm test && npm run build && npm run audit:prod
+npm run lint && npm run format:check && npm run typecheck && npm test && npm run build && npm run audit:prod
 ```
+
+Generated files: after changing a tool run `npm run golden:update` and `npm run docs:tools` (tests fail if you forget).
 
 Tests must not use the network or real game data. Use fake clients, temp folders and hand-made fixtures. A new
 tool needs: its definition and handler in `src/tools/`, an entry in `src/tools/catalog.ts` (source, kind, trust,

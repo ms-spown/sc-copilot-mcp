@@ -28,6 +28,8 @@ src/providers/  uex, wiki, sctools (clients) · scmdb (store + queries) · gamel
 src/tools/      one file per group (definition + handler together), catalog.ts (provenance + profiles),
                 registry.ts (envelope, scoping), status.ts (sc_data_status)
 src/install/    mergeConfig (pure planning of the Claude Desktop config merge)
+src/server.ts   MCP server around a registry (tests connect to it in memory; index.ts adds stdio)
+src/e2e/        protocol-level behaviour tests; src/docs/ generator of docs/TOOLS.md
 scripts/        install-claude-desktop.mjs, check-sources.mjs, mcp-probe.mjs (stale, see CONTRIBUTING)
 ```
 
@@ -39,8 +41,9 @@ scripts/        install-claude-desktop.mjs, check-sources.mjs, mcp-probe.mjs (st
   under 15 tools (a test enforces it). Untrusted free text gets `trust: "untrusted_text"`.
 - `formatOutput` strips nulls, zeros and every `id_*` / `*_min|max|avg|week|month` key. Use `formatOutputRaw`
   when those are real data (routes, SCMDB, log events). The provenance envelope is built outside it.
-- Tool names and input schemas are frozen by `src/tools/tools-surface.golden.json`. Changing one on purpose means
-  regenerating that file in the same commit and saying why.
+- Tool names and input schemas are frozen by `src/tools/tools-surface.golden.json` (`npm run golden:update`);
+  `docs/TOOLS.md` is generated (`npm run docs:tools`) and every tool must be in the README theme table. Tests
+  enforce all three.
 - Tests never use the network and never real game data: fake clients, temp dirs, hand-made fixtures.
 - Windows is the primary target: no `process.cwd()` defaults, use `core/paths.ts`; CI runs on Windows.
 - This tool shell rejects here-docs containing backticks; write such scripts to a file first.

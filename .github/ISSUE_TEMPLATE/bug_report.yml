@@ -1,0 +1,41 @@
+name: Bug report
+description: Something does not work as described
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Never paste tokens, your `.env`, your Claude config, or a raw `Game.log`** (it contains your handle).
+        If something looks like a security problem, use the private "Report a vulnerability" link on the Security tab instead.
+  - type: input
+    id: tool
+    attributes:
+      label: Tool or feature
+      description: The tool name (for example `uex_get_trade_routes`) or the script
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+      description: Include the arguments you passed and the answer or error you got (redact anything personal).
+    validations:
+      required: true
+  - type: textarea
+    id: provenance
+    attributes:
+      label: The `provenance` block of the answer, if there was one
+      description: Source, channel, game_version, data_age, stale. It tells us whether the data or the code is at fault.
+      render: json
+  - type: textarea
+    id: status
+    attributes:
+      label: Output of `sc_data_status` or `npm run check:sources`
+      render: text
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version, Claude client, and the commit or version of this project
+    validations:
+      required: true

@@ -1,0 +1,7 @@
+# Everything is reviewed by the maintainer. Security-sensitive files are listed so they are never missed.
+*                          @ms-spown
+/src/core/http.ts          @ms-spown
+/src/core/untrusted.ts     @ms-spown
+/.github/                  @ms-spown
+/SECURITY.md               @ms-spown
+/THIRD_PARTY.md            @ms-spown
