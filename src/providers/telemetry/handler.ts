@@ -25,6 +25,8 @@ const GROUND_VEHICLE_AFTER_MS = 12_000;
  * the ship"; a section silent for longer than this really is gone.
  */
 const SECTION_TTL_MS = 3000;
+/** Countermeasure kinds tracked at once. */
+const MAX_COUNTERMEASURE_KINDS = 8;
 
 export interface Thresholds {
   health_low: number;
@@ -486,7 +488,8 @@ export class TelemetryHandler {
     for (const [kind, count] of Object.entries(weapons.countermeasures)) {
       const known = this.cm.get(kind);
       if (!known) {
-        this.cm.set(kind, { count, burst: 0 });
+        // The schema has two kinds; a program inventing more must not make this map (copied on every frame) grow.
+        if (this.cm.size < MAX_COUNTERMEASURE_KINDS) this.cm.set(kind, { count, burst: 0 });
         continue;
       }
       const previous = known.count;
