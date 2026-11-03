@@ -1,4 +1,5 @@
 import { isObject } from "../../core/format.js";
+import { stripTags } from "../../core/text.js";
 
 /** One readable search hit. The text is community-written: the registry fences it as untrusted. */
 export interface SearchResult {
@@ -32,11 +33,13 @@ function decodeEntities(text: string): string {
 }
 
 /**
- * MediaWiki snippets are HTML: the match is wrapped in a span. Drop the tags first, then decode
- * the entities, then never leave a "<" or ">" behind: decoding must not bring a tag back.
+ * MediaWiki snippets are HTML: the match is wrapped in a span. Remove the tags until the text stops
+ * changing (one pass can assemble a new tag out of what surrounds a removed one), then remove every
+ * "<" and ">" left, then decode the entities, then remove the "<" and ">" the decoding produced:
+ * "&lt;script&gt;" ends up as the harmless words "script", never as a tag.
  */
 export function cleanSnippet(html: string, max: number = MAX_EXCERPT): string {
-  const text = decodeEntities(html.replace(/<[^>]*>/g, ""))
+  const text = decodeEntities(stripTags(html).replace(/[<>]/g, ""))
     .replace(/[<>]/g, "")
     .replace(/\s+/g, " ")
     .trim();
