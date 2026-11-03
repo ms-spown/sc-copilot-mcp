@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "./core/config.js";
 import { createGameVersionResolver, createProbes } from "./providers/probes.js";
 import { FleetStore, fleetFilePath } from "./providers/fleet/store.js";
+import { ConnectionTracker } from "./providers/gamelog/connection.js";
 import { GameLog, gameLogConfigFromEnv } from "./providers/gamelog/reader.js";
 import { createGameLogHint } from "./providers/telemetry/gamelogHint.js";
 import { createTelemetry } from "./providers/telemetry/index.js";
@@ -32,6 +33,8 @@ const clients = {
   sctClient: createSctClient(config.sctBaseUrl),
   scmdb: createScmdb(),
   gameLog,
+  // Lazy: nothing is read until a live tool or the dashboard asks.
+  connection: new ConnectionTracker(gameLog),
   fleet: new FleetStore(fleetFilePath()),
   // Off unless SC_TELEMETRY=on. When off this loads nothing and never connects.
   telemetry: createTelemetry({

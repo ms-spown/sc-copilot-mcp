@@ -1,3 +1,4 @@
+import { notInSession, type ConnectionInfo } from "../providers/gamelog/connectionState.js";
 import type { TelemetryEvent } from "../providers/telemetry/events.js";
 import type { Condition } from "../providers/telemetry/handler.js";
 import type { Pilot, Ship, Weapons } from "../providers/telemetry/normalize.js";
@@ -73,6 +74,12 @@ export interface PollResult {
    * attention AND when the stream is not live: a stale state is never presented as current.
    */
   conditions: Condition[];
+  /**
+   * Where the player stands towards the game servers, from the lines Game.log writes (the stream does not say it: it
+   * goes quiet or repeats its last values). Absent when the game log is not configured or cannot be read. When it
+   * says `disconnected`, `menu` or `closed`, the values are not current and `conditions` is empty.
+   */
+  connection?: ConnectionInfo;
   /**
    * Present in the stream but never verified live (field test): the View labels each one "non vérifié". Only values
    * the game really sent (a default value of a field that is never filled is left out).
@@ -226,6 +233,8 @@ export interface PollInput {
   nowMs: number;
   /** What the wiki says about the ship being flown (specs.ts). Never fetched here: the caller passes what it has. */
   specs?: ShipSpecs;
+  /** The connection state read from Game.log (connection.ts), when the log is available. */
+  connection?: ConnectionInfo | null;
 }
 
 const publicEvent = (e: TelemetryEvent): PublicEvent => ({
@@ -319,9 +328,23 @@ function buildAnswer(input: PollInput): PollResult {
     ...(input.specs && state?.ship ? { specs: input.specs } : {}),
     derived: state ? { ...state.derived } : null,
     conditions:
-      snapshot && state && status.state === "live" && snapshot.frame_age_ms <= LIVE_CONDITIONS_MS
+      snapshot &&
+      state &&
+      status.state === "live" &&
+      snapshot.frame_age_ms <= LIVE_CONDITIONS_MS &&
+      !notInSession(input.connection)
         ? state.conditions
         : [],
+    ...(input.connection
+      ? {
+          connection: {
+            state: input.connection.state,
+            since: input.connection.since,
+            code: input.connection.code,
+            reason: input.connection.reason,
+          },
+        }
+      : {}),
     unverified: publicUnverified(state),
     not_available: unavailable,
     events: input.events.map(publicEvent),

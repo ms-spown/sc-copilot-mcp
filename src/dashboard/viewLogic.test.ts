@@ -155,6 +155,104 @@ describe("Feature: what to say about the stream", () => {
     expect(view(poll({ frame_age_ms: 100 }), T0 + 8000)).toMatchObject({ id: "stale", grey: true });
   });
 
+  describe("Given Game.log says where the player stands", () => {
+    const conn = (over: Record<string, unknown>) => ({
+      state: "disconnected",
+      since: "2026-11-03T11:57:00.000Z",
+      code: null,
+      reason: null,
+      ...over,
+    });
+
+    it("Then a kick for inactivity is marked at once, in red, greyed, even with fresh frames", () => {
+      const info = view(
+        poll({
+          frame_age_ms: 100,
+          connection: conn({ code: 30028, reason: "Remote Disconnect - player inactive" }),
+        }),
+      );
+      expect(info).toMatchObject({ id: "disconnected", tone: "bad", grey: true });
+      expect(info.label).toBe("Déconnecté du serveur");
+      expect(info.detail).toContain("Renvoyé du serveur pour inactivité, il y a 3 min 00");
+    });
+
+    it("Then another cut says its code and the game's reason, and never 'inactivité'", () => {
+      const info = view(poll({ connection: conn({ code: 30007, reason: "Server shutdown" }) }));
+      expect(info.detail).toContain("(code 30007)");
+      expect(info.detail).toContain("Raison donnée par le jeu : Server shutdown.");
+      expect(info.detail).not.toContain("inactivité");
+    });
+
+    it("Then the menu and a closed game are told apart, neutrally, and only the quit line says closed", () => {
+      expect(view(poll({ connection: conn({ state: "menu" }) }))).toMatchObject({
+        id: "menu",
+        tone: "neutral",
+        grey: true,
+        label: "Dans les menus",
+      });
+      expect(view(poll({ connection: conn({ state: "closed" }) })).label).toBe("Jeu fermé");
+      for (const state of ["disconnected", "menu"]) {
+        const info = view(poll({ connection: conn({ state }) }));
+        expect(info.label + " " + info.detail).not.toMatch(/ne tourne pas|Jeu fermé/);
+      }
+    });
+
+    it("Then online or unknown change nothing: the stream's own state decides", () => {
+      expect(view(poll({ connection: conn({ state: "online" }) }))).toMatchObject({
+        id: "live",
+        grey: false,
+      });
+      expect(view(poll({ connection: conn({ state: "unknown", since: null }) }))).toMatchObject({
+        id: "live",
+        grey: false,
+      });
+    });
+
+    it("Then the states that mean 'no telemetry at all' are not overridden", () => {
+      for (const state of ["off", "game_without_telemetry", "incompatible"]) {
+        expect(view(poll({ state, connection: conn({}) })).id).toBe(state);
+      }
+    });
+
+    it("Then no curve is fed while the player is out of the session", () => {
+      const pilot = { health: { current: 0.5, max: 1, percent: 50 } };
+      const live = L.reducePoll(L.initialViewState(), poll({ pilot }), T0);
+      const out = L.reducePoll(L.initialViewState(), poll({ pilot, connection: conn({}) }), T0);
+      expect(live.series.health).toHaveLength(1);
+      expect(out.series.health).toBeUndefined();
+    });
+
+    it("Then the poll is cleaned: only a known state, a UTC time, an integer code and a short safe reason pass", () => {
+      const good = L.cleanPoll(
+        poll({ connection: conn({ code: 30028, reason: "Remote Disconnect - player inactive" }) }),
+      );
+      expect(good.connection).toEqual({
+        state: "disconnected",
+        since: "2026-11-03T11:57:00.000Z",
+        code: 30028,
+        reason: "Remote Disconnect - player inactive",
+      });
+      const hostile = L.cleanPoll(
+        poll({
+          connection: {
+            state: "disconnected",
+            since: "<b>x</b>",
+            code: "30028",
+            reason: "<img src=x onerror=1>",
+          },
+        }),
+      );
+      expect(hostile.connection).toEqual({
+        state: "disconnected",
+        since: null,
+        code: null,
+        reason: null,
+      });
+      expect(L.cleanPoll(poll({ connection: { state: "owned" } })).connection).toBeUndefined();
+      expect(L.cleanPoll(poll({ connection: "disconnected" })).connection).toBeUndefined();
+    });
+  });
+
   it("Given no answer yet or a failing link, Then it is greyed too", () => {
     expect(L.streamInfo(L.initialViewState(), T0)).toMatchObject({ id: "init", grey: true });
     const s = L.reducePollError(L.initialViewState(), "boom", T0);

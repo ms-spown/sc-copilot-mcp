@@ -1,3 +1,4 @@
+import type { ConnectionInfo } from "../providers/gamelog/connectionState.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
 import { POLL_CACHE_MS, POLL_EVENT_COUNT } from "./constants.js";
 import {
@@ -47,6 +48,8 @@ export class DashboardService {
     private readonly now: () => number = Date.now,
     /** Looks up the wiki sheet of the flown ship in the background (specs.ts). Absent: no `specs` in the answer. */
     private readonly specs?: ShipSpecsResolver,
+    /** Where the player stands towards the servers, from Game.log (one `stat` per poll). Absent: no `connection`. */
+    private readonly connection?: { current(): Promise<ConnectionInfo | null> },
   ) {}
 
   get enabled(): boolean {
@@ -95,10 +98,13 @@ export class DashboardService {
     // Only reached with telemetry on (the off answer returned above). Answers from memory: it never waits for the wiki.
     const className = snapshot?.state.ship?.class_name;
     const specs = className ? this.specs?.current(className, nowMs) : undefined;
+    // A failed log read must never break the poll: the connection is then simply not reported.
+    const connection = await this.connection?.current().catch(() => null);
     const answer = buildPoll({
       status,
       snapshot,
       ...(specs ? { specs } : {}),
+      ...(connection ? { connection } : {}),
       events: recent.events,
       lastSeq: recent.last_seq,
       sessionEvents,

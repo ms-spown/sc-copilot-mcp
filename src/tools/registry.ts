@@ -1,5 +1,6 @@
 import { toErrorResult } from "../core/errors.js";
 import type { FleetStore } from "../providers/fleet/store.js";
+import type { ConnectionTracker } from "../providers/gamelog/connection.js";
 import type { GameLog } from "../providers/gamelog/reader.js";
 import type { Scmdb } from "../providers/scmdb/store.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
@@ -48,6 +49,8 @@ export interface ToolClients {
   fleet: FleetStore;
   /** Optional live telemetry. Absent or disabled: its tools say so and nothing connects. */
   telemetry?: Telemetry;
+  /** Follows the end of Game.log for the player's connection to the servers. Absent: it is simply not reported. */
+  connection?: ConnectionTracker;
 }
 
 /** Every tool this server implements, before any scoping. */

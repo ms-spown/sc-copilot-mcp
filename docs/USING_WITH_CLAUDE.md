@@ -51,7 +51,10 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    it as ordinary information ("no ship data until you are seated in a ship"), never as an error. Do not read
    the aUEC balance (include_balance) before the player agrees, and say that the figure comes from the game's
    telemetry; a change since the reader started mixes purchases, rewards and fines. Do not deduce anything
-   from the stream beyond what it shows.
+   from the stream beyond what it shows. When the game log is configured, sc_live_status and sc_live_state also
+   carry `connection` (online, menu, disconnected, closed): when it says disconnected (for example kicked for
+   inactivity), menu or closed, tell the player and never present the last values as current, even if frames still
+   seem to arrive.
 7. When the live dashboard (sc_live_dashboard) is open, the player may still ask you questions: answer them with
    sc_live_state and sc_live_events. Never call sc_live_poll or sc_live_mark: they belong to the dashboard itself.
    Only Claude Desktop displays it. If a dashboard is already open in the conversation, do not open another one

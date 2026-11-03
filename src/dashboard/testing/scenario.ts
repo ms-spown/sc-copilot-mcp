@@ -7,6 +7,7 @@
  * ship, 16 take-off and climb, 30-48 cruise, 48-60 quantum jump, 60-80 combat (shields down, hostile lock,
  * countermeasures spent, health drops), 80-90 landing, 90 a sale (the balance jumps), 100-110 the stream is cut.
  */
+import type { ConnectionInfo } from "../../providers/gamelog/connectionState.js";
 import { EventBuffer } from "../../providers/telemetry/events.js";
 import { DEFAULT_THRESHOLDS, TelemetryHandler } from "../../providers/telemetry/handler.js";
 import { NOT_IN_STREAM, normalizeFrame } from "../../providers/telemetry/normalize.js";
@@ -180,6 +181,8 @@ export class Scenario {
   specs: ShipSpecs | null = null;
   /** Stop delivering frames (the stream is cut) without ending the story. */
   cut = false;
+  /** What Game.log says about the connection (connection.ts). null: the log is not available. */
+  connection: ConnectionInfo | null = null;
   /** Virtual time in milliseconds from the start of the story. */
   t = 0;
 
@@ -293,6 +296,7 @@ export class Scenario {
       includeBalance,
       nowMs: this.now,
       ...(this.specs ? { specs: this.specs } : {}),
+      connection: this.connection,
     });
     return tailorPoll(this.forced === "off" ? { ...result, enabled: false } : result, {
       includeBalance,
