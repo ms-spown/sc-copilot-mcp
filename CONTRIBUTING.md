@@ -159,7 +159,7 @@ npm run lint && npm run format:check && npm run typecheck && npm test && npm run
 Generated files: after changing a tool run `npm run golden:update` and `npm run docs:tools` (tests fail if you
 forget).
 
-Tests must not use the network or real game data. Use fake clients, temp folders and hand-made fixtures. A new
+Tests must not use the network or real game data, and the suite fails a test that tries (`vitest.setup.ts`). Use fake clients, temp folders and hand-made fixtures. A new
 tool needs: its definition and handler in `src/tools/`, an entry in `src/tools/catalog.ts` (source, kind, trust,
 channel, profiles), tests, and a refreshed `src/tools/tools-surface.golden.json` (see CLAUDE.md). Never add a
 host except in `ALLOWED_HOSTS`, never a remote write, and read `SECURITY.md` and `THIRD_PARTY.md` first.

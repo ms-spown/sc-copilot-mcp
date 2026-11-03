@@ -6,6 +6,7 @@ import type { HttpClient } from "../core/http.js";
 import { FleetStore } from "../providers/fleet/store.js";
 import { GameLog } from "../providers/gamelog/reader.js";
 import { createProbes } from "../providers/probes.js";
+import { NO_NETWORK } from "../providers/probes.testing.js";
 import { Scmdb } from "../providers/scmdb/store.js";
 import { createTelemetry, type Telemetry } from "../providers/telemetry/index.js";
 import { actorField, frame, vehicleField } from "../providers/telemetry/testing/encode.js";
@@ -52,7 +53,7 @@ async function connect(
   caps: Record<string, unknown> = {},
   selection: Selection = {},
 ) {
-  const registry = createRegistry(allTools(c, createProbes(c)), selection, {
+  const registry = createRegistry(allTools(c, createProbes(c, NO_NETWORK)), selection, {
     resources: allResources(c),
   });
   const server = createMcpServer(registry);
