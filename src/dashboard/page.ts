@@ -1,3 +1,5 @@
+import { LEDGER_VIEW_FUNCTIONS } from "./ledgerPanel.js";
+import { LEDGER_CSS } from "./ledgerStyles.js";
 import { dashboardMain } from "./viewApp.js";
 import { VIEW_FUNCTIONS } from "./viewLogic.js";
 import { VIEW_CSS } from "./viewStyles.js";
@@ -14,8 +16,10 @@ const CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'";
 
 export function viewScript(): string {
-  const functions = VIEW_FUNCTIONS.map((f) => f.toString()).join("\n");
-  const names = VIEW_FUNCTIONS.map((f) => f.name).join(", ");
+  // The transport ledger panel is a module of its own (ledgerPanel.ts), compiled into the page the same way.
+  const all = [...VIEW_FUNCTIONS, ...LEDGER_VIEW_FUNCTIONS];
+  const functions = all.map((f) => f.toString()).join("\n");
+  const names = all.map((f) => f.name).join(", ");
   return [
     '"use strict";',
     "(function () {",
@@ -40,7 +44,7 @@ export function dashboardHtml(): string {
     '<meta name="color-scheme" content="light dark">',
     `<meta http-equiv="Content-Security-Policy" content="${CSP}">`,
     "<title>Tableau de bord en direct</title>",
-    `<style>${VIEW_CSS}</style>`,
+    `<style>${VIEW_CSS}${LEDGER_CSS}</style>`,
     "</head>",
     "<body>",
     '<div id="app" data-stream="init" data-mode="inline" data-grey="1"></div>',

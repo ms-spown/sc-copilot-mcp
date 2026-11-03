@@ -1,6 +1,7 @@
 import type { TelemetryEvent } from "../providers/telemetry/events.js";
 import type { Pilot, Ship, Weapons } from "../providers/telemetry/normalize.js";
 import type { TelemetrySnapshot, TelemetryStatusReport } from "../providers/telemetry/service.js";
+import type { LedgerPayload } from "./ledger.js";
 
 /**
  * What the View receives from sc_live_poll (as `structuredContent`, which the host does not add to the model's
@@ -63,6 +64,8 @@ export interface PollResult {
   /** Present only when the View asked for it (after the player clicked "show balance"). */
   balance?: { uec: number | string; delta: number | null; since: string | null };
   not_in_stream: readonly string[];
+  /** The transport ledger (ledger.ts): contracts of the game session, with balance-derived figures only on request. */
+  ledger?: LedgerPayload;
   /** Present only when the answer had to be cut to stay bounded. */
   truncated?: string;
 }

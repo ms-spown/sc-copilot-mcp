@@ -1,9 +1,17 @@
 import type { Telemetry } from "../providers/telemetry/index.js";
 import { POLL_CACHE_MS, POLL_EVENT_COUNT } from "./constants.js";
 import {
+  buildLedgerPayload,
+  EMPTY_LEDGER,
+  LEDGER_BUDGET_CHARS,
+  type PlanForLedger,
+} from "./ledger.js";
+import type { LedgerService } from "./ledgerService.js";
+import {
   boundPoll,
   buildPoll,
   EMPTY_SESSION,
+  MAX_POLL_CHARS,
   offPoll,
   type PollResult,
   type SessionMarker,
@@ -37,13 +45,23 @@ export class DashboardService {
   private session: SessionState = { ...EMPTY_SESSION, markers: [] };
   private cache = new Map<boolean, { at: number; result: Promise<PollResult> }>();
 
+  private plan: PlanForLedger | undefined;
+
   constructor(
     private readonly telemetry: Telemetry | undefined,
     private readonly now: () => number = Date.now,
+    /** The transport ledger's reader. Without one the ledger says it is off. */
+    private readonly ledger?: LedgerService,
   ) {}
 
   get enabled(): boolean {
     return this.telemetry?.enabled === true;
+  }
+
+  /** The route plan Claude passed when it opened the dashboard (memory only), for the ledger's planned/measured. */
+  setPlan(plan: PlanForLedger | undefined): void {
+    this.plan = plan;
+    this.cache.clear();
   }
 
   poll(includeBalance: boolean): Promise<PollResult> {
@@ -89,7 +107,17 @@ export class DashboardService {
       includeBalance,
       nowMs,
     });
-    return boundPoll(answer);
+    // The ledger keeps its own budget, so the whole answer stays under MAX_POLL_CHARS whatever either side holds.
+    const bounded = boundPoll(answer, MAX_POLL_CHARS - LEDGER_BUDGET_CHARS);
+    return { ...bounded, ledger: await this.ledgerPayload(telemetry, includeBalance, nowMs) };
+  }
+
+  /** The ledger as last computed (never waits for the log), with balance figures only when asked. */
+  private async ledgerPayload(telemetry: Telemetry, includeBalance: boolean, nowMs: number) {
+    const base = this.ledger ? this.ledger.state() : EMPTY_LEDGER;
+    const history =
+      includeBalance && telemetry.balanceHistory ? await telemetry.balanceHistory() : [];
+    return buildLedgerPayload({ base, history, includeBalance, plan: this.plan, nowMs });
   }
 
   /** Session markers. Memory only. Never sent to the game. */

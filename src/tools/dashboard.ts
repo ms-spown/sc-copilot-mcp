@@ -2,7 +2,9 @@ import { z } from "zod";
 import { DASHBOARD_URI, PLAN_TEXT_MAX, UI_MIME_TYPE } from "../dashboard/constants.js";
 import { dashboardHtml } from "../dashboard/page.js";
 import { parsePlan } from "../dashboard/plan.js";
+import { ledgerLogFrom, LedgerService } from "../dashboard/ledgerService.js";
 import { DashboardService } from "../dashboard/service.js";
+import type { GameLog } from "../providers/gamelog/reader.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
 import type { ResourceDefinition, ToolDefinition, ToolResult } from "./types.js";
 
@@ -44,8 +46,15 @@ export function dashboardResources({ telemetry }: { telemetry?: Telemetry }): Re
   ];
 }
 
-export function dashboardTools({ telemetry }: { telemetry?: Telemetry }): ToolDefinition[] {
-  const service = new DashboardService(telemetry);
+export function dashboardTools({
+  telemetry,
+  gameLog,
+}: {
+  telemetry?: Telemetry;
+  gameLog?: GameLog;
+}): ToolDefinition[] {
+  const ledger = gameLog ? new LedgerService(ledgerLogFrom(gameLog)) : undefined;
+  const service = new DashboardService(telemetry, Date.now, ledger);
   const enabled = () => telemetry?.enabled === true;
 
   return [
@@ -78,6 +87,8 @@ export function dashboardTools({ telemetry }: { telemetry?: Telemetry }): ToolDe
         if (!enabled()) return off();
         const { plan } = z.object({ plan: z.unknown().optional() }).parse(args || {});
         const clean = parsePlan(plan);
+        // Memory only: lets the transport ledger put the planned profit next to the measured one.
+        service.setPlan(clean);
         return {
           content: [
             {

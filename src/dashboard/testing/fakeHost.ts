@@ -67,7 +67,7 @@ export function createFakeHost(options: HostOptions) {
     marks: [],
   };
   /** Set by a test to change what the next polls answer. */
-  const overrides: { poll?: (base: any) => any } = {};
+  const overrides: { poll?: (base: any, includeBalance: boolean) => any } = {};
 
   const hostContext = (theme: "light" | "dark") => ({
     theme,
@@ -121,7 +121,7 @@ export function createFakeHost(options: HostOptions) {
             const include = params.arguments?.include_balance === true;
             log.polls.push({ includeBalance: include, at: nowMs });
             const base = scenario.poll(include);
-            const structuredContent = overrides.poll ? overrides.poll(base) : base;
+            const structuredContent = overrides.poll ? overrides.poll(base, include) : base;
             respond(id, {
               content: [{ type: "text", text: `live dashboard poll: ${base.state}` }],
               structuredContent,

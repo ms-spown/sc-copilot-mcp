@@ -536,7 +536,11 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.sr.setAttribute("role", "status");
     R.sr.setAttribute("aria-live", "polite");
 
-    add(root, R.top, R.notice, R.alerts, R.tiles, R.full, R.live, R.sr);
+    // Transport ledger (ledgerPanel.ts): a compact line under the alerts, a card in the full-screen grid
+    R.ledger = L.ledgerPanel(doc, L);
+    add(R.full, R.ledger.card);
+
+    add(root, R.top, R.notice, R.alerts, R.ledger.line, R.tiles, R.full, R.live, R.sr);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1047,6 +1051,11 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     renderStatus(now);
     renderTiles(now);
     renderAlerts(now);
+    R.ledger.render(view.poll && view.poll.ledger, {
+      showBalance,
+      fullscreen: displayMode === "fullscreen",
+      now,
+    });
     if (displayMode === "fullscreen") renderFull(now);
     reportSize();
   }
@@ -1246,7 +1255,10 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     if (!showBalance && view.poll) {
       // Hidden again: forget it here too. The next answers will not carry it.
       view = Object.assign({}, view, {
-        poll: Object.assign({}, view.poll, { balance: undefined }),
+        poll: Object.assign({}, view.poll, {
+          balance: undefined,
+          ledger: L.ledgerStripBalance(view.poll.ledger),
+        }),
       });
     }
     render();
