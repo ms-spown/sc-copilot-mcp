@@ -170,4 +170,3 @@ export function summarizeList(
     note: "Summary view. Use scw_get_vehicle or scw_get_item by name for the full record.",
   };
 }
-

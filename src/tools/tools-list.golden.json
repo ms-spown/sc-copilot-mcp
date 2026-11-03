@@ -1,0 +1,675 @@
+[
+  {
+    "name": "sc_diff_versions",
+    "description": "Compare game data between any two patch versions. Reports what was added, removed, and changed. Pass item_name to get every changed field for one ship/weapon/component, otherwise returns a summary with the most-changed entries. This is the tool for questions like 'what changed for X between 4.9 and 4.10'.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "dataset": {
+          "type": "string",
+          "enum": [
+            "ships",
+            "ship-components",
+            "fps-weapons",
+            "ammo",
+            "mining",
+            "mining-spawns",
+            "blueprints",
+            "missions",
+            "reputation",
+            "containers",
+            "starmap",
+            "manufacturers",
+            "wikelo-trades",
+            "strings"
+          ],
+          "description": "Which dataset to diff. 'ship-components' covers ship weapons, shields, coolers, power plants, quantum drives and radars; 'strings' is the localisation table, useful for spotting renamed or newly added content."
+        },
+        "from_version": {
+          "type": "string",
+          "description": "Older version, e.g. '4.9' or a full build string like '4.9.0-LIVE.12344265'."
+        },
+        "to_version": {
+          "type": "string",
+          "description": "Newer version, e.g. '4.10'."
+        },
+        "collection": {
+          "type": "string",
+          "description": "Optional: which collection inside the dataset to diff. Defaults to the main one (e.g. 'weapons' for ship-components); pass 'shields', 'quantumDrives', 'radars' or 'missiles' to diff those instead."
+        },
+        "item_name": {
+          "type": "string",
+          "description": "Optional: restrict to entries matching this name or class name (e.g. 'AD5B', 'Mantis', 'Talon'). Returns field-level changes."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Max entries listed per category in summary mode (default 50)."
+        }
+      },
+      "required": [
+        "dataset",
+        "from_version",
+        "to_version"
+      ]
+    }
+  },
+  {
+    "name": "sc_get_vocabulary",
+    "description": "Distinct in-game names for biasing a speech recognizer's initial prompt - commodities, manufacturers, FPS and ship weapons, weapon attachments, and (when SCMCP_GAME_DATA_DIR is set) locally extracted names like ore signatures, blueprints, and Wikelo trades no public API exposes. Local and public sources are merged; local is preferred when both exist for the same term. Armor and clothes are excluded by default - thousands of cosmetic colour variants that dilute the prompt far more than they help. Always works with no local data configured - it just returns fewer terms.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "include_commodities": {
+          "type": "boolean",
+          "description": "Include tradeable commodity names from UEX Corp (default true)."
+        },
+        "include_manufacturers": {
+          "type": "boolean",
+          "description": "Include ship/vehicle manufacturer names from the Star Citizen Wiki (default true)."
+        },
+        "include_weapons": {
+          "type": "boolean",
+          "description": "Include FPS and ship weapon names, ~580 terms (default true)."
+        },
+        "include_attachments": {
+          "type": "boolean",
+          "description": "Include weapon attachment names (scopes, magazines, ...), ~106 terms (default true)."
+        },
+        "include_armor": {
+          "type": "boolean",
+          "description": "Include armor piece names, ~2400 terms including colour variants (default false)."
+        },
+        "include_clothes": {
+          "type": "boolean",
+          "description": "Include clothing item names, ~1900 terms including colour variants (default false)."
+        },
+        "include_components": {
+          "type": "boolean",
+          "description": "Include ship component names (shields, coolers, quantum drives, ...), ~3300 terms (default false)."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Cap on locally extracted labels merged in (default 1000)."
+        }
+      }
+    }
+  },
+  {
+    "name": "sc_list_builds",
+    "description": "List the game builds (patch versions) for which historical data dumps exist, newest first. Use this to discover which versions can be compared.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "number",
+          "description": "How many builds to return (default 40, max 100)."
+        }
+      }
+    }
+  },
+  {
+    "name": "sc_local_datasets",
+    "description": "List locally extracted game data (mining, blueprints, reputation, ordnance, components, lore) with the game build it came from. This data is extracted from the shipped game files and covers domains no public API exposes.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "sc_read_local_collection",
+    "description": "Read one collection from a locally extracted dataset, with paging. Use after sc_local_datasets to browse in bulk.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "dataset": {
+          "type": "string",
+          "description": "Dataset name, e.g. 'game-mining'."
+        },
+        "collection": {
+          "type": "string",
+          "description": "Collection within the dataset, e.g. 'oreSignatures'."
+        },
+        "offset": {
+          "type": "number",
+          "description": "Records to skip (default 0)."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Records to return (default 25, max 200)."
+        }
+      },
+      "required": [
+        "dataset",
+        "collection"
+      ]
+    }
+  },
+  {
+    "name": "sc_search_local",
+    "description": "Search locally extracted game data for records matching a term. Use for mining ore signatures and spawn locations, crafting blueprints, reputation and mission brokers, quality bands, and Wikelo trades.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "dataset": {
+          "type": "string",
+          "description": "Dataset name, e.g. 'game-mining' or 'game-blueprints'. See sc_local_datasets."
+        },
+        "query": {
+          "type": "string",
+          "description": "Case-insensitive term to match against keys, names and record contents."
+        },
+        "collection": {
+          "type": "string",
+          "description": "Optional: restrict to one collection within the dataset."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Max records to return (default 20)."
+        }
+      },
+      "required": [
+        "dataset",
+        "query"
+      ]
+    }
+  },
+  {
+    "name": "sct_get_article",
+    "description": "Get the text content of an article from Star Citizen Tools (starcitizen.tools).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The title of the article (e.g., 'Wikelo', 'Carrack')."
+        }
+      },
+      "required": [
+        "title"
+      ]
+    }
+  },
+  {
+    "name": "sct_search",
+    "description": "Search Star Citizen Tools (starcitizen.tools) for any topic.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The search query."
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "name": "scw_get_filters",
+    "description": "Get all valid filter names and allowed values for vehicles or items. Call this before filtering to use exact values.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "dataset": {
+          "type": "string",
+          "enum": [
+            "vehicles",
+            "items"
+          ],
+          "description": "Which dataset's filters to retrieve."
+        }
+      },
+      "required": [
+        "dataset"
+      ]
+    }
+  },
+  {
+    "name": "scw_get_item",
+    "description": "Get detailed information about an item (weapon, armor, component) from the Star Citizen Wiki.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the item (e.g., 'FS-9 LMG', 'Lynx Helmet')."
+        }
+      },
+      "required": [
+        "name"
+      ]
+    }
+  },
+  {
+    "name": "scw_get_ship_comparison",
+    "description": "Compare specs (size, crew, cargo, speed, etc.) between two or more ships from the Star Citizen Wiki.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ship_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of ship names to compare (e.g., ['Ursa Medivac', 'Cutlass Red']).",
+          "minItems": 2
+        }
+      },
+      "required": [
+        "ship_names"
+      ]
+    }
+  },
+  {
+    "name": "scw_get_vehicle",
+    "description": "Get detailed information about a vehicle (ship/ground vehicle) from the Star Citizen Wiki.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the vehicle (e.g., '300i', 'Carrack')."
+        }
+      },
+      "required": [
+        "name"
+      ]
+    }
+  },
+  {
+    "name": "scw_list_items",
+    "description": "Browse/list weapons, armor, and ship components from the Star Citizen Wiki. Pick a category endpoint and optionally filter by type, size, grade, class, or manufacturer. Use scw_get_filters to see valid values.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": [
+            "items",
+            "weapons",
+            "weapon-attachments",
+            "armor",
+            "clothes",
+            "food",
+            "vehicle-weapons",
+            "vehicle-items"
+          ],
+          "description": "Which catalog to browse. 'vehicle-items' = ship components (shields, coolers, quantum drives), 'vehicle-weapons' = ship weapons, 'weapons' = FPS weapons. Defaults to 'items' (everything)."
+        },
+        "type": {
+          "type": "string",
+          "description": "Optional: Item type (e.g., 'Shield', 'Cooler', 'Quantum Drive', 'Power Plant', 'Weapon Gun', 'Missile')."
+        },
+        "sub_type": {
+          "type": "string",
+          "description": "Optional: Item sub-type (e.g., 'Gun', 'Manned Turret', 'Missile Rack')."
+        },
+        "size": {
+          "type": "number",
+          "description": "Optional: Component size (0-12)."
+        },
+        "grade": {
+          "type": "string",
+          "enum": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ],
+          "description": "Optional: Component grade."
+        },
+        "class": {
+          "type": "string",
+          "description": "Optional: Component class (e.g., 'Military', 'Civilian', 'Stealth', 'Industrial', 'Competition')."
+        },
+        "manufacturer": {
+          "type": "string",
+          "description": "Optional: Manufacturer name (e.g., 'Behring Applied Technology')."
+        },
+        "page": {
+          "type": "number",
+          "description": "Optional: Page number for pagination (default 1)."
+        },
+        "per_page": {
+          "type": "number",
+          "description": "Optional: Results per page (default 20, max 50)."
+        }
+      }
+    }
+  },
+  {
+    "name": "scw_list_vehicles",
+    "description": "Browse/list ships and ground vehicles from the Star Citizen Wiki. Filter by manufacturer, role (e.g. 'Medical', 'Cargo'), career, or size. Use scw_get_filters to see all valid values.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "manufacturer": {
+          "type": "string",
+          "description": "Optional: Manufacturer name (e.g., 'Aegis Dynamics', 'Drake Interplanetary')."
+        },
+        "role": {
+          "type": "string",
+          "description": "Optional: Ship role (e.g., 'Medical', 'Cargo', 'Heavy Fighter', 'Light Mining')."
+        },
+        "career": {
+          "type": "string",
+          "description": "Optional: Career category (e.g., 'Combat', 'Industrial', 'Support', 'Exploration')."
+        },
+        "size": {
+          "type": "number",
+          "description": "Optional: Vehicle size class (1-6, 10)."
+        },
+        "is_spaceship": {
+          "type": "boolean",
+          "description": "Optional: true for spaceships only, false for ground vehicles only."
+        },
+        "page": {
+          "type": "number",
+          "description": "Optional: Page number for pagination (default 1)."
+        },
+        "per_page": {
+          "type": "number",
+          "description": "Optional: Results per page (default 20, max 50)."
+        }
+      }
+    }
+  },
+  {
+    "name": "scw_search",
+    "description": "Search the Star Citizen Wiki for any item, ship, or lore topic.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The search query."
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "name": "scw_search_ships_by_vendor",
+    "description": "Search for ships available at a specific vendor/location, optionally filtered by system.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "vendor_name": {
+          "type": "string",
+          "description": "The vendor/dealer name (e.g., 'Ruin Station', 'Port Tressler')."
+        },
+        "star_system_name": {
+          "type": "string",
+          "description": "Optional: Filter by star system (e.g., 'Pyro', 'Stanton')."
+        }
+      },
+      "required": [
+        "vendor_name"
+      ]
+    }
+  },
+  {
+    "name": "scw_snapshot_diff",
+    "description": "Compare two saved snapshots to see what changed between patches (added, removed, and changed stats).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "from_label": {
+          "type": "string",
+          "description": "Label of the older snapshot."
+        },
+        "to_label": {
+          "type": "string",
+          "description": "Label of the newer snapshot. Omit to compare against current live data."
+        },
+        "dataset": {
+          "type": "string",
+          "enum": [
+            "vehicles",
+            "items"
+          ],
+          "description": "Which dataset to diff."
+        }
+      },
+      "required": [
+        "from_label",
+        "dataset"
+      ]
+    }
+  },
+  {
+    "name": "scw_snapshot_list",
+    "description": "List all saved data snapshots available for patch comparison.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "scw_snapshot_save",
+    "description": "Save a snapshot of current ship or item data, keyed by game version, for later patch-to-patch comparison.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "dataset": {
+          "type": "string",
+          "enum": [
+            "vehicles",
+            "items"
+          ],
+          "description": "Which dataset to snapshot."
+        },
+        "label": {
+          "type": "string",
+          "description": "Optional: Label for this snapshot (defaults to the game_version reported by the API)."
+        },
+        "type": {
+          "type": "string",
+          "description": "Optional (items only): Restrict snapshot to one item type (e.g., 'Shields', 'WeaponPersonal')."
+        }
+      },
+      "required": [
+        "dataset"
+      ]
+    }
+  },
+  {
+    "name": "uex_get_commodities",
+    "description": "Get a list of all commodities in Star Citizen from UEX Corp.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "uex_get_commodity_averages",
+    "description": "Get average prices for a specific commodity over time from UEX Corp.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "commodity_name": {
+          "type": "string",
+          "description": "The name of the commodity (e.g., 'Gold', 'Laranite')."
+        }
+      },
+      "required": [
+        "commodity_name"
+      ]
+    }
+  },
+  {
+    "name": "uex_get_commodity_prices",
+    "description": "Get current prices for a specific commodity from UEX Corp. Returns buy/sell prices at various terminals.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "commodity_name": {
+          "type": "string",
+          "description": "The name of the commodity (e.g., 'Gold', 'Laranite')."
+        },
+        "star_system_name": {
+          "type": "string",
+          "description": "Optional: Filter by star system (e.g., 'Stanton', 'Pyro')."
+        },
+        "planet_name": {
+          "type": "string",
+          "description": "Optional: Filter by planet name."
+        },
+        "terminal_name": {
+          "type": "string",
+          "description": "Optional: Filter by terminal name."
+        }
+      },
+      "required": [
+        "commodity_name"
+      ]
+    }
+  },
+  {
+    "name": "uex_get_commodity_ranking",
+    "description": "Get ranking of commodities based on various metrics (e.g., profit) from UEX Corp.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "uex_get_game_versions",
+    "description": "Get current Star Citizen game versions (LIVE and PTU build strings) tracked by UEX Corp.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "uex_get_ship_prices",
+    "description": "Find where a ship can be bought or rented in game, with prices and terminal locations, from UEX Corp. This is the tool to answer 'where can I get ship X'.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "vehicle_name": {
+          "type": "string",
+          "description": "The name of the ship (e.g., 'Ursa Medivac', 'Carrack')."
+        },
+        "star_system_name": {
+          "type": "string",
+          "description": "Optional: Filter by star system (e.g., 'Pyro', 'Stanton')."
+        },
+        "include_rentals": {
+          "type": "boolean",
+          "description": "Include rental locations as well as purchase locations (default true)."
+        }
+      },
+      "required": [
+        "vehicle_name"
+      ]
+    }
+  },
+  {
+    "name": "uex_get_terminal_inventory",
+    "description": "Get inventory (items, ships, weapons) sold at a specific terminal from UEX data.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "terminal_id": {
+          "type": "number",
+          "description": "The UEX terminal ID (e.g., 473 for Ruin Station Buy and Fly)."
+        },
+        "terminal_name": {
+          "type": "string",
+          "description": "Optional: Terminal name to search for (e.g., 'Ruin Station', 'Checkmate')."
+        },
+        "inventory_type": {
+          "type": "string",
+          "enum": [
+            "ships",
+            "weapons",
+            "armor",
+            "components",
+            "all"
+          ],
+          "description": "Type of inventory to retrieve (ships, weapons, armor, components, or all)."
+        }
+      }
+    }
+  },
+  {
+    "name": "uex_get_terminals",
+    "description": "Get a list of all terminals (locations) in Star Citizen from UEX Corp.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "star_system_name": {
+          "type": "string",
+          "description": "Optional: Filter by star system (e.g., 'Stanton', 'Pyro')."
+        },
+        "planet_name": {
+          "type": "string",
+          "description": "Optional: Filter by planet name."
+        }
+      }
+    }
+  },
+  {
+    "name": "uex_get_trade_routes",
+    "description": "Get suggested trade routes based on current market data from UEX Corp.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "investment": {
+          "type": "number",
+          "description": "Available credits for investment."
+        },
+        "cargo_capacity": {
+          "type": "number",
+          "description": "Cargo capacity in SCU."
+        }
+      }
+    }
+  },
+  {
+    "name": "uex_search_marketplace",
+    "description": "Search the UEX Corp player marketplace (player-to-player buy/sell/service ads, not shop prices). Matches query text against listing title/description. The API caps results at 100 unless id_item + operation are both given, which unlocks 1,000; for a broad text search only the first 100 active listings are visible to filter over.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Text to match against listing title/description (case-insensitive)."
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "buy",
+            "sell"
+          ],
+          "description": "Optional: filter by transaction type."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "item",
+            "service",
+            "contract"
+          ],
+          "description": "Optional: filter by ad type."
+        },
+        "id_item": {
+          "type": "number",
+          "description": "Optional: filter by UEX item id. Combine with operation to unlock the 1,000-row cap."
+        },
+        "username": {
+          "type": "string",
+          "description": "Optional: filter by advertiser in-game name."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Optional: max listings to return (default 25)."
+        }
+      }
+    }
+  }
+]

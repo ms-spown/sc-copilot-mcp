@@ -38,7 +38,8 @@ function assertConfigured(): string {
 /** Reject anything that would escape the configured directory. */
 function resolveDataset(dir: string, dataset: string): string {
   const file = dataset.endsWith(".json") ? dataset : `${dataset}.json`;
-  if (file.includes("/") || file.includes("\\") || file.includes("..")) {
+  // ":" covers Windows drive-relative names (C:x.json) and NTFS alternate data streams (x.json:s).
+  if (file.includes("/") || file.includes("\\") || file.includes("..") || file.includes(":")) {
     throw new Error(`Invalid dataset name: ${dataset}`);
   }
   return path.join(dir, file);

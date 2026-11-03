@@ -137,14 +137,19 @@ describe("resolveBaseUrl", () => {
   });
 
   it("accepts an override on another allowed host", () => {
-    expect(resolveBaseUrl("https://api.uexcorp.space/2.0", "https://api.uexcorp.uk/2.0", policy)).toBe(
-      "https://api.uexcorp.space/2.0",
-    );
+    expect(
+      resolveBaseUrl("https://api.uexcorp.space/2.0", "https://api.uexcorp.uk/2.0", policy),
+    ).toBe("https://api.uexcorp.space/2.0");
   });
 
   it("rejects an override on a host outside the allowlist, naming the variable", () => {
     expect(() =>
-      resolveBaseUrl("https://evil.example/2.0", "https://api.uexcorp.uk/2.0", policy, "SCMCP_UEX_BASE_URL"),
+      resolveBaseUrl(
+        "https://evil.example/2.0",
+        "https://api.uexcorp.uk/2.0",
+        policy,
+        "SCMCP_UEX_BASE_URL",
+      ),
     ).toThrow(/SCMCP_UEX_BASE_URL.*not in the allowlist/);
   });
 
