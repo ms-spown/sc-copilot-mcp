@@ -13,7 +13,12 @@ import { GAME_DATA_DIR, listDatasets } from "./local/localdata.js";
 const quiet = { record: false } as const;
 const WIKI_PROBE = { params: { "page[number]": 1, "page[size]": 1 } };
 
-export function createProbes({ uexClient, scwClient, sctClient }: ToolClients): StatusProbe[] {
+export function createProbes({
+  uexClient,
+  scwClient,
+  sctClient,
+  scmdb,
+}: ToolClients): StatusProbe[] {
   return [
     {
       id: "uex",
@@ -60,6 +65,24 @@ export function createProbes({ uexClient, scwClient, sctClient }: ToolClients): 
           note: "Wiki articles carry no game version; this checks that the site answers.",
           fetchedAt: r.fetchedAt,
           ...(r.cache === "stale-disk" ? { error: r.staleReason } : {}),
+        };
+      },
+    },
+    {
+      id: "scmdb",
+      run: async () => {
+        const { manifest, fetchedAt, stale } = await scmdb.manifest();
+        const channel = (name: string) => {
+          const c = manifest.channels[name];
+          return { version: c?.version ?? null, as_of: c?.generated_at ?? null };
+        };
+        return {
+          status: stale ? "degraded" : "ok",
+          live: channel("live"),
+          ptu: channel("ptu"),
+          fetchedAt,
+          note: "as_of is when the maintainer last regenerated that channel.",
+          ...(stale ? { error: stale } : {}),
         };
       },
     },

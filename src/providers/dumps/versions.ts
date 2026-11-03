@@ -17,6 +17,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { ALLOWED_HOSTS, createGuardedClient } from "../../core/http.js";
 import { userCacheDir } from "../../core/paths.js";
+import { isRepoName } from "../../core/validate.js";
 import { USER_AGENT } from "../../core/useragent.js";
 
 const REPO = process.env.SCMCP_DATA_REPO || "voidput/sc-gamedata-dumps";
@@ -25,7 +26,7 @@ const GITHUB_API = "https://api.github.com";
 const RAW_BASE = "https://raw.githubusercontent.com";
 
 // Both values end up inside request URLs, so only plain owner/name and path segments pass.
-if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(REPO)) {
+if (!isRepoName(REPO)) {
   throw new Error(`SCMCP_DATA_REPO must look like "owner/name", got "${REPO}".`);
 }
 if (!/^[A-Za-z0-9_.-]+(\/[A-Za-z0-9_.-]+)*$/.test(DATA_PATH) || DATA_PATH.includes("..")) {

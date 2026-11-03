@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "./core/config.js";
 import { VERSION } from "./core/useragent.js";
 import { createGameVersionResolver, createProbes } from "./providers/probes.js";
+import { createScmdb } from "./providers/scmdb/client.js";
 import { createSctClient } from "./providers/sctools/client.js";
 import { createUexClient } from "./providers/uex/client.js";
 import { createScwClient } from "./providers/wiki/client.js";
@@ -25,6 +26,7 @@ const clients = {
   uexClient: createUexClient(config.uexBaseUrl, config.uexToken),
   scwClient: createScwClient(config.scwBaseUrl),
   sctClient: createSctClient(config.sctBaseUrl),
+  scmdb: createScmdb(),
 };
 
 // A bad SCMCP_TOOLS or SCMCP_PROFILES throws here, at startup, rather than listing nothing.

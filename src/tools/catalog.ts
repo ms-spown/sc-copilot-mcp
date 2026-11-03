@@ -33,6 +33,12 @@ const dumps = {
   trust: "structured",
   channel: "unknown",
 } as const;
+const scmdb = {
+  source: "scmdb",
+  kind: "datamined",
+  trust: "structured",
+  channel: "live",
+} as const;
 const local = {
   source: "local-files",
   kind: "datamined",
@@ -64,7 +70,7 @@ export const CATALOG: Record<string, CatalogEntry> = {
 
   scw_get_vehicle: { ...wiki, profiles: ["core"] },
   scw_get_item: { ...wiki, profiles: ["core"] },
-  scw_list_vehicles: { ...wiki, profiles: ["core"] },
+  scw_list_vehicles: { ...wiki, profiles: ["data"] },
   scw_get_ship_comparison: { ...wiki, profiles: ["core"] },
   scw_search: { ...wiki, kind: "editorial", profiles: ["core"] },
   scw_list_items: { ...wiki, profiles: ["data"] },
@@ -80,6 +86,12 @@ export const CATALOG: Record<string, CatalogEntry> = {
 
   sct_search: { ...sct, profiles: ["core"] },
   sct_get_article: { ...sct, maxText: 20_000, profiles: ["core"] },
+
+  scmdb_search_missions: { ...scmdb, profiles: ["core", "data"] },
+  // The maintainer's own notes come with it, hence untrusted text.
+  scmdb_changes: { ...scmdb, trust: "untrusted_text", profiles: ["core", "data"] },
+  scmdb_search_crafting: { ...scmdb, profiles: ["data"] },
+  scmdb_search_mining: { ...scmdb, profiles: ["data"] },
 
   sc_list_builds: { ...dumps, profiles: ["data"] },
   sc_diff_versions: { ...dumps, profiles: ["data"] },
