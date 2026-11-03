@@ -38,7 +38,7 @@
 | [`scw_snapshot_save`](#scw_snapshot_save) | data | star-citizen.wiki + local snapshots | datamined | untrusted_text | Save a snapshot of current ship or item data, keyed by game version, for later patch-to-patch comparison. |
 | [`scw_snapshot_list`](#scw_snapshot_list) | data | local snapshots | datamined | structured | List all saved data snapshots available for patch comparison. |
 | [`scw_snapshot_diff`](#scw_snapshot_diff) | data | star-citizen.wiki + local snapshots | datamined | untrusted_text | Compare two saved snapshots to see what changed between patches (added, removed, and changed stats). |
-| [`sct_search`](#sct_search) | core | starcitizen.tools | editorial | untrusted_text | Search Star Citizen Tools (starcitizen.tools, a community wiki) for a topic; returns up to 10 page titles. |
+| [`sct_search`](#sct_search) | core | starcitizen.tools | editorial | untrusted_text | Search Star Citizen Tools (starcitizen.tools, a community wiki) for a topic; returns up to 10 results, each with a page title, a short excerpt and the page URL. |
 | [`sct_get_article`](#sct_get_article) | core | starcitizen.tools | editorial | untrusted_text | Plain text of one starcitizen.tools article by exact title (for example 'Wikelo'), cut to 20,000 characters. |
 | [`sc_patch_notes`](#sc_patch_notes) | core, data | starcitizen.tools | editorial | untrusted_text | Patch notes of a Star Citizen update (newest by default, or a version such as '4.10.2' or '4.10'), from the community wiki starcitizen.tools, which transcribes them. |
 | [`scmdb_search_missions`](#scmdb_search_missions) | core, data | scmdb | datamined | structured | Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. |
@@ -314,7 +314,7 @@ Compare two saved snapshots to see what changed between patches (added, removed,
 
 ### sct_search
 
-Search Star Citizen Tools (starcitizen.tools, a community wiki) for a topic; returns up to 10 page titles. Use it for lore, guides and mechanics, then read a page with sct_get_article. Content is community-written.
+Search Star Citizen Tools (starcitizen.tools, a community wiki) for a topic; returns up to 10 results, each with a page title, a short excerpt and the page URL. Use it for lore, guides and mechanics, then read a page with sct_get_article. Content is community-written.
 
 *Source:* starcitizen.tools · *Kind:* editorial · *Trust:* untrusted_text · *Profiles:* core
 
@@ -446,7 +446,7 @@ A table of the player's recent play sessions from Game.log and its backups, newe
 
 ### sc_fleet_get
 
-The player's own ships, from a local file, each with its public stats (manufacturer, role, size, crew, cargo SCU, health, shields, speed) from UEX and the Star Citizen Wiki. Origin is 'pledge' (bought with real money) or 'in_game'. A name that fits several ships comes back with the candidates instead of a guess. Use it before suggesting ships, cargo plans or loadouts, so the advice fits what the player owns. Holds no price and no account data.
+The player's own ships, from a local file, each with its public stats (manufacturer, role, size, crew, cargo SCU, health, shields, speed) from UEX and the Star Citizen Wiki. When UEX and the wiki disagree on a field (crew, cargo), both values are shown side by side with their source and conflict is true. A speed of 0 is reported as not provided. Origin is 'pledge' (bought with real money) or 'in_game'. A name that fits several ships comes back with the candidates instead of a guess. Use it before suggesting ships, cargo plans or loadouts, so the advice fits what the player owns. Holds no price and no account data.
 
 *Source:* fleet file (local) + uex + star-citizen.wiki · *Kind:* user · *Trust:* structured · *Profiles:* core, local
 

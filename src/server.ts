@@ -15,7 +15,7 @@ import type { ToolRegistry } from "./tools/registry.js";
  */
 export function createMcpServer(registry: ToolRegistry): Server {
   const server = new Server(
-    { name: "star-citizen-mcp", version: VERSION },
+    { name: "sc-copilot-mcp", version: VERSION },
     { capabilities: { tools: {}, prompts: {} } },
   );
 

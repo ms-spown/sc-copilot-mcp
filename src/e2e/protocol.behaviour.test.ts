@@ -97,6 +97,11 @@ describe("Feature: Claude uses the Star Citizen tools", () => {
   });
 
   describe("Scenario: Claude connects and looks at what it can use", () => {
+    it("Given a connection, Then the server announces the same name as the package and the config entry", async () => {
+      await connect();
+      expect(client.getServerVersion()?.name).toBe("sc-copilot-mcp");
+    });
+
     it("Given no scoping, Then every tool is listed with a description and an input schema", async () => {
       await connect();
       const { tools } = await client.listTools();
