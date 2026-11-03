@@ -4,6 +4,7 @@
  * rule is testable without touching a real machine. Nothing here ever prints a secret: the token is
  * reported as set or not set, never its value or length.
  */
+import { stripBom } from "./mergeConfig.js";
 
 export type CheckStatus = "ok" | "warn" | "fail";
 
@@ -26,6 +27,17 @@ export interface DoctorFacts {
   fleet: { exists: boolean; count: number; error?: string };
   cacheWritable: boolean;
   gameLog: { configured: boolean; readable: boolean; file?: string; error?: string };
+  /** Live telemetry switches. Omitted when the caller did not look. */
+  telemetry?: TelemetryFacts;
+}
+
+export interface TelemetryFacts {
+  /** SC_TELEMETRY in the sc-copilot entry of the Claude config. */
+  serverSwitch: "on" | "other" | "absent";
+  /** The persistent user variable GRPC_CLIENT_SERVER_ENABLED. */
+  gameVar: "unset" | "true" | "other" | "unknown";
+  /** "not_tested" whenever the server switch is not on: no connection is made without activation. */
+  port: "open" | "closed" | "not_tested";
 }
 
 /** The runtime supports Node 20.19+, 22.13+ and 24+ (the range in package.json). */
@@ -95,7 +107,7 @@ export function diagnose(f: DoctorFacts): Check[] {
   } else {
     let entry: { args?: string[]; env?: Record<string, string> } | undefined;
     try {
-      const parsed = JSON.parse(f.claudeConfig);
+      const parsed = JSON.parse(stripBom(f.claudeConfig));
       entry = parsed?.mcpServers?.[f.serverName];
     } catch {
       add(
@@ -168,7 +180,79 @@ export function diagnose(f: DoctorFacts): Check[] {
     );
   }
 
+  if (f.telemetry) addTelemetryChecks(f.telemetry, add);
+
   return checks;
+}
+
+function addTelemetryChecks(
+  t: TelemetryFacts,
+  add: (id: string, status: CheckStatus, message: string, fix?: string) => void,
+): void {
+  const serverOn = t.serverSwitch === "on";
+  const gameOn = t.gameVar === "true";
+  const enableFix = "Run: npm run telemetry -- enable  (a dry run), then add --apply.";
+
+  if (!serverOn && !gameOn) {
+    add(
+      "telemetry",
+      "ok",
+      "Live telemetry is off (the default). Switch 1 (SC_TELEMETRY): off. Switch 2 (GRPC_CLIENT_SERVER_ENABLED): not set. Port not tested: no connection without activation",
+    );
+    return;
+  }
+  const s1 = serverOn ? "on" : t.serverSwitch === "other" ? "set but not on" : "off";
+  const s2 = gameOn
+    ? "set"
+    : t.gameVar === "other"
+      ? "set to another value"
+      : t.gameVar === "unknown"
+        ? "unknown"
+        : "not set";
+  const summary = `Switch 1 (SC_TELEMETRY in the Claude config): ${s1}. Switch 2 (GRPC_CLIENT_SERVER_ENABLED, user variable): ${s2}`;
+  if (serverOn && gameOn) {
+    add("telemetry", "ok", `Live telemetry is on. ${summary}`);
+  } else if (serverOn) {
+    add("telemetry", "warn", `Only the server side is on. ${summary}`, enableFix);
+  } else {
+    add(
+      "telemetry",
+      "warn",
+      `Only the game side is set, so the server will not read the stream. ${summary}`,
+      enableFix,
+    );
+  }
+
+  if (t.port === "not_tested") {
+    add(
+      "telemetry-port",
+      "ok",
+      "Port 2942 not tested: SC_TELEMETRY is not on in the Claude config",
+    );
+    return;
+  }
+  if (t.port === "open") {
+    add("telemetry-port", "ok", "Port 127.0.0.1:2942 is open (something is listening)");
+    add(
+      "telemetry-stream",
+      "ok",
+      "Stream: not verified (the doctor opens no gRPC connection). Ask Claude for sc_live_status",
+    );
+    return;
+  }
+  add(
+    "telemetry-port",
+    "warn",
+    gameOn
+      ? "Port 127.0.0.1:2942 is closed although the variable is set: the launcher has to be restarted, or the game is not running"
+      : "Port 127.0.0.1:2942 is closed (the game is not running, or its telemetry is not switched on)",
+    "Quit the RSI Launcher completely (tray icon included), start it again, then start the game.",
+  );
+  add(
+    "telemetry-stream",
+    "ok",
+    "Stream: not verified (the port is closed, and the doctor opens no gRPC connection)",
+  );
 }
 
 export function summarize(checks: Check[]): { failed: number; warned: number } {

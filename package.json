@@ -22,6 +22,7 @@
     "golden:update": "node scripts/update-golden.mjs",
     "doctor": "node scripts/doctor.mjs",
     "check:docs": "node scripts/check-docs-safety.mjs",
+    "telemetry": "node scripts/telemetry.mjs",
     "check:telemetry-silence": "node scripts/check-no-telemetry-connection.mjs"
   },
   "repository": {
