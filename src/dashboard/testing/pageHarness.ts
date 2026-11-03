@@ -150,6 +150,22 @@ export interface WorldOptions {
   start?: number;
 }
 
+/**
+ * The content of the first element `tag` of a page, found without a regular expression: the search runs on a
+ * lower-case copy (so <SCRIPT> counts) and the slice on the original; the opening tag may carry attributes, and
+ * the closing one may carry spaces.
+ */
+export function extractElement(html: string, tag: string): string | null {
+  const lower = html.toLowerCase();
+  const open = lower.indexOf("<" + tag);
+  if (open < 0) return null;
+  const openEnd = lower.indexOf(">", open);
+  if (openEnd < 0) return null;
+  const close = lower.indexOf("</" + tag, openEnd);
+  if (close < 0) return null;
+  return html.slice(openEnd + 1, close);
+}
+
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 export async function startPage(options: WorldOptions = {}): Promise<PageWorld> {
@@ -261,7 +277,7 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
   };
 
   const html = dashboardHtml();
-  const script = /<script>([\s\S]*)<\/script>/.exec(html)?.[1];
+  const script = extractElement(html, "script");
   if (!script) throw new Error("no script in the page");
   vm.runInNewContext(
     script,

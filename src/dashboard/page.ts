@@ -29,7 +29,7 @@ export function viewScript(): string {
 
 export function dashboardHtml(): string {
   const script = viewScript();
-  if (script.includes("</script"))
+  if (script.toLowerCase().includes("</script"))
     throw new Error("the View script must not contain a closing script tag");
   return [
     "<!doctype html>",

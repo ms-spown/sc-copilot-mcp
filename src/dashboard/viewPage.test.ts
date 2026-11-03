@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { dashboardHtml, viewScript } from "./page.js";
 import { Scenario } from "./testing/scenario.js";
 import {
+  extractElement,
   findButton,
   isShown,
   startPage,
@@ -31,6 +32,16 @@ async function live(options: Parameters<typeof startPage>[0] = {}) {
   return world;
 }
 
+describe("Feature: extracting an element does not depend on case or spacing", () => {
+  it("Given upper-case, spaced or attributed tags, Then the content is still found", () => {
+    expect(extractElement("<html><SCRIPT>a()</SCRIPT></html>", "script")).toBe("a()");
+    expect(extractElement('<script type="x" >b()</script >', "script")).toBe("b()");
+    expect(extractElement("<STYLE>p{}</Style>", "style")).toBe("p{}");
+    expect(extractElement("<p>none</p>", "script")).toBeNull();
+    expect(extractElement("<script>never closed", "script")).toBeNull();
+  });
+});
+
 describe("Feature: the page itself is safe and self-contained", () => {
   const html = dashboardHtml();
   const script = viewScript();
@@ -42,7 +53,7 @@ describe("Feature: the page itself is safe and self-contained", () => {
     expect(has(/https?:/i, withoutNamespace)).toBe(false);
     expect(has(/<link\b/i)).toBe(false);
     expect(has(/\bsrc\s*=/i)).toBe(false);
-    const style = /<style>([\s\S]*)<\/style>/.exec(html)![1]!;
+    const style = extractElement(html, "style")!;
     expect(has(/@import|url\(|@font-face/i, style)).toBe(false);
     expect(has(/\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|importScripts)\b/)).toBe(
       false,
@@ -57,7 +68,7 @@ describe("Feature: the page itself is safe and self-contained", () => {
     expect(script).not.toMatch(/\beval\s*\(|new Function\s*\(|setTimeout\s*\(\s*["'`]/);
     expect(script).not.toMatch(/\bDOMParser\b|srcdoc/);
     expect(script).toContain("textContent");
-    expect(script).not.toContain("</script");
+    expect(script.toLowerCase()).not.toContain("</script");
   });
 
   it("Given the page, Then it declares a restrictive CSP of its own and both colour schemes", () => {
@@ -70,7 +81,7 @@ describe("Feature: the page itself is safe and self-contained", () => {
   });
 
   it("Given the page, Then colours come from host variables, with a fallback each, and nothing else is hard-coded", () => {
-    const css = /<style>([\s\S]*)<\/style>/.exec(html)![1]!;
+    const css = extractElement(html, "style")!;
     // Every colour literal sits inside a var(--color-..., fallback) or a light-dark() fallback.
     const outsideFallback = css
       .split("\n")
