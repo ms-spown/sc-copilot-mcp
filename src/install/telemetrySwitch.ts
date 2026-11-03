@@ -396,9 +396,12 @@ export async function enableCommand(deps: SwitchDeps, opts: EnableOptions): Prom
   // Apply. The marker is updated after each step, so an interruption leaves an accurate trace.
   const done: string[] = [];
   if (gameStep === "set") {
-    await deps.store.set(GAME_SWITCH, "true");
+    // The marker comes first: if the set is written but reports a failure (a timeout while Windows broadcasts
+    // the change), disable must still know the variable is ours. If the set never happened, disable finds the
+    // variable unset and does nothing.
     marker.gameVar = { origin: "tool" };
     writeMarker(deps, marker);
+    await deps.store.set(GAME_SWITCH, "true");
     done.push(`Set the user variable ${GAME_SWITCH}=true.`);
   } else if (!opts.session && gameVar === "true") {
     // Present already. If we set it on an earlier run the marker keeps saying so; otherwise it is a hand-set one.

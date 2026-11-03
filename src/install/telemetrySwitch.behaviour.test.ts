@@ -244,6 +244,20 @@ describe("Feature: enabling the telemetry", () => {
     });
   });
 
+  describe("Scenario: the set is written but reports a failure (timeout)", () => {
+    it("Then disable still removes the variable, because the marker was written first", async () => {
+      const flaky = new MemoryEnvStore();
+      flaky.set = async (name, value) => {
+        flaky.values.set(name, value);
+        throw new Error("PowerShell failed: timed out");
+      };
+      await expect(run(["enable", "--apply"], { store: flaky })).rejects.toThrow(/timed out/);
+      expect(flaky.values.get("GRPC_CLIENT_SERVER_ENABLED")).toBe("true");
+      await run(["disable", "--apply"], { store: flaky });
+      expect(flaky.values.has("GRPC_CLIENT_SERVER_ENABLED")).toBe(false);
+    });
+  });
+
   describe("Scenario: the variable already exists", () => {
     it("Given it was set by hand, Then enable keeps it as manual and does not set it again", async () => {
       store.values.set("GRPC_CLIENT_SERVER_ENABLED", "true");
