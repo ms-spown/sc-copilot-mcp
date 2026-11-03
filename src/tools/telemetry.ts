@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { formatOutputRaw } from "../core/format.js";
+import { TELEMETRY_WARNING } from "../core/telemetryNotice.js";
 import { addNote, recordFetch, setChannel, setGameVersion } from "../core/provenance.js";
 import type { GameLog } from "../providers/gamelog/reader.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
@@ -24,7 +25,7 @@ const ok = (value: unknown): ToolResult => ({
 export const HOW_TO_ENABLE = [
   "Two switches, both explicit. 1) Server side: SC_TELEMETRY=on in the sc-copilot entry of the MCP configuration. 2) Game side: GRPC_CLIENT_SERVER_ENABLED=true in the environment of StarCitizen.exe, inherited from the RSI Launcher: quit the launcher completely (tray icon too) and start it again.",
   "One command does both, as a dry run first: `npm run telemetry -- status`, then `npm run telemetry -- enable` (and `--apply` to write). `npm run telemetry -- disable --apply` undoes it.",
-  "This is an undocumented game feature that CIG has neither allowed nor forbidden, as far as we know. Read docs/TELEMETRY.md, including its Risks section, before enabling it.",
+  TELEMETRY_WARNING.join(" "),
 ];
 
 const LIMITS = [

@@ -63,6 +63,7 @@ function deps(over: Partial<SwitchDeps> = {}): SwitchDeps {
     now: () => new Date((clock += 1000)),
     launcherCandidates: [launcherExe],
     fileExists: (f) => fs.existsSync(f),
+    isFile: (f) => fs.existsSync(f) && fs.statSync(f).isFile(),
     ...over,
   };
 }
@@ -410,12 +411,55 @@ describe("Feature: session mode", () => {
       expect(fs.readFileSync(path.join(markerDir, SESSION_SCRIPT), "utf8")).toContain(custom);
     });
 
-    it("Given a --launcher path with a percent sign or a quote, Then it is refused", async () => {
-      for (const bad of ["C:\\a%PATH%\\x.exe", 'C:\\a"b\\x.exe']) {
-        const { code } = await run(["enable", "--session", "--launcher", bad, "--apply"]);
+    it("Given a --launcher path with a percent sign, Then it is refused for that reason", async () => {
+      const bad = path.join(dir, "100%.exe");
+      fs.writeFileSync(bad, "");
+      const { code, text } = await run(["enable", "--session", "--launcher", bad, "--apply"]);
+      expect(code).toBe(1);
+      expect(text).toMatch(/" or %/);
+      expect(fs.existsSync(markerDir)).toBe(false);
+    });
+
+    it("Given a non-ASCII launcher path, Then it is refused and --launcher with a short path is suggested", async () => {
+      const accented = path.join(dir, "Rémi", "RSI Launcher.exe");
+      fs.mkdirSync(path.dirname(accented));
+      fs.writeFileSync(accented, "");
+      for (const argv of [
+        ["enable", "--session", "--launcher", accented, "--apply"],
+        ["enable", "--session", "--apply"],
+      ]) {
+        const { code, text } = await run(argv, {
+          launcherCandidates: argv.includes("--launcher") ? [] : [accented],
+        });
         expect(code).toBe(1);
+        expect(text).toMatch(/non-ASCII/);
+        expect(text).toMatch(/--launcher/);
       }
       expect(fs.existsSync(markerDir)).toBe(false);
+      expect(readConfig()).toEqual(original);
+    });
+
+    it("Given a folder or a relative path for --launcher, Then it is refused", async () => {
+      const folder = await run(["enable", "--session", "--launcher", path.dirname(launcherExe)]);
+      expect(folder.code).toBe(1);
+      expect(folder.text).toMatch(/folder/);
+      const relative = await run(["enable", "--session", "--launcher", "RSI Launcher.exe"]);
+      expect(relative.code).toBe(1);
+      expect(relative.text).toMatch(/absolute/);
+    });
+  });
+
+  describe("Scenario: the marker is edited to point at another file", () => {
+    it("Then disable deletes nothing outside its own launcher path, and says so", async () => {
+      await run(["enable", "--session", "--apply"]);
+      const victim = path.join(dir, "victim.txt");
+      fs.writeFileSync(victim, "precious");
+      const marker = JSON.parse(fs.readFileSync(markerPath(), "utf8"));
+      marker.session.script = victim;
+      fs.writeFileSync(markerPath(), JSON.stringify(marker));
+      const { text } = await run(["disable", "--apply"]);
+      expect(fs.readFileSync(victim, "utf8")).toBe("precious");
+      expect(text).toMatch(/ignored/);
     });
   });
 

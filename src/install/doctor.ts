@@ -4,6 +4,7 @@
  * rule is testable without touching a real machine. Nothing here ever prints a secret: the token is
  * reported as set or not set, never its value or length.
  */
+import { stripBom } from "./mergeConfig.js";
 
 export type CheckStatus = "ok" | "warn" | "fail";
 
@@ -106,7 +107,7 @@ export function diagnose(f: DoctorFacts): Check[] {
   } else {
     let entry: { args?: string[]; env?: Record<string, string> } | undefined;
     try {
-      const parsed = JSON.parse(f.claudeConfig);
+      const parsed = JSON.parse(stripBom(f.claudeConfig));
       entry = parsed?.mcpServers?.[f.serverName];
     } catch {
       add(

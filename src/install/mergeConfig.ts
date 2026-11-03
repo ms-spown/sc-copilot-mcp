@@ -6,6 +6,7 @@
  * into it: the UEX token lives in a .env file next to the package, which the server reads
  * itself. The planning step is pure, so it can be shown to the user before anything is written.
  */
+import { editEnvKeyText } from "./jsonEdit.js";
 
 export interface ServerEntry {
   command: string;
@@ -27,10 +28,15 @@ export class ConfigError extends Error {}
 
 const looksSecret = /token|key|secret|password|authorization/i;
 
+/** A UTF-8 BOM is not part of the JSON: Windows editors add it, and JSON.parse rejects it. */
+export function stripBom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
 function parseConfig(rawConfig: string | null): Record<string, unknown> {
   if (rawConfig === null || rawConfig.trim() === "") return {};
   try {
-    const parsed = JSON.parse(rawConfig);
+    const parsed = JSON.parse(stripBom(rawConfig));
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
       throw new Error("not an object");
     return parsed as Record<string, unknown>;
@@ -98,8 +104,13 @@ export interface EnvKeyPlan {
   key: string;
   /** Whether the key was in the entry's env before. Its value is never exposed. */
   presentBefore: boolean;
-  /** The whole file after the change, or null when nothing changes or there is no entry. */
+  /** The parsed content expected after the change, or null when nothing changes or there is no entry. */
   merged: Record<string, unknown> | null;
+  /**
+   * The new file text: the original with only this key inserted, changed or removed, byte for byte otherwise
+   * (BOM, line endings, indentation, number spellings kept). Null when nothing changes.
+   */
+  text: string | null;
   otherServers: number;
 }
 
@@ -121,7 +132,14 @@ export function planEnvKey(
   const otherServers = Object.keys(servers).filter((k) => k !== name).length;
   const entry = servers[name];
   if (entry === undefined) {
-    return { action: "no_entry", key, presentBefore: false, merged: null, otherServers };
+    return {
+      action: "no_entry",
+      key,
+      presentBefore: false,
+      merged: null,
+      text: null,
+      otherServers,
+    };
   }
   if (typeof entry !== "object" || entry === null || Array.isArray(entry))
     throw new ConfigError(
@@ -142,19 +160,34 @@ export function planEnvKey(
   if (value === null) action = presentBefore ? "remove" : "unchanged";
   else if (!presentBefore) action = "add";
   else action = env[key] === value ? "unchanged" : "update";
-  if (action === "unchanged") return { action, key, presentBefore, merged: null, otherServers };
+  if (action === "unchanged")
+    return { action, key, presentBefore, merged: null, text: null, otherServers };
 
   const nextEnv: Record<string, unknown> = { ...env };
   if (value === null) delete nextEnv[key];
   else nextEnv[key] = value;
   const nextEntry = { ...(entry as Record<string, unknown>), env: nextEnv };
-  return {
-    action,
-    key,
-    presentBefore,
-    merged: { ...config, mcpServers: { ...servers, [name]: nextEntry } },
-    otherServers,
-  };
+  const merged = { ...config, mcpServers: { ...servers, [name]: nextEntry } };
+
+  // Edit the text itself, then prove the result means exactly what the object-level change would.
+  const bom = rawConfig !== null && stripBom(rawConfig) !== rawConfig ? "﻿" : "";
+  let edited: string | null;
+  try {
+    edited = editEnvKeyText(stripBom(rawConfig ?? ""), name, key, value);
+    if (JSON.stringify(JSON.parse(edited)) !== JSON.stringify(merged)) edited = null;
+  } catch {
+    edited = null;
+  }
+  if (edited === null) {
+    const todo =
+      value === null
+        ? `remove "${key}" from the env of "${name}"`
+        : `in the env of "${name}", set ${JSON.stringify(key)}: ${JSON.stringify(value)}`;
+    throw new ConfigError(
+      `The config could not be edited safely, so it was not touched. Do it by hand: ${todo}.`,
+    );
+  }
+  return { action, key, presentBefore, merged, text: bom + edited, otherServers };
 }
 
 /** Shown before writing: the key's name and its new state. No other key or value of the file appears. */

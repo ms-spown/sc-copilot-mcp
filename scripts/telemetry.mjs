@@ -50,6 +50,13 @@ const result = await runGuarded(args, {
   now: () => new Date(),
   launcherCandidates: launcherCandidatesFromEnv(process.env),
   fileExists: (file) => fs.existsSync(file),
+  isFile: (file) => {
+    try {
+      return fs.statSync(file).isFile();
+    } catch {
+      return false;
+    }
+  },
 });
 console.log(result.lines.join("\n"));
 process.exit(result.code);
