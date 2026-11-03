@@ -12,6 +12,7 @@ const { allTools, createRegistry } = await load("tools/registry.js");
 const { Scmdb } = await load("providers/scmdb/store.js");
 const { GameLog } = await load("providers/gamelog/reader.js");
 const { FleetStore } = await load("providers/fleet/store.js");
+const { createTelemetry } = await load("providers/telemetry/index.js");
 
 const unused = { defaults: {}, get: async () => ({ data: {} }) };
 const registry = createRegistry(
@@ -22,6 +23,8 @@ const registry = createRegistry(
     scmdb: new Scmdb({ raw: unused, api: unused, repo: "o/r", cacheDir: () => "" }),
     gameLog: new GameLog({}),
     fleet: new FleetStore("unused.json"),
+    // Enabled only so that the optional tools are part of the frozen surface; it never connects.
+    telemetry: createTelemetry({ enabled: true }),
   }),
   {},
 );

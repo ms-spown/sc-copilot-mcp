@@ -8,7 +8,14 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * game_version or a zero age is information, not noise.
  */
 
-export type Kind = "datamined" | "crowdsourced" | "editorial" | "local_log" | "user" | "computed";
+export type Kind =
+  | "datamined"
+  | "crowdsourced"
+  | "editorial"
+  | "local_log"
+  | "local_telemetry"
+  | "user"
+  | "computed";
 export type Trust = "untrusted_text" | "structured";
 export type Channel = "live" | "ptu" | "unknown";
 export type CacheState = "network" | "memory" | "stale-disk";

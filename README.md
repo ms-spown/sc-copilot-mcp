@@ -88,6 +88,7 @@ Full parameter reference: **[docs/TOOLS.md](docs/TOOLS.md)** (generated from the
 | **Missions, crafting, mining** (SCMDB) | `scmdb_search_missions`, `scmdb_search_crafting`, `scmdb_search_mining`, `scmdb_changes`                                                                                                                                                                                                                                                                                                        |
 | **Patches and lore**                   | `sc_patch_notes` (notes of an update, by section or keyword), `sct_search`, `sct_get_article`, `sc_list_builds`, `sc_diff_versions`                                                                                                                                                                                                                                                             |
 | **Your game log** (off by default)     | `sc_log_context` (what you are doing now), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`                                                                                                                                                                                                                                                                                           |
+| **Live telemetry** (off by default)    | `sc_live_status` (always listed: state and how to enable), `sc_live_state`, `sc_live_events` (listed only when `SC_TELEMETRY=on`)                                                                                                                                                                                                                                                               |
 | **Your fleet**                         | `sc_fleet_get`, `sc_fleet_upsert`, `sc_fleet_remove`                                                                                                                                                                                                                                                                                                                                            |
 | **Your own data files**                | `sc_local_datasets`, `sc_search_local`, `sc_read_local_collection`                                                                                                                                                                                                                                                                                                                              |
 
@@ -112,13 +113,13 @@ what it returns and its limits.
 The server also offers ready-made prompts (in Claude Desktop they appear as templates you can pick), each chaining
 the right tools in the right order and telling Claude to state how fresh the data is:
 
-| Prompt | What it does |
-| --- | --- |
-| `haul_plan` | Best 3 trade routes for one of your ships, with the risks (few reports, old data, too-good profit, illegal cargo) |
-| `patch_briefing` | What the newest update changed and what it means for you and your fleet |
-| `session_debrief` | What you did in your last session, from your game log, and what to do next |
-| `mining_prep` | An ore's stats and locations, the right laser and modules, where to sell it |
-| `mission_hunt` | Missions by place, faction, reward or blueprint, and which of your ships fits |
+| Prompt            | What it does                                                                                                      |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `haul_plan`       | Best 3 trade routes for one of your ships, with the risks (few reports, old data, too-good profit, illegal cargo) |
+| `patch_briefing`  | What the newest update changed and what it means for you and your fleet                                           |
+| `session_debrief` | What you did in your last session, from your game log, and what to do next                                        |
+| `mining_prep`     | An ore's stats and locations, the right laser and modules, where to sell it                                       |
+| `mission_hunt`    | Missions by place, faction, reward or blueprint, and which of your ships fits                                     |
 
 ## Configuration
 

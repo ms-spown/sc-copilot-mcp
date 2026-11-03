@@ -46,6 +46,13 @@ const local = {
   channel: "unknown",
 } as const;
 
+const liveTelemetry = {
+  source: "game telemetry (local, 127.0.0.1)",
+  kind: "local_telemetry",
+  trust: "structured",
+  channel: "unknown",
+} as const;
+
 export const CATALOG: Record<string, CatalogEntry> = {
   sc_data_status: {
     source: "sc-copilot-mcp",
@@ -158,6 +165,12 @@ export const CATALOG: Record<string, CatalogEntry> = {
     channel: "unknown",
     profiles: ["local"],
   },
+
+  // The game's own local telemetry stream: off by default, in memory only. Game identifiers, no
+  // player-written text. The channel is unknown unless the handler reads it from Game.log.
+  sc_live_status: { ...liveTelemetry, profiles: ["local"] },
+  sc_live_state: { ...liveTelemetry, profiles: ["local"] },
+  sc_live_events: { ...liveTelemetry, profiles: ["local"] },
 
   sc_local_datasets: { ...local, profiles: ["local"] },
   sc_search_local: { ...local, profiles: ["local"] },
