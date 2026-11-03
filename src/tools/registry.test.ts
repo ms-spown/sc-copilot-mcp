@@ -248,13 +248,10 @@ describe("provenance envelope", () => {
     expect(parsed(result).provenance.game_version).toBeNull();
   });
 
-  it("reports data from a source that cannot name its channel as unknown, not live", async () => {
-    const result = await registryWith()
-      .call("sc_list_builds", {})
-      .catch(() => null);
-    // The call itself needs the network; the declared channel is what matters here.
+  it("declares data from a source that cannot name its channel as unknown, not live", () => {
+    // Only the declaration matters here. The tool itself lists a GitHub repository: no test calls it.
     expect(CATALOG.sc_list_builds.channel).toBe("unknown");
-    expect(result === null || typeof text(result) === "string").toBe(true);
+    expect(CATALOG.sc_diff_versions.channel).toBe("unknown");
   });
 
   it("flags free text from third parties, cleans it and keeps it short", async () => {

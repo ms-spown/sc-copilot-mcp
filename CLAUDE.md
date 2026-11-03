@@ -52,7 +52,9 @@ scripts/        install-claude-desktop.mjs, check-sources.mjs, mcp-probe.mjs (st
 - Tool names and input schemas are frozen by `src/tools/tools-surface.golden.json` (`npm run golden:update`);
   `docs/TOOLS.md` is generated (`npm run docs:tools`) and every tool must be in the README theme table. Tests
   enforce all three.
-- Tests never use the network and never real game data: fake clients, temp dirs, hand-made fixtures.
+- Tests never use the network and never real game data: fake clients, temp dirs, hand-made fixtures. The suite
+  enforces it (`vitest.setup.ts` fails any test that opens a socket to a host other than this machine); status probes
+  take their sources from `createProbes(clients, sources)`, tests pass `NO_NETWORK` from `providers/probes.testing.ts`.
 - Windows is the primary target: no `process.cwd()` defaults, use `core/paths.ts`; CI runs on Windows.
 - This tool shell rejects here-docs containing backticks; write such scripts to a file first.
 
