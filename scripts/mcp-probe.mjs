@@ -1,8 +1,10 @@
 // Drives the built MCP server over stdio and exercises each tool.
 import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const server = spawn("node", ["dist/index.js"], {
-  cwd: "/home/zedwil/git/SCMCP",
+  cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
   stdio: ["pipe", "pipe", "pipe"],
 });
 

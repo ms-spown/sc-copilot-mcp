@@ -42,7 +42,8 @@ export interface HostPolicy {
 
 /** Throws unless `url` is https (or http when the policy allows it) on an allowed host. */
 export function assertAllowedUrl(url: URL, policy: HostPolicy, what = "request"): void {
-  const secure = url.protocol === "https:" || (policy.allowInsecureHttp && url.protocol === "http:");
+  const secure =
+    url.protocol === "https:" || (policy.allowInsecureHttp && url.protocol === "http:");
   if (!secure) {
     throw new Error(`Blocked ${what} to ${url.protocol}//${url.host}: only https is allowed.`);
   }
@@ -76,6 +77,9 @@ export function resolveBaseUrl(
   assertAllowedUrl(url, policy, variableName);
   return url.toString().replace(/\/+$/, "");
 }
+
+/** What the cache and the providers need from a client: tests can pass a small fake. */
+export type HttpClient = Pick<AxiosInstance, "get" | "defaults">;
 
 export interface GuardedClientOptions extends HostPolicy {
   baseURL: string;

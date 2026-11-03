@@ -102,6 +102,20 @@ describe("searchDataset", () => {
     await expect(searchDataset("../scmcp-secret", "token")).rejects.toThrow(/Invalid dataset/);
     await expect(searchDataset("/etc/passwd", "root")).rejects.toThrow(/Invalid dataset/);
   });
+
+  it("refuses Windows-style escapes: backslashes, drive letters, alternate data streams", async () => {
+    const { searchDataset, readCollection } = await mod();
+    for (const name of [
+      "..\\scmcp-secret",
+      "C:\\Windows\\win",
+      "C:win",
+      "game-mining.json:stream",
+      "\\\\server\\share\\x",
+    ]) {
+      await expect(searchDataset(name, "x")).rejects.toThrow(/Invalid dataset/);
+      await expect(readCollection(name, "x")).rejects.toThrow(/Invalid dataset/);
+    }
+  });
 });
 
 describe("readCollection", () => {

@@ -11,7 +11,7 @@
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const pkg = require("../package.json") as { version: string };
+const pkg = require("../../package.json") as { version: string };
 
 export const VERSION = pkg.version;
 // This fork identifies itself: traffic it generates must not be attributed to the upstream SCMCP.

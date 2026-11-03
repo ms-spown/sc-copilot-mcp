@@ -58,26 +58,34 @@ describe("diffDatasets", () => {
   });
 
   it("gives field-level detail when scoped to one item", () => {
-    const result = diffDatasets("ship-components", FROM, TO, rows(before), rows(after), { itemQuery: "Mantis" });
+    const result = diffDatasets("ship-components", FROM, TO, rows(before), rows(after), {
+      itemQuery: "Mantis",
+    });
     expect(result.summary.changed).toBe(1);
     expect(result.changed?.[0].changes).toEqual([{ field: "dps", from: 506.7, to: 853.3 }]);
   });
 
   it("reports zero changes for an item that was not touched", () => {
-    const result = diffDatasets("ship-components", FROM, TO, rows(before), rows(after), { itemQuery: "Unchanged" });
+    const result = diffDatasets("ship-components", FROM, TO, rows(before), rows(after), {
+      itemQuery: "Unchanged",
+    });
     expect(result.summary.changed).toBe(0);
     expect(result.summary.unchanged).toBe(1);
     expect(result.changed).toBeUndefined();
   });
 
   it("matches on class name as well as display name", () => {
-    const result = diffDatasets("ship-components", FROM, TO, rows(before), rows(after), { itemQuery: "GETS_BUFF" });
+    const result = diffDatasets("ship-components", FROM, TO, rows(before), rows(after), {
+      itemQuery: "GETS_BUFF",
+    });
     expect(result.summary.changed).toBe(1);
   });
 
   it("throws when the item matches nothing in either build", () => {
     expect(() =>
-      diffDatasets("ship-components", FROM, TO, rows(before), rows(after), { itemQuery: "Nonexistent" }),
+      diffDatasets("ship-components", FROM, TO, rows(before), rows(after), {
+        itemQuery: "Nonexistent",
+      }),
     ).toThrow(/No entry/);
   });
 
@@ -144,6 +152,8 @@ describe("describeFetchFailure", () => {
   });
 
   it("still says something useful for an unknown failure", () => {
-    expect(describeFetchFailure(undefined, "game-ships.json")).toMatch(/Could not read game-ships.json/);
+    expect(describeFetchFailure(undefined, "game-ships.json")).toMatch(
+      /Could not read game-ships.json/,
+    );
   });
 });

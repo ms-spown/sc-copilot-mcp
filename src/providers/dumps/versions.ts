@@ -15,8 +15,8 @@
 import axios from "axios";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ALLOWED_HOSTS, createGuardedClient } from "./core/http.js";
-import { USER_AGENT } from "./useragent.js";
+import { ALLOWED_HOSTS, createGuardedClient } from "../../core/http.js";
+import { USER_AGENT } from "../../core/useragent.js";
 
 const REPO = process.env.SCMCP_DATA_REPO || "voidput/sc-gamedata-dumps";
 const DATA_PATH = process.env.SCMCP_DATA_REPO_PATH || "data";
@@ -60,8 +60,7 @@ export type DatasetName = keyof typeof DATASETS;
 const META_KEYS = new Set(["_source", "_extracted", "_build", "_extraction-validation", "summary"]);
 
 /** Dumps are megabytes each and immutable per tag, so they are cached on disk. */
-const CACHE_DIR =
-  process.env.SCMCP_BUILD_CACHE_DIR || path.join(process.cwd(), ".build-cache");
+const CACHE_DIR = process.env.SCMCP_BUILD_CACHE_DIR || path.join(process.cwd(), ".build-cache");
 
 // The GitHub token (optional, only raises the rate limit) goes to api.github.com and nowhere else.
 const ghClient = createGuardedClient({
@@ -124,7 +123,10 @@ export async function listBuilds(limit = 40): Promise<Build[]> {
     ]);
   } catch (error) {
     throw new Error(
-      describeFetchFailure(axios.isAxiosError(error) ? error.response?.status : undefined, "the build list"),
+      describeFetchFailure(
+        axios.isAxiosError(error) ? error.response?.status : undefined,
+        "the build list",
+      ),
       { cause: error },
     );
   }
@@ -207,10 +209,7 @@ export async function fetchDataset(
 ): Promise<Entry[]> {
   const { file, collection: defaultCollection } = DATASETS[dataset];
   const wanted = collection ?? defaultCollection;
-  const cachePath = path.join(
-    CACHE_DIR,
-    `${dataset}__${wanted}__${build.sha.slice(0, 10)}.json`,
-  );
+  const cachePath = path.join(CACHE_DIR, `${dataset}__${wanted}__${build.sha.slice(0, 10)}.json`);
 
   try {
     return JSON.parse(await fs.readFile(cachePath, "utf-8"));
@@ -357,8 +356,7 @@ export function diffDatasets(
   if (options.itemQuery) {
     const needle = options.itemQuery.toLowerCase();
     const matches = (key: string, entry?: unknown) =>
-      key.toLowerCase().includes(needle) ||
-      labelOf(entry, key).toLowerCase().includes(needle);
+      key.toLowerCase().includes(needle) || labelOf(entry, key).toLowerCase().includes(needle);
 
     const keys = new Set<string>();
     for (const [k, v] of before) if (matches(k, v)) keys.add(k);
