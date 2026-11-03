@@ -207,10 +207,10 @@ d'atterrissage, alimentation, voyants, santé, faim, soif.
   de bord en direct dans la conversation (`sc_live_dashboard`) : vaisseau, vitesse, hydrogène, santé et état du flux
   en vue compacte ; instruments, voyants, armes, événements et chronologie de session en plein écran. Chaque valeur
   indique son âge, le solde aUEC reste masqué tant que vous ne cliquez pas, et rien n'est envoyé au jeu. Claude Code
-  ne l'affiche pas. Voir [docs/TELEMETRY.md](docs/TELEMETRY.md#live-dashboard).
+  ne l'affiche pas. Voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#tableau-de-bord-en-direct).
 - **Lisez d'abord les risques.** C'est une fonction non documentée du jeu. À notre connaissance, CIG ne l'a ni
   autorisée ni interdite, les conditions de RSI s'appliquent à vous, et le risque est le vôtre. Tout est dans
-  [docs/TELEMETRY.md](docs/TELEMETRY.md) (en anglais).
+  [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md).
 
 ## Limites à connaître
 
@@ -227,7 +227,7 @@ d'atterrissage, alimentation, voyants, santé, faim, soif.
   compte n'est pas vérifiée (voir [SECURITY.md](SECURITY.md)).
 - **La télémétrie en direct n'est pas un tableau de bord complet.** Ni position, ni boucliers, ni coque, ni chaleur,
   ni munitions ; les véhicules terrestres n'envoient rien et les événements sont déduits (voir
-  [docs/TELEMETRY.md](docs/TELEMETRY.md)).
+  [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md)).
 - La recherche de noms sur le wiki est stricte ; l'outil de flotte effectue une correspondance par mots et propose des
   candidats en cas d'ambiguïté.
 
@@ -235,7 +235,7 @@ d'atterrissage, alimentation, voyants, santé, faim, soif.
 
 - [docs/CAPABILITIES.md](docs/CAPABILITIES.md) : tout ce que le serveur sait faire, par besoin
 - [docs/TOOLS.md](docs/TOOLS.md) : chaque outil et chaque paramètre (généré)
-- [docs/TELEMETRY.md](docs/TELEMETRY.md) : la télémétrie en direct optionnelle, ses données et ses risques
+- [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md) : la télémétrie en direct optionnelle, ses données et ses risques
 - [docs/USING_WITH_CLAUDE.fr.md](docs/USING_WITH_CLAUDE.fr.md) : le bloc à coller dans un projet Claude
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
   [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md)

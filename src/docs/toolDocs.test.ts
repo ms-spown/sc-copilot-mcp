@@ -62,6 +62,13 @@ describe("Feature: the README mentions every tool", () => {
     expect(claudeEn).toContain("(USING_WITH_CLAUDE.fr.md)");
     expect(readmeFr).toContain("(docs/USING_WITH_CLAUDE.fr.md)");
 
+    const telemetryEn = fs.readFileSync(
+      new URL("../../docs/TELEMETRY.md", import.meta.url),
+      "utf8",
+    );
+    expect(telemetryEn).toContain("(TELEMETRY.fr.md)");
+    expect(readmeFr).toContain("(docs/TELEMETRY.fr.md)");
+
     const missingInFr = tools
       .map((t) => t.name)
       .filter((name) => !readmeFr.includes(`\`${name}\``));

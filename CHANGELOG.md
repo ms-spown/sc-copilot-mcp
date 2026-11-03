@@ -30,6 +30,9 @@ versions follow [Semantic Versioning](https://semver.org/).
   - Documentation: the "Live dashboard" section of [docs/TELEMETRY.md](docs/TELEMETRY.md), a rule in the Claude block,
     troubleshooting, architecture and the threat model.
 
+- **French translation of the live telemetry page**, [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md), linked from
+  `README.fr.md` and from the English page; `npm run check:docs` compares the pair.
+
 ### Security
 Fixes for the findings of an independent security audit (each checked by a test that builds its attack from code
 points and uses no network).
