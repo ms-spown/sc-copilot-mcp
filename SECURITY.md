@@ -10,7 +10,8 @@ submission. The only writes are local: the cache, wiki snapshots, and the fleet 
 
 **Live telemetry is opt-in and off by default.** The game has an undocumented local gRPC server
 (`GRPC_CLIENT_SERVER_ENABLED`). This server can read it only when the user sets `SC_TELEMETRY=on` in its
-entry; the game-side variable is set by a command the user runs, never by the installer. Without
+entry; the game-side variable is set by a command the user runs (`npm run telemetry -- enable --apply`; without
+`--apply` it only shows what it would do, and `disable` removes only what it set), never by the installer. Without
 `SC_TELEMETRY=on` no gRPC/HTTP2 code is loaded and no connection is attempted. When on, it connects only to
 `127.0.0.1:2942` (fixed in code, not configurable), sends only the empty `TelemetryStream` request, keeps
 frames in memory, and never logs, writes or transmits them. The risks are described in `docs/TELEMETRY.md`
