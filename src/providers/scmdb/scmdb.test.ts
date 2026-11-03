@@ -8,6 +8,7 @@ import type { HttpClient } from "../../core/http.js";
 import { allTools, createRegistry } from "../../tools/registry.js";
 import type { ToolResult } from "../../tools/types.js";
 import { searchCrafting, searchMining, searchMissions, summarizeChanges } from "./queries.js";
+import { GameLog } from "../gamelog/reader.js";
 import { Scmdb } from "./store.js";
 
 // ---- synthetic fixtures: tiny, hand-made, nothing copied from game data ------------------
@@ -483,7 +484,13 @@ describe("SCMDB tools through the registry", () => {
       get: async () => ({ data: {} }),
     } as unknown as HttpClient;
     return createRegistry(
-      allTools({ uexClient: empty, scwClient: empty, sctClient: empty, scmdb: makeScmdb() }),
+      allTools({
+        uexClient: empty,
+        scwClient: empty,
+        sctClient: empty,
+        scmdb: makeScmdb(),
+        gameLog: new GameLog({}),
+      }),
       {},
     );
   };

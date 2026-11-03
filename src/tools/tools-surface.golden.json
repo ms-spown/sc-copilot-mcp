@@ -119,6 +119,61 @@
     }
   },
   {
+    "name": "sc_log_recent_events",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "number",
+          "description": "Events to return, the most recent ones (default 30, max 100)."
+        },
+        "types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "session_start",
+              "login_completed",
+              "spawned",
+              "session_end",
+              "jurisdiction_entered",
+              "zone_change",
+              "mission_accepted",
+              "mission_completed",
+              "mission_ended",
+              "objective_new",
+              "objective_completed",
+              "shop_purchase_requested",
+              "shop_purchase_result",
+              "insurance_claim_requested",
+              "hangar_request_completed"
+            ]
+          },
+          "description": "Only these event types."
+        },
+        "since_minutes": {
+          "type": "number",
+          "description": "Only events from the last N minutes (by the log's own clock, UTC)."
+        },
+        "session": {
+          "type": "string",
+          "enum": [
+            "current",
+            "previous"
+          ],
+          "description": "'current' = Game.log (default); 'previous' = newest file in logbackups."
+        }
+      }
+    }
+  },
+  {
+    "name": "sc_log_status",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
     "name": "sc_read_local_collection",
     "inputSchema": {
       "type": "object",

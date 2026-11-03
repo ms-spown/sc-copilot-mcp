@@ -18,6 +18,7 @@ export function createProbes({
   scwClient,
   sctClient,
   scmdb,
+  gameLog,
 }: ToolClients): StatusProbe[] {
   return [
     {
@@ -95,6 +96,35 @@ export function createProbes({
           unlabelled: builds.map((b) => ({ version: b.version, as_of: b.date || null })),
           note: "Build tags do not say LIVE or PTU, so they are listed, not classified. Tags can be republished: results are cached by commit.",
           fetchedAt: Date.now(),
+        };
+      },
+    },
+    {
+      id: "game-log",
+      run: async () => {
+        if (!gameLog.configured) {
+          return {
+            status: "not_configured",
+            note: "Set SC_GAME_LOG_PATH or SC_INSTALL_DIR to enable the sc_log_* tools.",
+          };
+        }
+        const r = await gameLog.read();
+        const s = r.parsed.session;
+        const info = {
+          version: s.game_version
+            ? `${s.game_version}${s.build ? ` (build ${s.build})` : ""}`
+            : null,
+          as_of: s.started_local,
+        };
+        return {
+          status: "ok",
+          ...(s.channel === "ptu"
+            ? { ptu: info }
+            : s.channel === "live"
+              ? { live: info }
+              : { unlabelled: [info] }),
+          fetchedAt: r.modifiedAt,
+          note: "The game on this PC, from its own log header. Its file version has a different format from the public version number; compare builds.",
         };
       },
     },

@@ -60,3 +60,23 @@ describe("collectStatus", () => {
     expect(out.warnings).toEqual(["uex is degraded: serving the last good copy"]);
   });
 });
+
+describe("build comparison", () => {
+  it("compares build numbers when sources give them, and says which differ", async () => {
+    const out = await collectStatus(
+      [
+        ok("wiki", "4.10.2-LIVE.12881860"),
+        ok("scmdb", "4.10.2-live.12913470"),
+        ok("game-log", "4.10.197.2878 (build 12881860)"),
+      ],
+      NOW,
+    );
+    expect(out.warnings).toHaveLength(1);
+    expect(out.warnings[0]).toMatch(/LIVE builds differ.*wiki=.*12881860.*scmdb=.*12913470/);
+  });
+
+  it("does not mistake a file version (4.10.197.2878) for a public release", async () => {
+    const out = await collectStatus([ok("uex", "4.10.2"), ok("game-log", "4.10.197.2878")], NOW);
+    expect(out.warnings).toEqual([]);
+  });
+});

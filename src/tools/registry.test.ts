@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { clearCache, configureDiskCache } from "../core/cache.js";
 import type { HttpClient } from "../core/http.js";
 import { CATALOG } from "./catalog.js";
+import { GameLog } from "../providers/gamelog/reader.js";
 import { Scmdb } from "../providers/scmdb/store.js";
 import { allTools, createRegistry, type Selection, type ToolClients } from "./registry.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
@@ -28,7 +29,14 @@ function fakeClient(routes: Record<string, unknown | ((params: unknown) => unkno
 function clientsWith(overrides: Partial<ToolClients> = {}): ToolClients {
   const empty = fakeClient({}).client;
   const scmdb = new Scmdb({ raw: empty, api: empty, repo: "o/r", cacheDir: () => "unused" });
-  return { uexClient: empty, scwClient: empty, sctClient: empty, scmdb, ...overrides };
+  return {
+    uexClient: empty,
+    scwClient: empty,
+    sctClient: empty,
+    scmdb,
+    gameLog: new GameLog({}),
+    ...overrides,
+  };
 }
 
 const registryWith = (

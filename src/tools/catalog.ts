@@ -103,6 +103,22 @@ export const CATALOG: Record<string, CatalogEntry> = {
     profiles: ["data"],
   },
 
+  sc_log_status: {
+    source: "Game.log (local)",
+    kind: "local_log",
+    trust: "structured",
+    channel: "unknown",
+    profiles: ["local"],
+  },
+  // Contract titles, objectives and item names come out of the log: treat them as text.
+  sc_log_recent_events: {
+    source: "Game.log (local)",
+    kind: "local_log",
+    trust: "untrusted_text",
+    channel: "unknown",
+    profiles: ["local"],
+  },
+
   sc_local_datasets: { ...local, profiles: ["local"] },
   sc_search_local: { ...local, profiles: ["local"] },
   sc_read_local_collection: { ...local, profiles: ["local"] },

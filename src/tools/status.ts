@@ -40,10 +40,15 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-/** "4.10.2" and "4.10.2-LIVE.12881860" are the same release; "4.10.197.2878" is not. */
+/** A public release: "4.10.2" or "4.10.2-LIVE.12881860". A file version such as "4.10.197.2878" is not one. */
 function release(version: string | null | undefined): string | null {
-  const m = version?.match(/^(\d+\.\d+\.\d+)/);
+  const m = version?.match(/^(\d+\.\d+\.\d+)(?:-|$)/);
   return m ? m[1] : null;
+}
+
+/** The 7 or 8 digit build number inside a version string, when it has one. */
+function build(version: string | null | undefined): string | null {
+  return version?.match(/\b(\d{7,8})\b/)?.[1] ?? null;
 }
 
 export async function collectStatus(probes: StatusProbe[], now: number = Date.now()) {
@@ -77,10 +82,21 @@ export async function collectStatus(probes: StatusProbe[], now: number = Date.no
 
   for (const channel of ["live", "ptu"] as const) {
     const versions = reported(channel);
-    const releases = new Set(versions.map((v) => release(v.version) ?? v.version));
-    if (releases.size > 1) {
+    const label = (list: { source: string; version: string }[]) =>
+      list.map((v) => `${v.source}=${v.version}`).join(", ");
+
+    // Sources that name a build are compared on it: that is where LIVE really differs.
+    const withBuild = versions.filter((v) => build(v.version));
+    if (new Set(withBuild.map((v) => build(v.version))).size > 1) {
       warnings.push(
-        `${channel.toUpperCase()} differs between sources: ${versions.map((v) => `${v.source}=${v.version}`).join(", ")}. Sources sync at different times; trust the one with the newest build.`,
+        `${channel.toUpperCase()} builds differ between sources: ${label(withBuild)}. Sources sync at different times; the highest build number is the newest.`,
+      );
+    }
+    // Others are compared on the public release number, when they have one.
+    const withRelease = versions.filter((v) => release(v.version));
+    if (new Set(withRelease.map((v) => release(v.version))).size > 1) {
+      warnings.push(
+        `${channel.toUpperCase()} differs between sources: ${label(withRelease)}. Sources sync at different times; trust the one with the newest build.`,
       );
     }
   }

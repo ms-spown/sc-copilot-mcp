@@ -1,4 +1,5 @@
 import { toErrorResult } from "../core/errors.js";
+import type { GameLog } from "../providers/gamelog/reader.js";
 import type { Scmdb } from "../providers/scmdb/store.js";
 import type { HttpClient } from "../core/http.js";
 import {
@@ -17,6 +18,7 @@ import { CATALOG, PROFILE_NAMES, type Profile } from "./catalog.js";
 import { dumpTools } from "./dumps.js";
 import { localTools } from "./local.js";
 import { scmdbTools } from "./scmdb.js";
+import { gameLogTools } from "./gamelog.js";
 import { sctTools } from "./sctools.js";
 import { statusTools, type StatusProbe } from "./status.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
@@ -29,6 +31,7 @@ export interface ToolClients {
   scwClient: HttpClient;
   sctClient: HttpClient;
   scmdb: Scmdb;
+  gameLog: GameLog;
 }
 
 /** Every tool this server implements, before any scoping. */
@@ -39,6 +42,7 @@ export function allTools(clients: ToolClients, probes: StatusProbe[] = []): Tool
     ...wikiTools(clients),
     ...sctTools(clients),
     ...scmdbTools(clients),
+    ...gameLogTools(clients),
     ...localTools(),
     ...vocabularyTools(clients),
     ...dumpTools(),
