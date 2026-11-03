@@ -66,10 +66,21 @@ export async function collectStatus(probes: StatusProbe[], now: number = Date.no
     }),
   );
 
+  // as_of is the date the source gives for its data: say how old that is. cache_age is only
+  // how long ago this server asked.
+  const dated = (info: ChannelInfo | undefined) => {
+    const at = info?.as_of ? Date.parse(info.as_of) : NaN;
+    return info && Number.isFinite(at) ? { ...info, as_of_age: humanizeAge(now - at) } : info;
+  };
   const sources = settled.map(({ fetchedAt, ...rest }) => ({
     ...rest,
+    ...("live" in rest ? { live: dated(rest.live) } : {}),
+    ...("ptu" in rest ? { ptu: dated(rest.ptu) } : {}),
+    ...("unlabelled" in rest && rest.unlabelled
+      ? { unlabelled: rest.unlabelled.map((c) => dated(c)) }
+      : {}),
     ...(fetchedAt !== undefined
-      ? { fetched_at: new Date(fetchedAt).toISOString(), data_age: humanizeAge(now - fetchedAt) }
+      ? { fetched_at: new Date(fetchedAt).toISOString(), cache_age: humanizeAge(now - fetchedAt) }
       : {}),
   }));
 

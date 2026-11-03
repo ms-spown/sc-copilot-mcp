@@ -836,6 +836,23 @@
         "terminal_name": {
           "type": "string",
           "description": "Optional: Filter by terminal name."
+        },
+        "side": {
+          "type": "string",
+          "enum": [
+            "buy",
+            "sell",
+            "both"
+          ],
+          "description": "buy = where the player can BUY it (cheapest first), sell = where the player can SELL it (best price first), both = two lists (default)."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Rows per list (default 15, max 50). The total count is always given."
+        },
+        "include_older_versions": {
+          "type": "boolean",
+          "description": "Also return rows from an older game version than LIVE (default false: they are left out and counted)."
         }
       },
       "required": [
@@ -955,6 +972,10 @@
         "limit": {
           "type": "number",
           "description": "Routes to return, best profit first (default 10, max 50)."
+        },
+        "min_reports": {
+          "type": "number",
+          "description": "Drop routes that have fewer than this many player reports at the origin OR at the destination (default 0: keep UEX estimates, but rank them after reported routes). 1 = only routes both ends of which a player has reported."
         }
       }
     }

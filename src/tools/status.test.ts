@@ -11,8 +11,23 @@ describe("collectStatus", () => {
   it("reports each source's version and age", async () => {
     const out = await collectStatus([ok("uex", "4.10.2")], NOW);
     expect(out.live_versions).toEqual([{ source: "uex", version: "4.10.2" }]);
-    expect(out.sources[0]).toMatchObject({ id: "uex", status: "ok", data_age: "2m" });
+    expect(out.sources[0]).toMatchObject({ id: "uex", status: "ok", cache_age: "2m" });
     expect(out.warnings).toEqual([]);
+  });
+
+  it("says how old a source's own data date is, apart from when we asked", async () => {
+    const out = await collectStatus(
+      [
+        ok("scmdb", "4.10.2-live.12913470", {
+          live: { version: "x", as_of: "2026-10-13T19:26:16Z" },
+        }),
+      ],
+      NOW,
+    );
+    expect(out.sources[0]).toMatchObject({
+      cache_age: "2m",
+      live: { as_of: "2026-10-13T19:26:16Z", as_of_age: "20d" },
+    });
   });
 
   it("treats 4.10.2 and 4.10.2-LIVE.12881860 as the same release", async () => {
