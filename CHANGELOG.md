@@ -6,6 +6,32 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Trade intelligence (UEX), three tools in the `trade` profile.**
+  - `uex_plan_trade` ranks one-way routes (from UEX `commodities_routes`), round trips A>B>A and two-leg chains A>B>C
+    (computed offline from one cached `commodities_prices_all` call) by estimated profit per hour, per run or by
+    shortest run, sized to the hold (`ship_name` or `cargo_scu`) and the budget. It gives profit per SCU, per run and
+    per hour and lists its assumptions. Travel time is an ESTIMATE: ship quantum spool-up plus distance divided by the
+    quantum speed (wiki sheet, or `quantum_speed_ms`), plus a fixed time per stop (8 minutes, `stop_minutes`). The SCM
+    speed is not used because UEX distances are in gigametres; the model matches the wiki's own figure (42 Gm in about
+    176 s). Distances come from the route, else the `orbits_distances` matrix, else `terminals_distances`
+    (`data: false` is an explicit "no data"). Prices older than 7 days are left out (`max_age_days`,
+    `include_stale`); every leg has `price_age_days`, `stale` and `report_status` (`reported`, `estimate`,
+    `unverified`: the price file cannot tell a player report from a UEX estimate, so the legs shown are checked
+    against `commodities_prices`). Fuel is not subtracted, and the answer says why with the measured age of UEX's fuel
+    prices. Stanton to Pyro routes are not planned (the gate transit time is not in UEX). Each option carries a
+    labelled safety heuristic (armistice flag and jurisdiction from UEX stations, cities and outposts, system, kind of
+    place, number of flights): never a claim that a route is safe.
+  - `uex_get_price_history` summarises `commodities_prices_history` for one commodity at one terminal: the points,
+    low, high, mean, volatility, position of the latest price in the range and a verdict (high, low, normal) with the
+    number of points it rests on. It always says SHORT HISTORY (about 10 snapshots) and gives no verdict under 4.
+  - `uex_get_market_status` turns `commodities_status` and the `status_*` / `scu_*` fields of `commodities_prices` into
+    shortage and saturation warnings. The legend is read side by side: when selling, level 7 means no demand.
+- The planner is a provider-level function (`src/providers/uex/tripPlanner.ts`, `planTrips`) that the MCP tool wraps
+  thinly, so other callers can rank options without going through the model.
+- The `haul_plan` prompt uses the new tools; README, `docs/CAPABILITIES.md` (section 1, the profile sizes, 51 tools),
+  `docs/USING_WITH_CLAUDE*.md` and `docs/TOOLS.md` follow.
+
 ## [2.1.0] - 2026-11-03
 
 ### Added

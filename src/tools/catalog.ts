@@ -99,6 +99,12 @@ export const CATALOG: Record<string, CatalogEntry> = {
   // Player-written ads: the only UEX tool whose text is not ours to trust.
   uex_search_marketplace: { ...uex, trust: "untrusted_text", profiles: ["trade"] },
 
+  // Trade intelligence (uexIntel.ts). Names are cleaned labels and every figure is a number: structured. The
+  // planner also reads the wiki ship sheet (quantum speed) when a ship is named; the answer says so.
+  uex_get_price_history: { ...uex, profiles: ["trade"] },
+  uex_get_market_status: { ...uex, profiles: ["trade"] },
+  uex_plan_trade: { ...uex, kind: "computed", profiles: ["trade"] },
+
   scw_get_vehicle: { ...wiki, profiles: ["core"] },
   scw_get_item: { ...wiki, profiles: ["core"] },
   scw_list_vehicles: { ...wiki, profiles: ["data"] },
