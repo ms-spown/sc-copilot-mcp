@@ -18,7 +18,7 @@ frames in memory, and never logs, writes or transmits them. The risks are descri
 
 Contacted hosts are fixed in `src/core/http.ts` (plus the opt-in loopback telemetry port above, which is not a host and not HTTP): `api.uexcorp.uk`, `api.uexcorp.space`,
 `api.star-citizen.wiki`, `star-citizen.wiki`, `starcitizen.tools`, `api.github.com`,
-`raw.githubusercontent.com`. Nothing else, and no telemetry.
+`raw.githubusercontent.com`. Nothing else, and no analytics or usage reporting of any kind.
 
 ## Threat model
 

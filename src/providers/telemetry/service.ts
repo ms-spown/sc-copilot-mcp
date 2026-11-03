@@ -75,6 +75,12 @@ export interface TelemetrySnapshot {
   uec_session?: { start: number; current: number; delta: number; since: string };
 }
 
+/** A local program on the port could send endless distinct field numbers: keep only the first few. */
+const MAX_NOTES = 64;
+const addBounded = (set: Set<string>, value: string) => {
+  if (set.size < MAX_NOTES) set.add(value);
+};
+
 export class TelemetryService {
   readonly events = new EventBuffer();
   private reader: GrpcStreamReader | null = null;
@@ -111,15 +117,21 @@ export class TelemetryService {
   ensureStarted(): void {
     this.lastTouch = this.now();
     if (!this.reader) {
-      this.reader = new GrpcStreamReader(
+      // Events of a reader that has been replaced (stop() then a new request) must not touch the new one.
+      const reader: GrpcStreamReader = new GrpcStreamReader(
         {
-          onMessage: (bytes) => this.onMessage(bytes),
-          onState: (state, detail) => this.onReaderState(state, detail),
+          onMessage: (bytes) => {
+            if (this.reader === reader) this.onMessage(bytes);
+          },
+          onState: (state, detail) => {
+            if (this.reader === reader) this.onReaderState(state, detail);
+          },
         },
         this.options.endpointForTests ?? GAME_ENDPOINT,
         this.options.reader,
       );
-      this.reader.start();
+      this.reader = reader;
+      reader.start();
     }
     this.armIdleTimer();
   }
@@ -162,8 +174,8 @@ export class TelemetryService {
     const t = this.now();
     try {
       const { frame, report } = decodeFrame(bytes);
-      for (const u of report.unknown) this.unknown.add(u);
-      for (const a of report.anomalies) this.anomalies.add(a);
+      for (const u of report.unknown) addBounded(this.unknown, u);
+      for (const a of report.anomalies) addBounded(this.anomalies, a);
       const known = Object.keys(frame).length > 0 || bytes.length === 0;
       const bad = report.anomalies.length > 0 || (bytes.length > 0 && !known);
       this.badStreak = bad ? this.badStreak + 1 : 0;

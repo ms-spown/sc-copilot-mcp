@@ -5,7 +5,9 @@ import { TelemetryHandler } from "./handler.js";
 import { normalizeFrame } from "./normalize.js";
 import {
   actorField,
+  ff,
   frame,
+  lf,
   vehicleField,
   weaponsField,
   type PilotSpec,
@@ -276,5 +278,71 @@ describe("Feature: the event ring", () => {
     const ring = new EventBuffer();
     for (let i = 0; i < 5; i++) ring.add("took_off", i);
     expect(ring.since(0, 2).map((e) => e.seq)).toEqual([4, 5]);
+  });
+});
+
+describe("Feature: partial frames and baselines", () => {
+  it("Given a full frame then a frame with only force feedback, Then ship and pilot are kept", () => {
+    const { feed } = world();
+    feed(0, ship({ speed: 100, altitude: 10 }), pilot({ health: 80 }));
+    const state = feed(100, lf(7, ff(4, 0.5))); // ForceFeedbackFrame.gunfire: a section we ignore
+    expect(state.ship?.instruments?.speed_ms).toBeCloseTo(100);
+    expect(state.pilot?.health?.percent).toBeCloseTo(0.8);
+  });
+
+  it("Given alternating ship-only and pilot-only frames, Then both stay present and events still fire", () => {
+    const { feed, types } = world();
+    feed(0, ship({ lights: { shld: "nominal" } }));
+    feed(100, pilot({ health: 90 }));
+    feed(200, ship({ lights: { shld: "major_on" } }));
+    feed(300, pilot({ health: 90 }));
+    feed(1000, pilot({ health: 90 }));
+    feed(1900, ship({ lights: { shld: "major_on" } }));
+    const state = feed(2000, pilot({ health: 90 }));
+    expect(state.pilot).not.toBeNull();
+    expect(state.ship).not.toBeNull();
+    expect(types()).toContain("shields_down");
+  });
+
+  it("Given a ship section silent for longer than its time to live, Then it is gone (the pilot left the ship)", () => {
+    const { feed } = world();
+    feed(0, ship({ speed: 5, altitude: 10 }), pilot({ health: 80 }));
+    const state = feed(5000, pilot({ health: 80 }));
+    expect(state.ship).toBeNull();
+    expect(state.pilot).not.toBeNull();
+  });
+
+  it("Given a first ship frame without power, lights or flight, then full frames, Then no ghost events", () => {
+    const { feed, types } = world();
+    const full: ShipSpec = {
+      landed: true,
+      gear: 3,
+      lights: { qdrv: "nominal", shld: "nominal" },
+      power: { powerplants: true, engines: true },
+      altitude: 5,
+    };
+    feed(0, ship({ withFlight: false }));
+    feed(100, ship(full));
+    feed(3000, ship(full));
+    expect(types()).toEqual([]);
+  });
+
+  it("Given a pilot already at health 0 and already drunk on the first frame, Then no 'down' and no 'intoxicated' event", () => {
+    const { feed, types } = world();
+    feed(0, pilot({ health: 0, intoxication: 4 }));
+    feed(2000, pilot({ health: 0, intoxication: 4 }));
+    expect(types()).toEqual([]);
+  });
+
+  it("Given NaN or Infinity in a gauge and an instrument, Then they read as not sent, not as measurements", () => {
+    const { feed, types } = world();
+    const state = feed(
+      0,
+      lf(6, lf(1, lf(3, ff(1, 5), ff(2, Number.POSITIVE_INFINITY)))),
+      ship({ speed: Number.NaN, altitude: 10 }),
+    );
+    expect(state.pilot?.hunger).toBeUndefined();
+    expect(state.ship?.instruments?.speed_ms).toBe(0);
+    expect(types()).toEqual([]);
   });
 });

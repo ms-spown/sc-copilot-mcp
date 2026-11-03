@@ -19,6 +19,12 @@ const RECOVERED_BPM = 150;
 const RESPAWN_HEALTH = 0.9;
 /** Seated with no vehicle frame this long = a ground vehicle (in ships the vehicle frame lags by 6 to 9 s). */
 const GROUND_VEHICLE_AFTER_MS = 12_000;
+/**
+ * A section (ship, pilot, weapons) missing from a frame keeps its last value for this long. A frame that only
+ * carries another section, or only something we ignore (force feedback), must not wipe the state or fake "left
+ * the ship"; a section silent for longer than this really is gone.
+ */
+const SECTION_TTL_MS = 3000;
 
 export interface Thresholds {
   health_low: number;
@@ -55,6 +61,8 @@ class Hold {
   value = false;
   private pending: boolean | null = null;
   private since = 0;
+  /** False until a value was seen or reset: the first value is a baseline, never a change. */
+  private seen = false;
 
   constructor(
     private onMs: number,
@@ -64,10 +72,15 @@ class Hold {
   reset(value: boolean): void {
     this.value = value;
     this.pending = null;
+    this.seen = true;
   }
 
   /** The confirmed new value when it just changed, otherwise undefined. */
   update(raw: boolean, t: number): boolean | undefined {
+    if (!this.seen) {
+      this.reset(raw);
+      return undefined;
+    }
     if (raw === this.value) {
       this.pending = null;
       return undefined;
@@ -181,6 +194,11 @@ export class TelemetryHandler {
   private cm = new Map<string, { count: number; burst: number }>();
   private uec: number | null = null;
   private uecPending: { before: number; last: number } | null = null;
+  private last: {
+    ship?: { v: Ship; t: number };
+    pilot?: { v: Pilot; t: number };
+    weapons?: { v: Weapons; t: number };
+  } = {};
 
   /** `events` can outlive the handler: a new handler (new stream) keeps appending to the same ring. */
   constructor(
@@ -194,35 +212,53 @@ export class TelemetryHandler {
   }
 
   update(frame: NormalizedFrame, t: number): void {
-    const pilot = frame.pilot;
     if (this.firstFrameAt === null) this.firstFrameAt = t;
-    if (pilot) {
-      pilot.locomotion = this.smoothLocomotion(pilot.locomotion ?? "unspecified", t);
-      this.pilotEvents(pilot, t);
+    if (frame.pilot) {
+      // A frame without the `state` part has no locomotion to report: that is not "unspecified".
+      if (frame.pilot.locomotion !== undefined) {
+        frame.pilot.locomotion = this.smoothLocomotion(frame.pilot.locomotion, t);
+      }
+      this.last.pilot = { v: frame.pilot, t };
+      this.pilotEvents(frame.pilot, t);
     }
+    const fresh = <T>(entry: { v: T; t: number } | undefined): T | null =>
+      entry && t - entry.t <= SECTION_TTL_MS ? entry.v : null;
+
     if (frame.ship) {
+      this.last.ship = { v: frame.ship, t };
       this.shipEvents(frame.ship, t);
       this.seatWithoutVehicle = null;
       this.groundVehicle = null;
-    } else {
+    } else if (!fresh(this.last.ship)) {
       this.vehicleKey = null;
-      this.groundVehicleEvents(pilot, t);
+      this.groundVehicleEvents(fresh(this.last.pilot), t);
     }
-    if (frame.weapons) this.countermeasureEvents(frame.weapons, t);
+    if (frame.weapons) {
+      this.last.weapons = { v: frame.weapons, t };
+      this.countermeasureEvents(frame.weapons, t);
+    }
 
-    const inJump = frame.ship ? this.holds.jump.value : false;
+    const ship = fresh(this.last.ship);
+    const inJump = ship ? this.holds.jump.value : false;
+    const inPlanet = ship?.instruments?.altitude_m !== undefined;
     const derived: TelemetryState["derived"] = {
-      ...frame.derived,
+      in_planet_frame: inPlanet,
+      heading_valid: inPlanet && !inJump,
+      radar_valid: ship?.instruments?.radar_altitude_m !== undefined,
+      in_quantum_mode: ship?.warning_lights?.["qdrv"] === "nominal",
       in_jump: inJump,
-      heading_valid: frame.derived.heading_valid && !inJump,
       health_zero: this.dead,
     };
     if (this.groundVehicle) derived.ground_vehicle = this.groundVehicle;
-    if (frame.ship?.instruments && !derived.heading_valid) {
-      delete frame.ship.instruments.heading_deg; // frozen during a jump, meaningless outside a planet frame
+    if (ship?.instruments && !derived.heading_valid) {
+      delete ship.instruments.heading_deg; // frozen during a jump, meaningless outside a planet frame
     }
     this.state = {
-      ...frame,
+      pilot: fresh(this.last.pilot),
+      ship,
+      weapons: fresh(this.last.weapons),
+      game_events: frame.game_events,
+      broken: frame.broken,
       derived,
       countermeasure_burst: Object.fromEntries([...this.cm].map(([k, v]) => [k, v.burst])),
     };
@@ -265,6 +301,13 @@ export class TelemetryHandler {
       this.pilotSeen = true;
       this.breathlessHold.reset(breathable === false);
       this.armed.set("exhausted", (heart ?? 0) < RECOVERED_BPM);
+      // Already down, or already drunk, when we start reading: that is the baseline, not news.
+      if (pilot.health?.percent !== undefined && pilot.health.percent <= 0) {
+        this.dead = true;
+        this.downHold.reset(true);
+      }
+      const startIntox = pilot.unverified["intoxication_level"];
+      if (typeof startIntox === "number" && startIntox > 0) this.armed.set("sober", false);
     }
     const health = pilot.health?.percent;
     if (health !== undefined) {

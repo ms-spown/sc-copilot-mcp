@@ -24,6 +24,7 @@ export interface DecodeReport {
 }
 
 const MAX_NOTES = 32;
+const MAX_STRING_BYTES = 512;
 const decoder = new TextDecoder("utf-8");
 
 /** "ANNUNCIATOR_STATE_MINOR_ON" for enum AnnunciatorState -> "minor_on". */
@@ -62,7 +63,8 @@ function decodeValue(type: FieldSpec["type"], raw: RawField, report: DecodeRepor
     case "float":
       return float32(raw.bytes!);
     default:
-      return decoder.decode(raw.bytes!);
+      // Names are short identifiers; a huge string is never worth keeping whole.
+      return decoder.decode(raw.bytes!.subarray(0, MAX_STRING_BYTES));
   }
 }
 

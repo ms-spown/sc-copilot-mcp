@@ -1,4 +1,5 @@
 import http2 from "node:http2";
+import net from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTelemetry } from "./index.js";
 import { GrpcStreamReader, MessageFramer, type ReaderState } from "./reader.js";
@@ -425,5 +426,154 @@ describe("Feature: weapons through the stream", () => {
       weapons: [{ name: "KLWE_LaserRepeater_S3", instance_id: "123", powered: true, ready: true }],
       countermeasures: { decoy: 8 },
     });
+  });
+});
+
+describe("Feature: robustness of the connection", () => {
+  it("Given start() immediately followed by stop(), 300 times, Then nothing is thrown outside the promise chain", async () => {
+    // A destroyed session asked for a stream used to throw ERR_HTTP2_INVALID_SESSION from an event handler.
+    const g = await game();
+    const errors: unknown[] = [];
+    const onError = (e: unknown) => errors.push(e);
+    process.on("uncaughtException", onError);
+    process.on("unhandledRejection", onError);
+    try {
+      for (let i = 0; i < 300; i++) {
+        const reader = new GrpcStreamReader(
+          { onMessage: () => undefined, onState: () => undefined },
+          { host: "127.0.0.1", port: g.port },
+          FAST,
+        );
+        reader.start();
+        if (i % 3 === 0) await new Promise((r) => setImmediate(r));
+        await reader.stop();
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    } finally {
+      process.off("uncaughtException", onError);
+      process.off("unhandledRejection", onError);
+    }
+    expect(errors).toEqual([]);
+  });
+
+  it("Given an HTTP/1 server on the port, Then the state is 'incompatible', not 'waiting'", async () => {
+    const sockets = new Set<net.Socket>();
+    const server = net.createServer((socket) => {
+      sockets.add(socket);
+      socket.on("error", () => undefined);
+      socket.end("HTTP/1.1 400 Bad Request\r\ncontent-length: 0\r\n\r\n");
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    cleanup.push(
+      () =>
+        new Promise<void>((r) => {
+          for (const socket of sockets) socket.destroy(); // an open client connection would keep close() waiting
+          server.close(() => r());
+        }),
+    );
+    const port = (server.address() as net.AddressInfo).port;
+    const s = new TelemetryService({ endpointForTests: { host: "127.0.0.1", port }, reader: FAST });
+    cleanup.push(() => s.stop());
+    s.ensureStarted();
+    await waitFor(async () => (await s.status(true)).state === "incompatible", "incompatible");
+  });
+
+  it("Given the first failure, Then the next attempt comes after the FIRST retry delay, not the second", async () => {
+    const attempts: number[] = [];
+    const server = net.createServer((socket) => {
+      attempts.push(Date.now());
+      socket.destroy();
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    cleanup.push(() => new Promise<void>((r) => server.close(() => r())));
+    const port = (server.address() as net.AddressInfo).port;
+    const reader = new GrpcStreamReader(
+      { onMessage: () => undefined, onState: () => undefined },
+      { host: "127.0.0.1", port },
+      { retryMs: [80, 5000], connectTimeoutMs: 500 },
+    );
+    reader.start();
+    await waitFor(() => attempts.length >= 2, "second attempt", 2500);
+    await reader.stop();
+    expect(attempts[1]! - attempts[0]!).toBeLessThan(2000);
+  });
+
+  it("Given a restart right after stop(), Then the old reader's late 'stopped' does not overwrite the new state", async () => {
+    const g = await game();
+    const s = service(g);
+    s.ensureStarted();
+    await waitFor(async () => (await s.status(false)).state === "connected", "connected");
+    const stopping = s.stop();
+    s.ensureStarted(); // a new request while the old reader is still shutting down
+    await stopping;
+    await waitFor(async () => (await s.status(false)).state === "connected", "connected again");
+    g.send(aFrame(9));
+    await waitFor(async () => (await s.status(false)).state === "live", "live again");
+  });
+
+  it("Given endless distinct unknown fields from a local program, Then the diagnostics stay bounded", async () => {
+    const g = await game();
+    const s = service(g);
+    s.ensureStarted();
+    await waitFor(async () => (await s.status(true)).state === "connected", "connected");
+    for (let i = 0; i < 40; i++) {
+      const many = Buffer.concat(Array.from({ length: 40 }, (_, k) => vf(100 + i * 40 + k, 1)));
+      g.send(many);
+    }
+    await waitFor(async () => (await s.status(true)).frames_rejected >= 40, "rejected frames");
+    expect((await s.status(true)).unknown_fields.length).toBeLessThanOrEqual(20);
+  });
+});
+
+describe("Feature: nothing is loaded while telemetry is off", () => {
+  it("Given a fresh module graph where node:http2, the service and the reader throw on import, When telemetry is off, Then everything still answers", async () => {
+    vi.resetModules();
+    const boom = (what: string) => () => {
+      throw new Error(what + " must not be loaded while telemetry is off");
+    };
+    vi.doMock("node:http2", boom("node:http2"));
+    vi.doMock("./service.js", boom("service"));
+    vi.doMock("./reader.js", boom("reader"));
+    try {
+      const { createTelemetry: fresh } = await import("./index.js");
+      const t = fresh({ enabled: false });
+      expect((await t.status(true)).state).toBe("off");
+      expect(await t.snapshot()).toBeNull();
+      expect((await t.events()).events).toEqual([]);
+      await t.stop();
+      // Switched on but never asked: still nothing is loaded (the import happens at the first request).
+      const lazy = fresh({ enabled: true });
+      await lazy.stop();
+    } finally {
+      vi.doUnmock("node:http2");
+      vi.doUnmock("./service.js");
+      vi.doUnmock("./reader.js");
+      vi.resetModules();
+    }
+  });
+});
+
+describe("Feature: what the diagnostics may contain", () => {
+  it("Given a balance and a seat name in the frames, Then neither appears in the events or the status", async () => {
+    const g = await game();
+    const s = service(g);
+    s.ensureStarted();
+    await waitFor(async () => (await s.status(true)).state === "connected", "connected");
+    g.send(
+      frame(actorField({ uec: 111111111, seat: "SECRET_SEAT", health: 100, intoxication: 0 })),
+    );
+    await new Promise((r) => setTimeout(r, 30));
+    g.send(
+      frame(actorField({ uec: 222222222, seat: "SECRET_SEAT", health: 100, intoxication: 3 })),
+    );
+    await waitFor(() => s.recentEvents().events.length > 0, "an event");
+    const text = JSON.stringify([
+      await s.status(false),
+      // Balance-change events carry the balance by design: the tools withhold them unless asked.
+      s.recentEvents(0, 100).events.filter((e) => e.type !== "uec_changed"),
+    ]);
+    expect(text).not.toContain("111111111");
+    expect(text).not.toContain("222222222");
+    expect(text).not.toContain("SECRET_SEAT");
   });
 });

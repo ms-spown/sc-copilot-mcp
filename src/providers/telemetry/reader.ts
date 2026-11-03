@@ -138,7 +138,9 @@ export class GrpcStreamReader {
       }
       if (this.stopped) break;
       attempt = reached ? 0 : attempt + 1;
-      await this.sleep(this.retry[Math.min(attempt, this.retry.length - 1)]!);
+      // First failure waits retry[0]; the delay grows with consecutive failures. A stream that was open and
+      // dropped (the game went back to the menu) starts again from the shortest delay.
+      await this.sleep(this.retry[Math.min(Math.max(attempt - 1, 0), this.retry.length - 1)]!);
     }
   }
 
@@ -167,31 +169,42 @@ export class GrpcStreamReader {
       );
       connectTimer.unref();
 
-      session.on("error", (error: NodeJS.ErrnoException) => {
-        const protocol = typeof error.code === "string" && error.code.startsWith("ERR_HTTP2");
-        if (protocol && !sawResponse) {
+      // Something answered on the port but does not speak HTTP/2 (an HTTP/1 server, noise): not "nobody there".
+      // The stream error and the session error can arrive in either order, so both go through here.
+      const fail = (error: NodeJS.ErrnoException, what: string) => {
+        if (error.code === "ERR_HTTP2_ERROR" && !sawResponse) {
           finish(
             "incompatible",
             `port ${this.endpoint.port} did not speak HTTP/2 gRPC (${error.code})`,
           );
         } else {
-          finish("waiting", error.code ?? "connection error");
+          finish("waiting", error.code ?? what);
         }
-      });
+      };
+      session.on("error", (error: NodeJS.ErrnoException) => fail(error, "connection error"));
       session.on("close", () => finish("waiting", "connection closed"));
       session.on("goaway", () => finish("waiting", "the game closed the connection"));
 
       session.on("connect", () => {
         clearTimeout(connectTimer);
-        const request = session.request(
-          {
-            ":method": "POST",
-            ":path": SERVICE_PATH,
-            "content-type": "application/grpc",
-            te: "trailers",
-          },
-          { endStream: false },
-        );
+        // stop() may have destroyed the session between the connection and this event: asking a destroyed
+        // session for a stream throws ERR_HTTP2_INVALID_SESSION, from an event handler, which nothing catches.
+        if (settled || this.stopped || session.destroyed) return;
+        let request: http2.ClientHttp2Stream;
+        try {
+          request = session.request(
+            {
+              ":method": "POST",
+              ":path": SERVICE_PATH,
+              "content-type": "application/grpc",
+              te: "trailers",
+            },
+            { endStream: false },
+          );
+        } catch {
+          finish("waiting", "the connection closed before the call");
+          return;
+        }
         // The empty TelemetryStreamRequest: no compression, zero length. The only bytes we ever send.
         request.end(Buffer.from([0, 0, 0, 0, 0]));
 
@@ -236,7 +249,7 @@ export class GrpcStreamReader {
             finish(name ? "incompatible" : "waiting", `gRPC status ${name ?? code}`);
           }
         });
-        request.on("error", () => finish("waiting", "stream error"));
+        request.on("error", (error: NodeJS.ErrnoException) => fail(error, "stream error"));
         request.on("close", () => finish("waiting", "the game closed the stream"));
       });
     });

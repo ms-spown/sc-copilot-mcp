@@ -173,7 +173,8 @@ const list = (d: Decoded | undefined, key: string): Decoded[] =>
   d && Array.isArray(d[key]) ? (d[key] as Decoded[]) : [];
 const num = (d: Decoded | undefined, key: string): number => {
   const v = d?.[key];
-  return typeof v === "number" ? v : 0;
+  // NaN and Infinity are not measurements: they read as "not sent" (the default), never as a gauge or a speed.
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
 };
 const bool = (d: Decoded | undefined, key: string): boolean => d?.[key] === true;
 const str = (d: Decoded | undefined, key: string): string =>
