@@ -7,6 +7,26 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Security
+- **`npm run check:docs` hardened** after an independent audit executed bypasses that the check accepted:
+  - Invisible Markdown: a link definition (`[//]: # (text)`, `[x]: <>`) must be used, point to a reviewed URL or a
+    file of the repository, and carry no title; links and images with a title are refused.
+  - Every link target is judged: bare `www.` addresses, e-mail addresses, `<...>` links, images, `srcset`, and URLs
+    in HTML attributes; a relative link must name a file or folder that exists.
+  - A lone carriage return (it hides text in a terminal) is refused; CRLF stays allowed.
+  - Look-alike letters: any letter outside the Latin script (whole words included), any character that NFKC folds
+    into another (fullwidth, mathematical, circled...), Latin look-alike blocks, non-ASCII digits and slash-like
+    punctuation are refused in every tracked text file (the ellipsis is tolerated). No file needs an exception.
+  - Extensions are compared without regard to case and cover `.markdown`, `.mdx`, `.mdc` and other prose formats;
+    translations too.
+  - github.com is allowed under reviewed project prefixes only (`ALLOWED_PATH_PREFIXES`), not for any path.
+    Credentials in a URL, ports, punycode hosts and non-https schemes are refused; hosts are compared in lower case.
+  - YAML and JSON files, `.claude/` and all of `src/` (tests and `testing/` helpers aside) are now checked for link
+    hosts and look-alikes; prompts, tools and configuration also for comments and tags. The lock file is checked for
+    entries that do not come from the npm registry over https.
+  - `package.json` scripts with a URL, a network command or an npm lifecycle hook, and any hook, script or
+    setting under `.claude/`, are reported for review.
+  - CONTRIBUTING.md lists what the check does not detect, and no longer says "no native code" without nuance:
+    production dependencies have none, development tools ship prebuilt native binaries.
 - **Live telemetry reader hardened against a local program that pretends to be the game** (port 2942 has no
   authentication). Found by an independent audit that ran the attacks:
   - A 1 MiB frame of empty weapons gave 500 000 entries (250 ms, 65 MB of heap) and a 21 MB `sc_live_state` answer.

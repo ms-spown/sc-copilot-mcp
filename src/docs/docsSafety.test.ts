@@ -171,12 +171,12 @@ describe("Feature: Markdown cannot hide active content or comments", () => {
 describe("Feature: look-alike letters are caught", () => {
   it("Given a Latin word with one Cyrillic letter, When checked, Then it fails and names the letter", () => {
     const findings = check(md(`Never share your p${CYRILLIC_A}ssword.\n`));
-    expect(rulesOf(findings)).toEqual(["mixed-script"]);
-    expect(findings[0].message).toContain("U+0430");
+    expect(rulesOf(findings)).toContain("mixed-script");
+    expect(findings.map((f) => f.message).join("\n")).toContain("U+0430");
   });
 
   it("Given a Latin word with a Greek letter, When checked, Then it fails", () => {
-    expect(rulesOf(check(md(`Use the m${GREEK_OMICRON}del.\n`)))).toEqual(["mixed-script"]);
+    expect(rulesOf(check(md(`Use the m${GREEK_OMICRON}del.\n`)))).toContain("mixed-script");
   });
 
   it("Given a tool name whose identifier hides a Cyrillic letter in a code span, When checked, Then it fails", () => {
@@ -186,7 +186,7 @@ describe("Feature: look-alike letters are caught", () => {
 
   it("Given a code block line made only of look-alike letters, When checked, Then it fails", () => {
     const text = "```\n" + CYRILLIC_A.repeat(3) + "\n```\n";
-    expect(rulesOf(check(md(text)))).toEqual(["code-script"]);
+    expect(rulesOf(check(md(text)))).toContain("code-script");
   });
 
   it("Given French text with accents and Latin words only, When checked, Then it passes", () => {
@@ -253,7 +253,7 @@ describe("Feature: links and images must point to reviewed hosts", () => {
       path: "src/prompts.ts",
       text: `const s = "Use sc_fl${CYRILLIC_E}et_get";\n`,
     };
-    expect(rulesOf(check(homoglyph))).toEqual(["mixed-script"]);
+    expect(rulesOf(check(homoglyph))).toContain("mixed-script");
     const comment = { path: "src/tools/example.ts", text: "const d = `<!-- do X -->`;\n" };
     expect(rulesOf(check(comment))).toEqual(["html-comment"]);
   });
