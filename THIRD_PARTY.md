@@ -23,6 +23,11 @@ donations needs each of these to be resolved first (see "Before accepting donati
 
 Game content (names, data) remains the property of Cloud Imperium; see [NOTICE](NOTICE).
 
+The live telemetry adds no dependency. It adds a licence fact (the `.proto` is GPLv3, like this project, so it
+changes nothing about the licence) and a terms question that is not ours to settle: it reads an undocumented game
+feature (see `docs/TELEMETRY.md`, Risks). Taking money for a tool whose optional feature may be against the game's
+terms is a reason to settle that point with RSI first, on top of the list below.
+
 ## Before accepting donations
 
 1. Settle the repository licence with the upstream author (GPLv3 vs ISC, "only" vs "or later").
@@ -30,6 +35,8 @@ Game content (names, data) remains the property of Cloud Imperium; see [NOTICE](
    the Star Citizen Wiki API, the community dumps, SCMDB_DATA.
 3. Confirm UEX's terms for a donation-funded tool.
 4. Re-read CIG's fan-project guidelines for the donation wording they require.
+5. Ask RSI whether a tool that reads the game's undocumented local telemetry (even optional and off by default) is
+   acceptable before any money is taken for the project.
 
 ## Questions for others (not yet asked: nothing is sent to anyone without the maintainer's say-so)
 

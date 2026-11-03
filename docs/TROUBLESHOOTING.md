@@ -46,6 +46,28 @@ number of seconds it says. Asking for large lists repeatedly is what usually tri
 - `sc_log_context` is "the last time the game logged it", not live: there is no position or ship telemetry in the log.
 - The game keeps writing the log while it runs: reading it is safe and takes no lock.
 
+## Live telemetry (optional, off by default)
+
+`sc_live_status` always answers and says the state and the cause; `npm run telemetry -- status` shows both switches
+without changing anything; `npm run doctor` repeats it. Full explanations and the risks are in
+[TELEMETRY.md](TELEMETRY.md).
+
+- **`off`**: `SC_TELEMETRY=on` is not set in the `sc-copilot` entry. `npm run telemetry -- enable --apply`, then
+  restart Claude Desktop.
+- **`waiting`, game not running**: nothing to read. Start the game.
+- **`waiting` or `game_without_telemetry` with the game running**: the game was started without the variable. Quit
+  the RSI Launcher completely, tray icon included (a launcher left in the tray keeps its old environment), start it
+  again, start the game. `Game.log` must then contain `Service 'sc.game.telemetry.v1.GameTelemetryService' registered`.
+- **`connected` but no data**: menus or loading screens send nothing. Data starts once the character has spawned;
+  ship data comes 6 to 9 seconds after you sit down.
+- **`live` but `sc_live_state` has no ship**: you are on foot or in a ground vehicle (they send no vehicle data).
+- **`incompatible`**: the game answers in a shape this version does not know, usually after a patch. Update the
+  server and open an issue with the game version; nothing else is needed from you.
+- **Nothing happens after `enable --apply`**: the server and Claude Desktop read their environment at start. Restart
+  both, and the launcher.
+- To undo everything the tool set: `npm run telemetry -- disable --apply`. A variable you set by hand stays; the
+  command prints how to remove it.
+
 ## A tool says "unexpected shape" or "format may have changed"
 
 A source changed after a patch. Run `npm run check:sources`: it names the file and field. Please open a

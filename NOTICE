@@ -20,7 +20,9 @@ Published on a non-commercial basis. Nothing here is sold, and no advertising,
 sponsorship, subscription or donation is taken against it. This project uses no
 Cloud Imperium assets, artwork or branding. It stores no game data: every answer
 is fetched on demand from the sources below and kept only in the user's own
-cache folder.
+cache folder. The optional live telemetry reads the game's own local feature on this
+computer only, keeps it in memory, and is off unless the user turns it on; it is an undocumented game feature that
+Cloud Imperium has neither allowed nor forbidden as far as we know (see docs/TELEMETRY.md).
 
 --------------------------------------------------------------------------------
 Attributions
@@ -36,4 +38,10 @@ Attributions
 - Community patch dumps (https://github.com/voidput/sc-gamedata-dumps): see its NOTICE,
   which states a non-commercial basis.
 - Upstream project: SCMCP by voidput (https://github.com/voidput/SCMCP), GPL-3.0.
+- Wingman AI by ShipBit (https://github.com/ShipBit/wingman-ai), GPL-3.0: the Star Citizen telemetry schema file
+  (src/providers/telemetry/sc_telemetry.proto, copied unchanged) and the design of the telemetry reader and event
+  rules, rewritten here. The schema was reconstructed by a third party from data in the game; this project does
+  not repeat that work.
+- Mallachi (Diftic), Star Citizen Telemetry skill and field-test report: what the telemetry stream contains, what it
+  does not, and its quirks. Used as a reference; no code was copied.
 - Model Context Protocol SDK, MIT.

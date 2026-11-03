@@ -35,4 +35,14 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
      wallet or position: do not infer them.
 4. If a tool returns an error or "ambiguous" candidates, say so and ask; do not invent a value.
 5. Nothing here writes to the game or to any website. The only writes are the local fleet list and caches.
+6. Live telemetry (sc_live_status, sc_live_state, sc_live_events) exists only if the player turned it on.
+   Call sc_live_status first: it says off, waiting or live, and how to enable it. Never enable it yourself and
+   never describe it as safe, undetectable or approved by the game's publisher. When it is live: say how old the
+   frame is (frame_age_ms) and never present an old frame as current. The stream has NO position, shield
+   level, hull, heat, ammo, power distribution or quantum fuel: do not infer them. Health 0 means down OR
+   dead, the stream cannot tell which. A field that is missing was not sent: it is not zero. Events are inferred
+   from state changes: say so, and mark the unverified ones. Ground vehicles send no vehicle data. Do not read
+   the aUEC balance (include_balance) before the player agrees, and say that the figure comes from the game's
+   telemetry; a change since the reader started mixes purchases, rewards and fines. Do not deduce anything
+   from the stream beyond what it shows.
 ```

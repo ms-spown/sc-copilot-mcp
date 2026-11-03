@@ -44,7 +44,27 @@ Claude ── MCP (stdio) ──► src/server.ts ──► tools/registry.ts �
 | SCMDB | `providers/scmdb/` (`store.ts` downloads and validates, `queries.ts` answers) | Cached by commit SHA |
 | Game log | `providers/gamelog/` (`parser.ts` pure, `reader.ts` I/O, `context.ts` derived views) | Off by default; read-only |
 | Fleet | `providers/fleet/` (`store.ts`, `resolve.ts`) | Local JSON file |
+| Live telemetry | `providers/telemetry/` (`wire.ts` + `decode.ts` + `schema.ts` decode, `normalize.ts` flat state, `handler.ts` + `events.ts` debounced events, `reader.ts` HTTP/2 stream, `service.ts` lazy single reader, `index.ts` the only door) | Off unless `SC_TELEMETRY=on`; loopback only; memory only; see [TELEMETRY.md](TELEMETRY.md) |
 | Patch dumps | `providers/dumps/` | Legacy; history is thin |
+
+## Optional features that are off by default
+
+Live telemetry is the model for any feature that reads something on the player's machine that the player did not
+ask for by installing the server:
+
+- One switch in the server's environment (`SC_TELEMETRY=on`), read in `core/config.ts`. A second switch outside this
+  process (the game-side variable) that the server never touches.
+- `providers/telemetry/index.ts` is the only door. With the switch off it loads nothing else: no HTTP/2 code, no
+  connection. The reader module is imported on the first request that needs it.
+- The address `127.0.0.1:2942` is a constant in `reader.ts`. Tests inject a port through `endpointForTests`; the
+  production code path has no way to take an address from the environment.
+- Tools that need the feature set `advertised` (`ToolDefinition.advertised`): they are left out of `tools/list` while
+  it is off. A tool that must always be there to explain the feature (`sc_live_status`) is always listed.
+- Everything the feature reads stays in memory. Names that come from the stream are only passed on if they look like
+  a game identifier. Anything that reaches the conversation and is personal (the aUEC balance) is withheld unless the
+  caller asks for it.
+- `npm run check:telemetry-silence` listens on the port itself and proves that the built server makes no connection
+  when the switch is off and does when it is on.
 
 ## Testing approach
 
@@ -54,3 +74,6 @@ Claude ── MCP (stdio) ──► src/server.ts ──► tools/registry.ts �
 - **No network, no real data.** Fake clients, temp folders, hand-made fixtures. Real services are only touched by
   `npm run check:sources`, which a human runs.
 - **Mutation of reality is faked at the edge.** Providers receive their HTTP client, so tests pass a fake.
+- **A fake game for the telemetry.** `providers/telemetry/testing/` has a protobuf encoder written from the `.proto`
+  (not from the decoder's table, so one wrong field number cannot hide itself) and a gRPC server over HTTP/2 on an
+  ephemeral port. No real frame is stored anywhere in the repository.
