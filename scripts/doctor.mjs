@@ -14,6 +14,10 @@ if (!distBuilt) {
   process.exit(1);
 }
 const { diagnose, summarize } = await load("install/doctor.js");
+const { gatherTelemetryFacts } = await load("install/telemetrySwitch.js");
+const { WindowsUserEnvStore } = await load("install/envStore.js");
+const { probeLoopbackPort } = await load("install/portProbe.js");
+const { claudeConfigPath } = await load("install/claudeConfigPath.js");
 const { userCacheDir } = await load("core/paths.js");
 const { FleetStore, fleetFilePath } = await load("providers/fleet/store.js");
 const { GameLog, shortPath } = await load("providers/gamelog/reader.js");
@@ -27,7 +31,7 @@ const readOrNull = (file) => {
 };
 
 const serverName = "sc-copilot";
-const configPath = path.join(process.env.APPDATA ?? path.join(process.env.HOME ?? ".", ".config"), "Claude", "claude_desktop_config.json");
+const configPath = claudeConfigPath();
 const claudeConfig = readOrNull(configPath);
 
 // The game log settings live in the Claude config entry, because that is the environment the server runs in.
@@ -70,6 +74,14 @@ if (gameLog.configured) {
   }
 }
 
+// Read-only. The port is only tested when SC_TELEMETRY is on in the config; no gRPC connection is ever opened.
+const telemetry = await gatherTelemetryFacts({
+  configRaw: claudeConfig,
+  serverName,
+  store: process.platform === "win32" ? new WindowsUserEnvStore() : null,
+  probe: probeLoopbackPort,
+});
+
 const checks = diagnose({
   nodeVersion: process.version,
   distBuilt,
@@ -80,6 +92,7 @@ const checks = diagnose({
   fleet,
   cacheWritable,
   gameLog: gameLogFacts,
+  telemetry,
 });
 
 const icon = { ok: "  ok  ", warn: " warn ", fail: " FAIL " };
