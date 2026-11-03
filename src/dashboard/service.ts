@@ -5,6 +5,8 @@ import {
   buildPoll,
   EMPTY_SESSION,
   offPoll,
+  tailorPoll,
+  type PollRequest,
   type PollResult,
   type SessionMarker,
   type SessionState,
@@ -17,7 +19,9 @@ import type { ShipSpecsResolver } from "./specs.js";
  * - Everything is in memory. Nothing is written to disk, no frame is kept.
  * - The poll never starts the reader while telemetry is off: it answers `off` without calling the service.
  * - The answer is cached for POLL_CACHE_MS and in-flight requests are shared, so N Views cost one read. The cache
- *   key is `include_balance`, so a balance is never handed to a View that did not ask for it.
+ *   key is `include_balance`, so a balance is never handed to a View that did not ask for it. What each View
+ *   already holds (events, unchanged sections, the static list) is cut AFTER the cache (tailorPoll): the cache key
+ *   never depends on it.
  * - It never sends anything to the game. The markers are this process's own bookkeeping.
  */
 
@@ -49,7 +53,13 @@ export class DashboardService {
     return this.telemetry?.enabled === true;
   }
 
-  poll(includeBalance: boolean): Promise<PollResult> {
+  /** The answer for one View: the shared answer, cut to what that View still needs. */
+  async poll(request: PollRequest): Promise<PollResult> {
+    return tailorPoll(await this.shared(request.includeBalance), request);
+  }
+
+  /** The shared answer (cached half a second), complete. */
+  private shared(includeBalance: boolean): Promise<PollResult> {
     const t = this.now();
     const hit = this.cache.get(includeBalance);
     if (hit && t - hit.at >= 0 && t - hit.at < POLL_CACHE_MS) return hit.result;

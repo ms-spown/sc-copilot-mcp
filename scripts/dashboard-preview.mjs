@@ -7,7 +7,7 @@
 // - The fake host plays the scenario of src/dashboard/testing/scenario.ts through the REAL normaliser and event
 //   handler, answers the ui/* requests as the measured host does, and shows what the View sends to the conversation.
 // URL parameters: t=<seconds into the story> theme=light|dark w=<px> mode=inline|fullscreen balance=1 session=1
-//                 forced=off|waiting|game_without_telemetry|incompatible cut=1 plan=1
+//                 forced=off|waiting|game_without_telemetry|incompatible cut=1 plan=1 scroll=<px>
 //                 specs=ready|unknown|ambiguous|pending|error|none  (the ship sheet from the wiki; default ready; the figures
 //                 are synthetic, see src/dashboard/testing/specsFixtures.ts; the story's ship is always the same Cutter)
 import http from "node:http";
@@ -38,18 +38,18 @@ const HARNESS = `<!doctype html>
 <div id="bar">
   <b>Aperçu</b>
   <label>thème <select id="theme"><option>dark</option><option>light</option></select></label>
-  <label>largeur <select id="w"><option>360</option><option selected>560</option><option>720</option></select></label>
+  <label>largeur <select id="w"><option>360</option><option selected>560</option><option>720</option><option>1280</option><option>2000</option></select></label>
   <label>état <select id="forced"><option value="">histoire</option><option>off</option><option>waiting</option><option>game_without_telemetry</option><option>incompatible</option></select></label>
   <label>fiche <select id="specs"><option>ready</option><option>unknown</option><option>ambiguous</option><option>pending</option><option>error</option><option>none</option></select></label>
   <button id="cut">couper le flux</button>
   <span id="clock"></span>
 </div>
-<div id="stage"><iframe id="frame" sandbox="allow-scripts" title="view"></iframe></div>
+<div id="stage"><iframe id="frame" sandbox="allow-scripts allow-same-origin" title="view"></iframe></div>
 <div id="log"></div>
 <script type="module">
 import { Scenario } from "/dist/dashboard/testing/scenario.js";
 import { createFakeHost } from "/dist/dashboard/testing/fakeHost.js";
-import { SPECS_SAMPLES } from "/dist/dashboard/testing/specsFixtures.js";
+import { specsSamples } from "/dist/dashboard/testing/specsFixtures.js";
 const q = new URLSearchParams(location.search);
 const seek = Number(q.get("t") ?? 0);
 const scenario = new Scenario(Date.now() - seek * 1000);
@@ -78,11 +78,10 @@ const deliver = (m) => {
 host = createFakeHost({ scenario, theme: $("theme").value, deliver });
 window.__host = host; window.__scenario = scenario;
 $("specs").value = q.get("specs") ?? "ready";
-// The poll answers carry the wiki sheet of the ship in the chosen state (the server would send it under "specs").
-host.overrides.poll = (base) => {
-  const mode = $("specs").value;
-  return base.ship && SPECS_SAMPLES[mode] ? { ...base, specs: SPECS_SAMPLES[mode] } : base;
-};
+// The scenario holds the wiki sheet of its ship in the chosen state; the poll sends it through the real delta protocol.
+const paintSpecs = () => { scenario.specs = specsSamples(scenario.now)[$("specs").value] ?? null; };
+paintSpecs();
+$("specs").onchange = paintSpecs;
 const setWidth = () => { frame.style.width = $("w").value + "px"; };
 setWidth();
 $("w").onchange = setWidth;
@@ -112,6 +111,7 @@ frame.addEventListener("load", () => {
     }
   }, 300);
 });
+if (q.get("scroll")) frame.addEventListener("load", () => setTimeout(() => frame.contentWindow.scrollTo(0, Number(q.get("scroll"))), 1500));
 frame.src = "/view.html";
 setInterval(() => { $("clock").textContent = "histoire : " + Math.round(scenario.t / 1000) + " s"; }, 500);
 </script>

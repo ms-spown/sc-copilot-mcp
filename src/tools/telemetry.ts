@@ -232,6 +232,7 @@ export function telemetryTools({
             ? { weapons: cutWeapons(state.weapons, MAX_WEAPONS_SHOWN) }
             : {}),
           derived: state.derived,
+          conditions: state.conditions,
           ...(include_balance && view.uec_session ? { uec_session: view.uec_session } : {}),
           ...(!include_balance ? { uec_balance: view.uec_balance } : {}),
           not_available: unavailable,

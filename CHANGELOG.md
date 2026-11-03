@@ -7,17 +7,45 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Dashboard v2.** A cockpit for the live dashboard: compact view with three dials, the ship banner, conditions and
+  a one-line verdict; full screen with a speed dial (deduced, labelled scale), a G dial, altitude, vertical speed bar,
+  compass (only when the heading is valid), 60 second curves, hydrogen with an estimated range, boost, power diagram,
+  warning-light panel, weapons summary, countermeasures against the highest count seen, pilot dials, one chronology
+  with filters, unverified values card. Pins go to a bar, confirmations to a toast next to the buttons, a switched-off
+  ship gets a calm view. One set of tokens, light and dark through the host variables, 360 to 2000 px.
+- **State alerts (`conditions`).** `sc_live_poll` and `sc_live_state` carry what is true now: shields off (info in
+  quantum mode, warning otherwise), shields down, powerplant off, engines, weapons, hostile lock, hits, proximity,
+  hydrogen, boost, countermeasures, health, hunger, thirst, breathing, quantum, jump. Events `shields_powered_off` and
+  `shields_powered_on` (measured on a real Harbinger; the first with the quantum context).
+- **Coverage table.** `coverage.ts` decides what becomes of every field of the stream; a test fails when a schema field
+  has no decision; the Coverage section of docs/TELEMETRY.md and .fr.md is generated from it (`npm run docs:coverage`).
+  The unverified values travel under `unverified` in the poll and are labelled in the page.
+- `sc_live_dashboard` returns a `hint` (and says in its description) not to open a second dashboard when one is open.
 - **Dashboard gauges against the ship's real limits.** The flown ship (class name of the stream, for example
   `AEGS_Vanguard_Harbinger`) is matched in the background to its Star Citizen Wiki sheet: one search per ship and per
   session, never in the poll's hot path, never while telemetry is off, retried at most every five minutes after a
   failure, no new host. Only one candidate is accepted (the row carrying the very class name, or a single match by
   words); several candidates give `ambiguous` with their names, none gives `unknown`. `sc_live_poll` carries the
-  optional `specs` field (status, name, SCM and maximum speed, cargo SCU, shield and hull points, age, candidates);
-  no tool parameter changed. The speed bar gets SCM and maximum marks and a value in percent of the SCM speed, says
-  when the speed is beyond the frame (above the sheet's maximum, quantum jump), and otherwise keeps a scale deduced
-  from the highest speed seen with one line saying why. Values of 0 are not provided. The hydrogen tank capacity is
-  not confirmed in the wiki data and is not shown: the hydrogen endurance stays the labelled estimate. Documented in
-  `docs/TELEMETRY.md` and `docs/TELEMETRY.fr.md`.
+  optional `specs` field (status, name, SCM and maximum speed, cargo SCU, shield and hull points, age, candidates) as
+  a fourth section of the delta protocol (`have.specs`, `hash.specs`, `unchanged`): it is sent once, then left out
+  while it is the same. The speed dial gets SCM and maximum marks on its arc and a value in percent of the SCM speed,
+  says when the speed is beyond the frame (above the sheet's maximum, quantum jump), and its scale line reads "d'après
+  la fiche (wiki)"; without a usable sheet it keeps the scale deduced from the speeds seen and says why. Values of 0 are
+  not provided. The hydrogen tank capacity is not confirmed in the wiki data and is not shown: the hydrogen endurance
+  stays the labelled estimate. Documented in `docs/TELEMETRY.md` and `docs/TELEMETRY.fr.md`.
+
+### Changed
+- **Only one dashboard polls.** The Views of one conversation elect a leader over a `BroadcastChannel` (the most recent
+  visible one); the others stop calling the server, show a banner with a take-over button and follow the leader's
+  answer (no balance, no wallet event on the channel). Before: 1, 3 and 5 open dashboards made 1, 3 and 5 calls per
+  second to the host; now always 1 (measured against the fake host). Without `BroadcastChannel` the old behaviour
+  applies and a View away for 30 seconds retires.
+- **Lighter polls.** `sc_live_poll` takes `since_seq`, `have` (section hashes) and `include_static`: events already
+  held, unchanged sections and the static list are not sent again (3810 to 2185 bytes a second on the made-up flight).
+  The shared cache is unchanged; the answer is cut per request after it. The input schema of `sc_live_poll` changed
+  (golden and docs/TOOLS.md regenerated). Curves keep 62 seconds (estimates 2 to 5 minutes) with a hard ceiling, and a
+  View that is torn down releases every listener, observer, timer and channel.
+- The pins of the compact view are replaced by a pin bar fed from icons on the cards.
 
 ### Fixed
 - **Telemetry no longer says the game is off when it is not.** Measured with the real game: the first

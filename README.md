@@ -194,11 +194,13 @@ health, hunger, thirst.
 - **What it cannot see:** position, shield level, hull, heat, ammo, power distribution or quantum fuel. Health 0
   means down or dead. The aUEC balance is withheld from Claude unless you agree (`include_balance`).
 - **A live dashboard (optional).** With telemetry on, Claude Desktop can show a live dashboard in the conversation
-  (`sc_live_dashboard`): ship, speed, hydrogen, health and the state of the stream in a compact view; instruments,
-  warning lights, weapons, events and a session timeline in full screen. Every value shows its age, the aUEC balance
-  stays hidden until you click, and nothing is sent to the game. The speed gauge uses the ship's limits from the
-  Star Citizen Wiki when exactly one sheet fits the ship (labelled "wiki"), and says so when it keeps its own
-  scale. Claude Code does not display it. See [docs/TELEMETRY.md](docs/TELEMETRY.md#live-dashboard).
+  (`sc_live_dashboard`): the ship, three dials, the alerts of the moment (shields cut in quantum mode, power lost, hostile
+  lock...) and a one-line verdict in a compact view; a cockpit with dials, a compass, a power diagram, warning lights,
+  weapons, pilot vitals and one chronology in full screen. Only the most recent dashboard calls the game's data; the
+  older ones follow it. Every value shows its age, nothing is invented, the aUEC balance stays hidden until you click,
+  and nothing is sent to the game. The speed dial uses the ship's limits from the Star Citizen Wiki when exactly one
+  sheet fits the ship (labelled "wiki"), and says so when it keeps its own scale. Claude Code does not display it. See
+  [docs/TELEMETRY.md](docs/TELEMETRY.md#live-dashboard).
 - **Read the risks first.** It is an undocumented game feature. As far as we know CIG has neither allowed nor
   forbidden using it, the RSI terms apply to you, and the risk is yours. Everything is in
   [docs/TELEMETRY.md](docs/TELEMETRY.md).

@@ -39,8 +39,8 @@ export interface ShipSpecs {
   shield_hp?: number;
   hull_hp?: number;
   source: "star-citizen.wiki";
-  /** How old the copy of the sheet is (ready only): time since this server read it from the wiki. */
-  age_ms?: number;
+  /** When this server read the sheet from the wiki (ISO 8601, ready only). The View works the age out from it. */
+  fetched_at?: string;
   /** True when the wiki could not be reached and the last good copy was used. */
   stale?: true;
   /** The game version the wiki stamps on the record, when it gives one. */
@@ -271,7 +271,7 @@ export class ShipSpecsResolver {
       entry.status = "pending";
       this.start(entry, words);
     }
-    return this.view(entry, nowMs);
+    return this.view(entry);
   }
 
   /** How many ships are remembered (bounded by SPECS_MAX_ENTRIES). */
@@ -339,12 +339,12 @@ export class ShipSpecsResolver {
     }
   }
 
-  private view(entry: Entry, nowMs: number): ShipSpecs {
+  private view(entry: Entry): ShipSpecs {
     const out = entry.outcome;
     if (entry.status === "ready" && out?.status === "ready") {
       return {
         ...out.specs,
-        age_ms: Math.max(0, nowMs - out.fetchedAt),
+        fetched_at: new Date(out.fetchedAt).toISOString(),
         ...(entry.stale ? { stale: true as const } : {}),
       };
     }

@@ -47,23 +47,29 @@ function specsPositive(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null;
 }
 
-/** Why the gauge keeps the scale deduced from what was seen, in one line. */
-export function specsScaleReason(specs: any): string {
-  if (!specs || typeof specs !== "object") return "échelle déduite des relevés";
+/** Why the gauge keeps the scale deduced from what was seen, without the lead-in ("" when there is nothing to say). */
+export function specsScaleWhy(specs: any): string {
+  if (!specs || typeof specs !== "object") return "";
   switch (specs.status) {
     case "pending":
-      return "échelle déduite : fiche du vaisseau en cours de recherche";
+      return "fiche du vaisseau en cours de recherche";
     case "unknown":
-      return "échelle déduite : fiche du vaisseau introuvable";
+      return "fiche du vaisseau introuvable";
     case "ambiguous":
-      return "échelle déduite : plusieurs fiches possibles, aucune choisie";
+      return "plusieurs fiches possibles, aucune choisie";
     case "error":
-      return "échelle déduite : fiche du vaisseau indisponible (wiki injoignable)";
+      return "fiche du vaisseau indisponible (wiki injoignable)";
     case "ready":
-      return "échelle déduite : la fiche ne donne pas de vitesse";
+      return "la fiche ne donne pas de vitesse";
     default:
-      return "échelle déduite des relevés";
+      return "";
   }
+}
+
+/** The same, as a whole line: « échelle déduite : fiche du vaisseau introuvable ». */
+export function specsScaleReason(specs: any): string {
+  const why = specsScaleWhy(specs);
+  return why ? "échelle déduite : " + why : "échelle déduite des relevés";
 }
 
 /**
@@ -108,7 +114,7 @@ export function speedGauge(specs: any, speed: any, observedMax: any, inQuantum: 
   const parts: string[] = [];
   if (scm !== null) parts.push("SCM " + specsFmt(scm));
   if (max !== null) parts.push("max " + specsFmt(max));
-  out.scale = "repères d’après le wiki : " + parts.join(" · ") + "\u00a0m/s";
+  out.scale = "marques " + parts.join(" · ") + "\u00a0m/s, d’après la fiche (wiki)";
   if (v === null) return out;
   if (scm !== null) out.pctScm = Math.round((v / scm) * 100);
   const base =
@@ -142,7 +148,7 @@ function specsText(v: unknown): string {
  *   rows  [label, value] pairs for the card, only for a sheet that was found;
  *   note  what the sheet is and is not (always says that the hydrogen tank is not known).
  */
-export function specsInfo(specs: any): any {
+export function specsInfo(specs: any, ageMs?: any): any {
   const hydrogen =
     "Capacité du réservoir d’hydrogène : non fournie par la fiche, l’autonomie en hydrogène reste une estimation par la pente.";
   const kind =
@@ -165,7 +171,7 @@ export function specsInfo(specs: any): any {
       out.rows.push([c[0], n === null ? "non fournie" : specsFmt(n) + c[2]]);
       if (n !== null) short.push(c[3] + " " + specsFmt(n) + c[2]);
     }
-    const age = specsAgeText(specs.age_ms);
+    const age = specsAgeText(ageMs);
     const version = specsText(specs.version);
     const edited =
       typeof specs.updated_at === "string" && /^\d{4}-\d{2}-\d{2}/.test(specs.updated_at)
@@ -206,14 +212,105 @@ export function specsInfo(specs: any): any {
   return out;
 }
 
+/**
+ * How old the copy of the sheet is when the View draws it, in ms, or null: the time since the server read it
+ * (`fetched_at`), measured on the server's clock at the moment of the poll (`poll.at`), plus the time since that poll
+ * arrived. Nothing here depends on the two clocks agreeing.
+ */
+export function specsAgeMs(poll: any, receivedAt: any, now: any): any {
+  const specs = poll && poll.specs;
+  if (!specs || typeof specs.fetched_at !== "string" || typeof poll.at !== "number") return null;
+  const fetched = Date.parse(specs.fetched_at);
+  if (!Number.isFinite(fetched)) return null;
+  const since = typeof receivedAt === "number" && typeof now === "number" ? now - receivedAt : 0;
+  return Math.max(0, poll.at - fetched) + Math.max(0, since);
+}
+
+/**
+ * The speed dial of instrumentInfo (viewLogic.ts) against the ship's sheet. A sheet that gives a speed: the arc runs
+ * from 0 to the sheet's top speed, marks at the SCM and top speeds, the value as a share of the SCM speed, what is
+ * beyond the frame said (`over`), and the scale line reads « d'après la fiche (wiki) ». Anything else: the dial is
+ * returned as it was, with the scale line saying why the sheet is not used.
+ * Adds: marks { scm, max } (0..1 or null), over, sub (long) and subShort (for the small dial).
+ */
+export function speedWithSheet(speed: any, specs: any, speedMs: any, quantum: any): any {
+  if (!speed || speed.known !== true) return speed;
+  const g = speedGauge(specs, speedMs, 0, quantum === true);
+  const out: any = Object.assign({}, speed);
+  if (g.source !== "sheet") {
+    const why = specsScaleWhy(specs);
+    out.marks = null;
+    out.over = "none";
+    if (why && typeof out.sub === "string") {
+      out.sub = out.sub.replace("déduite des vitesses vues", "déduite : " + why);
+    }
+    out.subShort = out.sub;
+    return out;
+  }
+  out.fraction = g.fraction;
+  out.peak = null;
+  out.marks = { scm: g.scmMark, max: g.maxMark };
+  out.over = g.over;
+  out.level = g.over === "none" ? "ok" : "info";
+  const name = specs && typeof specs.name === "string" ? specs.name.slice(0, 60) : "";
+  out.subShort = g.sub + (g.sub ? " · " : "") + "fiche (wiki)";
+  out.sub = (g.sub ? g.sub + " · " : "") + g.scale + (name ? " : " + name : "");
+  return out;
+}
+
+/**
+ * Rebuilds the sheet from untrusted data (a snapshot from another page on the channel): only known fields, right
+ * types, capped text. null when it is not a sheet.
+ */
+export function specsClean(raw: any): any {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const status = raw.status;
+  if (
+    status !== "pending" &&
+    status !== "ready" &&
+    status !== "unknown" &&
+    status !== "ambiguous" &&
+    status !== "error"
+  ) {
+    return null;
+  }
+  const out: any = { status, source: "star-citizen.wiki" };
+  const text = (v: any, max: number): string | undefined =>
+    typeof v === "string" ? v.slice(0, max) : undefined;
+  const name = text(raw.name, 60);
+  if (name !== undefined) out.name = name;
+  const keys = ["speed_scm_ms", "speed_max_ms", "cargo_scu", "shield_hp", "hull_hp"];
+  for (const k of keys) {
+    if (typeof raw[k] === "number" && Number.isFinite(raw[k]) && raw[k] > 0) out[k] = raw[k];
+  }
+  const fetched = text(raw.fetched_at, 40);
+  if (fetched !== undefined) out.fetched_at = fetched;
+  const updated = text(raw.updated_at, 40);
+  if (updated !== undefined) out.updated_at = updated;
+  const version = text(raw.version, 30);
+  if (version !== undefined) out.version = version;
+  if (raw.stale === true) out.stale = true;
+  if (Array.isArray(raw.candidates)) {
+    out.candidates = raw.candidates
+      .filter((c: any) => typeof c === "string")
+      .slice(0, 8)
+      .map((c: string) => c.slice(0, 60));
+  }
+  return out;
+}
+
 /** The names the page needs, in the order they are serialised (after those of viewLogic.ts). */
 export const SPECS_VIEW_FUNCTIONS = [
   specsFmt,
   specsAgeText,
   speedObservedMax,
   specsPositive,
+  specsScaleWhy,
   specsScaleReason,
   speedGauge,
+  specsAgeMs,
+  speedWithSheet,
+  specsClean,
   specsText,
   specsInfo,
 ];

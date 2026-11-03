@@ -16,6 +16,8 @@ export interface HostOptions {
   theme?: "light" | "dark";
   /** Display modes the host offers. Claude Desktop 4.4212.0: inline and fullscreen. */
   availableDisplayModes?: string[];
+  /** Answer every poll in full, as the server did before the delta answers (for measuring). */
+  legacyFullPolls?: boolean;
   /** Style variables to hand out (a plausible set is used by default). */
   variables?: Record<string, string>;
 }
@@ -23,7 +25,7 @@ export interface HostOptions {
 export interface HostLog {
   /** Every request or notification the View sent, in order. */
   received: { method: string; params: any; at: number }[];
-  polls: { includeBalance: boolean; at: number }[];
+  polls: { includeBalance: boolean; at: number; bytes: number }[];
   messages: string[];
   contexts: string[];
   modeRequests: string[];
@@ -119,9 +121,23 @@ export function createFakeHost(options: HostOptions) {
           scenario.advanceTo(Math.max(scenario.t, nowMs - scenario.epoch));
           if (params.name === "sc_live_poll") {
             const include = params.arguments?.include_balance === true;
-            log.polls.push({ includeBalance: include, at: nowMs });
-            const base = scenario.poll(include);
+            const a = params.arguments ?? {};
+            const base = scenario.poll(
+              include,
+              options.legacyFullPolls
+                ? { includeStatic: true }
+                : {
+                    includeStatic: a.include_static === true,
+                    ...(typeof a.since_seq === "number" ? { sinceSeq: a.since_seq } : {}),
+                    ...(a.have && typeof a.have === "object" ? { have: a.have } : {}),
+                  },
+            );
             const structuredContent = overrides.poll ? overrides.poll(base) : base;
+            log.polls.push({
+              includeBalance: include,
+              at: nowMs,
+              bytes: JSON.stringify(structuredContent).length,
+            });
             respond(id, {
               content: [{ type: "text", text: `live dashboard poll: ${base.state}` }],
               structuredContent,

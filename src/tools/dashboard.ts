@@ -6,6 +6,7 @@ import { DashboardService } from "../dashboard/service.js";
 import { ShipSpecsResolver } from "../dashboard/specs.js";
 import type { HttpClient } from "../core/http.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
+import { NOT_IN_STREAM } from "../providers/telemetry/normalize.js";
 import type { ResourceDefinition, ToolDefinition, ToolResult } from "./types.js";
 
 /**
@@ -20,6 +21,10 @@ import type { ResourceDefinition, ToolDefinition, ToolResult } from "./types.js"
 
 const OPEN_META = { ui: { resourceUri: DASHBOARD_URI }, "ui/resourceUri": DASHBOARD_URI };
 const APP_ONLY_META = { ui: { resourceUri: DASHBOARD_URI, visibility: ["app"] } };
+
+/** Told to the model with every opening: a second copy is clutter, and the old one keeps updating. */
+export const OPEN_HINT =
+  "If a dashboard is already open in this conversation, do not open another one unless the player explicitly asks for it: the open one updates by itself.";
 
 const off = (): ToolResult => ({
   content: [
@@ -65,7 +70,7 @@ export function dashboardTools({
     {
       name: "sc_live_dashboard",
       description:
-        "Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance stays hidden until the player clicks). Call it when the player asks to see their ship or session live. Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Waiting or connected means no data yet (menus, loading): never say the game is not running or that something is wrong, no troubleshooting unless it shows a game launched without telemetry or an unknown format. On foot only character data exists; ship instruments need the player seated in a ship. Optional plan: after uex_get_trade_routes, pass the route so the View compares planned and measured profit.",
+        "Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance stays hidden until the player clicks). Call it when the player asks to see their ship or session live. If a dashboard is already open in this conversation, do not open it again unless the player explicitly asks for a new one: it updates by itself, and each extra copy stays on screen (only the most recent one calls the server, the others show a banner). Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Waiting or connected means no data yet (menus, loading): never say the game is not running or that something is wrong, no troubleshooting unless it shows a game launched without telemetry or an unknown format. On foot only character data exists; ship instruments need the player seated in a ship. Optional plan: after uex_get_trade_routes, pass the route so the View compares planned and measured profit.",
       inputSchema: {
         type: "object",
         properties: {
@@ -95,12 +100,14 @@ export function dashboardTools({
           content: [
             {
               type: "text",
-              text: "The live dashboard is open in the conversation and updates by itself. For questions, call sc_live_state. Do not call sc_live_poll.",
+              text: `The live dashboard is open in the conversation and updates by itself. For questions, call sc_live_state. Do not call sc_live_poll. ${OPEN_HINT}`,
             },
           ],
           structuredContent: {
             view: "sc_live_dashboard",
             opened_at: new Date().toISOString(),
+            hint: OPEN_HINT,
+            not_in_stream: NOT_IN_STREAM,
             ...(clean ? { plan: clean } : {}),
           },
         };
@@ -117,16 +124,53 @@ export function dashboardTools({
             type: "boolean",
             description: "Include the aUEC balance and its change. Default false.",
           },
+          include_static: {
+            type: "boolean",
+            description: "Include the list of what the stream never contains. The View asks once.",
+          },
+          since_seq: {
+            type: "number",
+            description: "The newest event number the View holds: only newer events come back.",
+          },
+          have: {
+            type: "object",
+            description:
+              "Hashes (the `hash` of a previous answer) of the sections the View holds; a section with the same hash is left out and listed in `unchanged`.",
+            properties: {
+              ship: { type: "string", maxLength: 16 },
+              pilot: { type: "string", maxLength: 16 },
+              weapons: { type: "string", maxLength: 16 },
+              specs: { type: "string", maxLength: 16 },
+            },
+          },
         },
       },
       advertised: enabled,
       requiresUi: true,
       meta: APP_ONLY_META,
       handler: async (args: unknown): Promise<ToolResult> => {
-        const { include_balance } = z
-          .object({ include_balance: z.boolean().optional() })
+        const hash = z.string().regex(/^[0-9a-f]{1,16}$/);
+        const { include_balance, include_static, since_seq, have } = z
+          .object({
+            include_balance: z.boolean().optional(),
+            include_static: z.boolean().optional(),
+            since_seq: z.number().int().min(0).max(1e12).optional(),
+            have: z
+              .object({
+                ship: hash.optional(),
+                pilot: hash.optional(),
+                weapons: hash.optional(),
+                specs: hash.optional(),
+              })
+              .optional(),
+          })
           .parse(args || {});
-        const result = await service.poll(include_balance === true && enabled());
+        const result = await service.poll({
+          includeBalance: include_balance === true && enabled(),
+          ...(include_static === true ? { includeStatic: true } : {}),
+          ...(since_seq !== undefined ? { sinceSeq: since_seq } : {}),
+          ...(have ? { have } : {}),
+        });
         return {
           // Fixed text on purpose: the data is in structuredContent, and no balance can leak into the text.
           content: [{ type: "text", text: `live dashboard poll: ${result.state}` }],

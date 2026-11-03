@@ -322,7 +322,7 @@ describe("Feature: the search runs in the background, once per ship", () => {
     expect(cfg.params).toMatchObject({ "filter[name]": "Cutter", "page[size]": 50 });
   });
 
-  it("Given a ready sheet, Then its age grows with the clock and the copy is not read again", async () => {
+  it("Given a ready sheet, Then it says when it was read, unchanged as the clock moves, and is not read again", async () => {
     const { client, get } = wikiClient(() => list([CUTTER]));
     const r = new ShipSpecsResolver(client, clock);
     r.current("DRAK_Cutter");
@@ -330,7 +330,9 @@ describe("Feature: the search runs in the background, once per ship", () => {
     const first = r.current("DRAK_Cutter");
     nowMs += 90_000;
     const later = r.current("DRAK_Cutter");
-    expect(later?.age_ms).toBeGreaterThanOrEqual((first?.age_ms ?? 0) + 89_000);
+    expect(Date.parse(first?.fetched_at ?? "")).toBeGreaterThan(0);
+    // Identical from one poll to the next: that is what lets the delta protocol leave it out.
+    expect(later).toEqual(first);
     expect(get).toHaveBeenCalledTimes(1);
   });
 
@@ -442,7 +444,13 @@ describe("Feature: the search runs in the background, once per ship", () => {
 
 function fakeTelemetry(opts: { enabled: boolean; className?: string }) {
   const ship = opts.className
-    ? { name: `${opts.className}_1`, class_name: opts.className, lights_on: false }
+    ? {
+        name: `${opts.className}_1`,
+        class_name: opts.className,
+        lights_on: false,
+        unverified: {},
+        parts_missing: [],
+      }
     : null;
   const telemetry = {
     enabled: opts.enabled,
@@ -454,7 +462,7 @@ function fakeTelemetry(opts: { enabled: boolean; className?: string }) {
     snapshot: vi.fn(async () =>
       opts.className
         ? {
-            state: { ship, pilot: null, weapons: null, derived: {} },
+            state: { ship, pilot: null, weapons: null, derived: {}, conditions: [] },
             frame_age_ms: 10,
             received_at: new Date(0).toISOString(),
           }
@@ -472,7 +480,7 @@ describe("Feature: the poll carries the sheet without ever waiting for it", () =
     const { client, get } = wikiClient(() => list([CUTTER]));
     const telemetry = fakeTelemetry({ enabled: false, className: "DRAK_Cutter" });
     const service = new DashboardService(telemetry, () => 5, new ShipSpecsResolver(client));
-    const poll = await service.poll(false);
+    const poll = await service.poll({ includeBalance: false });
     expect(poll.state).toBe("off");
     expect(poll).not.toHaveProperty("specs");
     expect(get).not.toHaveBeenCalled();
@@ -483,7 +491,7 @@ describe("Feature: the poll carries the sheet without ever waiting for it", () =
     const { client, get } = wikiClient(() => list([CUTTER]));
     const telemetry = fakeTelemetry({ enabled: true });
     const service = new DashboardService(telemetry, () => 5, new ShipSpecsResolver(client));
-    const poll = await service.poll(false);
+    const poll = await service.poll({ includeBalance: false });
     expect(poll).not.toHaveProperty("specs");
     expect(get).not.toHaveBeenCalled();
   });
@@ -497,11 +505,11 @@ describe("Feature: the poll carries the sheet without ever waiting for it", () =
       () => t,
       resolver,
     );
-    const first = await service.poll(false);
+    const first = await service.poll({ includeBalance: false });
     expect(first.specs).toEqual({ status: "pending", source: "star-citizen.wiki" });
     await resolver.idle();
     t += 1_000; // past the half second a poll answer is shared
-    const second = await service.poll(false);
+    const second = await service.poll({ includeBalance: false });
     expect(second.specs).toMatchObject({
       status: "ready",
       name: "Cutter",
@@ -511,7 +519,7 @@ describe("Feature: the poll carries the sheet without ever waiting for it", () =
       source: "star-citizen.wiki",
     });
     t += 1_000;
-    await service.poll(true);
+    await service.poll({ includeBalance: true });
     expect(get).toHaveBeenCalledTimes(1);
     // Bounded: the whole answer stays far below the poll's limit.
     expect(JSON.stringify(second.specs).length).toBeLessThan(1_000);
@@ -521,19 +529,20 @@ describe("Feature: the poll carries the sheet without ever waiting for it", () =
     const service = new DashboardService(
       fakeTelemetry({ enabled: true, className: "DRAK_Cutter" }),
     );
-    expect(await service.poll(false)).not.toHaveProperty("specs");
+    expect(await service.poll({ includeBalance: false })).not.toHaveProperty("specs");
   });
 
-  it("Given the sc_live_poll tool, Then structuredContent.specs is there and the input has no new parameter", async () => {
+  it("Given the sc_live_poll tool, Then structuredContent.specs is there and the only new input is have.specs", async () => {
     const { client, get } = wikiClient(() => list([CUTTER]));
     const tools = dashboardTools({
       telemetry: fakeTelemetry({ enabled: true, className: "DRAK_Cutter" }),
       scwClient: client,
     });
     const poll = tools.find((t) => t.name === "sc_live_poll")!;
-    expect(Object.keys((poll.inputSchema as { properties: object }).properties)).toEqual([
-      "include_balance",
-    ]);
+    const props = (poll.inputSchema as { properties: Record<string, { properties?: object }> })
+      .properties;
+    expect(Object.keys(props)).toEqual(["include_balance", "include_static", "since_seq", "have"]);
+    expect(Object.keys(props["have"]!.properties!)).toEqual(["ship", "pilot", "weapons", "specs"]);
     const answer = await poll.handler({});
     expect((answer.structuredContent as { specs: { status: string } }).specs.status).toBe(
       "pending",
@@ -541,5 +550,88 @@ describe("Feature: the poll carries the sheet without ever waiting for it", () =
     // The text stays fixed: no wiki text reaches the model's context through it.
     expect(answer.content[0]).toEqual({ type: "text", text: "live dashboard poll: live" });
     expect(get).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Feature: the sheet is a section of the lighter poll", () => {
+  const poll = async (service: DashboardService, request: Record<string, unknown> = {}) =>
+    service.poll({ includeBalance: false, ...request });
+
+  async function readySheet() {
+    const { client } = wikiClient(() => list([CUTTER]));
+    const resolver = new ShipSpecsResolver(client);
+    let t = 10_000;
+    const service = new DashboardService(
+      fakeTelemetry({ enabled: true, className: "DRAK_Cutter" }),
+      () => t,
+      resolver,
+    );
+    await poll(service);
+    await resolver.idle();
+    return { service, advance: () => (t += 1_000) };
+  }
+
+  it("Given the pending then the ready sheet, Then the hash of specs changes", async () => {
+    const { service, advance } = await readySheet();
+    advance();
+    const ready = await poll(service, { includeStatic: true });
+    advance();
+    const later = await poll(service);
+    expect(ready.specs?.status).toBe("ready");
+    expect(later.hash?.specs).toBe(ready.hash?.specs);
+    const { client } = wikiClient(() => list([CUTTER]));
+    const resolver = new ShipSpecsResolver(client);
+    const pendingService = new DashboardService(
+      fakeTelemetry({ enabled: true, className: "DRAK_Cutter" }),
+      () => 20_000,
+      resolver,
+    );
+    const pending = await poll(pendingService);
+    expect(pending.specs?.status).toBe("pending");
+    expect(pending.hash?.specs).not.toBe(ready.hash?.specs);
+    await resolver.idle();
+  });
+
+  it("Given a View that holds the sheet, Then the next answer leaves it out and says so", async () => {
+    const { service, advance } = await readySheet();
+    advance();
+    const first = await poll(service);
+    expect(first.specs?.status).toBe("ready");
+    advance();
+    const second = await poll(service, { have: { specs: first.hash!.specs } });
+    expect(second).not.toHaveProperty("specs");
+    expect(second.unchanged).toContain("specs");
+    // The ship section is not touched by that: it was not held.
+    expect(second).toHaveProperty("ship");
+  });
+
+  it("Given a View with another hash (or none), Then the sheet is sent", async () => {
+    const { service, advance } = await readySheet();
+    advance();
+    expect((await poll(service, { have: { specs: "0000000000000" } })).specs).toBeDefined();
+    advance();
+    expect((await poll(service)).specs).toBeDefined();
+  });
+
+  it("Given include_static, Then the sheet is neither more nor less present", async () => {
+    const { service, advance } = await readySheet();
+    advance();
+    const withStatic = await poll(service, { includeStatic: true });
+    advance();
+    const without = await poll(service);
+    expect(withStatic.specs).toEqual(without.specs);
+    expect(withStatic).toHaveProperty("not_in_stream");
+    expect(without).not.toHaveProperty("not_in_stream");
+  });
+
+  it("Given the tool, Then the input accepts have.specs and rejects a malformed hash", async () => {
+    const { client } = wikiClient(() => list([CUTTER]));
+    const tools = dashboardTools({
+      telemetry: fakeTelemetry({ enabled: true, className: "DRAK_Cutter" }),
+      scwClient: client,
+    });
+    const tool = tools.find((t) => t.name === "sc_live_poll")!;
+    await expect(tool.handler({ have: { specs: "abcdef0123456" } })).resolves.toBeDefined();
+    await expect(tool.handler({ have: { specs: "NOT HEX!" } })).rejects.toBeDefined();
   });
 });

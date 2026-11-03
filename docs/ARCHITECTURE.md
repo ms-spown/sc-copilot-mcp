@@ -82,9 +82,21 @@ that only it may call (`visibility: ["app"]`): `sc_live_poll` (state, events, se
   polling and context decisions, estimates). `page.ts` serialises those functions and `viewApp.ts` into one inline
   script with `Function.prototype.toString`; `viewPage.test.ts` runs that very script in `node:vm` against a fake DOM
   (which refuses `innerHTML`) and a fake host. No browser is involved in the tests.
-- **Cost of many Views.** Claude mounts one iframe per tool call and never unmounts them, so several Views can poll.
-  `service.ts` shares one answer per half second (the cache key is `include_balance`, so a balance is never handed
-  to a View that did not ask), and a View stops polling when hidden, off screen, torn down or after 30 minutes away.
+- **Cost of many Views.** Claude mounts one iframe per tool call and never unmounts them, so several Views exist.
+  Server side, `service.ts` shares one answer per half second (the cache key is `include_balance` only, so a balance
+  is never handed to a View that did not ask); `tailorPoll` then cuts that shared answer per request (events newer
+  than `since_seq`, sections whose hash is in `have` left out and listed in `unchanged`, `not_in_stream` only with
+  `include_static`), so the cache never depends on what a View holds. View side, the Views of a connector share a
+  sandbox origin and talk on a `BroadcastChannel` (`electLeader`, `notePeer`, `parseChannelMessage`, `cleanPoll`, all
+  pure and tested): the most recent visible View polls and shares its answer (without balance or wallet events), the
+  others follow and show a banner. Without `BroadcastChannel` a View away for 30 seconds retires. The channel handler
+  is separate from the JSON-RPC handler, only the host window is believed for `ui/*`, and `dispose()` removes every
+  listener, observer, timer and the channel.
+- **Coverage.** `providers/telemetry/coverage.ts` decides what becomes of every field of the schema (exposed where,
+  shown by which widget, or ignored and why); `coverage.test.ts` fails when a field has no entry, `cockpit.test.ts`
+  checks the widgets exist in the page, and the tables of docs/TELEMETRY.md and .fr.md are generated from it
+  (`npm run docs:coverage`). The state of the moment (`conditions`) is computed in `handler.ts` from the smoothed
+  state, with its own debouncing.
 - **The balance** exists only in the `balance` part of a poll, on request; it never enters `ui/update-model-context`.
 - **The ship sheet.** `specs.ts` holds a `ShipSpecsResolver` that `DashboardService` consults for the class name of the
   flown ship. `current()` is synchronous and answers from memory; the first sight of a ship starts one wiki search in
@@ -95,7 +107,9 @@ that only it may call (`visibility: ["app"]`): `sc_live_poll` (state, events, se
   whose `class_name` is the very class name, is accepted. The result is the optional `specs` field of the poll
   (`poll.ts`). The View side lives in `specsView.ts` (pure, serialised into the page after `viewLogic.ts` by
   `page.ts`) and `specsStyles.ts`, so the sheet gauges stay out of the files the rest of the View changes in.
-- **Preview.** `scripts/dashboard-preview.mjs` serves the page and a fake host with a made-up flight on `127.0.0.1`.
+- **Preview.** `scripts/dashboard-preview.mjs` serves the page and a fake host with a made-up flight (a full quantum
+  jump included) on `127.0.0.1`. Its iframe carries `allow-same-origin` (the preview only) so that two Views can reach
+  each other on the channel.
 
 ## Testing approach
 
