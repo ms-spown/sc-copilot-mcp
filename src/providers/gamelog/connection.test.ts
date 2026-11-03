@@ -188,3 +188,73 @@ describe("the pure part stays loadable in a browser harness", () => {
     expect(source).not.toMatch(/from\s+["']\.\/(parser|reader)\.js["']/);
   });
 });
+
+describe("markers cannot be forged from free text", () => {
+  it("ignores a marker word that is not the line's own tag", () => {
+    const forged = [
+      `${at("40:00.000")} [Notice] <Chat> hello <SystemQuit> and <Join PU> and <CDisciplineServiceExternal::EndSession>`,
+      `${at("40:01.000")} [Notice] <Something> <Channel Disconnected> cause=1 reason="x" isRemote=1 gamerules="SC_Default"`,
+      `${at("40:02.000")} unstamped-tag <SystemQuit>`,
+    ];
+    expect(run(LOGIN, JOIN, forged).state).toBe("online");
+    expect(run(LOGIN, forged).state).toBe("menu");
+  });
+});
+
+describe("ConnectionTracker is right on the first call, behind, and after a new log", () => {
+  let dir: string;
+  let file: string;
+  let clock: number;
+  const tracker = () => new ConnectionTracker(new GameLog({ logPath: file }), () => clock);
+  const filler = (kib: number) =>
+    Array.from(
+      { length: Math.ceil(kib / 1.5) },
+      (_, i) => `${at("00:00.000")} [Notice] <Filler> line ${i} ${"x".repeat(1450)}`,
+    );
+  const append = (lines: string[]) => fs.appendFileSync(file, lines.join("\n") + "\n");
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-conn-big-"));
+    file = path.join(dir, "Game.log");
+    clock = 1_000_000;
+  });
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it("reports a kick written 1 MiB before the end of a 5.5 MiB log at the FIRST call, not the second", async () => {
+    append([...LOGIN, ...JOIN, ...filler(4500), ...KICK, ...filler(1024)]);
+    expect(fs.statSync(file).size).toBeGreaterThan(5 * 1024 * 1024);
+    expect(await tracker().current()).toMatchObject({ state: "disconnected", code: 30028 });
+  });
+
+  it("catches up in ONE call after a long idle: 15 MiB of log, then a kick", async () => {
+    append([...LOGIN, ...JOIN]);
+    const t = tracker();
+    expect((await t.current())?.state).toBe("online");
+    append(filler(15 * 1024));
+    append(KICK);
+    clock += 60_000;
+    expect((await t.current())?.state).toBe("disconnected");
+  });
+
+  it("starts over when the game recreates the log, even when the new one is bigger than the old offset", async () => {
+    append([...LOGIN, ...JOIN, `${at("50:00.000")} [Notice] <SystemQuit> CSystem::Quit invoked`]);
+    const t = tracker();
+    expect((await t.current())?.state).toBe("closed");
+    const oldSize = fs.statSync(file).size;
+    fs.rmSync(file);
+    await new Promise((r) => setTimeout(r, 25)); // a new file gets a new birth time
+    append([...LOGIN, ...JOIN, ...filler(8)]);
+    expect(fs.statSync(file).size).toBeGreaterThan(oldSize);
+    clock += 1000;
+    expect((await t.current())?.state).toBe("online");
+  });
+
+  it("keeps what it knows when the log is briefly unreadable, and forgets it when the file is gone", async () => {
+    append([...LOGIN, ...JOIN, ...KICK]);
+    const t = tracker();
+    expect((await t.current())?.state).toBe("disconnected");
+    fs.rmSync(file);
+    clock += 1000;
+    expect(await t.current()).toBeNull();
+  });
+});

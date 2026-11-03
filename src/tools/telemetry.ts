@@ -124,7 +124,13 @@ async function connectionReport(connection: ConnectionTracker | undefined) {
     info = null;
   }
   if (!info) return undefined;
-  return { ...info, meaning: describeConnection(info) };
+  // The game's own `reason` text stays out of what the model reads: the code and the fixed meaning say it all.
+  return {
+    state: info.state,
+    since: info.since,
+    code: info.code,
+    meaning: describeConnection(info),
+  };
 }
 
 export function telemetryTools({

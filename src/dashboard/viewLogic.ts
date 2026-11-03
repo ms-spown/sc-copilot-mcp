@@ -162,7 +162,9 @@ export function connectionInfo(conn: any, now: number): any {
       const inactive = conn.code === 30028;
       const why = inactive
         ? "Renvoyé du serveur pour inactivité"
-        : "Le serveur a coupé la connexion" + (conn.code ? " (code " + conn.code + ")" : "");
+        : conn.code
+          ? "Le serveur a coupé la connexion (code " + conn.code + ")"
+          : "La session de jeu est terminée";
       const reason =
         !inactive && conn.reason ? " Raison donnée par le jeu : " + conn.reason + "." : "";
       return {

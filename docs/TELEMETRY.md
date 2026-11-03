@@ -290,11 +290,13 @@ launcher), `connected` (the HTTP/2 session with the game is open, no frames yet:
 **Connection state (from `Game.log`).** The stream does not tell when the player is cut from the game: it goes quiet
 or keeps repeating its last values. When the game log is configured (`SC_INSTALL_DIR` or `SC_GAME_LOG_PATH`),
 `sc_live_status`, `sc_live_state` and the dashboard also read where the player stands towards the servers, from the
-lines the game writes (three markers, each seen three times in real logs): joined a server (`online`), cut by the
+lines the game writes (markers seen in a real log: two kicks, the menu and the rejoin between them; each is
+matched on the line's own tag, so a marker word inside free text cannot forge a state): joined a server (`online`), cut by the
 server (`disconnected`, with the game's own code, for example 30028 for inactivity), back in the menus (`menu`), game
 quit (`closed`). When it is not `online`, the dashboard says so at once in red, greys every value and shows no
-"no alert" line, and the tools say the last values are not current. Only a state, a time, a numeric code and a short
-reason are kept; no handle, address or session id. One `stat` per poll, and only the bytes added since the last
+"no alert" line, and the tools say the last values are not current. Only a state, a time and a numeric code reach the
+tools (the game's own reason text stays in the page, as text only); no handle, address or session id. A voluntary
+quit to the menu and a server change are not yet checked on a real log. One `stat` per poll, and only the bytes added since the last
 read are parsed. Without a configured log nothing is reported, and nothing is claimed either way.
 
 The reader starts at the first request, reconnects with a growing delay, stops after five minutes without a request,

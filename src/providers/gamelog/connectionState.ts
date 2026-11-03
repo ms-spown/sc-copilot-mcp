@@ -14,7 +14,8 @@
  * - `<Error Popup Opened> errorCode=N ... [Team_UI][Disconnection]`: the "you were disconnected" window.
  * - `<CDisciplineServiceExternal::EndSession>`: the server session is over (written with every kick seen).
  * - `<[EALobby] EALobbyQuit>`: the player is back in the menu.
- * - `<SystemQuit>`: the game closes.
+ * - `<SystemQuit>`: the game closes (its cause is not kept: it is not a connection cause).
+ * - `<LoginCompleted>`: logged in again, so in the menus (used only to leave `unknown` or `closed`).
  *
  * This file is pure (no file access, no node import): the file follower is in connection.ts.
  *
@@ -52,7 +53,9 @@ export const UNKNOWN_CONNECTION: ConnectionInfo = {
 };
 
 /** True when the log says the player is not in a server session: whatever the stream still holds is not current. */
-export function notInSession(connection: ConnectionInfo | null | undefined): boolean {
+export function notInSession(
+  connection: Pick<ConnectionInfo, "state"> | null | undefined,
+): boolean {
   const state = connection?.state;
   return state === "disconnected" || state === "menu" || state === "closed";
 }
@@ -96,38 +99,42 @@ export function applyConnectionLine(prev: ConnectionInfo, line: string): Connect
     reason: string | null = null,
   ): ConnectionInfo => ({ state, since: at, code, reason });
 
-  if (body.includes("<Join PU>") || body.includes("<CDisciplineServiceExternal::BeginSession>")) {
-    // BeginSession follows Join PU by milliseconds: keep the earlier time.
-    return prev.state === "online" ? prev : set("online");
+  // Anchored on the line's own tag ("[Notice] <Tag> ..."): a marker word inside free text cannot forge a state.
+  const tagged = body.match(/^\s*\[\w+\]\s*<([^>]*)>(.*)$/);
+  if (!tagged) return prev;
+  const tag = tagged[1];
+  const rest = tagged[2];
+  switch (tag) {
+    case "Join PU":
+    case "CDisciplineServiceExternal::BeginSession":
+      // BeginSession follows Join PU by milliseconds: keep the earlier time.
+      return prev.state === "online" ? prev : set("online");
+    case "Channel Disconnected": {
+      if (/gamerules="SC_Frontend"/.test(rest)) return prev; // the menu's own link, torn down on joining
+      if (prev.state === "disconnected") return prev; // the second side of the same cut
+      const code = rest.match(/\bcause=(\d{1,6})\b/);
+      const reason = rest.match(/\breason="([^"]*)"/);
+      return set("disconnected", code ? Number(code[1]) : null, cleanReason(reason?.[1]));
+    }
+    case "Error Popup Opened": {
+      const popup = rest.match(/^\s*errorCode=(\d{1,6})\b.*\[Team_UI\]\[Disconnection\]/);
+      if (!popup) return prev;
+      if (prev.state === "disconnected")
+        return prev.code === null ? { ...prev, code: Number(popup[1]) } : prev;
+      return set("disconnected", Number(popup[1]));
+    }
+    case "CDisciplineServiceExternal::EndSession":
+      return prev.state === "online" ? set("disconnected") : prev;
+    case "[EALobby] EALobbyQuit":
+      // Back in the menu. Ignored while online: leaving a lobby does not end the server session.
+      return prev.state === "online" ? prev : set("menu");
+    case "LoginCompleted":
+      return prev.state === "unknown" || prev.state === "closed" ? set("menu") : prev;
+    case "SystemQuit":
+      return set("closed");
+    default:
+      return prev;
   }
-  let m: RegExpMatchArray | null;
-  if ((m = body.match(/<Channel Disconnected>(.*)$/))) {
-    const rest = m[1];
-    if (/gamerules="SC_Frontend"/.test(rest)) return prev; // the menu's own link, torn down on joining
-    if (prev.state === "disconnected") return prev; // the second side of the same cut
-    const code = rest.match(/\bcause=(\d{1,6})\b/);
-    const reason = rest.match(/\breason="([^"]*)"/);
-    return set("disconnected", code ? Number(code[1]) : null, cleanReason(reason?.[1]));
-  }
-  if (
-    (m = body.match(/<Error Popup Opened>\s*errorCode=(\d{1,6})\b.*\[Team_UI\]\[Disconnection\]/))
-  ) {
-    if (prev.state === "disconnected")
-      return prev.code === null ? { ...prev, code: Number(m[1]) } : prev;
-    return set("disconnected", Number(m[1]));
-  }
-  if (body.includes("<CDisciplineServiceExternal::EndSession>")) {
-    return prev.state === "online" ? set("disconnected") : prev;
-  }
-  if (body.includes("<[EALobby] EALobbyQuit>")) {
-    // Back in the menu. Ignored while online: leaving a lobby does not end the server session.
-    return prev.state === "online" ? prev : set("menu");
-  }
-  if (body.includes("<LoginCompleted>")) {
-    return prev.state === "unknown" || prev.state === "closed" ? set("menu") : prev;
-  }
-  if (/<SystemQuit>/.test(body)) return set("closed");
-  return prev;
 }
 
 /** The state after a whole text (tests, and the first read of a log). */

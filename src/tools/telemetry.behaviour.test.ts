@@ -446,6 +446,7 @@ describe("Feature: the tools say when the player is no longer connected (read fr
     expect(status.json.data.connection.meaning).toMatch(/NOT current/);
     const state = await call("sc_live_state");
     expect(state.json.data.connection.state).toBe("disconnected");
+    expect(state.json.data.connection).not.toHaveProperty("reason");
     expect(state.json.data.conditions).toEqual([]);
   });
 
