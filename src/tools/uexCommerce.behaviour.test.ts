@@ -188,8 +188,8 @@ describe("Feature: uex_get_refining_margins ranks refineries and ores without in
         .content[0].text;
       const { data } = JSON.parse(text);
       expect(data.refined_product).toMatchObject({ name: "Laranite", reference_sell_price: 8000 });
-      expect(data.what_uex_does_not_have).toMatch(/no conversion ratio/);
-      expect(data.what_uex_does_not_have).toMatch(/NO aUEC profit/);
+      expect(data.what_uex_does_not_have.join(" ")).toMatch(/no conversion ratio/);
+      expect(data.what_uex_does_not_have.join(" ")).toMatch(/NO aUEC profit/);
       expect(text).not.toMatch(/"(profit|margin)[a-z_]*"/);
       // The ore sale prices keep their level and their age; the row with price 0 is not a price.
       expect(data.ore_sale_prices_at_refineries).toMatchObject({
@@ -301,7 +301,7 @@ describe("Feature: uex_get_refining_margins ranks refineries and ores without in
           reason: expect.stringMatching(/refined/),
         }),
       ]);
-      expect(data.index_meaning).toMatch(/NOT aUEC/);
+      expect(data.index_meaning.join(" ")).toMatch(/NOT aUEC/);
       expect(text).not.toMatch(/"(profit|margin)[a-z_]*"/);
     });
 
@@ -894,5 +894,53 @@ describe("Feature: uex_get_marketplace_prices is a price guide for player tradin
       expect(name).not.toContain(cp(0x200b));
       expect(name.length).toBeLessThan(300);
     });
+  });
+});
+
+describe("Feature: our own explanations are never cut by the untrusted-text bound", () => {
+  // Every string of an untrusted_text answer is cut at maxText (200). The caveats are the point of these
+  // tools: a caveat cut in half is worse than none.
+  const noCut = (result: ToolResult) => {
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).not.toContain("[truncated");
+  };
+
+  it("Given every tool and mode, Then no string in the answer was cut", async () => {
+    const refining = registryFor(refiningWorld().client);
+    noCut(await refining.call("uex_get_refining_margins", { ore: "laranite" }));
+    noCut(await refining.call("uex_get_refining_margins", {}));
+    noCut(await refining.call("uex_get_refining_margins", { ore: "quantanium" }));
+
+    const items = registryFor(itemsWorld().client);
+    noCut(
+      await items.call("uex_get_item_prices", {
+        item_name: "burst",
+        category: "Quantum Drives",
+        limit: 1,
+        with_attributes: true,
+      }),
+    );
+    noCut(
+      await items.call("uex_get_item_prices", { item_name: "spectre", category: "Quantum Drives" }),
+    );
+    noCut(
+      await items.call("uex_compare_items", {
+        item_a: "Burst",
+        item_b: "Voyage",
+        category: "Quantum Drives",
+        size_a: 1,
+      }),
+    );
+
+    const market = registryFor(marketWorld().client);
+    noCut(
+      await market.call("uex_get_marketplace_prices", {
+        id_item: 4454,
+        include_history: true,
+        operation: "buy",
+        check_price: 3000,
+      }),
+    );
+    noCut(await market.call("uex_get_marketplace_prices", { limit: 2 }));
   });
 });

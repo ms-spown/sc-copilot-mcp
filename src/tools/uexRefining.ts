@@ -17,8 +17,13 @@ import {
 import { asRows, boundedLimit, median } from "../providers/uex/rows.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
-const NOT_IN_UEX =
-  "UEX has no conversion ratio from SCU of ore to SCU of refined product, no refining cost in aUEC and no processing time in minutes, so NO aUEC profit is computed here. This is a ranking from the yield bonus players reported (UEX refineries_yields).";
+// Every string of an untrusted_text answer is cut at 200 characters (maxText in the catalog), our own notes
+// included: each sentence below is its own string so that no caveat is cut in half. A test checks it.
+const NOT_IN_UEX = [
+  "UEX has no conversion ratio from SCU of ore to SCU of refined product.",
+  "It has no refining cost in aUEC and no processing time in minutes.",
+  "So NO aUEC profit is computed here: this is a ranking from the yield bonus players reported.",
+];
 
 const json = (payload: unknown): ToolResult => ({
   // Not formatOutput: a yield bonus of 0 or a rank of 1 is information, not noise.
@@ -94,8 +99,11 @@ export function uexRefiningTools({ uexClient }: { uexClient: HttpClient }): Tool
           );
           return json({
             mode: "ores_ranked_by_index",
-            index_meaning:
-              "refined product's reference sell price x (1 + best yield bonus / 100), scaled so the best ore is 100. It compares ores; it is NOT aUEC and NOT a margin: the ore-to-refined ratio and the refining cost are unknown, and ore and refined prices are not in the same unit.",
+            index_meaning: [
+              "Refined product's reference sell price x (1 + best yield bonus / 100), scaled so the best ore is 100.",
+              "It compares ores; it is NOT aUEC and NOT a margin.",
+              "The ore-to-refined ratio and the refining cost are unknown, and ore and refined prices are not in the same unit.",
+            ],
             system_filter: star_system_name ?? "all systems",
             total_ranked: ranked.length,
             shown: shown.length,
@@ -151,8 +159,11 @@ export function uexRefiningTools({ uexClient }: { uexClient: HttpClient }): Tool
           refineries: {
             total: rows.length,
             shown: shown.length,
-            sorted_by:
-              "yield_bonus_percent, highest first (equal bonuses share a rank). The bonus is relative to the game's base yield and is reported by players; capacity_value is shown as UEX gives it, its unit is unverified (UEX's docs call it a percentage but values reach 1075), so it is NOT used to rank.",
+            sorted_by: "yield_bonus_percent, highest first; equal bonuses share a rank.",
+            yield_bonus_note:
+              "A bonus relative to the game's base yield, reported by players (percent per UEX).",
+            capacity_note:
+              "capacity_value is shown as UEX gives it; its unit is unverified (UEX's docs say percentage, values reach 1075). It is NOT used to rank.",
             yield_bonus_spread: rows.length
               ? { best: Math.max(...bonuses), median: median(bonuses), worst: Math.min(...bonuses) }
               : null,
