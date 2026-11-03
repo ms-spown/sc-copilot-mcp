@@ -3,6 +3,8 @@
 [![CI](https://github.com/ms-spown/sc-copilot-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/ms-spown/sc-copilot-mcp/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
+English · [Français](README.fr.md)
+
 A local, **read-only** [Model Context Protocol](https://modelcontextprotocol.io) server that turns Claude
 into a Star Citizen copilot: market and trade routes, ships, missions, crafting, mining, the patch you are
 on, what your own game just logged, and your fleet.
