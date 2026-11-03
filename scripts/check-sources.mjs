@@ -5,6 +5,8 @@
 //   npm run build && node scripts/check-sources.mjs
 //
 // Exit code 0 = all sources answered and kept their shape; 1 = something to look at.
+import dotenv from "dotenv";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -21,7 +23,19 @@ const { FleetStore, fleetFilePath } = await load("providers/fleet/store.js");
 const { createProbes } = await load("providers/probes.js");
 const { collectStatus } = await load("tools/status.js");
 
+// Same environment as the server: the .env next to the package, then the game-log settings from the
+// Claude Desktop entry (that is where they live), unless already set in the shell.
+dotenv.config({ path: path.join(root, ".env"), quiet: true });
+try {
+  const cfg = path.join(process.env.APPDATA ?? path.join(process.env.HOME ?? ".", ".config"), "Claude", "claude_desktop_config.json");
+  const env = JSON.parse(fs.readFileSync(cfg, "utf8"))?.mcpServers?.["sc-copilot"]?.env ?? {};
+  for (const key of ["SC_INSTALL_DIR", "SC_GAME_LOG_PATH"]) if (env[key] && !process.env[key]) process.env[key] = env[key];
+} catch {
+  // No Claude config: the log simply stays off.
+}
 const config = loadConfig();
+console.log(`UEX token: ${config.uexToken ? "set" : "not set (public endpoints only)"}
+`);
 const clients = {
   uexClient: createUexClient(config.uexBaseUrl, config.uexToken),
   scwClient: createScwClient(config.scwBaseUrl),
