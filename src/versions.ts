@@ -15,12 +15,21 @@
 import axios from "axios";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { ALLOWED_HOSTS, createGuardedClient } from "./core/http.js";
 import { USER_AGENT } from "./useragent.js";
 
 const REPO = process.env.SCMCP_DATA_REPO || "voidput/sc-gamedata-dumps";
 const DATA_PATH = process.env.SCMCP_DATA_REPO_PATH || "data";
 const GITHUB_API = "https://api.github.com";
 const RAW_BASE = "https://raw.githubusercontent.com";
+
+// Both values end up inside request URLs, so only plain owner/name and path segments pass.
+if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(REPO)) {
+  throw new Error(`SCMCP_DATA_REPO must look like "owner/name", got "${REPO}".`);
+}
+if (!/^[A-Za-z0-9_.-]+(\/[A-Za-z0-9_.-]+)*$/.test(DATA_PATH) || DATA_PATH.includes("..")) {
+  throw new Error(`SCMCP_DATA_REPO_PATH must be a relative path without "..", got "${DATA_PATH}".`);
+}
 
 /**
  * Every dump is an envelope of named collections rather than a bare array, so
@@ -54,13 +63,21 @@ const META_KEYS = new Set(["_source", "_extracted", "_build", "_extraction-valid
 const CACHE_DIR =
   process.env.SCMCP_BUILD_CACHE_DIR || path.join(process.cwd(), ".build-cache");
 
-const ghClient = axios.create({
+// The GitHub token (optional, only raises the rate limit) goes to api.github.com and nowhere else.
+const ghClient = createGuardedClient({
   baseURL: GITHUB_API,
-  headers: {
-    Accept: "application/vnd.github+json",
-    "User-Agent": USER_AGENT,
-    ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
-  },
+  allowedHosts: ALLOWED_HOSTS.githubApi,
+  userAgent: USER_AGENT,
+  headers: { Accept: "application/vnd.github+json" },
+  token: process.env.GITHUB_TOKEN,
+});
+
+// Raw dump downloads are public, so this client never carries a token.
+const rawClient = createGuardedClient({
+  baseURL: RAW_BASE,
+  allowedHosts: ALLOWED_HOSTS.githubRaw,
+  userAgent: USER_AGENT,
+  timeoutMs: 120_000,
 });
 
 /**
@@ -201,12 +218,11 @@ export async function fetchDataset(
     // Not cached yet.
   }
 
-  const url = `${RAW_BASE}/${REPO}/${build.sha}/${DATA_PATH}/${file}`;
+  const url = `/${REPO}/${build.sha}/${DATA_PATH}/${file}`;
   let response;
   try {
-    response = await axios.get(url, {
+    response = await rawClient.get(url, {
       responseType: "json",
-      headers: { "User-Agent": USER_AGENT },
       maxContentLength: 200 * 1024 * 1024,
       maxBodyLength: 200 * 1024 * 1024,
     });

@@ -2,7 +2,7 @@
 
 # Install dependencies
 install:
-	npm install
+	npm ci --ignore-scripts
 
 # Compile TypeScript
 build:

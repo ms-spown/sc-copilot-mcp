@@ -1,11 +1,12 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import axios, { AxiosInstance, AxiosRequestConfig } from "axios";
+import type { AxiosInstance, AxiosRequestConfig } from "axios";
 import dotenv from "dotenv";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { ALLOWED_HOSTS, createGuardedClient, resolveBaseUrl } from "./core/http.js";
 import {
   formatOutput,
   formatOutputRaw,
@@ -35,29 +36,49 @@ import {
 dotenv.config({ quiet: true });
 
 const UEX_API_KEY = process.env.UEXTOKEN;
-const UEX_BASE_URL = "https://api.uexcorp.space/2.0";
-const SCW_BASE_URL = "https://api.star-citizen.wiki/api/v2";
 
 if (!UEX_API_KEY) {
-  console.error("UEXTOKEN not found in .env file");
+  console.error("UEXTOKEN is not set: UEX requests go out without credentials.");
 }
 
-const uexClient = axios.create({
+// Base URLs can be overridden, but only to another host from the hard-coded allowlist
+// (src/core/http.ts). The UEX token is attached per request, only to those hosts.
+const UEX_BASE_URL = resolveBaseUrl(
+  process.env.SCMCP_UEX_BASE_URL,
+  "https://api.uexcorp.uk/2.0",
+  { allowedHosts: ALLOWED_HOSTS.uex },
+  "SCMCP_UEX_BASE_URL",
+);
+const SCW_BASE_URL = resolveBaseUrl(
+  process.env.SCMCP_SCW_BASE_URL,
+  "https://api.star-citizen.wiki/api/v2",
+  { allowedHosts: ALLOWED_HOSTS.wikiApi },
+  "SCMCP_SCW_BASE_URL",
+);
+const SCT_BASE_URL = resolveBaseUrl(
+  process.env.SCMCP_SCT_BASE_URL,
+  "https://starcitizen.tools",
+  { allowedHosts: ALLOWED_HOSTS.wikiTools },
+  "SCMCP_SCT_BASE_URL",
+);
+
+const uexClient = createGuardedClient({
   baseURL: UEX_BASE_URL,
-  headers: {
-    Authorization: `Bearer ${UEX_API_KEY}`,
-    "User-Agent": USER_AGENT,
-  },
+  allowedHosts: ALLOWED_HOSTS.uex,
+  userAgent: USER_AGENT,
+  token: UEX_API_KEY,
 });
 
-const scwClient = axios.create({
+const scwClient = createGuardedClient({
   baseURL: SCW_BASE_URL,
-  headers: { "User-Agent": USER_AGENT },
+  allowedHosts: ALLOWED_HOSTS.wikiApi,
+  userAgent: USER_AGENT,
 });
 
-const sctClient = axios.create({
-  baseURL: "https://starcitizen.tools",
-  headers: { "User-Agent": USER_AGENT },
+const sctClient = createGuardedClient({
+  baseURL: SCT_BASE_URL,
+  allowedHosts: ALLOWED_HOSTS.wikiTools,
+  userAgent: USER_AGENT,
 });
 
 const server = new Server(
