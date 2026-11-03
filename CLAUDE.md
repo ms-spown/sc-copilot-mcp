@@ -7,8 +7,14 @@ For Claude as a _user_ of the tools, see `docs/USING_WITH_CLAUDE.md` (the block 
 
 ## Hard rules (the mission's absolute prohibitions)
 
-- Never scrape RSI, Erkul, SPViewer or SC Trade Tools. Never enable the game's gRPC telemetry
-  (`GRPC_CLIENT_SERVER_ENABLED`), read game memory, send keys, automate the game or write in the game folder.
+- Never scrape RSI, Erkul, SPViewer or SC Trade Tools. Never read game memory, send keys, automate the game or
+  write in the game folder.
+- The game's local gRPC telemetry (`GRPC_CLIENT_SERVER_ENABLED`) is **opt-in only**: never on by default, never
+  switched on without an explicit action by the user (`SC_TELEMETRY=on` in the server's entry, and the game-side
+  variable set by a command the user runs). The address `127.0.0.1:2942` is fixed in code, never from the
+  environment; the only thing sent to the game is the empty `TelemetryStream` request; frames are never logged,
+  written to disk or sent over a network (the UEC balance stays on the machine). Never call it safe,
+  undetectable or approved by CIG. Without `SC_TELEMETRY=on` no gRPC/HTTP2 code is loaded and nothing connects.
 - No `Data.p4k` extraction and no extraction code or instructions in this repository. Whether it is safe for an
   account is unverified (see `SECURITY.md`).
 - No remote write tool, including UEX `data_submit`; never use UEX's submission key.
@@ -25,6 +31,7 @@ src/core/       http (host allowlist, guarded clients), cache (memory + disk, st
                 provenance (AsyncLocalStorage), untrusted (cleaning/fencing), config, paths, errors, format
 src/providers/  uex, wiki, sctools (clients) · scmdb (store + queries) · gamelog (parser + reader)
                 fleet (store + name resolver) · dumps (patch-dump repo) · local (user's game-*.json) · probes
+                telemetry (opt-in live stream: wire decoder, schema table, reader on node:http2, handler, service)
 src/tools/      one file per group (definition + handler together), catalog.ts (provenance + profiles),
                 registry.ts (envelope, scoping), status.ts (sc_data_status)
 src/install/    mergeConfig (pure planning of the Claude Desktop config merge)
