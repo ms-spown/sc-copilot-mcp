@@ -185,6 +185,11 @@ export class Scenario {
    * unset, the answer has no ledger (an older server). It goes through the same hashes and `unchanged` as the sections.
    */
   ledger: ((includeBalance: boolean, nowMs: number) => LedgerPayload) | null = null;
+  /**
+   * The aUEC balance the stream carries, by second of the story (not looped), when the story must agree with another
+   * made-up source (the trade story of tradeScenario.ts). null: the story's own balance.
+   */
+  uec: ((seconds: number) => number) | null = null;
   /** Stop delivering frames (the stream is cut) without ending the story. */
   cut = false;
   /** What Game.log says about the connection (connection.ts). null: the log is not available. */
@@ -208,6 +213,8 @@ export class Scenario {
       if (this.cut || this.forced) continue;
       const frame = frameAt(loopT);
       if (!frame) continue;
+      const actorState = (frame["actor"] as { state?: Record<string, unknown> } | undefined)?.state;
+      if (this.uec && actorState) actorState["uec_balance"] = this.uec(this.fedUntil / 1000);
       const time = this.epoch + this.fedUntil;
       this.handler.update(normalizeFrame(frame), time);
       this.lastFrameAt = time;

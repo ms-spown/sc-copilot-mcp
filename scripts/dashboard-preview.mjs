@@ -8,6 +8,9 @@
 //   handler, answers the ui/* requests as the measured host does, and shows what the View sends to the conversation.
 // URL parameters: t=<seconds into the story> theme=light|dark w=<px> mode=inline|fullscreen balance=1 (presses the show-balance button) session=1
 //                 forced=off|waiting|game_without_telemetry|incompatible cut=1 plan=1 scroll=<px>
+//                 trade=story|unknown|partial|second|none  (the commerce card, with a made-up trade journal that follows
+//                 the figures of a real run: see src/dashboard/testing/tradeScenario.ts; its loop lasts 600 s, the run is
+//                 settled from t=215; it implies plan=full: a plan with prices and a price curve; none = no journal)
 //                 transport=story|off|loading|unreadable|empty|none   (the transport ledger; story by default, none = no field)
 //                 conn=disconnected|menu|closed|online  (the connection read from Game.log)
 //                 specs=ready|unknown|ambiguous|pending|error|none  (the ship sheet from the wiki; default ready; the figures
@@ -53,9 +56,12 @@ import { Scenario } from "/dist/dashboard/testing/scenario.js";
 import { createFakeHost } from "/dist/dashboard/testing/fakeHost.js";
 import { transportLedger } from "/dist/dashboard/testing/ledgerScenario.js";
 import { specsSamples } from "/dist/dashboard/testing/specsFixtures.js";
+import { tradeBalanceAt, tradeLedger } from "/dist/dashboard/testing/tradeScenario.js";
 const q = new URLSearchParams(location.search);
 const seek = Number(q.get("t") ?? 0);
 const scenario = new Scenario(Date.now() - seek * 1000);
+const trade = q.get("trade");
+if (trade) scenario.uec = tradeBalanceAt; // before the first frame: the stream carries the balance of the trade story
 scenario.advanceTo(seek * 1000);
 if (q.get("forced")) scenario.forced = q.get("forced");
 if (q.get("cut")) scenario.cut = true;
@@ -97,6 +103,12 @@ if (transport !== "none") {
   const plan = q.get("plan") ? { expected_profit_auec: 150000 } : undefined;
   scenario.ledger = (include, nowMs) => transportLedger(nowMs, scenario.epoch, include, transport, plan);
 }
+// trade=...: the commerce card. The made-up stream carries the balance of the trade story, and the ledger holds the
+// trade section that the real model builds from invented transactions.
+const TRADE_PLAN = { commodity: "Laranite", buy_terminal: "Port Tressler", sell_terminal: "Area18 TDD", scu: 696, expected_profit_auec: 180000, buy_unit_price: 189, sell_unit_price: 457, est_trip_minutes: 25, safety_note: "Route peu risquée", price_points: [430, 436, 441, 450, 447, 455, 462, 458, 449, 452, 460, 457, 463, 459], price_points_label: "14 derniers relevés" };
+if (trade) {
+  scenario.ledger = (include, nowMs) => tradeLedger(nowMs, scenario.epoch, include, trade, TRADE_PLAN);
+}
 $("specs").value = q.get("specs") ?? "ready";
 // The scenario holds the wiki sheet of its ship in the chosen state; the poll sends it through the real delta protocol.
 const paintSpecs = () => { scenario.specs = specsSamples(scenario.now)[$("specs").value] ?? null; };
@@ -122,7 +134,9 @@ window.addEventListener("message", (e) => {
 frame.addEventListener("load", () => {
   // The tool result Claude sends once the dashboard tool has returned.
   setTimeout(() => {
-    const plan = q.get("plan")
+    const plan = trade
+      ? TRADE_PLAN
+      : q.get("plan")
       ? { commodity: "Laranite", buy_terminal: "Port Tressler", sell_terminal: "Area18 TDD", scu: 96, expected_profit_auec: 150000, note: "Route de test" }
       : undefined;
     host.toolResult({ view: "sc_live_dashboard", ...(plan ? { plan } : {}) });

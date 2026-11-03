@@ -137,8 +137,8 @@ describe("Feature: the full-screen panel", () => {
     expect(t).toContain("Gain total mesuré");
     expect(t).toContain("+184 500 aUEC");
     expect(t).toContain("disponible après 2 min de contrats"); // 76 s of contract time: no pace yet
-    expect(t).toContain("Profit prévu (plan)");
-    expect(t).toContain("Réalisé, dernier contrat");
+    expect(t).toContain("Profit prévu (plan, avant frais)");
+    expect(t).toContain("Récompense mesurée, dernier contrat");
     expect(t).toContain("+150 000 aUEC");
     expect(t).toContain("+184 500 aUEC");
     expect(t).toContain("mêle achats, récompenses et amendes");

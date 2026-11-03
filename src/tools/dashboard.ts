@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { DASHBOARD_URI, PLAN_TEXT_MAX, UI_MIME_TYPE } from "../dashboard/constants.js";
+import {
+  DASHBOARD_URI,
+  PLAN_PRICE_POINTS_MAX,
+  PLAN_TEXT_MAX,
+  UI_MIME_TYPE,
+} from "../dashboard/constants.js";
 import { dashboardHtml } from "../dashboard/page.js";
 import { parsePlan } from "../dashboard/plan.js";
 import { ledgerLogFrom, LedgerService } from "../dashboard/ledgerService.js";
@@ -81,7 +86,7 @@ export function dashboardTools({
     {
       name: "sc_live_dashboard",
       description:
-        "Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance stays hidden until the player clicks). Call it when the player asks to see their ship or session live. If a dashboard is already open in this conversation, do not open it again unless the player explicitly asks for a new one: it updates by itself, and each extra copy stays on screen (only the most recent one calls the server, the others show a banner). Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Waiting or connected means no data yet (menus, loading): never say the game is not running or that something is wrong, no troubleshooting unless it shows a game launched without telemetry or an unknown format. On foot only character data exists; ship instruments need the player seated in a ship. Optional plan: after uex_get_trade_routes, pass the route so the View compares planned and measured profit.",
+        "Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance stays hidden until the player clicks). Call it when the player asks to see their ship or session live. If a dashboard is already open in this conversation, do not open it again unless the player explicitly asks for a new one: it updates by itself, and each extra copy stays on screen (only the most recent one calls the server, the others show a banner). Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Waiting or connected means no data yet (menus, loading): never say the game is not running or that something is wrong, no troubleshooting unless it shows a game launched without telemetry or an unknown format. On foot only character data exists; ship instruments need the player seated in a ship. Optional plan: after uex_get_trade_routes, pass the route (expected_profit_auec is the PROFIT, not the turnover; unit prices and recent price points are welcome) so the View compares planned profit with the measured result of the trade run.",
       inputSchema: {
         type: "object",
         properties: {
@@ -94,7 +99,41 @@ export function dashboardTools({
               buy_terminal: { type: "string", maxLength: PLAN_TEXT_MAX },
               sell_terminal: { type: "string", maxLength: PLAN_TEXT_MAX },
               scu: { type: "number", description: "Cargo size planned, in SCU." },
-              expected_profit_auec: { type: "number", description: "Planned profit, in aUEC." },
+              expected_profit_auec: {
+                type: "number",
+                description:
+                  "Planned PROFIT in aUEC (sales minus purchases at the planned prices, before any fee). Not a turnover.",
+              },
+              buy_unit_price: {
+                type: "number",
+                description: "Planned buying price, aUEC per SCU.",
+              },
+              sell_unit_price: {
+                type: "number",
+                description: "Planned selling price, aUEC per SCU.",
+              },
+              est_trip_minutes: {
+                type: "number",
+                description: "Estimated trip time of the route, in minutes.",
+              },
+              safety_note: { type: "string", maxLength: PLAN_TEXT_MAX },
+              price_points: {
+                type: "array",
+                maxItems: PLAN_PRICE_POINTS_MAX,
+                items: { type: "number" },
+                description:
+                  "Recent prices per SCU, oldest first (at most 30), taken from the UEX price tools, for the price curve. The dashboard never calls UEX.",
+              },
+              price_points_for: {
+                type: "string",
+                enum: ["buy", "sell"],
+                description: "Which price the points are (sell when absent).",
+              },
+              price_points_label: {
+                type: "string",
+                maxLength: PLAN_TEXT_MAX,
+                description: "The period of the points in words, for example '7 derniers jours'.",
+              },
               note: { type: "string", maxLength: PLAN_TEXT_MAX },
             },
           },

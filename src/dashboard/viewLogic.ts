@@ -1099,14 +1099,6 @@ export function baselineLabel(poll: any): string {
   return "depuis le démarrage du lecteur";
 }
 
-export function planProgress(plan: any, delta: number | null | undefined): any {
-  if (!plan) return null;
-  const expected = typeof plan.expected_profit_auec === "number" ? plan.expected_profit_auec : null;
-  const actual = typeof delta === "number" ? delta : null;
-  const ratio = expected !== null && expected > 0 && actual !== null ? actual / expected : null;
-  return { expected, actual, ratio };
-}
-
 // ---------------------------------------------------------------------------------------------
 // Sparkline
 // ---------------------------------------------------------------------------------------------
@@ -1145,7 +1137,14 @@ export function sparkPoints(
 export function cleanPlan(input: any): any {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
   const out: any = {};
-  for (const k of ["commodity", "buy_terminal", "sell_terminal", "note"]) {
+  for (const k of [
+    "commodity",
+    "buy_terminal",
+    "sell_terminal",
+    "note",
+    "safety_note",
+    "price_points_label",
+  ]) {
     const v = input[k];
     if (typeof v === "string") {
       const t = v
@@ -1168,6 +1167,25 @@ export function cleanPlan(input: any): any {
   ) {
     out.expected_profit_auec = Math.round(input.expected_profit_auec);
   }
+  for (const k of ["buy_unit_price", "sell_unit_price", "est_trip_minutes"]) {
+    const v = input[k];
+    if (typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 1e9) out[k] = Math.round(v);
+  }
+  if (Array.isArray(input.price_points)) {
+    const pts: number[] = [];
+    for (const v of input.price_points) {
+      if (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1e9) {
+        pts.push(Math.round(v * 100) / 100);
+      }
+    }
+    const kept = pts.slice(-30);
+    if (kept.length >= 2) {
+      out.price_points = kept;
+      if (input.price_points_for === "buy" || input.price_points_for === "sell")
+        out.price_points_for = input.price_points_for;
+    }
+  }
+  if (!out.price_points) delete out.price_points_label;
   return Object.keys(out).length > 0 ? out : null;
 }
 
@@ -2196,7 +2214,6 @@ export const VIEW_FUNCTIONS = [
   estimateText,
   sessionRate,
   baselineLabel,
-  planProgress,
   sparkPoints,
   cleanPlan,
   actionMessage,

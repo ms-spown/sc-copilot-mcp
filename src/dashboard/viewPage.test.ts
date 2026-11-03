@@ -602,7 +602,7 @@ describe("Feature: state alerts (conditions) come before the recent events", () 
 });
 
 describe("Feature: session, pace and the route plan", () => {
-  it("Given a plan in the tool result, Then it is shown as text, expected next to measured, and the cargo is not claimed", async () => {
+  it("Given a plan in the tool result, Then it is shown as text, the planned profit is a profit, and the balance change is never called a profit", async () => {
     const w = await live();
     w.fromHost({
       jsonrpc: "2.0",
@@ -629,14 +629,19 @@ describe("Feature: session, pace and the route plan", () => {
     expect(text).toContain("Laranite");
     expect(text).toContain("Port Tressler \u2192 Area18");
     expect(text).toMatch(/\+125 000 aUEC/);
-    expect(text).toContain("solde masqué");
-    expect(text).toContain("Cargaison non mesurée par le jeu");
+    expect(text).toContain("n’est pas encore branché");
     expect(text).not.toContain("dropped");
-    // After the sale (90 s) and a click on the balance, the measured profit appears next to the plan.
+    // The old block compared a profit with a balance change: "Réalisé" does not exist any more.
+    expect(text).not.toContain("Réalisé");
+    // After the sale (90 s) and a click on the balance, the balance change appears under its own name, with the
+    // warning that it is not a profit, and no net profit is claimed without a trade journal.
     findButton(w.root, "Afficher le solde").click();
     await w.advance(62 * SECOND);
     text = NBSP_FREE(visibleText(w.root));
-    expect(text).toMatch(/Réalisé\n\+184 500 aUEC/);
+    expect(text).toMatch(/Bénéfice prévu\n\+125 000 aUEC/);
+    expect(text).toMatch(/Variation du solde\n\+184 500 aUEC/);
+    expect(text).toContain("pas un bénéfice");
+    expect(text).not.toMatch(/Bénéfice net\n\+/);
     expect(text).toContain("disponible après 2 min");
     expect(text).toContain("depuis le début de session");
   });

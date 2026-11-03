@@ -26,12 +26,134 @@ export function ledgerText(value: unknown, max: number): string {
   return Array.from(clean).slice(0, max).join("");
 }
 
-function ledgerNum(value: unknown): number | null {
+export function ledgerNum(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function ledgerIso(value: unknown): string | null {
+export function ledgerIso(value: unknown): string | null {
   return typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null;
+}
+
+export function ledgerOneOf(value: unknown, list: string[], fallback: string): string {
+  return typeof value === "string" && list.indexOf(value) >= 0 ? value : fallback;
+}
+
+export function ledgerTexts(value: unknown, count: number, max: number): string[] {
+  return (Array.isArray(value) ? value : [])
+    .slice(0, count)
+    .map((v: any) => ledgerText(v, max))
+    .filter((v: string) => v !== "");
+}
+
+export function ledgerTradeFee(raw: any): any {
+  if (!raw || typeof raw !== "object") return null;
+  const auec = ledgerNum(raw.auec);
+  if (auec === null) return null;
+  return { auec, method: ledgerOneOf(raw.method, ["exact", "groupe", "estime"], "estime") };
+}
+
+/** The money of one run, rebuilt field by field. Every number here is an amount (or derived from one). */
+export function ledgerTradeMoney(raw: any): any {
+  if (!raw || typeof raw !== "object") return null;
+  const f = raw.fees && typeof raw.fees === "object" ? raw.fees : {};
+  const n = raw.net && typeof raw.net === "object" ? raw.net : {};
+  const pn = raw.planned_net && typeof raw.planned_net === "object" ? raw.planned_net : null;
+  const pj = raw.projection && typeof raw.projection === "object" ? raw.projection : null;
+  return {
+    planned_profit: ledgerNum(raw.planned_profit),
+    plan_match: ledgerOneOf(raw.plan_match, ["ok", "non_verifie"], ""),
+    turnover: ledgerNum(raw.turnover),
+    cost: ledgerNum(raw.cost),
+    cost_prorata: raw.cost_prorata === true,
+    gross_margin: ledgerNum(raw.gross_margin),
+    price_gap: ledgerNum(raw.price_gap),
+    gap_includes_quantity: raw.gap_includes_quantity === true,
+    fees: {
+      total: ledgerNum(f.total),
+      method: ledgerOneOf(f.method, ["mesure", "estime"], ""),
+      buy: ledgerTradeFee(f.buy),
+      sell: ledgerTradeFee(f.sell),
+      rate: ledgerNum(f.rate),
+      rate_from: ledgerOneOf(f.rate_from, ["ce_trajet", "trajet_precedent"], ""),
+      unexplained: ledgerNum(f.unexplained),
+    },
+    net: {
+      auec: ledgerNum(n.auec),
+      method: ledgerOneOf(n.method, ["mesure", "calcule", "estime"], ""),
+      reason: ledgerOneOf(
+        n.reason,
+        [
+          "en_cours",
+          "en_attente",
+          "solde_avant_inconnu",
+          "solde_apres_inconnu",
+          "cout_inconnu",
+          "pas_de_solde",
+        ],
+        "",
+      ),
+      start_balance: ledgerNum(n.start_balance),
+      end_balance: ledgerNum(n.end_balance),
+    },
+    avg_buy_per_scu: ledgerNum(raw.avg_buy_per_scu),
+    avg_sell_per_scu: ledgerNum(raw.avg_sell_per_scu),
+    planned_net:
+      pn && ledgerNum(pn.auec) !== null
+        ? {
+            auec: ledgerNum(pn.auec),
+            basis: ledgerOneOf(pn.basis, ["prix_du_plan", "chiffre_affaires_observe"], ""),
+            fee_rate: ledgerNum(pn.fee_rate),
+            fee: ledgerNum(pn.fee),
+          }
+        : null,
+    projection:
+      pj && ledgerNum(pj.run_ms) !== null
+        ? {
+            run_ms: ledgerNum(pj.run_ms),
+            runs_per_hour: ledgerNum(pj.runs_per_hour),
+            net_per_hour: ledgerNum(pj.net_per_hour),
+            day_hours: ledgerNum(pj.day_hours),
+            runs_per_day: ledgerNum(pj.runs_per_day),
+            net_per_day: ledgerNum(pj.net_per_day),
+            next_run_net: ledgerNum(pj.next_run_net),
+            assumptions: ledgerTexts(pj.assumptions, 6, 160),
+          }
+        : null,
+  };
+}
+
+/** The commerce section as the View keeps it (see tradeRun.ts): runs with or without their money. null when absent. */
+export function ledgerTradeNormalize(raw: any): any {
+  if (!raw || typeof raw !== "object" || raw.v !== 1) return null;
+  const stages = ["open", "partial", "complete", "sold_only"];
+  const runs = (Array.isArray(raw.runs) ? raw.runs : [])
+    .slice(0, 4)
+    .filter((r: any) => r && typeof r === "object")
+    .map((r: any) => ({
+      id: ledgerText(r.id, 40),
+      commodity: r.commodity === null ? null : ledgerText(r.commodity, 60) || null,
+      more_commodities: ledgerTexts(r.more_commodities, 3, 60),
+      buy_shops: ledgerTexts(r.buy_shops, 3, 60),
+      sell_shops: ledgerTexts(r.sell_shops, 3, 60),
+      stage: ledgerOneOf(r.stage, stages, "open"),
+      started_at: ledgerIso(r.started_at),
+      ended_at: ledgerIso(r.ended_at),
+      duration_ms: ledgerNum(r.duration_ms) || 0,
+      scu_bought: ledgerNum(r.scu_bought),
+      scu_sold: ledgerNum(r.scu_sold),
+      buys: ledgerNum(r.buys) || 0,
+      sells: ledgerNum(r.sells) || 0,
+      failed: ledgerNum(r.failed) || 0,
+      uncertain: ledgerNum(r.uncertain) || 0,
+      ignored: ledgerNum(r.ignored) || 0,
+      money: ledgerTradeMoney(r.money),
+    }));
+  return {
+    v: 1,
+    source: raw.source === "journal" ? "journal" : "none",
+    runs_total: Math.max(runs.length, ledgerNum(raw.runs_total) || 0),
+    runs,
+  };
 }
 
 /** The payload as the View keeps it: well-formed, bounded, or null. Unknown fields are dropped. */
@@ -108,6 +230,7 @@ export function ledgerNormalize(raw: any): any {
           ratio: ledgerNum(p.ratio),
         }
       : null,
+    trade: ledgerTradeNormalize(raw.trade),
   };
 }
 
@@ -121,6 +244,8 @@ export function ledgerChannelClean(raw: any): any {
   delete n.balance;
   delete n.plan_compare;
   for (const c of n.contracts) delete c.gain;
+  // The commerce runs keep their goods, places, quantities and times, never their money.
+  if (n.trade) for (const r of n.trade.runs) r.money = null;
   return n;
 }
 
@@ -135,6 +260,15 @@ export function ledgerStripBalance(raw: any): any {
       const copy: any = Object.assign({}, c);
       delete copy.gain;
       return copy;
+    });
+  }
+  if (raw.trade && typeof raw.trade === "object") {
+    out.trade = Object.assign({}, raw.trade, {
+      runs: (Array.isArray(raw.trade.runs) ? raw.trade.runs : []).map((r: any) => {
+        const copy: any = Object.assign({}, r);
+        delete copy.money;
+        return copy;
+      }),
     });
   }
   return out;
@@ -305,8 +439,8 @@ export function ledgerPanel(doc: any, L: any): any {
   const rTime = row("Durée cumulée des terminés");
   const rGain = row("Gain total mesuré");
   const rRate = row("Rythme");
-  const rPlan = row("Profit prévu (plan)");
-  const rReal = row("Réalisé, dernier contrat");
+  const rPlan = row("Profit prévu (plan, avant frais)");
+  const rReal = row("Récompense mesurée, dernier contrat");
   add(sum, rDone.root, rOther.root, rTime.root, rGain.root, rRate.root, rPlan.root, rReal.root);
   const note = el(
     "p",
@@ -446,6 +580,11 @@ export const LEDGER_VIEW_FUNCTIONS = [
   ledgerText,
   ledgerNum,
   ledgerIso,
+  ledgerOneOf,
+  ledgerTexts,
+  ledgerTradeFee,
+  ledgerTradeMoney,
+  ledgerTradeNormalize,
   ledgerNormalize,
   ledgerStripBalance,
   ledgerChannelClean,
