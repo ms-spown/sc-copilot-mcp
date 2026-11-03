@@ -15,6 +15,8 @@ export interface Config {
    * not advertised can still be called by name.
    */
   enabledTools: Set<string> | null;
+  /** SCMCP_PROFILES, comma-separated (core, trade, data, local). Used when SCMCP_TOOLS is unset. */
+  profiles: string[] | null;
 }
 
 /** Read the configuration from the environment. Throws if a base URL points outside its allowlist. */
@@ -45,6 +47,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
             .map((t) => t.trim())
             .filter(Boolean),
         )
+      : null,
+    profiles: env.SCMCP_PROFILES
+      ? env.SCMCP_PROFILES.split(",")
+          .map((p) => p.trim().toLowerCase())
+          .filter(Boolean)
       : null,
   };
 }

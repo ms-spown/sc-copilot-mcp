@@ -98,6 +98,23 @@ export function formatOutputRaw(data: unknown): string {
 }
 
 /**
+ * One record, in full when it fits the output budget, otherwise as its summary view with a
+ * note saying so. Without this a large record (most ships: 200k characters against a 40k
+ * budget) came back as a bare "Result too large" payload that was not even flagged as an error.
+ */
+export function formatRecord(
+  record: unknown,
+  project: (entry: Record<string, unknown>) => unknown,
+): string {
+  const size = JSON.stringify(optimizeData(record)).length;
+  if (size <= MAX_OUTPUT_CHARS || !isObject(record)) return formatOutput(record);
+  return formatOutput({
+    summary: project(record),
+    note: `The full record is ${size} characters, over the ${MAX_OUTPUT_CHARS} limit, so this is the summary view. Use scw_list_vehicles / scw_list_items filters or scw_get_ship_comparison for specific figures.`,
+  });
+}
+
+/**
  * Wiki records embed multi-language prose and every hardpoint, so a single
  * vehicle can exceed the whole output budget. List views therefore return a
  * projection with enough to choose what to inspect; scw_get_vehicle /

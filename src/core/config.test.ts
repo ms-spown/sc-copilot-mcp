@@ -10,6 +10,7 @@ describe("loadConfig", () => {
       scwBaseUrl: "https://api.star-citizen.wiki/api/v2",
       sctBaseUrl: "https://starcitizen.tools",
       enabledTools: null,
+      profiles: null,
     });
   });
 
@@ -22,6 +23,10 @@ describe("loadConfig", () => {
   it("parses SCMCP_TOOLS, ignoring spaces and empty entries", () => {
     const config = loadConfig({ SCMCP_TOOLS: " uex_get_commodities, ,sct_search," });
     expect([...(config.enabledTools ?? [])]).toEqual(["uex_get_commodities", "sct_search"]);
+  });
+
+  it("parses SCMCP_PROFILES, lower-casing and ignoring empty entries", () => {
+    expect(loadConfig({ SCMCP_PROFILES: " Core, ,TRADE" }).profiles).toEqual(["core", "trade"]);
   });
 
   it("accepts a base URL override on another allowed host", () => {

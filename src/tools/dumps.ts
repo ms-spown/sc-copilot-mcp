@@ -16,7 +16,7 @@ export function dumpTools(): ToolDefinition[] {
     {
       name: "sc_list_builds",
       description:
-        "List the game builds (patch versions) for which historical data dumps exist, newest first. Use this to discover which versions can be compared.",
+        "List the game builds that have a data dump in the patch repository, newest first, with their commit. Use it before sc_diff_versions to see what can be compared. The list can be very short and tags may be republished.",
       inputSchema: {
         type: "object",
         properties: {
@@ -47,7 +47,7 @@ export function dumpTools(): ToolDefinition[] {
     {
       name: "sc_diff_versions",
       description:
-        "Compare game data between any two patch versions. Reports what was added, removed, and changed. Pass item_name to get every changed field for one ship/weapon/component, otherwise returns a summary with the most-changed entries. This is the tool for questions like 'what changed for X between 4.9 and 4.10'.",
+        "Compare game data between two builds from the patch-dump repository: what was added, removed and changed. Pass item_name for every changed field of one ship, weapon or component. Which builds exist depends on that repository (see sc_list_builds), and builds there are not labelled LIVE or PTU.",
       inputSchema: {
         type: "object",
         properties: {

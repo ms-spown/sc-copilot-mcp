@@ -2,14 +2,18 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import dotenv from "dotenv";
+import { fileURLToPath } from "node:url";
 import { loadConfig } from "./core/config.js";
 import { VERSION } from "./core/useragent.js";
+import { createGameVersionResolver, createProbes } from "./providers/probes.js";
 import { createSctClient } from "./providers/sctools/client.js";
 import { createUexClient } from "./providers/uex/client.js";
 import { createScwClient } from "./providers/wiki/client.js";
 import { allTools, createRegistry } from "./tools/registry.js";
 
-dotenv.config({ quiet: true });
+// The .env next to the package, never the one in the working directory: Claude starts the
+// server from whatever folder is open, which may belong to another project.
+dotenv.config({ path: fileURLToPath(new URL("../.env", import.meta.url)), quiet: true });
 
 const config = loadConfig();
 
@@ -17,13 +21,17 @@ if (!config.uexToken) {
   console.error("UEXTOKEN is not set: UEX requests go out without credentials.");
 }
 
+const clients = {
+  uexClient: createUexClient(config.uexBaseUrl, config.uexToken),
+  scwClient: createScwClient(config.scwBaseUrl),
+  sctClient: createSctClient(config.sctBaseUrl),
+};
+
+// A bad SCMCP_TOOLS or SCMCP_PROFILES throws here, at startup, rather than listing nothing.
 const registry = createRegistry(
-  allTools({
-    uexClient: createUexClient(config.uexBaseUrl, config.uexToken),
-    scwClient: createScwClient(config.scwBaseUrl),
-    sctClient: createSctClient(config.sctBaseUrl),
-  }),
-  config.enabledTools,
+  allTools(clients, createProbes(clients)),
+  { tools: config.enabledTools, profiles: config.profiles },
+  { gameVersionFor: createGameVersionResolver(clients) },
 );
 
 const server = new Server(

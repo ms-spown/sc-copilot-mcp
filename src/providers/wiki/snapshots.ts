@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { userDataDir } from "../../core/paths.js";
 
-export const SNAPSHOT_DIR =
-  process.env.SCMCP_SNAPSHOT_DIR || path.join(process.cwd(), ".snapshots");
+export const SNAPSHOT_DIR = process.env.SCMCP_SNAPSHOT_DIR || path.join(userDataDir(), "snapshots");
 
 export function snapshotPath(dataset: string, label: string): string {
   const safeLabel = label.replace(/[^a-zA-Z0-9._-]/g, "_");

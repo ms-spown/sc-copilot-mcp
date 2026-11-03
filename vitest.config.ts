@@ -1,13 +1,17 @@
-import { defineConfig } from 'vitest/config';
+import os from "node:os";
+import path from "node:path";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
     globals: true,
-    environment: 'node',
-    include: ['src/**/*.test.ts'],
+    environment: "node",
+    include: ["src/**/*.test.ts"],
+    // Anything a test writes to the default cache location lands in a throwaway folder.
+    env: { SCMCP_CACHE_DIR: path.join(os.tmpdir(), "sc-copilot-mcp-vitest") },
     coverage: {
-      provider: 'v8',
-      reporter: ['text', 'json', 'html'],
+      provider: "v8",
+      reporter: ["text", "json", "html"],
     },
   },
 });

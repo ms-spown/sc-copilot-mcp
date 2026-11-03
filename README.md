@@ -47,12 +47,28 @@ A Model Context Protocol (MCP) server providing real-time access to Star Citizen
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `UEXTOKEN` | for UEX tools | UEX Corp API bearer token |
-| `GITHUB_TOKEN` | no | Raises the GitHub rate limit when listing or fetching build dumps |
+| `SCMCP_GITHUB_TOKEN` | no | Raises the GitHub rate limit when listing build dumps. A dedicated variable on purpose: an ambient `GITHUB_TOKEN` is never picked up |
+| `SCMCP_PROFILES` | no | Comma-separated tool profiles to advertise: `core`, `trade`, `data`, `local`. Unset advertises every tool. `sc_data_status` is always included |
+| `SCMCP_TOOLS` | no | Comma-separated tool names to advertise. Wins over `SCMCP_PROFILES`. An unknown name stops the server at startup |
 | `SCMCP_DATA_REPO` | no | Data repo holding the per-build dumps (default `voidput/sc-gamedata-dumps`) |
 | `SCMCP_DATA_REPO_PATH` | no | Path to the dumps inside that repo (default `data`) |
-| `SCMCP_BUILD_CACHE_DIR` | no | Where fetched dumps are cached (default `.build-cache/`) |
+| `SCMCP_CACHE_DIR` | no | Re-creatable cache (HTTP responses, dumps). Default: `%LOCALAPPDATA%\sc-copilot-mcp\cache` on Windows, `~/.cache/sc-copilot-mcp` on Linux |
+| `SCMCP_DATA_DIR` | no | Data worth keeping (wiki snapshots). Default: `%LOCALAPPDATA%\sc-copilot-mcp\data` on Windows |
+| `SCMCP_CONFIG_DIR` | no | Settings and personal lists. Default: `%APPDATA%\sc-copilot-mcp` on Windows |
+| `SCMCP_BUILD_CACHE_DIR` | no | Overrides where fetched dumps are cached (default: `builds/` under the cache dir) |
 | `SCMCP_GAME_DATA_DIR` | no | Directory of local `game-*.json` files, for the `sc_*_local` tools |
-| `SCMCP_SNAPSHOT_DIR` | no | Where wiki-API snapshots are written (default `.snapshots/`) |
+| `SCMCP_SNAPSHOT_DIR` | no | Overrides where wiki-API snapshots are written (default: `snapshots/` under the data dir) |
+
+The server reads a `.env` file next to the package, never the one in the working directory.
+
+### What every answer carries
+
+Each tool result is a JSON object `{ provenance, data }`. `provenance` says where the data came from
+(`source`, `channel` = `live`/`ptu`/`unknown`, `game_version`, `fetched_at`, `data_age`, `kind`, `trust`).
+`trust: "untrusted_text"` marks free text written by players or website editors: it is cleaned, shortened
+and must be read as data, never as instructions. If the live request failed and the last good copy was
+served, `stale: true` and `stale_reason` say so. A rejected token (HTTP 401/403) is never papered over
+with cached data. Call `sc_data_status` to see the game version each source is on and which are down.
 | `SCMCP_UEX_BASE_URL` | no | UEX API base (default `https://api.uexcorp.uk/2.0`). Must be https on `api.uexcorp.uk` or `api.uexcorp.space`, otherwise the server refuses to start |
 | `SCMCP_SCW_BASE_URL` | no | Star Citizen Wiki API base (default `https://api.star-citizen.wiki/api/v2`), same allowlist rule |
 | `SCMCP_SCT_BASE_URL` | no | Star Citizen Tools base (default `https://starcitizen.tools`), same allowlist rule |

@@ -16,6 +16,7 @@ import axios from "axios";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ALLOWED_HOSTS, createGuardedClient } from "../../core/http.js";
+import { userCacheDir } from "../../core/paths.js";
 import { USER_AGENT } from "../../core/useragent.js";
 
 const REPO = process.env.SCMCP_DATA_REPO || "voidput/sc-gamedata-dumps";
@@ -60,7 +61,7 @@ export type DatasetName = keyof typeof DATASETS;
 const META_KEYS = new Set(["_source", "_extracted", "_build", "_extraction-validation", "summary"]);
 
 /** Dumps are megabytes each and immutable per tag, so they are cached on disk. */
-const CACHE_DIR = process.env.SCMCP_BUILD_CACHE_DIR || path.join(process.cwd(), ".build-cache");
+const CACHE_DIR = process.env.SCMCP_BUILD_CACHE_DIR || path.join(userCacheDir(), "builds");
 
 // The GitHub token (optional, only raises the rate limit) goes to api.github.com and nowhere else.
 const ghClient = createGuardedClient({
@@ -68,7 +69,8 @@ const ghClient = createGuardedClient({
   allowedHosts: ALLOWED_HOSTS.githubApi,
   userAgent: USER_AGENT,
   headers: { Accept: "application/vnd.github+json" },
-  token: process.env.GITHUB_TOKEN,
+  // Dedicated variable on purpose: an ambient GITHUB_TOKEN often has far wider scopes than needed.
+  token: process.env.SCMCP_GITHUB_TOKEN,
 });
 
 // Raw dump downloads are public, so this client never carries a token.
@@ -93,7 +95,7 @@ export function describeFetchFailure(status: number | undefined, what: string): 
     return `Patch history is unavailable: ${what} was not found in ${REPO}. That repo publishes the per-build dumps SCMCP compares; if it has moved, point SCMCP_DATA_REPO at another. Every non-historical tool is unaffected.`;
   }
   if (status === 403 || status === 429) {
-    return `GitHub rate-limited the request for ${what}. Set GITHUB_TOKEN to raise the limit.`;
+    return `GitHub rate-limited the request for ${what}. Set SCMCP_GITHUB_TOKEN to raise the limit.`;
   }
   return `Could not read ${what} from ${REPO}${status ? ` (HTTP ${status})` : ""}.`;
 }
