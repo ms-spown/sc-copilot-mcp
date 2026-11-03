@@ -1,0 +1,52 @@
+import { dashboardMain } from "./viewApp.js";
+import { VIEW_FUNCTIONS } from "./viewLogic.js";
+import { VIEW_CSS } from "./viewStyles.js";
+
+/**
+ * The View is one self-contained page: no CDN, no network, no package, no external font. The pure functions of
+ * viewLogic.ts and the interface of viewApp.ts are serialised into one inline script, so the code that is tested
+ * under Node is the code that runs in the host.
+ *
+ * Content-Security-Policy: the page declares its own, as tight as it can be (nothing may load, nothing may connect).
+ * The host applies a policy of its own on top; this one can only narrow it.
+ */
+const CSP =
+  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'";
+
+export function viewScript(): string {
+  const functions = VIEW_FUNCTIONS.map((f) => f.toString()).join("\n");
+  const names = VIEW_FUNCTIONS.map((f) => f.name).join(", ");
+  return [
+    '"use strict";',
+    "(function () {",
+    functions,
+    `var L = { ${names} };`,
+    `var dashboardMain = ${dashboardMain.toString()};`,
+    "dashboardMain(window, document, L);",
+    "})();",
+  ].join("\n");
+}
+
+export function dashboardHtml(): string {
+  const script = viewScript();
+  if (script.includes("</script"))
+    throw new Error("the View script must not contain a closing script tag");
+  return [
+    "<!doctype html>",
+    '<html lang="fr">',
+    "<head>",
+    '<meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    '<meta name="color-scheme" content="light dark">',
+    `<meta http-equiv="Content-Security-Policy" content="${CSP}">`,
+    "<title>Tableau de bord en direct</title>",
+    `<style>${VIEW_CSS}</style>`,
+    "</head>",
+    "<body>",
+    '<div id="app" data-stream="init" data-mode="inline" data-grey="1"></div>',
+    `<script>${script}</script>`,
+    "</body>",
+    "</html>",
+    "",
+  ].join("\n");
+}

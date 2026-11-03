@@ -62,12 +62,12 @@ describe("Feature: the capabilities guide names real tools and misses none", () 
     expect(unknown).toEqual([]);
   });
 
-  it("Given the 45 implemented tools, When the guide is read, Then each one is mentioned and the count is right", () => {
+  it("Given the 48 implemented tools, When the guide is read, Then each one is mentioned and the count is right", () => {
     const mentioned = new Set(codeSpans(doc));
     const missing = [...toolNames].filter((n) => !mentioned.has(n));
     expect(missing).toEqual([]);
-    expect(tools).toHaveLength(45);
-    expect(doc).toContain("45 tools exist");
+    expect(tools).toHaveLength(48);
+    expect(doc).toContain("48 tools exist");
   });
 
   it("Given a tool in a profile, When the guide gives the profile sizes, Then they match the catalog", () => {
@@ -82,8 +82,14 @@ describe("Feature: the capabilities guide names real tools and misses none", () 
 
   it("Given the telemetry tools, When telemetry is off, Then the guide's count of listed tools is 43", () => {
     const hidden = tools.filter((t) => t.advertised?.() === false).map((t) => t.name);
-    // With no telemetry client, the two tools that need it are not advertised.
-    expect(hidden.sort()).toEqual(["sc_live_events", "sc_live_state"]);
+    // With no telemetry client, the tools that need it are not advertised (the dashboard ones also need a View).
+    expect(hidden.sort()).toEqual([
+      "sc_live_dashboard",
+      "sc_live_events",
+      "sc_live_mark",
+      "sc_live_poll",
+      "sc_live_state",
+    ]);
     expect(doc).toContain(`${tools.length - hidden.length} are listed`);
   });
 });
