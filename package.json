@@ -20,7 +20,8 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "test:coverage": "vitest run --coverage",
     "golden:update": "node scripts/update-golden.mjs",
-    "doctor": "node scripts/doctor.mjs"
+    "doctor": "node scripts/doctor.mjs",
+    "check:docs": "node scripts/check-docs-safety.mjs"
   },
   "repository": {
     "type": "git",
