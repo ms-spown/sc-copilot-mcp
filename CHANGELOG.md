@@ -6,6 +6,20 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Transport ledger in the live dashboard** ("Carnet de transport"). Links the game log (contracts, pickup and
+  drop-off steps with place and goods) to the balance change the telemetry measured. A full-screen panel and, while a
+  contract runs, one line in the small view. It shows what the log gives (title, times, steps, duration) and never a
+  quantity or a reward, which the log does not carry. The gain of a completed contract is the balance after minus the
+  balance at acceptance, marked `mesure_brute` and `mixed_flows_possible`, unknown (never zero) when the telemetry did
+  not see the balance, with the pace over the session and, if Claude passed a route plan, planned against measured.
+  Everything derived from the balance is built only when the View asked for the balance. The poll answer gains an
+  optional `ledger` field (no new input; tool schemas unchanged); the log is re-read at most every 5 seconds and only
+  when its modification date changed, and the poll never waits for it. `TelemetryService` keeps a bounded in-memory
+  history of balance changes for it (no tool returns it). Without the game log the panel says so and points to
+  `sc_log_status`. Steps are ticked from the count of objective notices (an estimate) and the balance is read 10 s
+  after a contract ends (an assumption); neither has been measured with the real game.
+
 ### Fixed
 - **Telemetry no longer says the game is off when it is not.** Measured with the real game: the first
   `sc_live_status` or `sc_live_state` call started the reader and answered `waiting` before the first connection

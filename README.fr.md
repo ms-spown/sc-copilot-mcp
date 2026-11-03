@@ -208,6 +208,10 @@ d'atterrissage, alimentation, voyants, santé, faim, soif.
   en vue compacte ; instruments, voyants, armes, événements et chronologie de session en plein écran. Chaque valeur
   indique son âge, le solde aUEC reste masqué tant que vous ne cliquez pas, et rien n'est envoyé au jeu. Claude Code
   ne l'affiche pas. Voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#tableau-de-bord-en-direct).
+- **Un carnet de transport (optionnel, il faut le journal de jeu).** Dans ce tableau de bord, les contrats de la
+  session avec leurs étapes de chargement et de livraison et, une fois le solde affiché, la variation brute du solde
+  sur chaque contrat terminé ; le journal de jeu ne contient ni quantité ni récompense. Voir
+  [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#carnet-de-transport).
 - **Lisez d'abord les risques.** C'est une fonction non documentée du jeu. À notre connaissance, CIG ne l'a ni
   autorisée ni interdite, les conditions de RSI s'appliquent à vous, et le risque est le vôtre. Tout est dans
   [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md).

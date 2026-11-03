@@ -55,7 +55,8 @@ export function ledgerNormalize(raw: any): any {
           cargo: ledgerText(s.cargo, cfg.labelMax),
         }));
       const total = ledgerNum(c.steps_total);
-      const stepsTotal = total === null ? steps.length : Math.max(steps.length, Math.floor(total));
+      const stepsTotal =
+        total === null ? steps.length : Math.max(steps.length, Math.min(9999, Math.floor(total)));
       const done = ledgerNum(c.steps_done);
       let gain: any = null;
       if (c.gain && typeof c.gain === "object") {
@@ -188,7 +189,7 @@ export function ledgerGainText(L: any, gain: any): any {
       text:
         "Gain mesuré : " +
         L.fmtAuec(gain.auec, true) +
-        " aUEC (brut)" +
+        "\u00a0aUEC (brut)" +
         (gain.overlapping ? " · chevauche un autre contrat" : ""),
       tone: gain.auec < 0 ? "warn" : "ok",
     };
@@ -207,8 +208,10 @@ export function ledgerPlanText(L: any, plan: any): string {
   return (
     "prévu " +
     L.fmtAuec(plan.expected_auec, true) +
-    " aUEC · réalisé " +
-    (typeof plan.measured_auec === "number" ? L.fmtAuec(plan.measured_auec, true) + " aUEC" : "—")
+    "\u00a0aUEC · réalisé " +
+    (typeof plan.measured_auec === "number"
+      ? L.fmtAuec(plan.measured_auec, true) + "\u00a0aUEC"
+      : "—")
   );
 }
 
@@ -385,12 +388,12 @@ export function ledgerPanel(doc: any, L: any): any {
     show(rRate.root, showBalance);
     setText(
       rGain.value,
-      b && typeof b.gain_auec === "number" ? L.fmtAuec(b.gain_auec, true) + " aUEC" : "—",
+      b && typeof b.gain_auec === "number" ? L.fmtAuec(b.gain_auec, true) + "\u00a0aUEC" : "—",
     );
     setText(
       rRate.value,
       b && typeof b.rate_auec_per_hour === "number"
-        ? L.fmtAuec(b.rate_auec_per_hour, true) + " aUEC/h"
+        ? L.fmtAuec(b.rate_auec_per_hour, true) + "\u00a0aUEC/h"
         : b
           ? "disponible après 2 min de contrats"
           : "—",

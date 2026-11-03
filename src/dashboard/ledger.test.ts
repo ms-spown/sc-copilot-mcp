@@ -388,7 +388,7 @@ describe("Feature: states of the log", () => {
 
 describe("Feature: text from the game is cleaned and bounded", () => {
   const TAGS = [0x41, 0x42, 0x43].map((c) => String.fromCodePoint(0xe0000 + c)).join("");
-  const BIDI = ["‮", "⁦", "⁩", "​", "﻿", "­"].join("");
+  const BIDI = ["\u202e", "\u2066", "\u2069", "\u200b", "\ufeff", "\u00ad"].join("");
   const hostileLog = (title: string, place = "Place_1") =>
     [
       `<2026-11-03T18:00:00.000Z>    "Contract Accepted:  ${title}: " [9]`,

@@ -8,6 +8,7 @@
 //   handler, answers the ui/* requests as the measured host does, and shows what the View sends to the conversation.
 // URL parameters: t=<seconds into the story> theme=light|dark w=<px> mode=inline|fullscreen balance=1 session=1
 //                 forced=off|waiting|game_without_telemetry|incompatible cut=1 plan=1
+//                 transport=story|off|loading|unreadable|empty|none   (the transport ledger; story by default, none = no field)
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -46,6 +47,7 @@ const HARNESS = `<!doctype html>
 <script type="module">
 import { Scenario } from "/dist/dashboard/testing/scenario.js";
 import { createFakeHost } from "/dist/dashboard/testing/fakeHost.js";
+import { transportLedger } from "/dist/dashboard/testing/ledgerScenario.js";
 const q = new URLSearchParams(location.search);
 const seek = Number(q.get("t") ?? 0);
 const scenario = new Scenario(Date.now() - seek * 1000);
@@ -73,6 +75,12 @@ const deliver = (m) => {
 };
 host = createFakeHost({ scenario, theme: $("theme").value, deliver });
 window.__host = host; window.__scenario = scenario;
+// The transport ledger: invented log lines through the real parser and ledger code, with the balance of the story.
+const transport = q.get("transport") ?? "story";
+if (transport !== "none") {
+  const plan = q.get("plan") ? { expected_profit_auec: 150000 } : undefined;
+  host.overrides.poll = (base, include) => ({ ...base, ledger: transportLedger(scenario.now, scenario.epoch, include, transport, plan) });
+}
 const setWidth = () => { frame.style.width = $("w").value + "px"; };
 setWidth();
 $("w").onchange = setWidth;

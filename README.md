@@ -198,6 +198,9 @@ health, hunger, thirst.
   warning lights, weapons, events and a session timeline in full screen. Every value shows its age, the aUEC balance
   stays hidden until you click, and nothing is sent to the game. Claude Code does not display it. See
   [docs/TELEMETRY.md](docs/TELEMETRY.md#live-dashboard).
+- **A transport ledger (optional, needs the game log).** In that dashboard, the contracts of the session with their
+  pickup and drop-off steps and, once you show the balance, the raw balance change over each completed contract; the
+  game log has no quantity and no reward. See [docs/TELEMETRY.md](docs/TELEMETRY.md#transport-ledger).
 - **Read the risks first.** It is an undocumented game feature. As far as we know CIG has neither allowed nor
   forbidden using it, the RSI terms apply to you, and the risk is yours. Everything is in
   [docs/TELEMETRY.md](docs/TELEMETRY.md).

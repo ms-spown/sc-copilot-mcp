@@ -45,7 +45,7 @@ Claude ── MCP (stdio) ──► src/server.ts ──► tools/registry.ts �
 | Game log | `providers/gamelog/` (`parser.ts` pure, `reader.ts` I/O, `context.ts` derived views) | Off by default; read-only |
 | Fleet | `providers/fleet/` (`store.ts`, `resolve.ts`) | Local JSON file |
 | Live telemetry | `providers/telemetry/` (`wire.ts` + `decode.ts` + `schema.ts` decode, `normalize.ts` flat state, `handler.ts` + `events.ts` debounced events, `reader.ts` HTTP/2 stream, `service.ts` lazy single reader, `index.ts` the only door) | Off unless `SC_TELEMETRY=on`; loopback only; memory only; see [TELEMETRY.md](TELEMETRY.md) |
-| Live dashboard | `dashboard/` (`poll.ts` the poll payload, `service.ts` shared cache and session markers, `plan.ts`, `viewLogic.ts` pure View logic, `viewApp.ts` the View, `page.ts` the one HTML page, `testing/` fake host and scenario), tools in `tools/dashboard.ts` | An MCP App on top of the telemetry; see below |
+| Live dashboard | `dashboard/` (`poll.ts` the poll payload, `service.ts` shared cache and session markers, `plan.ts`, `ledger*.ts` the transport ledger, `viewLogic.ts` pure View logic, `viewApp.ts` the View, `page.ts` the one HTML page, `testing/` fake host and scenario), tools in `tools/dashboard.ts` | An MCP App on top of the telemetry; see below |
 | Patch dumps | `providers/dumps/` | Legacy; history is thin |
 
 ## Optional features that are off by default
@@ -86,6 +86,15 @@ that only it may call (`visibility: ["app"]`): `sc_live_poll` (state, events, se
   `service.ts` shares one answer per half second (the cache key is `include_balance`, so a balance is never handed
   to a View that did not ask), and a View stops polling when hidden, off screen, torn down or after 30 minutes away.
 - **The balance** exists only in the `balance` part of a poll, on request; it never enters `ui/update-model-context`.
+- **The transport ledger** is kept in modules of its own. `ledger.ts` is pure (log events and a balance history in, a
+  bounded payload out: contracts, steps, durations, and, only with `include_balance`, gains, totals, pace and
+  planned against measured). `ledgerService.ts` keeps the last result in memory and refreshes it from the game log at
+  most every 5 seconds, reading and parsing the file again only when its modification date changed; the poll calls
+  the synchronous `state()` and never waits for the file. `TelemetryService.balanceHistory()` (500 points at most,
+  one per change, memory only, optional on the `Telemetry` interface) feeds it and is exposed by no tool. The poll
+  answer carries it as the optional `ledger` field, with its own character budget so the whole answer stays under
+  the poll bound. The panel is `ledgerPanel.ts` (with `ledgerStyles.ts`), compiled into the page like the View
+  logic; `testing/ledgerScenario.ts` plays an invented transport session for the tests and the preview.
 - **Preview.** `scripts/dashboard-preview.mjs` serves the page and a fake host with a made-up flight on `127.0.0.1`.
 
 ## Testing approach
