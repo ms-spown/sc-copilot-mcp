@@ -22,9 +22,19 @@ const UEX_VEHICLES = [
   { id: 2, name: "Vanguard Harbinger", name_full: "Aegis Vanguard Harbinger", scu: 0, crew: "1" },
   { id: 3, name: "Cyclone", name_full: "Tumbril Cyclone", scu: 1, crew: "1" },
   { id: 4, name: "Vulture", name_full: "Drake Vulture", scu: 12, crew: "1" },
+  { id: 5, name: "Zerocrew", name_full: "Test Zerocrew", scu: 0, crew: "0" },
+  { id: 6, name: "Scalarsame", name_full: "Test Scalarsame", scu: 0, crew: "2" },
+  { id: 7, name: "Scalardiff", name_full: "Test Scalardiff", scu: 0, crew: "1" },
+  { id: 8, name: "Cargotol", name_full: "Test Cargotol", scu: 12, crew: "1 to 2 (pilot + co)" },
+  { id: 9, name: "Plus", name_full: "Test Plus", scu: 0, crew: "2+" },
 ];
 
 const WIKI: Record<string, unknown> = {
+  Zerocrew: { name: "Zerocrew", crew: { min: 0, max: 0 } },
+  Scalarsame: { name: "Scalarsame", crew: 2 },
+  Scalardiff: { name: "Scalardiff", crew: 3 },
+  Cargotol: { name: "Cargotol", cargo_capacity: 12.0001, crew: { min: 1, max: 2 } },
+  Plus: { name: "Plus", crew: { min: 2, max: 2 } },
   "C2 Hercules Starlifter": {
     name: "C2 Hercules Starlifter",
     cargo_capacity: 696,
@@ -147,6 +157,58 @@ describe("Feature: conflicts between UEX and the wiki are shown, not hidden", ()
       const ship = await rowOf("Drake Vulture");
       expect(ship.stats).toMatchObject({ speed_scm: 180, speed_max: 1100 });
       expect(ship.stats).not.toHaveProperty("not_provided_by_wiki");
+    });
+  });
+
+  describe("Scenario: crew figures that are holes or odd formats", () => {
+    it("Given a crew of 0 in both sources, Then it is not a figure: no comparison, no false conflict, flagged as not provided", async () => {
+      const ship = await rowOf("Test Zerocrew");
+      expect(ship.comparison.crew).toBeUndefined();
+      expect(ship.conflict).toBe(false);
+      expect(ship.stats).not.toHaveProperty("crew");
+      expect(ship.stats.not_provided_by_wiki).toContain("crew");
+    });
+
+    it("Given the wiki gives a single number for the crew, Then it is read and agrees with UEX when equal", async () => {
+      const ship = await rowOf("Test Scalarsame");
+      expect(ship.comparison.crew).toEqual({
+        conflict: false,
+        uex: { min: 2, max: 2 },
+        wiki: { min: 2, max: 2 },
+      });
+      expect(ship.stats.crew).toEqual({ min: 2, max: 2 });
+    });
+
+    it("Given a single number that differs from UEX, Then it is a conflict, not ignored", async () => {
+      const ship = await rowOf("Test Scalardiff");
+      expect(ship.conflicts).toEqual(["crew"]);
+      expect(ship.comparison.crew.wiki).toEqual({ min: 3, max: 3 });
+    });
+
+    it("Given UEX writes '2+' (not a range), Then no UEX figure is invented and nothing conflicts", async () => {
+      const ship = await rowOf("Test Plus");
+      expect(ship.comparison.crew).toEqual({ conflict: false, wiki: { min: 2, max: 2 } });
+    });
+  });
+
+  describe("Scenario: cargo figures that differ by rounding only", () => {
+    it("Given 12 SCU in UEX and 12.0001 in the wiki, Then there is no conflict, and a text after the crew range is ignored", async () => {
+      const ship = await rowOf("Test Cargotol");
+      expect(ship.comparison.cargo_scu).toMatchObject({ conflict: false, uex: 12 });
+      expect(ship.comparison.crew).toMatchObject({ conflict: false, uex: { min: 1, max: 2 } });
+      expect(ship.conflict).toBe(false);
+    });
+  });
+
+  describe("Scenario: wiki text in the fleet answer", () => {
+    it("Given a wiki role with a hidden character, Then it is cleaned and the answer is flagged untrusted", async () => {
+      const out = body(
+        await (
+          await world([{ name: "Tumbril Cyclone", origin: "pledge" }])
+        ).call("sc_fleet_get", {}),
+      );
+      expect(out.provenance.trust).toBe("untrusted_text");
+      expect(out.notice).toBeTruthy();
     });
   });
 

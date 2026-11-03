@@ -49,7 +49,7 @@
 | [`sc_log_recent_events`](#sc_log_recent_events) | local | Game.log (local) | local_log | untrusted_text | Recent things the game wrote in Game.log, oldest first: session start and quit, login, jurisdiction and zone changes (armistice, monitored space, private property), contracts accepted or completed, new and completed objectives, shop purchases (shop, item, price), insurance claims, hangar requests. |
 | [`sc_log_context`](#sc_log_context) | local | Game.log (local) | local_log | untrusted_text | What the player is doing right now, as far as Game.log can tell: jurisdiction, whether they are in an armistice zone or monitored space, the ship they last boarded, last jump-point transit between systems, active and finished contracts (with the latest objective and hauling pickups and drops), blueprints received, purchases, insurance claims and hangar requests this session. |
 | [`sc_log_sessions`](#sc_log_sessions) | local | Game.log (local) | local_log | structured | A table of the player's recent play sessions from Game.log and its backups, newest first: start time, game version and build, LIVE or PTU, duration, clean quit or not, contracts accepted and completed, purchases, blueprints, jump-point transits and jurisdictions visited. |
-| [`sc_fleet_get`](#sc_fleet_get) | core, local | fleet file (local) + uex + star-citizen.wiki | user | structured | The player's own ships, from a local file, each with its public stats (manufacturer, role, size, crew, cargo SCU, health, shields, speed) from UEX and the Star Citizen Wiki. |
+| [`sc_fleet_get`](#sc_fleet_get) | core, local | fleet file (local) + uex + star-citizen.wiki | user | untrusted_text | The player's own ships, from a local file, each with its public stats (manufacturer, role, size, crew, cargo SCU, health, shields, speed) from UEX and the Star Citizen Wiki. |
 | [`sc_fleet_upsert`](#sc_fleet_upsert) | local | fleet file (local) | user | structured | Add a ship to the player's local fleet file, or change the note of one already there (same name and origin). |
 | [`sc_fleet_remove`](#sc_fleet_remove) | local | fleet file (local) | user | structured | Remove a ship from the player's local fleet file, by name. |
 | [`sc_local_datasets`](#sc_local_datasets) | local | local-files | datamined | structured | List the game-*.json datasets found in the folder the user configured (SCMCP_GAME_DATA_DIR), with their collections and the build they say they come from. |
@@ -446,9 +446,9 @@ A table of the player's recent play sessions from Game.log and its backups, newe
 
 ### sc_fleet_get
 
-The player's own ships, from a local file, each with its public stats (manufacturer, role, size, crew, cargo SCU, health, shields, speed) from UEX and the Star Citizen Wiki. When UEX and the wiki disagree on a field (crew, cargo), both values are shown side by side with their source and conflict is true. A speed of 0 is reported as not provided. Origin is 'pledge' (bought with real money) or 'in_game'. A name that fits several ships comes back with the candidates instead of a guess. Use it before suggesting ships, cargo plans or loadouts, so the advice fits what the player owns. Holds no price and no account data.
+The player's own ships, from a local file, each with its public stats (manufacturer, role, size, crew, cargo SCU, health, shields, speed) from UEX and the Star Citizen Wiki. When UEX and the wiki disagree on a field (crew, cargo), both values are shown side by side with their source and conflict is true. A speed or crew of 0 is reported as not provided. Origin is 'pledge' (bought with real money) or 'in_game'. A name that fits several ships comes back with the candidates instead of a guess. Use it before suggesting ships, cargo plans or loadouts, so the advice fits what the player owns. Holds no price and no account data.
 
-*Source:* fleet file (local) + uex + star-citizen.wiki · *Kind:* user · *Trust:* structured · *Profiles:* core, local
+*Source:* fleet file (local) + uex + star-citizen.wiki · *Kind:* user · *Trust:* untrusted_text · *Profiles:* core, local
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |

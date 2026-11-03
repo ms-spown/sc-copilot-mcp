@@ -5,7 +5,12 @@ import { formatOutputRaw } from "../core/format.js";
 import type { HttpClient } from "../core/http.js";
 import { addNote, recordFetch } from "../core/provenance.js";
 import { FleetShipInput, type FleetShip, type FleetStore } from "../providers/fleet/store.js";
-import { compareSources, conflictingFields, positive } from "../providers/fleet/compare.js";
+import {
+  compareSources,
+  conflictingFields,
+  parseWikiCrew,
+  positive,
+} from "../providers/fleet/compare.js";
 import { resolveShip, type VehicleRow } from "../providers/fleet/resolve.js";
 import { shortPath } from "../providers/gamelog/reader.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
@@ -30,22 +35,24 @@ const originProp = {
 function publicStats(v: Record<string, unknown>) {
   const manufacturer = v.manufacturer as Record<string, unknown> | undefined;
   const speed = v.speed as Record<string, unknown> | undefined;
-  const crew = v.crew as Record<string, unknown> | undefined;
+  const crew = parseWikiCrew(v.crew);
   const size = v.size as Record<string, unknown> | string | undefined;
   // A speed of 0 is the source having no figure (ground vehicles, unmeasured ships), not a ship
   // that cannot move: leave it out and say so.
   const scm = positive(speed?.scm);
   const max = positive(speed?.max);
-  const notProvided = [scm === undefined && "speed_scm", max === undefined && "speed_max"].filter(
-    (k): k is string => typeof k === "string",
-  );
+  const notProvided = [
+    crew === undefined && "crew",
+    scm === undefined && "speed_scm",
+    max === undefined && "speed_max",
+  ].filter((k): k is string => typeof k === "string");
   return {
     name: v.name,
     manufacturer: manufacturer?.name,
     role: v.role,
     career: v.career,
     size: typeof size === "object" ? (size?.en_EN ?? size) : size,
-    crew: crew ? { min: crew.min, max: crew.max } : undefined,
+    crew,
     cargo_scu: v.cargo_capacity,
     health: v.health,
     shield_hp: v.shield_hp,
@@ -123,7 +130,7 @@ export function fleetTools({
     {
       name: "sc_fleet_get",
       description:
-        "The player's own ships, from a local file, each with its public stats (manufacturer, role, size, crew, cargo SCU, health, shields, speed) from UEX and the Star Citizen Wiki. When UEX and the wiki disagree on a field (crew, cargo), both values are shown side by side with their source and conflict is true. A speed of 0 is reported as not provided. Origin is 'pledge' (bought with real money) or 'in_game'. A name that fits several ships comes back with the candidates instead of a guess. Use it before suggesting ships, cargo plans or loadouts, so the advice fits what the player owns. Holds no price and no account data.",
+        "The player's own ships, from a local file, each with its public stats (manufacturer, role, size, crew, cargo SCU, health, shields, speed) from UEX and the Star Citizen Wiki. When UEX and the wiki disagree on a field (crew, cargo), both values are shown side by side with their source and conflict is true. A speed or crew of 0 is reported as not provided. Origin is 'pledge' (bought with real money) or 'in_game'. A name that fits several ships comes back with the candidates instead of a guess. Use it before suggesting ships, cargo plans or loadouts, so the advice fits what the player owns. Holds no price and no account data.",
       inputSchema: {
         type: "object",
         properties: {

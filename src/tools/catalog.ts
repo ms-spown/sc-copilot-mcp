@@ -109,7 +109,9 @@ export const CATALOG: Record<string, CatalogEntry> = {
   sc_fleet_get: {
     source: "fleet file (local) + uex + star-citizen.wiki",
     kind: "user",
-    trust: "structured",
+    // The wiki's role, career and error text come back with the player's own notes (up to 500 chars).
+    trust: "untrusted_text",
+    maxText: 500,
     channel: "unknown",
     profiles: ["core", "local"],
   },

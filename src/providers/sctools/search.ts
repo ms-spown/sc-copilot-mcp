@@ -10,29 +10,48 @@ export interface SearchResult {
 const MAX_RESULTS = 10;
 const MAX_EXCERPT = 240;
 
-const ENTITIES: Record<string, string> = {
-  "&amp;": "&",
-  "&lt;": "<",
-  "&gt;": ">",
-  "&quot;": '"',
-  "&#039;": "'",
-  "&#39;": "'",
-  "&nbsp;": " ",
+const NAMED: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  hellip: "…",
+  ndash: "–",
+  mdash: "—",
 };
 
-/** MediaWiki snippets are HTML: the match is wrapped in a span. Keep the words, drop the markup. */
+/** One pass, so "&amp;lt;" becomes the text "&lt;" and is never decoded twice. */
+function decodeEntities(text: string): string {
+  return text.replace(/&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|([a-z]+));/gi, (whole, dec, hex, name) => {
+    if (name) return NAMED[String(name).toLowerCase()] ?? whole;
+    const code = dec ? Number(dec) : parseInt(hex, 16);
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+  });
+}
+
+/**
+ * MediaWiki snippets are HTML: the match is wrapped in a span. Drop the tags first, then decode
+ * the entities, then never leave a "<" or ">" behind: decoding must not bring a tag back.
+ */
 export function cleanSnippet(html: string, max: number = MAX_EXCERPT): string {
-  const text = html
-    .replace(/<[^>]*>/g, "")
-    .replace(/&(?:amp|lt|gt|quot|nbsp|#0?39);/g, (e) => ENTITIES[e] ?? e)
+  const text = decodeEntities(html.replace(/<[^>]*>/g, ""))
+    .replace(/[<>]/g, "")
     .replace(/\s+/g, " ")
     .trim();
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
 
+/** Encode each part of the title but leave "/" and ":" as MediaWiki does ("Category:Ships"). */
 function pageUrl(baseURL: string | undefined, title: string): string | undefined {
   if (!baseURL) return undefined;
-  return `${baseURL.replace(/\/+$/, "")}/${encodeURIComponent(title.replace(/ /g, "_"))}`;
+  const path = title
+    .replace(/ /g, "_")
+    .split(/([/:])/)
+    .map((part) => (part === "/" || part === ":" ? part : encodeURIComponent(part)))
+    .join("");
+  return `${baseURL.replace(/\/+$/, "")}/${path}`;
 }
 
 /**
@@ -42,6 +61,14 @@ function pageUrl(baseURL: string | undefined, title: string): string | undefined
  */
 export function parseSearchResults(data: unknown, baseURL?: string): SearchResult[] {
   const out: SearchResult[] = [];
+
+  // MediaWiki answers errors with HTTP 200 and an "error" object: that is a failure, not "no result".
+  if (isObject(data) && isObject(data.error)) {
+    const code =
+      typeof data.error.code === "string" ? cleanSnippet(data.error.code, 60) : "unknown";
+    const info = typeof data.error.info === "string" ? cleanSnippet(data.error.info, 200) : "";
+    throw new Error(`starcitizen.tools search failed (${code})${info ? `: ${info}` : ""}`);
+  }
 
   if (isObject(data) && isObject(data.query) && Array.isArray(data.query.search)) {
     for (const hit of data.query.search) {
@@ -67,6 +94,8 @@ export function parseSearchResults(data: unknown, baseURL?: string): SearchResul
         ...(link ? { url: link } : {}),
       });
     });
+  } else {
+    throw new Error("starcitizen.tools search: unexpected answer from the wiki.");
   }
   return out.slice(0, MAX_RESULTS);
 }

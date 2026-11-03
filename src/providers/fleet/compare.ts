@@ -29,25 +29,48 @@ const num = (v: unknown): number | undefined => {
   return undefined;
 };
 
-/** UEX writes the crew as text: "1" for one seat, "1,2" for one to two, "1,8" for one to eight. */
+/**
+ * UEX writes the crew as text: "1" for one seat, "1,2" for one to two, "1-2" or "1 to 2". Text
+ * after the figures ("10-20 crew", "1 to 2 (pilot + co)") is ignored; anything else ("2+", "-1",
+ * "1-2-3", "0") gives no figure at all rather than a wrong one. 0 means "not provided".
+ */
+const AFTER = String.raw`(?:\s+[^\d+\-,.\s].*|\s*\(.*)?$`;
+const RANGE = new RegExp(String.raw`^(\d+)\s*(?:-|\u2013|,|\bto\b)\s*(\d+)` + AFTER, "i");
+const SINGLE = new RegExp(String.raw`^(\d+)` + AFTER);
+
 export function parseUexCrew(raw: unknown): Range | undefined {
-  if (typeof raw === "number") return Number.isFinite(raw) ? { min: raw, max: raw } : undefined;
+  if (typeof raw === "number") {
+    return Number.isInteger(raw) && raw > 0 ? { min: raw, max: raw } : undefined;
+  }
   if (typeof raw !== "string") return undefined;
-  const parts = raw
-    .split(/[,;\-–/]|\bto\b/i)
-    .map((p) => num(p))
-    .filter((n): n is number => n !== undefined);
-  if (parts.length === 0) return undefined;
-  return { min: Math.min(...parts), max: Math.max(...parts) };
+  const text = raw.trim();
+  const range = RANGE.exec(text);
+  const single = range ? null : SINGLE.exec(text);
+  const found = range
+    ? [Number(range[1]), Number(range[2])]
+    : single
+      ? [Number(single[1])]
+      : undefined;
+  if (!found || found.some((n) => n <= 0)) return undefined;
+  return { min: Math.min(...found), max: Math.max(...found) };
 }
 
-/** The wiki gives {min, max}; one side alone stands for both. */
+/**
+ * The wiki gives {min, max} or a single number. One bound alone stands for both; 0 or a negative
+ * number is a hole in the source, not a crew of 0.
+ */
 export function parseWikiCrew(raw: unknown): Range | undefined {
+  if (typeof raw === "number" || typeof raw === "string") {
+    const n = num(raw);
+    return n !== undefined && Number.isInteger(n) && n > 0 ? { min: n, max: n } : undefined;
+  }
   if (!raw || typeof raw !== "object") return undefined;
   const c = raw as Record<string, unknown>;
   const min = num(c.min);
   const max = num(c.max);
   if (min === undefined && max === undefined) return undefined;
+  const bounds = [min, max].filter((n): n is number => n !== undefined);
+  if (bounds.some((n) => !Number.isInteger(n) || n <= 0)) return undefined;
   return { min: min ?? (max as number), max: max ?? (min as number) };
 }
 
@@ -71,6 +94,9 @@ function field<T>(
   };
 }
 
+/** Two cargo figures within half a percent are the same ship (12 and 12.0001). */
+const sameCargo = (a: number, b: number): boolean => Math.abs(a - b) / Math.max(a, b) < 0.005;
+
 export function compareSources(
   uexRow: Record<string, unknown>,
   wikiVehicle: Record<string, unknown>,
@@ -81,7 +107,7 @@ export function compareSources(
       parseWikiCrew(wikiVehicle.crew),
       (a, b) => a.min === b.min && a.max === b.max,
     ),
-    cargo_scu: field(positive(uexRow.scu), positive(wikiVehicle.cargo_capacity), (a, b) => a === b),
+    cargo_scu: field(positive(uexRow.scu), positive(wikiVehicle.cargo_capacity), sameCargo),
   };
 }
 
