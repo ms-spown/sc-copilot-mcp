@@ -1,0 +1,72 @@
+name: CI
+
+# Lint, tests, build and dependency audit. This fork publishes nothing: no npm,
+# no Docker Hub, no automated release. Keep it that way unless a human decides otherwise.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege for every job. Nothing here needs to write to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Lint, test, build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows is the primary target (Claude Desktop); Linux catches path assumptions the other way.
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      # --ignore-scripts: no dependency here needs an install script, and running
+      # one would only widen the attack surface of a compromised package.
+      - run: npm ci --ignore-scripts --no-fund
+
+      - run: npm run lint
+      - run: npm test
+      # tsc is both the build and the type gate.
+      - run: npm run build
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci --ignore-scripts --no-fund
+
+      # Blocking: production dependencies must have no high or critical advisory.
+      - name: Audit production dependencies
+        run: npm run audit:prod
+
+      # Blocking: every installed package must carry a valid registry signature.
+      - name: Verify registry signatures
+        run: npm audit signatures

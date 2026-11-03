@@ -3,7 +3,7 @@
 set -e
 
 echo "Building SCMCP..."
-npm install
+npm ci --ignore-scripts
 npm run build
 
 MCP_COMMAND="node $(pwd)/dist/index.js"
