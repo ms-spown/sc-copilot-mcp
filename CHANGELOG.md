@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-03
+
 ### Added
 - **Transport ledger in the live dashboard** ("Carnet de transport"). Links the game log (contracts, pickup and
   drop-off steps with place and goods) to the balance change the telemetry measured. A full-screen panel and, while a
@@ -56,43 +58,6 @@ versions follow [Semantic Versioning](https://semver.org/).
   la fiche (wiki)"; without a usable sheet it keeps the scale deduced from the speeds seen and says why. Values of 0 are
   not provided. The hydrogen tank capacity is not confirmed in the wiki data and is not shown: the hydrogen endurance
   stays the labelled estimate. Documented in `docs/TELEMETRY.md` and `docs/TELEMETRY.fr.md`.
-
-### Changed
-- **Only one dashboard polls.** The Views of one conversation elect a leader over a `BroadcastChannel` (the most recent
-  visible one); the others stop calling the server, show a banner with a take-over button and follow the leader's
-  answer (no balance, no wallet event on the channel). Before: 1, 3 and 5 open dashboards made 1, 3 and 5 calls per
-  second to the host; now always 1 (measured against the fake host). Without `BroadcastChannel` the old behaviour
-  applies and a View away for 30 seconds retires.
-- **Lighter polls.** `sc_live_poll` takes `since_seq`, `have` (section hashes) and `include_static`: events already
-  held, unchanged sections and the static list are not sent again (3810 to 2185 bytes a second on the made-up flight).
-  The shared cache is unchanged; the answer is cut per request after it. The input schema of `sc_live_poll` changed
-  (golden and docs/TOOLS.md regenerated). Curves keep 62 seconds (estimates 2 to 5 minutes) with a hard ceiling, and a
-  View that is torn down releases every listener, observer, timer and channel.
-- The pins of the compact view are replaced by a pin bar fed from icons on the cards.
-
-### Fixed
-- **Telemetry no longer says the game is off when it is not.** Measured with the real game: the first
-  `sc_live_status` or `sc_live_state` call started the reader and answered `waiting` before the first connection
-  attempt had finished, and the model told the player the game was not running. Now the first request waits (at most
-  1.5 s) for the first outcome of the first attempt; a peek (`status(false)`) still never starts or waits.
-- `connected` is reached as soon as the HTTP/2 session is open, the server's SETTINGS are received and the call is
-  open, even when the game sends its response headers only with the first frame (menus). A refusal that follows
-  (UNIMPLEMENTED, another content type) still gives `incompatible`.
-- The causes no longer claim the game is not running, which this server cannot know. `waiting` now means "no
-  telemetry for now", normal in menus, loading screens and before the character has appeared. The tool
-  descriptions, the `limits` field, the dashboard View, `docs/USING_WITH_CLAUDE.md`, `docs/TELEMETRY.md` and
-  `docs/TROUBLESHOOTING.md` (English and French) tell the model not to say the game is off and to offer no
-  troubleshooting unless the state is `game_without_telemetry` or `incompatible`, and explain that on foot only
-  character data exists while ship data needs the player seated in a ship.
-- `jump_finished` came about 9 seconds after the end of a quantum jump on a real ship: the quantum-drive light went
-  off at the end, but the event waited for the 8 s rule that exists for ships whose thrust light drops to nominal in
-  the middle of a jump. The jump now ends when the drive light goes off; a ship that never reports it keeps the slow
-  rule, and a thrust light still "major" right after the end does not start a second jump. Measured on a real Aegis
-  Harbinger with 4.10.2.
-
-## [2.1.0] - 2026-11-03
-
-### Added
 - **Optional live telemetry, off by default.** The game has an undocumented local telemetry server; with two explicit
   switches (`SC_TELEMETRY=on` on the server, `GRPC_CLIENT_SERVER_ENABLED=true` in the RSI Launcher's environment) the
   server reads it on `127.0.0.1:2942` and nothing else. No new dependency: a hand-written protobuf decoder and
@@ -133,6 +98,17 @@ versions follow [Semantic Versioning](https://semver.org/).
   `README.fr.md` and from the English page; `npm run check:docs` compares the pair.
 
 ### Changed
+- **Only one dashboard polls.** The Views of one conversation elect a leader over a `BroadcastChannel` (the most recent
+  visible one); the others stop calling the server, show a banner with a take-over button and follow the leader's
+  answer (no balance, no wallet event on the channel). Before: 1, 3 and 5 open dashboards made 1, 3 and 5 calls per
+  second to the host; now always 1 (measured against the fake host). Without `BroadcastChannel` the old behaviour
+  applies and a View away for 30 seconds retires.
+- **Lighter polls.** `sc_live_poll` takes `since_seq`, `have` (section hashes) and `include_static`: events already
+  held, unchanged sections and the static list are not sent again (3810 to 2185 bytes a second on the made-up flight).
+  The shared cache is unchanged; the answer is cut per request after it. The input schema of `sc_live_poll` changed
+  (golden and docs/TOOLS.md regenerated). Curves keep 62 seconds (estimates 2 to 5 minutes) with a hard ceiling, and a
+  View that is torn down releases every listener, observer, timer and channel.
+- The pins of the compact view are replaced by a pin bar fed from icons on the cards.
 - **`provenance.data_age` is now the age of the data itself**, from dates the source gives (UEX `date_modified` of the
   rows returned, the SCMDB channel's `generated_at`); `null` with `data_age_note` when the source gives none. The old
   meaning (age of the fetch or cache) is the new `provenance.cache_age`, also used by `sc_data_status`.
@@ -221,6 +197,24 @@ points and uses no network).
   - Limits are documented in `docs/TELEMETRY.md` and `SECURITY.md`.
 
 ### Fixed
+- **Telemetry no longer says the game is off when it is not.** Measured with the real game: the first
+  `sc_live_status` or `sc_live_state` call started the reader and answered `waiting` before the first connection
+  attempt had finished, and the model told the player the game was not running. Now the first request waits (at most
+  1.5 s) for the first outcome of the first attempt; a peek (`status(false)`) still never starts or waits.
+- `connected` is reached as soon as the HTTP/2 session is open, the server's SETTINGS are received and the call is
+  open, even when the game sends its response headers only with the first frame (menus). A refusal that follows
+  (UNIMPLEMENTED, another content type) still gives `incompatible`.
+- The causes no longer claim the game is not running, which this server cannot know. `waiting` now means "no
+  telemetry for now", normal in menus, loading screens and before the character has appeared. The tool
+  descriptions, the `limits` field, the dashboard View, `docs/USING_WITH_CLAUDE.md`, `docs/TELEMETRY.md` and
+  `docs/TROUBLESHOOTING.md` (English and French) tell the model not to say the game is off and to offer no
+  troubleshooting unless the state is `game_without_telemetry` or `incompatible`, and explain that on foot only
+  character data exists while ship data needs the player seated in a ship.
+- `jump_finished` came about 9 seconds after the end of a quantum jump on a real ship: the quantum-drive light went
+  off at the end, but the event waited for the 8 s rule that exists for ships whose thrust light drops to nominal in
+  the middle of a jump. The jump now ends when the drive light goes off; a ship that never reports it keeps the slow
+  rule, and a thrust light still "major" right after the end does not start a second jump. Measured on a real Aegis
+  Harbinger with 4.10.2.
 - Stopping the telemetry reader while it was connecting could throw `ERR_HTTP2_INVALID_SESSION` from an event handler.
 - The test suite no longer reaches the network. A status test ran the dump-repository probe against GitHub and timed
   out on a loaded CI; probes now take their sources as an argument, and `vitest.setup.ts` makes any test that opens a
