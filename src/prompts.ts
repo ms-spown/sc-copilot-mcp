@@ -41,7 +41,7 @@ export const PROMPTS: PromptDefinition[] = [
         given("Ship", a.ship),
         given("Starting point", a.origin),
         given("Budget in aUEC", a.budget),
-        "Steps: 1) call sc_data_status to check how fresh the data is. 2) If no ship was named, call sc_fleet_get and pick the ship with the most cargo SCU that suits the job. 3) Call uex_get_trade_routes with ship_name (and the origin and investment if given). If no origin was given, ask me or try the planet I am on (sc_log_context if the game log is on). 4) Give the best 3 routes: what to buy, where to sell, SCU to haul, cost, expected profit, distance.",
+        "Steps: 1) call sc_data_status to check how fresh the data is. 2) If no ship was named, call sc_fleet_get and pick the ship with the most cargo SCU that suits the job. If live telemetry is on (sc_live_status says live), you may offer to use the ship I am sitting in (sc_live_state, ship section) and my current balance as the budget: ask me first, then call sc_live_state with include_balance true, say that the balance came from the game's telemetry, and pass it as investment. Never use my balance without saying so. 3) Call uex_get_trade_routes with ship_name (and the origin and investment if given). If no origin was given, ask me or try the planet I am on (sc_log_context if the game log is on). 4) Give the best 3 routes: what to buy, where to sell, SCU to haul, cost, expected profit, distance.",
         "For each route flag the risks: few player reports behind the prices (reports_origin / reports_destination), old data, a profit that looks too good, and cargo that is illegal in some jurisdictions (check uex_get_commodities).",
         RULES,
       ]
@@ -76,7 +76,7 @@ export const PROMPTS: PromptDefinition[] = [
       [
         "Debrief my last Star Citizen session from my game log.",
         "Steps: 1) sc_log_status (if the log is off, explain how to turn it on and stop). 2) sc_log_sessions for my recent sessions, then sc_log_context for the latest one (use session previous if the game is not running). 3) Summarise: how long I played, jurisdictions visited, contracts accepted, completed and abandoned, blueprints received, purchases, and anything left unfinished.",
-        "Then suggest what to do next, using scmdb_search_missions for similar contracts and sc_fleet_get for the right ship. The log does not record combat, quantum travel, wallet or position: do not claim them.",
+        "Then suggest what to do next, using scmdb_search_missions for similar contracts and sc_fleet_get for the right ship. The log does not record combat, quantum travel, wallet or position: do not claim them. If live telemetry is on, sc_live_events lists what it saw since the server started (jumps, landings, lock-ons, health), and sc_live_state with include_balance true gives the aUEC change since the reader started; that delta only covers the time the server was running with the game sending frames, and it mixes purchases, rewards and fines. Say those limits, and mark unverified events as such.",
         RULES,
       ].join("\n"),
   },

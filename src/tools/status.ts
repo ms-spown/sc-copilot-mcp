@@ -23,6 +23,8 @@ export interface SourceStatus {
   fetchedAt?: number;
   error?: string;
   note?: string;
+  /** For a source with its own state machine (live telemetry: off, waiting, live...). */
+  state?: string;
 }
 
 export interface StatusProbe {

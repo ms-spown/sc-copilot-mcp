@@ -2,6 +2,7 @@ import { toErrorResult } from "../core/errors.js";
 import type { FleetStore } from "../providers/fleet/store.js";
 import type { GameLog } from "../providers/gamelog/reader.js";
 import type { Scmdb } from "../providers/scmdb/store.js";
+import type { Telemetry } from "../providers/telemetry/index.js";
 import type { HttpClient } from "../core/http.js";
 import {
   buildProvenance,
@@ -24,6 +25,7 @@ import { fleetTools } from "./fleet.js";
 import { gameLogTools } from "./gamelog.js";
 import { sctTools } from "./sctools.js";
 import { statusTools, type StatusProbe } from "./status.js";
+import { telemetryTools } from "./telemetry.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 import { uexTools } from "./uex.js";
 import { vocabularyTools } from "./vocabulary.js";
@@ -36,6 +38,8 @@ export interface ToolClients {
   scmdb: Scmdb;
   gameLog: GameLog;
   fleet: FleetStore;
+  /** Optional live telemetry. Absent or disabled: its tools say so and nothing connects. */
+  telemetry?: Telemetry;
 }
 
 /** Every tool this server implements, before any scoping. */
@@ -48,6 +52,7 @@ export function allTools(clients: ToolClients, probes: StatusProbe[] = []): Tool
     ...patchNotesTools(clients),
     ...scmdbTools(clients),
     ...gameLogTools(clients),
+    ...telemetryTools(clients),
     ...fleetTools(clients),
     ...localTools(),
     ...vocabularyTools(clients),
@@ -167,6 +172,7 @@ export function createRegistry(
     list() {
       return tools
         .filter((t) => !enabled || enabled.has(t.name))
+        .filter((t) => t.advertised?.() !== false)
         .map(({ name, description, inputSchema }) => ({ name, description, inputSchema }));
     },
     async call(name, args) {

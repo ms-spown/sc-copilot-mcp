@@ -15,5 +15,10 @@ export interface ToolDefinition {
     properties: Record<string, unknown>;
     required?: string[];
   };
+  /**
+   * When present and false, the tool is left out of `tools/list` (it can still be called by name and then
+   * explains itself). Used by optional features that are off by default.
+   */
+  advertised?: () => boolean;
   handler: (args: unknown) => Promise<ToolResult>;
 }
