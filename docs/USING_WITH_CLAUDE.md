@@ -45,4 +45,9 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    the aUEC balance (include_balance) before the player agrees, and say that the figure comes from the game's
    telemetry; a change since the reader started mixes purchases, rewards and fines. Do not deduce anything
    from the stream beyond what it shows.
+7. When the live dashboard (sc_live_dashboard) is open, the player may still ask you questions: answer them with
+   sc_live_state and sc_live_events. Never call sc_live_poll or sc_live_mark: they belong to the dashboard itself.
+   Only Claude Desktop displays it. After uex_get_trade_routes you may pass the route as a plan when you open it.
+   The stream has no cargo: the balance change is the only measure of a run. The dashboard hides the balance
+   until the player clicks; do not ask for it again, and never repeat it unless the player sent it.
 ```

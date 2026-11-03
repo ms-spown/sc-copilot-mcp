@@ -404,7 +404,7 @@ export function modeInfo(poll: any): any {
   const derived = poll.derived || {};
   if (ship) {
     if (derived.in_jump) return { id: "jump", label: "Saut quantique" };
-    if (derived.in_quantum_mode) return { id: "quantum", label: "Mode quantique" };
+    if (derived.in_quantum_mode) return { id: "quantum", label: "Quantique" };
     if (ship.landed === true) return { id: "landed", label: "Posé" };
     if (ship.landed === false) return { id: "flight", label: "En vol" };
     return { id: "ship", label: "À bord" };
@@ -705,9 +705,10 @@ export function timelineItems(events: any[], markers: any[], limit: number): any
  * Remaining time at the recent rate, from a series of [t, fraction] samples. It is an ESTIMATE from a straight line
  * through the last minutes, never a measurement: the result says over which window it was computed.
  */
-export function trendEstimate(series: number[][] | undefined, now: number): any {
+export function trendEstimate(series: number[][] | undefined, now: number, windowMs?: number): any {
   const cfg = viewConfig();
-  const pts = (series || []).filter((s) => now - (s[0] as number) <= cfg.trendWindowMs);
+  const win = windowMs === undefined ? cfg.trendWindowMs : windowMs;
+  const pts = (series || []).filter((s) => now - (s[0] as number) <= win);
   if (pts.length < cfg.trendMinSamples) return { kind: "none", reason: "pas assez de mesures" };
   const first = pts[0] as number[];
   const last = pts[pts.length - 1] as number[];
@@ -731,6 +732,12 @@ export function trendEstimate(series: number[][] | undefined, now: number): any 
   if (den === 0) return { kind: "none", reason: "historique trop court" };
   const perMs = num / den;
   const perMin = perMs * 60000;
+  // The straight line remembers the burn of a minute ago: if nothing was used in the last 15 seconds, say stable.
+  let before: number[] | undefined;
+  for (const p of pts) if (now - (p[0] as number) >= 15000) before = p;
+  if (perMin <= -0.001 && before && (last[1] as number) >= (before[1] as number) - 0.0005) {
+    return { kind: "stable", perMin: 0, windowMs: span };
+  }
   if (perMin > 0.002) return { kind: "rising", perMin, windowMs: span };
   if (perMin > -0.001) return { kind: "stable", perMin, windowMs: span };
   const current = last[1] as number;

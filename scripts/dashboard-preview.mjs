@@ -55,11 +55,18 @@ if (q.get("cut")) scenario.cut = true;
 const frame = document.getElementById("frame");
 const $ = (id) => document.getElementById(id);
 $("theme").value = q.get("theme") ?? "dark";
+const paintTheme = () => { document.documentElement.style.colorScheme = $("theme").value; };
+paintTheme();
 $("w").value = q.get("w") ?? "560";
 $("forced").value = q.get("forced") ?? "";
 const log = (s) => { $("log").textContent = (s + "\\n" + $("log").textContent).slice(0, 3000); };
 let host;
-const applyMode = () => { document.body.dataset.mode = host.displayMode; };
+let lastHeight = 180;
+const applyMode = () => {
+  document.body.dataset.mode = host.displayMode;
+  if (host.displayMode === "fullscreen") { frame.style.width = "100%"; frame.style.height = "100%"; }
+  else { setWidth(); frame.style.height = lastHeight + "px"; }
+};
 const deliver = (m) => {
   frame.contentWindow.postMessage(m, "*");
   if (m.method === "ui/notifications/host-context-changed" && m.params?.displayMode) applyMode();
@@ -69,14 +76,15 @@ window.__host = host; window.__scenario = scenario;
 const setWidth = () => { frame.style.width = $("w").value + "px"; };
 setWidth();
 $("w").onchange = setWidth;
-$("theme").onchange = () => host.contextChanged({ theme: $("theme").value });
+$("theme").onchange = () => { paintTheme(); host.contextChanged({ theme: $("theme").value }); };
 $("forced").onchange = () => { scenario.forced = $("forced").value || null; };
 $("cut").onclick = () => { scenario.cut = !scenario.cut; $("cut").textContent = scenario.cut ? "rétablir le flux" : "couper le flux"; };
 window.addEventListener("message", (e) => {
   if (e.source !== frame.contentWindow) return;
   const m = e.data;
   if (m && m.method === "ui/notifications/size-changed" && document.body.dataset.mode === "inline") {
-    frame.style.height = Math.ceil(m.params.height) + "px";
+    lastHeight = Math.ceil(m.params.height);
+    frame.style.height = lastHeight + "px";
   }
   if (m && (m.method === "ui/message" || m.method === "ui/update-model-context")) log(m.method + " " + JSON.stringify(m.params).slice(0, 400));
   host.receive(m, Date.now());

@@ -29,7 +29,7 @@ you point it at, and only if you do.
 | Patches | "What changed in the last update?" | `sc_patch_notes`, `scmdb_changes` |
 | Your game | "What am I doing right now? Debrief my last session." | `sc_log_context`, `sc_log_sessions` |
 | Your fleet | "Which of my ships carries 300 SCU?" | `sc_fleet_get` |
-| Your ship, live (off by default) | "Is my landing gear down? How much hydrogen is left?" | `sc_live_status`, `sc_live_state` |
+| Your ship, live (off by default) | "Is my landing gear down? How much hydrogen is left?" | `sc_live_status`, `sc_live_state`, `sc_live_dashboard` |
 | Freshness | "Is this data current?" | `sc_data_status` |
 
 Five ready-made prompts chain these for you (see [Prompts](#prompts)). Every capability, with its source, its
@@ -96,9 +96,11 @@ npm run build
    `npm run check:sources` asks every data source for its version and verifies the files and fields the tools rely
    on. In Claude, ask for `sc_data_status`.
 
-## Tools (45)
+## Tools (48)
 
-Claude sees 43 of them by default: `sc_live_state` and `sc_live_events` are listed only when live telemetry is on.
+Claude sees 43 of them by default: `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll` and
+`sc_live_mark` are listed only when live telemetry is on (the last three also need a client that can show them, such
+as Claude Desktop).
 
 Full parameter reference: **[docs/TOOLS.md](docs/TOOLS.md)** (generated from the code). By theme:
 
@@ -110,7 +112,7 @@ Full parameter reference: **[docs/TOOLS.md](docs/TOOLS.md)** (generated from the
 | **Missions, crafting, mining** (SCMDB) | `scmdb_search_missions`, `scmdb_search_crafting`, `scmdb_search_mining`, `scmdb_changes`                                                                                                                                                                                                                                                                                                        |
 | **Patches and lore**                   | `sc_patch_notes` (notes of an update, by section or keyword), `sct_search`, `sct_get_article`, `sc_list_builds`, `sc_diff_versions`                                                                                                                                                                                                                                                             |
 | **Your game log** (off by default)     | `sc_log_context` (what you are doing now), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`                                                                                                                                                                                                                                                                                           |
-| **Live telemetry** (off by default)    | `sc_live_status` (always listed: state and how to enable), `sc_live_state`, `sc_live_events` (listed only when `SC_TELEMETRY=on`)                                                                                                                                                                                                                                                               |
+| **Live telemetry** (off by default)    | `sc_live_status` (always listed: state and how to enable), `sc_live_state`, `sc_live_events` (listed only when `SC_TELEMETRY=on`), `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark` (the live dashboard, in Claude Desktop only)                                                                                                                                                                                                                                                               |
 | **Your fleet**                         | `sc_fleet_get`, `sc_fleet_upsert`, `sc_fleet_remove`                                                                                                                                                                                                                                                                                                                                            |
 | **Your own data files**                | `sc_local_datasets`, `sc_search_local`, `sc_read_local_collection`                                                                                                                                                                                                                                                                                                                              |
 
@@ -191,6 +193,11 @@ health, hunger, thirst.
   log, store or send the frames. Everything stays in memory.
 - **What it cannot see:** position, shield level, hull, heat, ammo, power distribution or quantum fuel. Health 0
   means down or dead. The aUEC balance is withheld from Claude unless you agree (`include_balance`).
+- **A live dashboard (optional).** With telemetry on, Claude Desktop can show a live dashboard in the conversation
+  (`sc_live_dashboard`): ship, speed, hydrogen, health and the state of the stream in a compact view; instruments,
+  warning lights, weapons, events and a session timeline in full screen. Every value shows its age, the aUEC balance
+  stays hidden until you click, and nothing is sent to the game. Claude Code does not display it. See
+  [docs/TELEMETRY.md](docs/TELEMETRY.md#live-dashboard).
 - **Read the risks first.** It is an undocumented game feature. As far as we know CIG has neither allowed nor
   forbidden using it, the RSI terms apply to you, and the risk is yours. Everything is in
   [docs/TELEMETRY.md](docs/TELEMETRY.md).

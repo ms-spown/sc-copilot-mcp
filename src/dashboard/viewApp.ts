@@ -187,7 +187,11 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     add(R.status, R.dot, R.statusLabel, R.statusDetail);
     R.topActions = el("div", "top-actions");
     R.age = el("span", "age", "");
-    R.btnAnalyse = button("Analyser ma situation", () => sendAction("analyse"), "small");
+    R.btnAnalyse = button("Analyser", () => sendAction("analyse"), "small");
+    R.btnAnalyse.setAttribute(
+      "title",
+      "Analyser ma situation : demande à Claude d\u2019analyser la télémétrie",
+    );
     R.btnMode = button(
       "Plein écran",
       () => requestMode(displayMode === "fullscreen" ? "inline" : "fullscreen"),
@@ -527,8 +531,12 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.live = el("div", "live", "");
     R.live.setAttribute("role", "status");
     R.live.setAttribute("aria-live", "polite");
+    // Stream state changes are announced here, out of sight: the header already shows them.
+    R.sr = el("div", "sr-only", "");
+    R.sr.setAttribute("role", "status");
+    R.sr.setAttribute("aria-live", "polite");
 
-    add(root, R.top, R.notice, R.alerts, R.tiles, R.full, R.live);
+    add(root, R.top, R.notice, R.alerts, R.tiles, R.full, R.live, R.sr);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -543,7 +551,11 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   }
 
   function setTile(t: any, text: string, sub: string, info?: any) {
-    setText(t.value, text);
+    // "201 m/s": the number is the text, the unit is drawn smaller after it from data-unit (one text node, no jump).
+    const cut = text.lastIndexOf("\u00a0");
+    const hasUnit = cut > 0 && text.length - cut <= 6;
+    setText(t.value, hasUnit ? text.slice(0, cut) : text);
+    setAttr(t.value, "data-unit", hasUnit ? text.slice(cut + 1) : "");
     setText(t.sub, sub);
     setBar(t, info || null);
   }
@@ -570,16 +582,21 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const ins = ship && ship.instruments;
     const mode = L.modeInfo(p);
     // Ship
+    const title = ship ? L.shipTitle(ship) : "";
+    const maker =
+      ship && typeof ship.manufacturer_derived === "string" ? ship.manufacturer_derived : "";
+    const model = maker && title.indexOf(maker + " ") === 0 ? title.slice(maker.length + 1) : title;
     setTile(
       R.tShip,
-      ship
-        ? L.shipTitle(ship)
-        : mode.id === "foot" || mode.id === "eva"
-          ? "Sans vaisseau"
-          : "\u2014",
-      mode.label,
+      ship ? model : mode.id === "foot" || mode.id === "eva" ? "Sans vaisseau" : "\u2014",
+      (maker ? maker + " \u00b7 " : "") + mode.label,
     );
-    setAttr(R.tShip.value, "title", ship ? L.shipTitle(ship) : "");
+    setAttr(R.tShip.value, "title", title);
+    const longName = model.length > 9;
+    if (R.tShip.value._long !== longName) {
+      R.tShip.value._long = longName;
+      R.tShip.value.className = "tile-value" + (longName ? " long" : "");
+    }
     // Speed
     setTile(
       R.tSpeed,
@@ -642,7 +659,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     );
     pinned(
       "hydrogen_eta",
-      L.estimateText(L.trendEstimate(view.series.hydrogen, now)),
+      L.estimateText(L.trendEstimate(view.series.hydrogen, now, 90000)),
       "estimation",
     );
   }
@@ -672,14 +689,15 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     setAttr(root, "data-stream", info.id);
     setAttr(R.dot, "data-tone", info.tone);
     setText(R.statusLabel, info.label);
-    setText(R.statusDetail, info.detail);
+    // The notice below carries the detail of the states that have one: do not say it twice.
+    const detailInNotice = info.id !== "live" && info.id !== "stale" && info.id !== "init";
+    setText(R.statusDetail, detailInNotice ? "" : info.detail);
     const live = info.id === "live" || info.id === "stale";
     setText(R.age, live ? "Données de " + L.formatAge(L.frameAge(view, now)) : "");
     for (const c of R.cards) setText(c.age, live ? L.formatAge(L.frameAge(view, now)) : "");
     if (info.id !== lastStreamId) {
       lastStreamId = info.id;
-      if (info.id !== "init")
-        setText(R.live, info.label + (info.detail ? " : " + info.detail : ""));
+      if (info.id !== "init") setText(R.sr, info.label + (info.detail ? " : " + info.detail : ""));
     }
     const needsNotice = !live && info.id !== "init";
     show(R.notice, needsNotice || retired);
@@ -857,7 +875,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     );
 
     // Estimates
-    const eh = L.trendEstimate(view.series.hydrogen, now);
+    const eh = L.trendEstimate(view.series.hydrogen, now, 90000);
     const ef = L.trendEstimate(view.series.hunger, now);
     const et = L.trendEstimate(view.series.thirst, now);
     setRow(R.eta.hydrogen, L.estimateText(eh));

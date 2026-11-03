@@ -6,6 +6,24 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Live dashboard (an MCP App), optional.** With live telemetry on, Claude Desktop can show a live dashboard in the
+  conversation: ship, speed, hydrogen, health, state of the stream and recent alerts inline; instruments, warning
+  lights, power flags, weapons, countermeasures, vitals, events, session timeline, pace and estimates in full screen.
+  Every value shows its age and greys out when the stream is not live; nothing is invented.
+  - Tools `sc_live_dashboard` (opens it; optional `plan` of a trade route, compared with the measured balance change),
+    `sc_live_poll` and `sc_live_mark` (reserved to the page). Listed only when `SC_TELEMETRY=on` and the client
+    declared the MCP Apps extension: Claude Code never sees them. Without telemetry the server announces no
+    `resources` capability and serves no resource.
+  - The aUEC balance is hidden until the player clicks; the poll carries it only on request, and it never enters
+    `ui/update-model-context`. Only the button "Route avec mon solde et ce vaisseau" sends it, saying so.
+  - Polling about once a second, suspended when hidden, off screen or torn down, slowed when the stream is cut, shared
+    for 500 ms between all the dashboards of a conversation.
+  - `tools/list` entries carry `_meta` (frozen in the golden file) and `registry.list(context)` takes the client
+    context; `scripts/dashboard-preview.mjs` previews the page against a fake host.
+  - Documentation: the "Live dashboard" section of [docs/TELEMETRY.md](docs/TELEMETRY.md), a rule in the Claude block,
+    troubleshooting, architecture and the threat model.
+
 ## [2.1.0] - 2026-11-03
 
 ### Added

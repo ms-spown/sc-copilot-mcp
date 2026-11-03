@@ -127,7 +127,7 @@ export function frameAt(t: number): Frame | null {
         qdrv: light(quantum ? "nominal" : "off"),
         radr: light(lock ? "major_on" : "off"),
         prox: light("off"),
-        hit: light(combat && Math.floor(t) % 3 !== 0 ? "major_on" : "off"),
+        hit: light(combat && Math.floor(t) % 9 < 6 ? "major_on" : "off"),
         misl: light("off"),
       },
     },
@@ -209,7 +209,7 @@ export class Scenario {
     const storyT = (this.t / 1000) % SCENARIO_SECONDS;
     const age = this.lastFrameAt === null ? undefined : this.now - this.lastFrameAt;
     let state: TelemetryStatusReport["state"];
-    let cause = "";
+    let cause: string;
     if (this.forced) {
       state = this.forced;
       cause = `forced for the preview: ${this.forced}`;

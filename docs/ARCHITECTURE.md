@@ -45,6 +45,7 @@ Claude ── MCP (stdio) ──► src/server.ts ──► tools/registry.ts �
 | Game log | `providers/gamelog/` (`parser.ts` pure, `reader.ts` I/O, `context.ts` derived views) | Off by default; read-only |
 | Fleet | `providers/fleet/` (`store.ts`, `resolve.ts`) | Local JSON file |
 | Live telemetry | `providers/telemetry/` (`wire.ts` + `decode.ts` + `schema.ts` decode, `normalize.ts` flat state, `handler.ts` + `events.ts` debounced events, `reader.ts` HTTP/2 stream, `service.ts` lazy single reader, `index.ts` the only door) | Off unless `SC_TELEMETRY=on`; loopback only; memory only; see [TELEMETRY.md](TELEMETRY.md) |
+| Live dashboard | `dashboard/` (`poll.ts` the poll payload, `service.ts` shared cache and session markers, `plan.ts`, `viewLogic.ts` pure View logic, `viewApp.ts` the View, `page.ts` the one HTML page, `testing/` fake host and scenario), tools in `tools/dashboard.ts` | An MCP App on top of the telemetry; see below |
 | Patch dumps | `providers/dumps/` | Legacy; history is thin |
 
 ## Optional features that are off by default
@@ -65,6 +66,27 @@ ask for by installing the server:
   caller asks for it.
 - `npm run check:telemetry-silence` listens on the port itself and proves that the built server makes no connection
   when the switch is off and does when it is on.
+
+## The live dashboard (an MCP App)
+
+`sc_live_dashboard` points at a `ui://` resource: one self-contained HTML page that the client renders in an iframe
+and that talks to the host with JSON-RPC over `postMessage` (hand-written, no package). The page calls two tools
+that only it may call (`visibility: ["app"]`): `sc_live_poll` (state, events, session counters as
+`structuredContent`) and `sc_live_mark` (session markers, in memory).
+
+- **Conditional surface.** `ToolDefinition.requiresUi` and `registry.list(context)`: the three tools are listed only
+  when telemetry is on AND the client declared `capabilities.extensions["io.modelcontextprotocol/ui"]` with the HTML
+  MIME type. `server.ts` announces the `resources` capability, and serves `resources/list` and `resources/read`, only
+  when there is a resource to serve (telemetry on). With telemetry off the server is unchanged.
+- **One page, tested as it ships.** The View logic is pure TypeScript (`viewLogic.ts`: reducing polls, formatting,
+  polling and context decisions, estimates). `page.ts` serialises those functions and `viewApp.ts` into one inline
+  script with `Function.prototype.toString`; `viewPage.test.ts` runs that very script in `node:vm` against a fake DOM
+  (which refuses `innerHTML`) and a fake host. No browser is involved in the tests.
+- **Cost of many Views.** Claude mounts one iframe per tool call and never unmounts them, so several Views can poll.
+  `service.ts` shares one answer per half second (the cache key is `include_balance`, so a balance is never handed
+  to a View that did not ask), and a View stops polling when hidden, off screen, torn down or after 30 minutes away.
+- **The balance** exists only in the `balance` part of a poll, on request; it never enters `ui/update-model-context`.
+- **Preview.** `scripts/dashboard-preview.mjs` serves the page and a fake host with a made-up flight on `127.0.0.1`.
 
 ## Testing approach
 

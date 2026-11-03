@@ -11,8 +11,9 @@ over stdio and gives Claude tools to answer Star Citizen questions: market and t
 missions, crafting, mining, patch notes, what your own game just logged, your fleet and, if you switch it on,
 live telemetry.
 
-45 tools exist. While live telemetry is off (the default) 43 are listed to the client, because `sc_live_state`
-and `sc_live_events` are hidden until telemetry is on.
+48 tools exist. While live telemetry is off (the default) 43 are listed to the client, because `sc_live_state`,
+`sc_live_events`, `sc_live_dashboard`, `sc_live_poll` and `sc_live_mark` are hidden until telemetry is on. The three
+dashboard tools are also listed only to a client that can show them (Claude Desktop), never to Claude Code.
 
 ### What it does not do
 
@@ -178,7 +179,7 @@ This section is a summary. See also [TELEMETRY.md](TELEMETRY.md): that page hold
 | --- | --- |
 | What it is for | A snapshot of the running game (your ship, weapons, pilot) and a short list of recent events inferred from it, so Claude can answer "what is my ship doing" or "did I just jump" |
 | Example questions | "Is the live telemetry working?" (La télémétrie en direct fonctionne-t-elle ?) ; "How much hydrogen do I have left?" (Combien d'hydrogène me reste-t-il ?) ; "Is my landing gear down?" (Mon train d'atterrissage est-il sorti ?) ; "What just happened in the last minutes?" (Que vient-il de se passer ces dernières minutes ?) ; "Use my current balance as the budget for a hauling run" (Utilise mon solde actuel comme budget pour une route de transport) |
-| Tools | `sc_live_status` (always listed), `sc_live_state`, `sc_live_events` (listed only when telemetry is on) |
+| Tools | `sc_live_status` (always listed), `sc_live_state`, `sc_live_events` (listed only when telemetry is on), `sc_live_dashboard` (opens the live dashboard), `sc_live_poll` and `sc_live_mark` (used by the dashboard itself; listed only when telemetry is on and the client can show it) |
 | Source | An undocumented local server inside the game, read on `127.0.0.1` only |
 | Freshness | Every snapshot carries `frame_age_ms`, the age of the last frame, and Claude is told to say it. Events live in memory only, from the moment the reader started, and are inferred by this server because the game sends almost none |
 | Limits | Reliable in the field test: speed, altitude (only inside a planet's frame), heading (same), g-force, hydrogen and boost, landing gear, flight modes, nine power on/off flags, warning lights, weapons per seat, countermeasure counts, pilot vitals. Absent from the stream: position, shield level, hull, heat, ammo, power distribution, quantum fuel, and any death event (health 0 means down or dead). A field the game does not send is left out or listed as not available, never shown as zero. Ground vehicles send no vehicle data. Events carry a `confidence` of `confirmed` or `unverified`; a missing event proves nothing. The complete tables, including what is present but not verified, are in [TELEMETRY.md](TELEMETRY.md#what-the-stream-contains) |
@@ -191,6 +192,11 @@ What to know before you switch it on:
   `sc_live_state` and `sc_live_events` are not listed and refuse if called by name, and `sc_data_status` reports
   the source as not configured. Other states are `waiting`, `game_without_telemetry`, `connected`, `live` and
   `incompatible`.
+- **A live dashboard, in Claude Desktop only.** `sc_live_dashboard` shows the stream as a small page in the
+  conversation, inline or in full screen, with the age of each value, what the stream lacks, a session timeline
+  and, if Claude passes a route plan, planned next to measured profit. Claude Code does not render it and never
+  lists its tools. The balance stays hidden in the page until you click. See
+  [TELEMETRY.md](TELEMETRY.md#live-dashboard).
 - **Your balance is withheld by default.** Tool results become part of your conversation with Claude, which goes
   to Anthropic. The aUEC balance (and balance-change events) is returned only when `include_balance` is true,
   and Claude is told to ask you first. Everything else in a snapshot is returned as soon as you call the tool.
@@ -241,7 +247,7 @@ The two telemetry tools stay hidden while telemetry is off, even when named in `
 | **core** (14) | `sc_data_status`, `uex_get_commodity_prices`, `uex_get_trade_routes`, `uex_get_game_versions`, `uex_get_ship_prices`, `scw_get_vehicle`, `scw_get_item`, `scw_get_ship_comparison`, `sct_search`, `sct_get_article`, `sc_patch_notes`, `scmdb_search_missions`, `scmdb_changes`, `sc_fleet_get` | The everyday copilot; a test keeps it under 15 tools |
 | **trade** (12) | The eleven tools of [section 1](#1-market-and-trade-routes-uex) plus `sc_data_status` | The full market toolbox |
 | **data** (16) | Wiki browsing and snapshots, missions, crafting, mining, patch notes and history, vocabulary | Reference data, crafting, mining and patch history |
-| **local** (14) | The game log, telemetry, fleet and local-file tools | Things on your PC. Twelve are listed while telemetry is off |
+| **local** (17) | The game log, telemetry, fleet and local-file tools | Things on your PC. Twelve are listed while telemetry is off |
 
 ### Variables
 

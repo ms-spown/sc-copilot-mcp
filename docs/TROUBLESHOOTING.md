@@ -68,6 +68,23 @@ without changing anything; `npm run doctor` repeats it. Full explanations and th
 - To undo everything the tool set: `npm run telemetry -- disable --apply`. A variable you set by hand stays; the
   command prints how to remove it.
 
+## The live dashboard does not appear
+
+- **Claude Code and other text clients never show it.** They cannot render a page, so the server does not even list
+  `sc_live_dashboard`, `sc_live_poll` and `sc_live_mark` to them. Use `sc_live_state` there.
+- **`SC_TELEMETRY=on` must be set** in the `sc-copilot` entry. Without it the three tools and the page are not
+  served at all. `sc_live_status` tells you.
+- **Quit Claude Desktop completely** (tray icon included) and start it again after any change to the server entry:
+  closing the window is not enough, the tool list is read when the app starts.
+- Ask Claude to open the live dashboard; if it answers with text only, say that `sc_live_dashboard` is the tool to
+  call. If the tool is missing from the list, the client did not declare that it can show Views.
+- **It shows "Télémétrie désactivée", "En attente du jeu" or "Jeu lancé sans télémétrie"**: follow the matching
+  line of the section above. The page is only a mirror of `sc_live_status`.
+- **It stopped updating**: the page pauses when its window is hidden or scrolled out of view and retires after 30
+  minutes away; click "Reprendre". An older dashboard higher in the conversation is not updated once you scroll
+  away from it.
+- **The balance is masked**: that is the default. Click "Afficher le solde" in the page.
+
 ## A tool says "unexpected shape" or "format may have changed"
 
 A source changed after a patch. Run `npm run check:sources`: it names the file and field. Please open a

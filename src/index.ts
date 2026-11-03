@@ -12,7 +12,7 @@ import { createSctClient } from "./providers/sctools/client.js";
 import { createUexClient } from "./providers/uex/client.js";
 import { createScwClient } from "./providers/wiki/client.js";
 import { createMcpServer } from "./server.js";
-import { allTools, createRegistry } from "./tools/registry.js";
+import { allResources, allTools, createRegistry } from "./tools/registry.js";
 
 // The .env next to the package, never the one in the working directory: Claude starts the
 // server from whatever folder is open, which may belong to another project.
@@ -44,7 +44,7 @@ const clients = {
 const registry = createRegistry(
   allTools(clients, createProbes(clients)),
   { tools: config.enabledTools, profiles: config.profiles },
-  { gameVersionFor: createGameVersionResolver(clients) },
+  { gameVersionFor: createGameVersionResolver(clients), resources: allResources(clients) },
 );
 
 const server = createMcpServer(registry);

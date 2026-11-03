@@ -29,7 +29,7 @@ touche, n'automatise rien et n'écrit jamais dans le dossier du jeu. Le seul fic
 | Patchs | « Qu'est-ce qui a changé dans la dernière mise à jour ? » | `sc_patch_notes`, `scmdb_changes` |
 | Votre jeu | « Que suis-je en train de faire ? Bilan de ma dernière session. » | `sc_log_context`, `sc_log_sessions` |
 | Votre flotte | « Lequel de mes vaisseaux porte 300 SCU ? » | `sc_fleet_get` |
-| Votre vaisseau, en direct (désactivé par défaut) | « Mon train d'atterrissage est-il sorti ? Combien d'hydrogène reste-t-il ? » | `sc_live_status`, `sc_live_state` |
+| Votre vaisseau, en direct (désactivé par défaut) | « Mon train d'atterrissage est-il sorti ? Combien d'hydrogène reste-t-il ? » | `sc_live_status`, `sc_live_state`, `sc_live_dashboard` |
 | Fraîcheur | « Ces données sont-elles à jour ? » | `sc_data_status` |
 
 Cinq prompts prêts à l'emploi les enchaînent pour vous (voir [Prompts](#prompts)). Toutes les capacités, avec leur
@@ -98,9 +98,11 @@ npm run build
    aucun secret n'est affiché. `npm run check:sources` interroge chaque source de données sur sa version et vérifie les
    fichiers et champs attendus par les outils. Dans Claude, demandez `sc_data_status`.
 
-## Outils (45)
+## Outils (48)
 
-Claude en voit 43 par défaut : `sc_live_state` et `sc_live_events` ne sont listés que lorsque la télémétrie en direct est activée.
+Claude en voit 43 par défaut : `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll` et
+`sc_live_mark` ne sont listés que lorsque la télémétrie en direct est activée (les trois derniers exigent aussi un
+client capable de les afficher, comme Claude Desktop).
 
 Référence complète des paramètres : **[docs/TOOLS.md](docs/TOOLS.md)** (générée depuis le code). Par thème :
 
@@ -112,7 +114,7 @@ Référence complète des paramètres : **[docs/TOOLS.md](docs/TOOLS.md)** (gén
 | **Missions, artisanat, minage** (SCMDB)          | `scmdb_search_missions`, `scmdb_search_crafting`, `scmdb_search_mining`, `scmdb_changes`                                                                                                                                                                                                                                                                                                                                      |
 | **Patchs et lore**                               | `sc_patch_notes` (notes d'une mise à jour, par section ou mot-clé), `sct_search`, `sct_get_article`, `sc_list_builds`, `sc_diff_versions`                                                                                                                                                                                                                                                                                     |
 | **Votre journal de jeu** (désactivé par défaut)  | `sc_log_context` (ce que vous faites actuellement), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`                                                                                                                                                                                                                                                                                                                |
-| **Télémétrie en direct** (désactivée par défaut) | `sc_live_status` (toujours listé : l'état et comment l'activer), `sc_live_state`, `sc_live_events` (listés seulement avec `SC_TELEMETRY=on`)                                                                                                                                                                                                                                                                                  |
+| **Télémétrie en direct** (désactivée par défaut) | `sc_live_status` (toujours listé : l'état et comment l'activer), `sc_live_state`, `sc_live_events` (listés seulement avec `SC_TELEMETRY=on`), `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark` (le tableau de bord en direct, dans Claude Desktop uniquement)                                                                                                                                                                                                                                                                                  |
 | **Votre flotte**                                 | `sc_fleet_get`, `sc_fleet_upsert`, `sc_fleet_remove`                                                                                                                                                                                                                                                                                                                                                                          |
 | **Vos propres fichiers de données**              | `sc_local_datasets`, `sc_search_local`, `sc_read_local_collection`                                                                                                                                                                                                                                                                                                                                                            |
 
@@ -201,6 +203,11 @@ d'atterrissage, alimentation, voyants, santé, faim, soif.
 - **Ce qu'elle ne voit pas :** position, valeur des boucliers, coque, chaleur, munitions, répartition de puissance ou
   carburant quantique. Une santé à 0 veut dire à terre ou mort. Le solde aUEC n'est pas transmis à Claude sans votre
   accord (`include_balance`).
+- **Un tableau de bord en direct (optionnel).** Avec la télémétrie activée, Claude Desktop peut afficher un tableau
+  de bord en direct dans la conversation (`sc_live_dashboard`) : vaisseau, vitesse, hydrogène, santé et état du flux
+  en vue compacte ; instruments, voyants, armes, événements et chronologie de session en plein écran. Chaque valeur
+  indique son âge, le solde aUEC reste masqué tant que vous ne cliquez pas, et rien n'est envoyé au jeu. Claude Code
+  ne l'affiche pas. Voir [docs/TELEMETRY.md](docs/TELEMETRY.md#live-dashboard).
 - **Lisez d'abord les risques.** C'est une fonction non documentée du jeu. À notre connaissance, CIG ne l'a ni
   autorisée ni interdite, les conditions de RSI s'appliquent à vous, et le risque est le vôtre. Tout est dans
   [docs/TELEMETRY.md](docs/TELEMETRY.md) (en anglais).

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * TEST SUPPORT (also used by scripts/dashboard-preview.mjs): a function that plays the MCP Apps host for the View.
  * It answers the `ui/*` requests the way Claude Desktop 4.4212.0 was measured to (see the spike), serves
@@ -21,7 +22,7 @@ export interface HostOptions {
 
 export interface HostLog {
   /** Every request or notification the View sent, in order. */
-  received: { method: string; params: any; at: number }[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+  received: { method: string; params: any; at: number }[];
   polls: { includeBalance: boolean; at: number }[];
   messages: string[];
   contexts: string[];
@@ -66,7 +67,7 @@ export function createFakeHost(options: HostOptions) {
     marks: [],
   };
   /** Set by a test to change what the next polls answer. */
-  const overrides: { poll?: (base: any) => any } = {}; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const overrides: { poll?: (base: any) => any } = {};
 
   const hostContext = (theme: "light" | "dark") => ({
     theme,
@@ -88,8 +89,7 @@ export function createFakeHost(options: HostOptions) {
       return displayMode;
     },
     /** A message from the View. */
-    receive(message: any, nowMs = scenario.now): void {
-      // eslint-disable-line @typescript-eslint/no-explicit-any
+    receive(message: Record<string, any>, nowMs = scenario.now): void {
       if (message.method === undefined) {
         const resolve = waiting.get(message.id);
         if (resolve) {

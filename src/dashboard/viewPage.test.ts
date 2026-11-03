@@ -599,7 +599,8 @@ describe("Feature: the compact view stays small and stable", () => {
       expect(text).toContain(label);
     }
     expect(text).toContain("En direct");
-    expect(text).toContain("Drake Cutter");
+    expect(text).toContain("Cutter");
+    expect(text).toContain("Drake \u00b7 En vol");
     expect(text).not.toContain("Instruments"); // full screen only
   });
 

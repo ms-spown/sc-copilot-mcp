@@ -72,18 +72,23 @@ code { font-family: var(--sc-mono); }
 .alert-label { font-weight: 600; }
 .alert-meta { color: var(--sc-text2); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; margin-top: 6px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(98px, 1fr)); gap: 8px; margin-top: 6px; }
 .tile { background: var(--sc-bg2); border-radius: var(--sc-radius); padding: 8px 10px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .tile-label { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--sc-text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile-value { font-size: 20px; line-height: 1.25; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 25px; }
+.tile-value::after { content: attr(data-unit); font-size: 0.6em; font-weight: 500; color: var(--sc-text2); margin-left: 0.3em; }
 .tile-sub { font-size: 11.5px; color: var(--sc-text3); min-height: 16px; line-height: 16px; overflow-wrap: anywhere; }
 .tile .btn { align-self: flex-start; margin-top: 2px; }
 .card .tile { background: var(--sc-bg3); margin-bottom: 6px; }
-.card .tile .btn { position: static; }
+.card .tile { position: relative; }
+.card .tile .btn { position: absolute; top: 6px; right: 8px; margin: 0; }
 
 .bar { height: 4px; border-radius: 2px; background: var(--sc-line); overflow: hidden; }
 .fill { height: 100%; width: calc(var(--p, 0) * 100%); background: var(--sc-text3); border-radius: 2px; }
+.bar[data-empty="1"] { background: transparent; }
 .bar[data-empty="1"] .fill { opacity: 0; }
+.tile-value.long { font-size: 15px; line-height: 1.25; white-space: normal; overflow-wrap: anywhere; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 [data-level="ok"] .fill { background: var(--sc-ok); }
 [data-level="warn"] .fill { background: var(--sc-warn); }
 [data-level="bad"] .fill { background: var(--sc-bad); }

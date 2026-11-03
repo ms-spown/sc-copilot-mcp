@@ -164,7 +164,7 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
   const observers: { kind: string; cb: (entries: unknown[]) => void }[] = [];
 
   const parent = {
-    postMessage(message: unknown) {
+    postMessage(message: Record<string, unknown>) {
       posted.push(message);
       host.receive(message, clock.now);
     },
