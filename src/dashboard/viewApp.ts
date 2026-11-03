@@ -1031,6 +1031,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   }
 
   function reportSize() {
+    // The host has not agreed on anything before ui/initialize is answered.
+    if (!initialised) return;
     const w = Math.ceil(doc.body.scrollWidth || 0);
     const h = Math.ceil(doc.body.scrollHeight || 0);
     const key = w + "x" + h;
@@ -1346,6 +1348,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       applyHost();
       notify("ui/notifications/initialized");
       initialised = true;
+      render();
       resumeIfAllowed();
     } catch (err: any) {
       view = L.reducePollError(
