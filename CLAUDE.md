@@ -1,123 +1,66 @@
-# SCMCP Project Instructions
+# sc-copilot-mcp: project instructions
 
-## Data Sources
+A local, read-only MCP server for Star Citizen. Fork of voidput/SCMCP, GPLv3. Read `SECURITY.md` and
+`THIRD_PARTY.md` before changing anything that touches a network host, a secret, a data source or a licence.
 
-- **Star Citizen Wiki API** — https://api.star-citizen.wiki/api/v2
-  Docs: https://docs.star-citizen.wiki/ · Source: https://github.com/StarCitizenWiki/API
-  Ships, items, components, stats. No auth required.
-- **UEX Corp API** — https://api.uexcorp.space/2.0
-  Docs: https://uexcorp.space/api/documentation/
-  Prices, terminals, trade routes, purchase/rental locations. Needs `UEXTOKEN` bearer.
+For Claude as a _user_ of the tools, see `docs/USING_WITH_CLAUDE.md` (the block to paste into a Claude project).
 
-## Model Routing for MCP Tool Calls
+## Hard rules (the mission's absolute prohibitions)
 
-All `scmcp` tools (`uex_*`, `scw_*`, `sct_*`) are read-only lookups against
-external APIs — no reasoning happens server-side. Per the global model-selection
-policy (small items = sonnet/haiku), route these through a `sonnet` or `haiku`
-subagent rather than the primary session model:
+- Never scrape RSI, Erkul, SPViewer or SC Trade Tools. Never enable the game's gRPC telemetry
+  (`GRPC_CLIENT_SERVER_ENABLED`), read game memory, send keys, automate the game or write in the game folder.
+- No `Data.p4k` extraction and no extraction code or instructions in this repository. Whether it is safe for an
+  account is unverified (see `SECURITY.md`).
+- No remote write tool, including UEX `data_submit`; never use UEX's submission key.
+- No game data in the repo beyond tiny hand-made synthetic fixtures. Never commit a real `Game.log`.
+- Never print, log or commit a secret, the user's MCP config contents, their handle or account data.
+- Never replace `claude_desktop_config.json` (it holds other servers): `npm run install:claude` does a minimal
+  merge with a backup, dry run by default; writing it needs the user's agreement.
+- No npm or Docker Hub publishing. No PR or issue at voidput without the user's explicit say-so.
 
-- Single-field lookups (`scw_get_item`, `sct_get_article`, `uex_get_commodities`) → `haiku`
-- Lookups needing filtering or cross-referencing (`uex_get_ship_prices`,
-  `scw_list_items`, `scw_snapshot_diff`) → `sonnet`
-- Escalate only when the result needs interpretation beyond presenting the data,
-  such as recommending a trade route rather than just fetching prices.
+## Layout
 
-MCP has no protocol field to force a caller's model choice — this depends on the
-orchestrating agent honoring this file, not on the server.
+```
+src/core/       http (host allowlist, guarded clients), cache (memory + disk, stale only on outage),
+                provenance (AsyncLocalStorage), untrusted (cleaning/fencing), config, paths, errors, format
+src/providers/  uex, wiki, sctools (clients) · scmdb (store + queries) · gamelog (parser + reader)
+                fleet (store + name resolver) · dumps (patch-dump repo) · local (user's game-*.json) · probes
+src/tools/      one file per group (definition + handler together), catalog.ts (provenance + profiles),
+                registry.ts (envelope, scoping), status.ts (sc_data_status)
+src/install/    mergeConfig (pure planning of the Claude Desktop config merge)
+scripts/        install-claude-desktop.mjs, check-sources.mjs, mcp-probe.mjs (stale, see CONTRIBUTING)
+```
 
-## API Gotchas
+## Conventions that matter
 
-These cost real debugging time. Do not re-derive them.
+- Every outbound request goes through `createGuardedClient`. Add a host in `ALLOWED_HOSTS` in code review,
+  never from the environment.
+- Every tool needs an entry in `src/tools/catalog.ts` (source, kind, trust, channel, profiles). `core` must stay
+  under 15 tools (a test enforces it). Untrusted free text gets `trust: "untrusted_text"`.
+- `formatOutput` strips nulls, zeros and every `id_*` / `*_min|max|avg|week|month` key. Use `formatOutputRaw`
+  when those are real data (routes, SCMDB, log events). The provenance envelope is built outside it.
+- Tool names and input schemas are frozen by `src/tools/tools-surface.golden.json`. Changing one on purpose means
+  regenerating that file in the same commit and saying why.
+- Tests never use the network and never real game data: fake clients, temp dirs, hand-made fixtures.
+- Windows is the primary target: no `process.cwd()` defaults, use `core/paths.ts`; CI runs on Windows.
+- This tool shell rejects here-docs containing backticks; write such scripts to a file first.
 
-- **`vehicles_purchases_prices` ignores `vehicle_name`.** Passing it silently
-  returns *every* vehicle rather than erroring. Only `id_vehicle` filters. Resolve
-  the name to an id via `/vehicles` first — price rows carry no vehicle name field.
-- **Wiki item categories are endpoints, not filters.** Use `/weapons`,
-  `/armor`, `/vehicle-weapons` (ship weapons), `/vehicle-items` (ship components).
-  There is no `filter[category]`.
-- **Call `/vehicles/filters` and `/items/filters`** for authoritative filter names
-  and allowed values. Exposed as the `scw_get_filters` tool.
-- **Ground vehicles are not covered by `filter[role]=Medical`.** The Ursa Medivac
-  is `is_spaceship: false` and is found via `max_medical_tier`, not `role`.
-- **`formatOutput` strips nulls and zeros.** A meaningful null (like `ptu: null`
-  from `game_versions`, meaning no PTU build is live) must be mapped to explicit
-  text before formatting or the signal disappears.
-- **`marketplace_listings` caps at 100 rows** unless both `id_item` and
-  `operation` are passed together, which unlocks a 1,000-row cap. No free-text
-  search param exists server-side — `uex_search_marketplace` filters
-  title/description client-side over whatever page the API returns, so a broad
-  query without `id_item` only searches the first 100 active listings.
+## Verify before saying done
 
-## Comparing Patch Versions
+`npm run lint && npm test && npm run build && npm run audit:prod`, then `npm run check:sources` for anything that
+touches a source. Report what ran and what did not.
 
-`sc_list_builds` and `sc_diff_versions` compare any two patches. They read a
-data repo (`SCMCP_DATA_REPO`, default `voidput/sc-gamedata-dumps`) that commits
-one `data/game-*.json` dump per game build and tags that commit with the build
-string. The tag list is the patch history, and it is the only source that serves
-data for a *past* patch — the wiki API and UEX both expose only the build they
-are currently synced to.
+## API facts that cost time (do not re-derive)
 
-Same pipeline as `SCMCP_GAME_DATA_DIR`, so a domain readable offline diffs here
-with identical field names. Datasets: `ships`, `ship-components`, `fps-weapons`,
-`ammo`, `mining`, `mining-spawns`, `blueprints`, `missions`, `reputation`,
-`containers`, `starmap`, `manufacturers`, `wikelo-trades`, `strings`.
-
-Each dump is an envelope (`_source`, `_extracted`, `_build`) wrapping named
-collections, not a bare array. Every dataset declares the collection to diff by
-default; pass `collection` to diff another (`shields`, `quantumDrives`, `radars`
-and `missiles` all live in `ship-components`). The `by*` keys are derived
-indexes over the same records — diffing one double-counts.
-
-Records are identified by `className`/`recordName` where they carry one, and by
-their own object key where they do not (`strings` is a flat id -> text map).
-Display names are not stable across patches and are never the identity.
-
-Dumps are immutable per tag, so they cache to `.build-cache/` (override with
-`SCMCP_BUILD_CACHE_DIR`). Set `GITHUB_TOKEN` to avoid GitHub rate limits.
-
-Without `item_name` a whole-dataset diff returns counts plus the most-changed
-entries, because a full field-level diff runs to thousands of entries. Pass
-`item_name` for field-level detail on one thing.
-
-## PTU vs LIVE
-
-`uex_get_game_versions` reports both build strings; `ptu` is null when no PTU
-build is up. Neither API serves PTU *data* on request — the wiki API stamps
-records with the build it synced (`game_version`) but exposes no environment
-selector. For comparing patches prefer `sc_diff_versions` above. The `scw_snapshot_*`
-tools remain useful only for capturing the wiki API's enriched view (which
-carries UEX prices and shop data the raw dumps lack). Snapshots land in `.snapshots/` (gitignored); override
-with `SCMCP_SNAPSHOT_DIR`.
-
-## Locally Extracted Game Data
-
-`sc_local_datasets`, `sc_search_local` and `sc_read_local_collection` read
-`game-*.json` produced by the StarBreaker pipeline: a PowerShell extract step
-rips the DataCore/DataForge database out of the shipped game files, then a parse
-step bakes it into per-domain JSON.
-
-Set `SCMCP_GAME_DATA_DIR` to the directory holding those files. Nothing assumes a
-sibling checkout, and the tools report how to configure themselves when it is
-unset.
-
-This is the only source for mining ore signatures and spawn weights, crafting
-blueprints, reputation and mission brokers, quality bands, and Wikelo trades.
-It covers ships and guns too, but carries no prices or shop locations — those
-are UEX and wiki API territory. Same files the tagged dump history serves, so
-this is the offline read of the build you have installed; `sc_diff_versions` is
-the read across builds. The sources are complementary, not redundant.
-
-Note the extraction toolkit ships its own MCP server, but that one exposes
-low-level archive internals (p4k entries, chunks, DataCore bytes) for debugging
-extraction. It is not a game-data query API and does not overlap with SCMCP.
-
-## Not Integrated
-
-- **spviewer.eu** — has a JSON endpoint (`data.spviewer.eu/spvapi/data/v1/live`)
-  but it is session-gated and returns `{"error":"Disconnection (CODE 30000)"}` to
-  direct requests.
-- **erkul.games** — no REST API. Ships data as content-hashed binary blobs
-  (`cdn.erkul.games/LIVE/*.bin`) in an undocumented format.
-
-Both would need reverse-engineering of private contracts that can break without
-notice. Revisit only if either publishes a real API.
+- UEX answers `{status, http_code, data, message}`; errors come as HTTP 4xx with a `status` code. Both hosts
+  `api.uexcorp.uk` (documented) and `.space` answer. `/commodities_routes` needs one of `id_commodity`,
+  `id_terminal_origin`, `id_planet_origin`, `id_orbit_origin`, otherwise HTTP 400. `/vehicles_purchases_prices`
+  ignores names: filter by `id_vehicle`. `/marketplace_listings` returns at most 100 rows unless `id_item` and
+  `operation` are both given.
+- The wiki API pages with `page[number]` and `page[size]` (max 50), bare `page` voids the size. Single records can
+  be 200k characters: tools fall back to a summary view. Name lookup is exact, `filter[name]` is a substring match.
+- SCMDB: `data/latest.json` (schema 2) maps each channel to its files; missions are `merged.contracts`; the deltas
+  file lists updates newest first, and the newest ones can have zero data changes.
+- LIVE builds differ between sources (wiki and the game log said 12881860 while SCMDB said 12913470 on 2026-11-03).
+  That is normal; show it. The game's file version (4.10.197.2878) is not the public version (4.10.2).
+- Dump tags (`sc-gamedata-dumps`) are republished: cache by SHA, never trust a tag.

@@ -1,16 +1,10 @@
 /**
- * Locally extracted game data.
+ * Game data the user already has on disk, as `game-*.json` files.
  *
- * StarBreaker rips the DataCore/DataForge database straight out of the shipped
- * game files, and a parse step bakes that into `game-*.json`. Those files cover
- * domains no public API exposes: mining spawn weights and ore signatures,
- * crafting blueprints, reputation and mission brokers, quality bands, and
- * Wikelo trades.
- *
- * Point SCMCP_GAME_DATA_DIR at the directory holding them (for example the
- * `src/data` of a checkout that runs the extract + parse pipeline). Nothing here
- * assumes a sibling checkout, and every tool degrades to a clear message when
- * the directory is unset or missing.
+ * This module only READS files that are already there, from the folder named by
+ * SCMCP_GAME_DATA_DIR. It does not extract anything from the game and does not say how to:
+ * whether extracting game files is safe for an account is unverified (see SECURITY.md).
+ * Every tool degrades to a clear message when the folder is unset or missing.
  */
 
 import fs from "node:fs/promises";
@@ -29,7 +23,7 @@ export interface DatasetSummary {
 function assertConfigured(): string {
   if (!GAME_DATA_DIR) {
     throw new Error(
-      "Local game data is not configured. Set SCMCP_GAME_DATA_DIR to the directory containing game-*.json files produced by the StarBreaker extract and parse pipeline.",
+      "Local game data is not configured. Set SCMCP_GAME_DATA_DIR to the directory containing game-*.json files you already have.",
     );
   }
   return GAME_DATA_DIR;

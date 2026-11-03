@@ -142,7 +142,7 @@ export function createProbes({
         return {
           status: "ok",
           unlabelled: [{ version: info?.launcherVersion ?? info?.version ?? null }],
-          note: "Version of the extracted files on disk, which may lag the installed game.",
+          note: "Build the local game-*.json files say they come from; it may lag the installed game.",
           fetchedAt: Date.now(),
         };
       },

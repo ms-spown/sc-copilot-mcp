@@ -1,0 +1,39 @@
+sc-copilot-mcp
+
+This is an unofficial Star Citizen fan project.
+
+--------------------------------------------------------------------------------
+Required notice
+
+This site is not endorsed by or affiliated with the Cloud Imperium or Roberts
+Space Industries group of companies. All game content and materials are
+copyright Cloud Imperium Rights LLC and Cloud Imperium Rights Ltd. Star
+Citizen(R), Squadron 42(R), Roberts Space Industries(R), and Cloud Imperium(R)
+are registered trademarks of Cloud Imperium Rights LLC. All rights reserved.
+
+Official site: https://robertsspaceindustries.com/
+
+--------------------------------------------------------------------------------
+Scope
+
+Published on a non-commercial basis. Nothing here is sold, and no advertising,
+sponsorship, subscription or donation is taken against it. This project uses no
+Cloud Imperium assets, artwork or branding. It stores no game data: every answer
+is fetched on demand from the sources below and kept only in the user's own
+cache folder.
+
+--------------------------------------------------------------------------------
+Attributions
+
+- UEX Corp (https://uexcorp.space/): commodity, terminal, route and ship price data.
+  "Powered by UEX". Requires the user's own API token.
+- Star Citizen Wiki (https://star-citizen.wiki/), content under CC BY-NC-SA 4.0:
+  ship and item records. Non-commercial; attribute and share alike.
+- Star Citizen Tools (https://starcitizen.tools/), content under CC BY-SA 4.0:
+  article text.
+- SCMDB data (https://github.com/KrovaxCode/SCMDB_DATA): missions, crafting, mining
+  and update differences. No licence was found for this mirror; see THIRD_PARTY.md.
+- Community patch dumps (https://github.com/voidput/sc-gamedata-dumps): see its NOTICE,
+  which states a non-commercial basis.
+- Upstream project: SCMCP by voidput (https://github.com/voidput/SCMCP), GPL-3.0.
+- Model Context Protocol SDK, MIT.

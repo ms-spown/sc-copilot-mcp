@@ -9,7 +9,7 @@ export function localTools(): ToolDefinition[] {
     {
       name: "sc_local_datasets",
       description:
-        "List locally extracted game data (mining, blueprints, reputation, ordnance, components, lore) with the game build it came from. This data is extracted from the shipped game files and covers domains no public API exposes.",
+        "List the game-*.json datasets found in the folder the user configured (SCMCP_GAME_DATA_DIR), with their collections and the build they say they come from. Off unless that folder is set. For mining, crafting and missions, scmdb_* tools need no local files.",
       inputSchema: { type: "object", properties: {} },
       handler: async (): Promise<ToolResult> => {
         return { content: [{ type: "text", text: formatOutput(await listDatasets()) }] };
@@ -18,7 +18,7 @@ export function localTools(): ToolDefinition[] {
     {
       name: "sc_search_local",
       description:
-        "Search locally extracted game data for records matching a term. Use for mining ore signatures and spawn locations, crafting blueprints, reputation and mission brokers, quality bands, and Wikelo trades.",
+        "Search the user's own game-*.json datasets for records matching a term (case-insensitive, in keys, names and contents). Needs SCMCP_GAME_DATA_DIR; see sc_local_datasets for what is there. Prefer scmdb_search_* when the question is about missions, crafting or mining.",
       inputSchema: {
         type: "object",
         properties: {
@@ -58,7 +58,7 @@ export function localTools(): ToolDefinition[] {
     {
       name: "sc_read_local_collection",
       description:
-        "Read one collection from a locally extracted dataset, with paging. Use after sc_local_datasets to browse in bulk.",
+        "Read one collection from one of the user's own game-*.json datasets, with paging (max 200 per page). Use after sc_local_datasets.",
       inputSchema: {
         type: "object",
         properties: {

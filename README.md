@@ -1,164 +1,152 @@
-# Star Citizen MCP (SCMCP)
+# sc-copilot-mcp
 
 [![CI](https://github.com/ms-spown/sc-copilot-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/ms-spown/sc-copilot-mcp/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
-> **sc-copilot-mcp** is a fork of [voidput/SCMCP](https://github.com/voidput/SCMCP), being hardened and
-> extended (work in progress, documentation below still describes the upstream project).
-> The repository's `LICENSE` file is GPLv3; this fork is treated as GPLv3. Upstream's `package.json` and
-> README said ISC, which contradicts it - that question is open with the author. Nothing is published to
-> npm or Docker Hub from this fork: the `voidput/scmcp` image is the upstream author's, not ours.
+A local, **read-only** [Model Context Protocol](https://modelcontextprotocol.io) server that turns Claude
+into a Star Citizen copilot: market and trade routes, ships, missions, crafting, mining, the patch you are
+on, what your own game just logged, and your fleet.
 
-A Model Context Protocol (MCP) server providing real-time access to Star Citizen market data, trade routes, and wiki information. This MCP is designed to enable AI assistants like Claude and Gemini to seamlessly retrieve the latest Star Citizen trading data and lore directly into your chat!
+It runs on your PC over stdio. It does not touch the game: it never reads game memory, sends keys,
+automates anything, or writes to the game folder. The only file of the game it can read is the `Game.log`
+you point it at, and only if you do.
 
-## Features
-- **Commodity Prices & Averages:** Fetch current and historical pricing for commodities via UEX. Understand the economy.
-- **Trade Routes:** Find profitable trade routes based on your cargo capacity and available investment. Maximize your aUEC.
-- **Terminal & Location Data:** List trading terminals, outposts, and cities across systems like Stanton and Pyro.
-- **Wiki Search:** Query the Star Citizen Wiki and Star Citizen Tools for ships, items, components, and lore.
-- **Built-in Caching:** API responses are automatically cached in-memory for 5 minutes to significantly reduce latency and redundant network requests.
+> Fork of [voidput/SCMCP](https://github.com/voidput/SCMCP) v1.5.0, hardened and extended. The upstream
+> `LICENSE` file is GPLv3 while its `package.json` and README said ISC; this fork is treated as GPLv3 (see
+> [THIRD_PARTY.md](THIRD_PARTY.md)). Nothing is published to npm or Docker Hub from here: the `voidput/scmcp`
+> image belongs to the upstream author.
 
-## Available Tools
+## What you get
 
-### UEX Economy Tools
-- `uex_get_commodities`: List all commodities in the game.
-- `uex_get_commodity_prices`: Get current commodity prices (filterable by system, planet, and terminal).
-- `uex_get_commodity_averages`: Get historical average prices over time.
-- `uex_get_terminals`: List trading terminals (filterable by system and planet).
-- `uex_get_trade_routes`: Find optimized, high-profit trade routes based on your ship's SCU and starting investment.
-- `uex_get_commodity_ranking`: Rank commodities by their profitability metrics.
+Every answer says where it came from. Tool results are `{ provenance, data }`:
 
-### Star Citizen Wiki Tools
-- `scw_search`: Search the Star Citizen Wiki for any topic.
-- `scw_get_vehicle`: Retrieve detailed ship and ground vehicle data, including manufacturer and stats.
-- `scw_get_item`: Retrieve weapon, armor, and ship component data.
+| `provenance` field        | Meaning                                                                                                                            |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `source`, `kind`          | Which source, and whether it is `datamined`, `crowdsourced`, `editorial`, `local_log`, `user` or `computed`                        |
+| `channel`, `game_version` | `live`, `ptu` or `unknown` (never guessed), and the build when the source gives one                                                |
+| `fetched_at`, `data_age`  | When the data was fetched, and how old it is                                                                                       |
+| `trust`                   | `untrusted_text` for text written by players or website editors: cleaned, shortened, and to be read as data, never as instructions |
+| `stale`, `stale_reason`   | Present only when the live request failed and the last good copy was served                                                        |
 
-### Star Citizen Tools (starcitizen.tools)
-- `sct_search`: Search Star Citizen Tools (starcitizen.tools) for any topic.
-- `sct_get_article`: Get the text content of an article from Star Citizen Tools (e.g. for lore, character info, or detailed guides).
+`sc_data_status` shows the version each source is on, how old it is, where sources disagree (for example
+LIVE builds `12881860` and `12913470`), and which are down. A failing source is reported with its error,
+never as an empty answer. A rejected token (HTTP 401/403) is never hidden behind cached data.
 
-### Patch History & Extracted Game Data
-- `sc_list_builds`: List the game builds that have a data dump, newest first.
-- `sc_diff_versions`: Diff any dataset between two patches — what was added, removed, and every changed field for one ship, weapon or component.
-- `sc_local_datasets` / `sc_search_local` / `sc_read_local_collection`: Query the game data extracted from your own install — mining spawns, blueprints, missions, reputation and Wikelo trades, none of which any public API serves.
+## Install
+
+You need Node.js 22.14+ (or 24.10+) and Git.
+
+```bash
+git clone https://github.com/ms-spown/sc-copilot-mcp.git
+cd sc-copilot-mcp
+npm ci --ignore-scripts      # always --ignore-scripts: no dependency needs an install script
+npm run build
+```
+
+1. **UEX token.** Create one yourself at <https://uexcorp.space/api/apps>, then copy `.env.example` to `.env`
+   in this folder and paste it after `UEXTOKEN=`. The server reads that `.env`, never one from the working
+   directory. Without a token the public UEX endpoints still answer; the token is only for your own quota.
+   Use the _read_ key. Never use UEX's separate submission key: this server has no write tool for UEX.
+2. **Claude Desktop.** The installer merges one entry into your config and touches nothing else:
+
+   ```bash
+   npm run install:claude -- --install-dir "C:\path\to\StarCitizen\LIVE"   # dry run: shows the entry, writes nothing
+   npm run install:claude -- --install-dir "C:\path\to\StarCitizen\LIVE" --apply
+   ```
+
+   `--apply` first copies `claude_desktop_config.json` to a timestamped `.bak-…`, then adds or updates
+   only `mcpServers["sc-copilot"]`. Your other servers are never shown or changed, and no secret is written
+   there. Leave out `--install-dir` to keep the game log off. Restart Claude Desktop afterwards.
+   On macOS or Linux pass `--config <path>`; or add the same entry by hand:
+
+   ```json
+   {
+     "mcpServers": {
+       "sc-copilot": {
+         "command": "node",
+         "args": ["/path/to/sc-copilot-mcp/dist/index.js"],
+         "env": { "SCMCP_PROFILES": "core,trade,data,local" }
+       }
+     }
+   }
+   ```
+
+3. **Check it.** `npm run check:sources` asks every source for its version and verifies the files and fields
+   the tools rely on. In Claude, ask for `sc_data_status`.
+
+## Tools (39), by profile
+
+`SCMCP_PROFILES` picks what is advertised (comma-separated; unset advertises everything). `sc_data_status`
+is always included. `SCMCP_TOOLS` (explicit names) wins over profiles; an unknown name stops the server
+at startup instead of listing nothing. Scoping is for speed, not security: an unlisted tool can still be called.
+
+| Profile        | Tools                                                                                                                                                                                                                                                                                                             |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **core** (14)  | `sc_data_status`, `uex_get_game_versions`, `uex_get_commodity_prices`, `uex_get_trade_routes`, `uex_get_ship_prices`, `scw_get_vehicle`, `scw_get_item`, `scw_get_ship_comparison`, `scw_search`, `sct_search`, `sct_get_article`, `scmdb_search_missions`, `scmdb_changes`, `sc_fleet_get`                       |
+| **trade** (12) | `sc_data_status`, `uex_get_game_versions`, `uex_get_commodity_prices`, `uex_get_trade_routes`, `uex_get_ship_prices`, `uex_get_commodities`, `uex_get_commodity_averages`, `uex_get_commodity_ranking`, `uex_get_terminals`, `uex_get_terminal_inventory`, `scw_search_ships_by_vendor`, `uex_search_marketplace` |
+| **data** (14)  | `sc_data_status`, `scw_list_vehicles`, `scw_list_items`, `scw_get_filters`, `scw_snapshot_save`, `scw_snapshot_list`, `scw_snapshot_diff`, `scmdb_search_missions`, `scmdb_changes`, `scmdb_search_crafting`, `scmdb_search_mining`, `sc_list_builds`, `sc_diff_versions`, `sc_get_vocabulary`                    |
+| **local** (9)  | `sc_data_status`, `sc_fleet_get`, `sc_fleet_upsert`, `sc_fleet_remove`, `sc_log_status`, `sc_log_recent_events`, `sc_local_datasets`, `sc_search_local`, `sc_read_local_collection`                                                                                                                               |
+
+When to use which is in [CLAUDE.md](CLAUDE.md); each tool's description says what it returns and its limits.
 
 ## Configuration
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `UEXTOKEN` | for UEX tools | UEX Corp API bearer token |
-| `SCMCP_GITHUB_TOKEN` | no | Raises the GitHub rate limit when listing build dumps. A dedicated variable on purpose: an ambient `GITHUB_TOKEN` is never picked up |
-| `SCMCP_PROFILES` | no | Comma-separated tool profiles to advertise: `core`, `trade`, `data`, `local`. Unset advertises every tool. `sc_data_status` is always included |
-| `SCMCP_TOOLS` | no | Comma-separated tool names to advertise. Wins over `SCMCP_PROFILES`. An unknown name stops the server at startup |
-| `SCMCP_DATA_REPO` | no | Data repo holding the per-build dumps (default `voidput/sc-gamedata-dumps`) |
-| `SCMCP_DATA_REPO_PATH` | no | Path to the dumps inside that repo (default `data`) |
-| `SCMCP_CACHE_DIR` | no | Re-creatable cache (HTTP responses, dumps). Default: `%LOCALAPPDATA%\sc-copilot-mcp\cache` on Windows, `~/.cache/sc-copilot-mcp` on Linux |
-| `SCMCP_DATA_DIR` | no | Data worth keeping (wiki snapshots). Default: `%LOCALAPPDATA%\sc-copilot-mcp\data` on Windows |
-| `SCMCP_CONFIG_DIR` | no | Settings and personal lists. Default: `%APPDATA%\sc-copilot-mcp` on Windows |
-| `SCMCP_BUILD_CACHE_DIR` | no | Overrides where fetched dumps are cached (default: `builds/` under the cache dir) |
-| `SCMCP_GAME_DATA_DIR` | no | Directory of local `game-*.json` files, for the `sc_*_local` tools |
-| `SCMCP_SNAPSHOT_DIR` | no | Overrides where wiki-API snapshots are written (default: `snapshots/` under the data dir) |
+| Variable                                                         | Purpose                                                                                                                                                         |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UEXTOKEN`                                                       | UEX bearer token, in `.env`. Only ever sent to UEX hosts                                                                                                        |
+| `SCMCP_PROFILES`, `SCMCP_TOOLS`                                  | Which tools to advertise (see above)                                                                                                                            |
+| `SC_INSTALL_DIR`                                                 | A channel folder such as `…\StarCitizen\LIVE`: enables `sc_log_*` on its `Game.log`. Off if unset                                                               |
+| `SC_GAME_LOG_PATH`                                               | A specific `.log` file instead (only `.log` files are accepted)                                                                                                 |
+| `SCMCP_FLEET_FILE`                                               | Fleet file (default `%APPDATA%\sc-copilot-mcp\fleet.json`)                                                                                                      |
+| `SCMCP_CACHE_DIR`, `SCMCP_DATA_DIR`, `SCMCP_CONFIG_DIR`          | Cache (HTTP responses, dumps, SCMDB), data (wiki snapshots) and config folders. Defaults are per-user (`%LOCALAPPDATA%` / `%APPDATA%` on Windows, XDG on Linux) |
+| `SCMCP_UEX_BASE_URL`, `SCMCP_SCW_BASE_URL`, `SCMCP_SCT_BASE_URL` | Override an API base. Must be https on an allowlisted host or the server refuses to start                                                                       |
+| `SCMCP_SCMDB_REPO`, `SCMCP_DATA_REPO`, `SCMCP_DATA_REPO_PATH`    | Where SCMDB and the patch dumps are read from                                                                                                                   |
+| `SCMCP_GITHUB_TOKEN`                                             | Optional, raises the GitHub rate limit. Dedicated: an ambient `GITHUB_TOKEN` is never used                                                                      |
+| `SCMCP_GAME_DATA_DIR`                                            | Folder of `game-*.json` you already have, for `sc_*_local` (see limits)                                                                                         |
 
-The server reads a `.env` file next to the package, never the one in the working directory.
+## The game log
 
-### What every answer carries
+Off until you set `SC_INSTALL_DIR` or `SC_GAME_LOG_PATH`. Read-only, no lock (the game keeps writing),
+no network code, personal data never captured (no handle, account id or personal path in any answer).
+Reported, because they were seen in real logs of this install across patches 4.0 to 4.10: session start and
+quit, login, jurisdiction and zone changes, contracts accepted and completed, objectives, shop purchases,
+insurance claims, hangar requests. **Not in the log, so never reported:** quantum travel, combat and kills,
+wallet balance, your position, a death. Unknown lines are ignored and counted. CIG does not guarantee the
+format; `npm run check:sources` shows if the header still parses.
 
-Each tool result is a JSON object `{ provenance, data }`. `provenance` says where the data came from
-(`source`, `channel` = `live`/`ptu`/`unknown`, `game_version`, `fetched_at`, `data_age`, `kind`, `trust`).
-`trust: "untrusted_text"` marks free text written by players or website editors: it is cleaned, shortened
-and must be read as data, never as instructions. If the live request failed and the last good copy was
-served, `stale: true` and `stale_reason` say so. A rejected token (HTTP 401/403) is never papered over
-with cached data. Call `sc_data_status` to see the game version each source is on and which are down.
-| `SCMCP_UEX_BASE_URL` | no | UEX API base (default `https://api.uexcorp.uk/2.0`). Must be https on `api.uexcorp.uk` or `api.uexcorp.space`, otherwise the server refuses to start |
-| `SCMCP_SCW_BASE_URL` | no | Star Citizen Wiki API base (default `https://api.star-citizen.wiki/api/v2`), same allowlist rule |
-| `SCMCP_SCT_BASE_URL` | no | Star Citizen Tools base (default `https://starcitizen.tools`), same allowlist rule |
+## Limits you should know
 
-## Installation & Local Development
+- **Crowdsourced prices can be wrong.** Read `data_age`, and sanity-check a route before flying 696 SCU.
+- **Patch history is thin.** The patch-dump repository now holds two unlabelled builds, so `sc_diff_versions`
+  has little to compare. `scmdb_changes` is the working answer for "what changed".
+- **PTU is labelled, never mixed in.** SCMDB has PTU data; UEX and the wiki do not.
+- **Sources lag each other.** Builds differ for hours or days; `sc_data_status` shows it.
+- **`sc_*_local` read files you already have** in `SCMCP_GAME_DATA_DIR`. This project does not extract game
+  files and does not document how; whether doing so is safe for your account is unverified (see
+  [SECURITY.md](SECURITY.md)).
+- Wiki name lookups are strict; the fleet tool matches by words and lists candidates when unsure.
 
-Create a `.env` file in the root directory and add your UEX API token:
-```env
-UEXTOKEN=your_uex_api_token
-```
+## Development
 
-### Automated Setup
-
-We provide a convenient installation script that will build the MCP and automatically add it to your Claude Code or Gemini CLI:
 ```bash
-./install.sh
+npm ci --ignore-scripts && npm run lint && npm test && npm run build && npm run audit:prod
 ```
 
-### Manual Setup
+See [CONTRIBUTING.md](CONTRIBUTING.md), including the new-patch procedure. Security model: [SECURITY.md](SECURITY.md).
 
-Install dependencies:
-```bash
-npm install
-```
+## Credits and notices
 
-Run linting and formatting:
-```bash
-npm run lint
-npm run format
-```
-
-Run tests:
-```bash
-npm run test
-```
-
-Start the MCP server:
-```bash
-npm run build
-npm start
-```
-
-## Docker
-
-No image is published for this fork. The `Dockerfile` is kept for building one locally
-(`docker build -t sc-copilot-mcp .`); do not pull `voidput/scmcp`, which is the upstream
-author's image and not built from this code.
-
-## Credits & Data Sources
-
-SCMCP stores no game data of its own — every answer comes from somebody else's
-work. Each request carries a `sc-copilot-mcp/<version> (+https://github.com/ms-spown/sc-copilot-mcp)`
-User-Agent so these projects can see who is calling.
-
-| Source | Used for | Terms |
-| --- | --- | --- |
-| [UEX Corp](https://uexcorp.space/) ([API](https://uexcorp.space/api/documentation/)) | Commodity prices, terminals, trade routes, ship purchase/rental locations | Requires an API token and attribution — see the "Powered by UEX" badge below |
-| [Star Citizen Wiki](https://star-citizen.wiki/) ([API](https://api.star-citizen.wiki/api/v2)) | Ships, items, components, shop data | Content [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) — **non-commercial** |
-| [Star Citizen Tools](https://starcitizen.tools/) | Article search and lore text | Content [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
-| [StarBreaker](https://github.com/diogotr7/StarBreaker) | Local DataCore/DataForge extraction behind `sc_*_local` tools | Reverse-engineering toolkit |
-| [Model Context Protocol SDK](https://github.com/modelcontextprotocol) | The MCP server itself | MIT |
-
-Wiki text reproduced through this server stays under its own licence: attribute
-the wiki it came from and share alike. The Star Citizen Wiki's content is
-non-commercial — that restriction travels with the data, not with this server.
-
-This is an unofficial Star Citizen fan project, published non-commercially. It
-uses no Cloud Imperium assets, artwork or branding of any kind.
-
-This site is not endorsed by or affiliated with the Cloud Imperium or Roberts
-Space Industries group of companies. All game content and materials are
-copyright Cloud Imperium Rights LLC and Cloud Imperium Rights Ltd. Star
-Citizen®, Squadron 42®, Roberts Space Industries®, and Cloud Imperium® are
-registered trademarks of Cloud Imperium Rights LLC. All rights reserved.
-
-## Release & Versioning
-
-Releases are manual in this fork: there is no semantic-release and nothing is published automatically.
-Conventional commit messages (`feat:`, `fix:`) are still welcome.
-
----
+See [NOTICE](NOTICE) and [THIRD_PARTY.md](THIRD_PARTY.md). Data from [UEX Corp](https://uexcorp.space/),
+the [Star Citizen Wiki](https://star-citizen.wiki/), [Star Citizen Tools](https://starcitizen.tools/),
+[SCMDB](https://github.com/KrovaxCode/SCMDB_DATA) and the community dump repository; thanks to all of them.
 
 <p align="center">
-  <a href="https://uexcorp.space/">
-    <img src="image.png" alt="Powered by UEX" height="30">
-  </a>
+  <a href="https://uexcorp.space/"><img src="image.png" alt="Powered by UEX" height="30"></a>
 </p>
 
 <p align="center">
-  This site is not endorsed by or affiliated with the Cloud Imperium or Roberts Space Industries group of companies.<br>
-  All game content and materials are copyright Cloud Imperium Rights LLC and Cloud Imperium Rights Ltd.<br>
-  Star Citizen&reg;, Squadron 42&reg;, Roberts Space Industries&reg;, and Cloud Imperium&reg; are registered trademarks of Cloud Imperium Rights LLC. All rights reserved.
+  This is an unofficial Star Citizen fan project, not endorsed by or affiliated with the Cloud Imperium or
+  Roberts Space Industries group of companies. All game content and materials are copyright Cloud Imperium
+  Rights LLC and Cloud Imperium Rights Ltd. Star Citizen&reg;, Squadron 42&reg;, Roberts Space Industries&reg;
+  and Cloud Imperium&reg; are registered trademarks of Cloud Imperium Rights LLC. All rights reserved.
 </p>
