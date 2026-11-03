@@ -6,6 +6,29 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-03
+
+### Added
+- **Optional live telemetry, off by default.** The game has an undocumented local telemetry server; with two explicit
+  switches (`SC_TELEMETRY=on` on the server, `GRPC_CLIENT_SERVER_ENABLED=true` in the RSI Launcher's environment) the
+  server reads it on `127.0.0.1:2942` and nothing else. No new dependency: a hand-written protobuf decoder and
+  `node:http2`. Without `SC_TELEMETRY=on` no HTTP/2 code is loaded and no connection is made
+  (`npm run check:telemetry-silence` proves it).
+  - Tools `sc_live_status` (always listed), `sc_live_state` and `sc_live_events` (listed only when telemetry is on);
+    kind `local_telemetry`. The aUEC balance is withheld unless `include_balance` is true.
+  - States `off`, `waiting`, `game_without_telemetry`, `connected`, `live`, `incompatible`; derived events with a
+    `confirmed` / `unverified` flag; a source line in `sc_data_status`.
+  - `npm run telemetry -- status | enable | disable` (dry run unless `--apply`; a byte-faithful, backed-up edit of one
+    key of the Claude Desktop configuration; `--session` for one launch only), and a section in `npm run doctor`.
+  - [docs/TELEMETRY.md](docs/TELEMETRY.md): what the stream contains and does not, privacy, troubleshooting, and the
+    risks of using an undocumented game feature. The schema file comes from Wingman AI (GPLv3), see THIRD_PARTY.md.
+- **[docs/CAPABILITIES.md](docs/CAPABILITIES.md)**: every capability by need, checked against the code by a test.
+- **Contribution policy** in CONTRIBUTING.md (automated and AI-assisted contributions welcome; the project pays
+  nothing) and `npm run check:docs`, run by the tests and by CI: it refuses invisible characters, HTML comments,
+  unreviewed link hosts and translation drift in the files Claude reads.
+- French README and Claude block (`README.fr.md`, `docs/USING_WITH_CLAUDE.fr.md`), contributed by an external author.
+- `ToolDefinition.advertised`: a tool can be left out of `tools/list` while its feature is off.
+
 ### Changed
 - **`provenance.data_age` is now the age of the data itself**, from dates the source gives (UEX `date_modified` of the
   rows returned, the SCMDB channel's `generated_at`); `null` with `data_age_note` when the source gives none. The old
@@ -18,6 +41,19 @@ versions follow [Semantic Versioning](https://semver.org/).
 - `uex_get_trade_routes` ranks routes with a UEX estimate (`is_estimate`, 0 reports at an end) after reported ones;
   new `min_reports` drops them. UEX dates no route price (its `date_added` is the recalculation time), so route
   answers have `data_age: null`. Only `date_modified` is read as a date; ship price rows carry `updated_at`.
+- The SCMDB tools are now `untrusted_text` (they return free text written by others) and `sc_fleet_get` too (wiki
+  text). Their searches ignore case, accents and punctuation and fall back to close spellings with a "did you mean"
+  note, so `quantanium` finds Quantainium; a filter that matches nothing says so. The unit of `time_to_complete` is
+  stated as unknown, because no source proves one.
+- `sc_fleet_get` shows disagreeing UEX and wiki values side by side (`conflict`, crew and cargo) instead of choosing
+  one, and treats a wiki speed of 0 as not provided.
+- `sct_search` returns a readable list (title, excerpt, URL); a MediaWiki error is an error, not "no result".
+- The server announces itself as `sc-copilot-mcp` (it said `star-citizen-mcp`).
+- `sc_data_status` and the error paths of the SCMDB tools clean the strings they pass on; the untrusted-text fence is
+  also neutralised inside JSON values.
+
+### Fixed
+- Stopping the telemetry reader while it was connecting could throw `ERR_HTTP2_INVALID_SESSION` from an event handler.
 
 ## [2.0.0] - 2026-11-03
 
