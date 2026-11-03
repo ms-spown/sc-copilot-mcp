@@ -89,7 +89,7 @@ changing with real values; **not verified** = present but never seen changing, o
 | Hydrogen fuel, boost | boost has engaged / output / reserves / critical |
 | Landing gear, VTOL | retracted, deploying, deployed, retracting |
 | Flight modes | coupled, ESP, G-safe, speed limiter, cruise, gravity compensation, each enabled and active |
-| Quantum | the QDRV light says quantum mode is on; a jump is inferred from the engine light, zero G and not landed |
+| Quantum | the QDRV light says quantum mode is on; a jump is inferred from the engine light, zero G and not landed, and it ends when the drive light goes off (measured on a real ship; a ship that never reports the drive light falls back to a slower rule) |
 | Power | nine on/off flags (powerplants, engines, weapons, coolers, life support, gravity, sensors, shield generators and emitters). No amounts |
 | Warning lights | THR, SHLD, PROX, HIT, RADR, QDRV are understood; WPN only "no power" is used. A RADR light means a hostile lock |
 | Weapons per seat | name, powered, ready to fire |

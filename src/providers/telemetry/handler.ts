@@ -193,6 +193,8 @@ export class TelemetryHandler {
   private dead = false;
   private armed = new Map<string, boolean>();
   private gear: string | undefined;
+  /** True from the moment the quantum drive ended a jump until the thrust signal has gone false once. */
+  private jumpEndedByDrive = false;
   private cm = new Map<string, { count: number; burst: number }>();
   private uec: number | null = null;
   private uecPending: { before: number; last: number } | null = null;
@@ -436,8 +438,14 @@ export class TelemetryHandler {
     }
     const now = signals(ship);
     for (const name of Object.keys(this.holds) as HoldName[]) {
-      const raw = now[name];
+      let raw = now[name];
       if (raw === undefined) continue;
+      if (name === "jump" && this.jumpEndedByDrive) {
+        // The drive already ended this jump: the thrust light may still read "major" for a moment. Do not start a
+        // new jump from that leftover; wait until the raw signal has gone false once.
+        if (raw) raw = false;
+        else this.jumpEndedByDrive = false;
+      }
       const changed = this.holds[name].update(raw, t);
       if (changed === undefined) continue;
       // Engines off while the powerplant just went off is the same fact: one event is enough.
@@ -445,6 +453,14 @@ export class TelemetryHandler {
       const [on, off] = HOLD_EVENTS[name];
       const type = changed ? on : off;
       if (type) this.events.add(type, t);
+      if (name === "quantum" && changed === false && this.holds.jump.value) {
+        // Measured on a real Harbinger (4.10.2): the quantum-drive light went off the moment the jump ended, 9 s
+        // before the 8 s "thrust went nominal in the middle of a jump" delay would have said so. When the drive
+        // reports it is off, the jump is over. Ships that never report the drive keep the slow rule.
+        this.holds.jump.reset(false);
+        this.jumpEndedByDrive = true;
+        this.events.add("jump_finished", t); // after quantum_mode_off, in the order the game showed them
+      }
     }
     this.deploymentEvents(ship, t);
     const hydrogen = ship.instruments?.hydrogen_fuel;
@@ -467,6 +483,7 @@ export class TelemetryHandler {
     }
     this.gear = ship.gear;
     this.cm.clear();
+    this.jumpEndedByDrive = false;
     this.armed.delete("hydrogen");
   }
 
