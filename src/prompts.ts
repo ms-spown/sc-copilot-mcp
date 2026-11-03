@@ -90,7 +90,7 @@ export const PROMPTS: PromptDefinition[] = [
     render: (a) =>
       [
         `Prepare a mining run for ${a.ore?.trim() || "the ore I name"}.`,
-        "Steps: 1) scmdb_search_mining for that ore: scan signature, instability, resistance, optimal window, and the locations where it appears. 2) scmdb_search_mining with scope equipment for a laser and modules that cope with its instability and resistance. 3) uex_get_commodity_prices for where to sell it and at what price. 4) sc_fleet_get to pick a ship from my fleet that can mine or carry it.",
+        "Steps: 1) scmdb_search_mining for that ore: scan signature, instability, resistance, optimal window, and the locations where it appears. 2) scmdb_search_mining with scope equipment for a laser and modules that cope with its instability and resistance. 3) uex_get_commodity_prices for where to sell it and at what price, and uex_get_refining_margins for the refinery with the best reported yield (a ranking: UEX has no conversion ratio or refining cost, so give no aUEC profit for refining). 4) sc_fleet_get to pick a ship from my fleet that can mine or carry it.",
         "Warn about danger (high instability) and say how fresh the prices are. relative_share compares locations; it is not a spawn probability.",
         RULES,
       ].join("\n"),
