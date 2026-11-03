@@ -105,6 +105,10 @@ export function visibleText(root: FakeNode): string {
     if (n.attrs["data-hidden"] === "1") return;
     // The style sheet hides the full-screen cards in the compact view.
     if (n.className === "full" && !fullscreen) return;
+    // ... and hides the compact view in full screen.
+    if (n.className.split(" ").includes("inline") && fullscreen) return;
+    // ... and the toast near the header, which only the compact view has room for.
+    if (n.className.split(" ").includes("toast-top") && fullscreen) return;
     if (n.children.length === 0) {
       if (n.textContent) parts.push(n.textContent);
       return;

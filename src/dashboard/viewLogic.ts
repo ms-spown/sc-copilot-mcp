@@ -401,7 +401,9 @@ export function reducePoll(prev: any, incoming: any, now: number): any {
   if (poll.state === "live" && age !== null && age <= cfg.staleAfterMs) {
     const values = seriesValues(poll);
     for (const key of seriesKeys) {
-      if (typeof values[key] === "number") {
+      // A switched-off ship reports zeros that are not measurements: nothing is added to its curves.
+      const shipKey = ["speed", "altitude", "vspeed", "g", "hydrogen", "boost"].indexOf(key) >= 0;
+      if (typeof values[key] === "number" && !(shipKey && shipIsOff(poll))) {
         const keep =
           key === "hunger" || key === "thirst"
             ? cfg.trendWindowMs
@@ -625,9 +627,22 @@ export function lightsInfo(lights: any): any[] {
     if (raw === "nominal") tone = key === "qdrv" ? "info" : "ok";
     else if (raw === "minor_on" || raw === "minor_flashing") tone = "warn";
     else if (raw === "major_on" || raw === "major_flashing") tone = "bad";
+    const titles: any = {
+      thr: "Poussée",
+      shld: "Boucliers",
+      prox: "Proximité (collision)",
+      hit: "Impacts subis",
+      radr: "Radar : verrouillage hostile",
+      qdrv: "Moteur quantique",
+      wpn: "Armes",
+      pwr: "Alimentation",
+      cool: "Refroidissement",
+      misl: "Missiles",
+    };
     return {
       key,
       label: d[1],
+      title: titles[key] || d[1],
       verified: d[2],
       raw,
       text: texts[raw] || "inconnu",
@@ -648,9 +663,21 @@ export function powerInfo(power: any): any[] {
     ["shield_generators", "Bouclier gén."],
     ["shield_emitters", "Bouclier ém."],
   ];
+  const titles: any = {
+    powerplants: "Centrale (alimente tout le reste)",
+    engines: "Moteurs",
+    weapons: "Armes",
+    coolers: "Refroidissement",
+    life_support: "Support vie",
+    gravity_generators: "Générateurs de gravité",
+    sensors: "Capteurs",
+    shield_generators: "Générateurs de boucliers",
+    shield_emitters: "Émetteurs de boucliers",
+  };
   return defs.map((d) => ({
     key: d[0],
     label: d[1],
+    title: titles[d[0] as string] || d[1],
     known: !!power && typeof power[d[0] as string] === "boolean",
     on: !!power && power[d[0] as string] === true,
   }));
@@ -1529,6 +1556,505 @@ export function cleanPoll(raw: any): any {
   return out;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Display information for the cockpit: everything the page shows, computed here (pure, tested)
+// ---------------------------------------------------------------------------------------------
+
+/** A speed with its unit: m/s up to 9 999, then km/s, then Mm/s (quantum travel is several million m/s). */
+export function formatSpeed(ms: number): any {
+  if (typeof ms !== "number" || !Number.isFinite(ms)) return { value: "—", unit: "" };
+  const a = Math.abs(ms);
+  if (a < 10000) return { value: fmtNum(ms, 0), unit: "m/s" };
+  if (a < 1000000) return { value: fmtNum(ms / 1000, a < 100000 ? 1 : 0), unit: "km/s" };
+  return { value: fmtNum(ms / 1000000, a < 100000000 ? 1 : 0), unit: "Mm/s" };
+}
+
+/** Eight winds, French letters (O for Ouest). */
+export function cardinal(deg: number): string {
+  if (typeof deg !== "number" || !Number.isFinite(deg)) return "";
+  const names = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"];
+  const i = Math.round((((deg % 360) + 360) % 360) / 45) % 8;
+  return names[i] as string;
+}
+
+/** Is the powerplant reported off right now (the server's debounced condition)? */
+export function shipIsOff(poll: any): boolean {
+  const list = poll && Array.isArray(poll.conditions) ? poll.conditions : [];
+  for (const c of list) if (c && c.id === "powerplant_off") return true;
+  return false;
+}
+
+/** Where the ship is, in words, for the banner at the top. */
+export function shipContext(poll: any): any {
+  const ship = poll && poll.ship;
+  const derived = (poll && poll.derived) || {};
+  const out: any = {
+    has: !!ship,
+    title: "",
+    maker: "",
+    state: { id: "none", label: "" },
+    chips: [],
+  };
+  if (!ship) {
+    const mode = modeInfo(poll);
+    out.state = { id: mode.id, label: mode.id === "unknown" ? "" : mode.label };
+    return out;
+  }
+  out.title = shipTitle(ship);
+  out.maker = typeof ship.manufacturer_derived === "string" ? ship.manufacturer_derived : "";
+  if (out.maker && out.title.indexOf(out.maker + " ") === 0) {
+    out.title = out.title.slice(out.maker.length + 1);
+  }
+  let state: any;
+  if (shipIsOff(poll)) state = { id: "off", label: "Vaisseau éteint" };
+  else if (derived.in_jump) state = { id: "jump", label: "Saut quantique" };
+  else if (derived.in_quantum_mode) state = { id: "quantum", label: "Mode quantique" };
+  else if (ship.landed === true) state = { id: "landed", label: "Posé" };
+  else if (ship.landed === false && derived.in_planet_frame) {
+    state = { id: "planet", label: "En vol · près d’une planète" };
+  } else if (ship.landed === false) state = { id: "space", label: "En vol · dans l’espace" };
+  else state = { id: "ship", label: "À bord" };
+  out.state = state;
+  const gear: any = {
+    retracted: "Train rentré",
+    deploying: "Train en sortie",
+    deployed: "Train sorti",
+    retracting: "Train en rentrée",
+  };
+  if (ship.gear && gear[ship.gear]) out.chips.push({ id: "gear", label: gear[ship.gear] });
+  const vtol: any = {
+    retracted: "VTOL rentré",
+    deploying: "VTOL en sortie",
+    deployed: "VTOL sorti",
+    retracting: "VTOL en rentrée",
+  };
+  if (ship.vtol && vtol[ship.vtol]) out.chips.push({ id: "vtol", label: vtol[ship.vtol] });
+  if (typeof ship.lights_on === "boolean") {
+    // The lights field is not in the list of verified data: the chip says so.
+    out.chips.push({
+      id: "lights",
+      label: ship.lights_on ? "Phares allumés" : "Phares éteints",
+      unverified: true,
+    });
+  }
+  return out;
+}
+
+/** The first-glance verdict: "all is well", "watch this" or "alert", from the conditions, or null without data. */
+export function summaryInfo(poll: any, items: any[]): any {
+  if (!poll || poll.state !== "live") return null;
+  if (!poll.ship && !poll.pilot) return null;
+  if (shipIsOff(poll)) {
+    return { id: "off", tone: "neutral", label: "Vaisseau éteint", count: 0 };
+  }
+  const bad = items.filter((i: any) => i.tone === "bad");
+  const warn = items.filter((i: any) => i.tone === "warn");
+  if (bad.length > 0) {
+    const more = bad.length + warn.length - 1;
+    return {
+      id: "alert",
+      tone: "bad",
+      label: "Alerte : " + bad[0].label + (more > 0 ? " (+" + more + ")" : ""),
+      count: bad.length + warn.length,
+    };
+  }
+  if (warn.length > 0) {
+    const more = warn.length - 1;
+    return {
+      id: "watch",
+      tone: "warn",
+      label: "À surveiller : " + warn[0].label + (more > 0 ? " (+" + more + ")" : ""),
+      count: warn.length,
+    };
+  }
+  return { id: "ok", tone: "ok", label: "Tout va bien", count: 0 };
+}
+
+/** Everything the dials and gauges of the ship show, with nothing invented: a missing value is "—". */
+export function instrumentInfo(poll: any, view: any): any {
+  const ship = poll && poll.ship;
+  const ins = ship && ship.instruments;
+  const derived = (poll && poll.derived) || {};
+  const off = shipIsOff(poll);
+  const quantum = !!(derived.in_quantum_mode || derived.in_jump);
+  const scales = (view && view.scales) || { speed: 0, vspeed: 0 };
+  const none = (extra?: any) =>
+    Object.assign(
+      { known: false, text: "—", unit: "", fraction: null, level: "none", sub: "" },
+      extra,
+    );
+  const out: any = { off, quantum };
+
+  // Speed: the scale is deduced from the speeds seen outside quantum mode, and says so.
+  if (ins && typeof ins.speed_ms === "number" && !off) {
+    const f = formatSpeed(ins.speed_ms);
+    const scale = niceScale(scales.speed, 100);
+    out.speed = {
+      known: true,
+      text: f.value,
+      unit: f.unit,
+      fraction: quantum ? 1 : Math.max(0, Math.min(1, Math.abs(ins.speed_ms) / scale)),
+      peak: quantum || scales.speed <= 0 ? null : Math.min(1, scales.speed / scale),
+      level: quantum ? "info" : "ok",
+      sub: quantum
+        ? "mode quantique"
+        : "échelle 0–" + fmtNum(scale) + " m/s, déduite des vitesses vues",
+    };
+  } else out.speed = none({ sub: off ? "éteint" : "" });
+
+  // G: current against the maximum the game reports.
+  if (ins && ins.g && typeof ins.g.current === "number" && !off) {
+    const max = typeof ins.g.max === "number" && ins.g.max > 0 ? ins.g.max : 0;
+    const frac = max > 0 ? Math.max(0, Math.min(1, Math.abs(ins.g.current) / max)) : null;
+    out.g = {
+      known: true,
+      text: fmtNum(ins.g.current, 1),
+      unit: "G",
+      fraction: frac,
+      level: frac === null ? "none" : frac >= 0.9 ? "bad" : frac >= 0.7 ? "warn" : "ok",
+      sub: max > 0 ? "max du jeu " + fmtNum(max, 0) + " G" : "",
+    };
+  } else out.g = none({ sub: off ? "éteint" : "" });
+
+  // Vertical speed: a signed bar around zero, scale from the largest seen.
+  if (ins && typeof ins.vertical_speed_ms === "number" && !off) {
+    const scale = niceScale(scales.vspeed, 20);
+    out.vspeed = {
+      known: true,
+      text: fmtNum(ins.vertical_speed_ms, 1),
+      unit: "m/s",
+      signed: Math.max(-1, Math.min(1, ins.vertical_speed_ms / scale)),
+      sub: "échelle ±" + fmtNum(scale) + " m/s",
+    };
+  } else out.vspeed = { known: false, text: "—", unit: "", signed: 0, sub: "" };
+
+  // Altitude and heading exist only inside a planet's frame.
+  const alt = ins && typeof ins.altitude_m === "number" ? ins.altitude_m : null;
+  out.altitude = {
+    known: alt !== null && !off,
+    text: alt !== null && !off ? formatDistance(alt) : "—",
+    radar:
+      alt !== null && !off && ins && typeof ins.radar_altitude_m === "number"
+        ? "radar " + formatDistance(ins.radar_altitude_m)
+        : "",
+    sub: alt === null && ins && !off ? "hors du champ d’une planète" : off ? "éteint" : "",
+  };
+  const heading = ins && typeof ins.heading_deg === "number" ? ins.heading_deg : null;
+  out.heading = {
+    valid: heading !== null && !off,
+    deg: heading === null ? 0 : ((heading % 360) + 360) % 360,
+    text: heading !== null && !off ? fmtNum(heading, 0) + "°" : "—",
+    cardinal: heading !== null && !off ? cardinal(heading) : "",
+    sub:
+      heading === null && ins && !off
+        ? derived.in_jump
+          ? "figé pendant le saut"
+          : "seulement dans le champ d’une planète"
+        : "",
+  };
+  out.density =
+    ins && typeof ins.atmospheric_density === "number" && ins.atmospheric_density > 0 && !off
+      ? fmtNum(ins.atmospheric_density, 2)
+      : "";
+
+  // Hydrogen and boost.
+  const hyd = ins ? fractionInfo(ins.hydrogen_fuel, 0.25, 0.1) : fractionInfo(undefined, 0.25, 0.1);
+  out.hydrogen = off ? none({ sub: "éteint" }) : hyd;
+  const boost = ins && ins.boost;
+  if (boost && !off) {
+    const reserve = fractionInfo(boost.reserves, 0.25, 0.1);
+    out.boost = {
+      known: reserve.known,
+      reserve,
+      output: fractionInfo(boost.output, 2, 2),
+      engaged: boost.engaged === true,
+      critical: boost.critical === true,
+      level: boost.critical === true ? "bad" : reserve.level,
+    };
+  } else
+    out.boost = {
+      known: false,
+      reserve: none(),
+      output: none(),
+      engaged: false,
+      critical: false,
+      level: "none",
+    };
+  return out;
+}
+
+export function vitalsInfo(poll: any): any {
+  const pilot = poll && poll.pilot;
+  const heart = pilot && typeof pilot.heart_rate_bpm === "number" && pilot.heart_rate_bpm > 0;
+  const loco: any = { on_foot: "à pied", eva: "EVA", seated: "assis" };
+  const crew: any = { pilot: "pilote", gunner: "artilleur", crew: "équipage" };
+  return {
+    health: healthInfo(pilot),
+    hunger: gaugeInfo(pilot && pilot.hunger, 0.25, 0.1),
+    thirst: gaugeInfo(pilot && pilot.thirst, 0.25, 0.1),
+    heart: heart ? fmtNum(pilot.heart_rate_bpm, 0) : "—",
+    gravity: pilot && typeof pilot.gravity_g === "number" ? fmtNum(pilot.gravity_g, 2) : "—",
+    // The unit of the pressure is not given by the game: only the number is shown.
+    pressure:
+      pilot && typeof pilot.pressure === "number" && pilot.pressure !== 0
+        ? fmtNum(pilot.pressure, 1)
+        : "—",
+    temperature:
+      pilot && typeof pilot.outside_temperature_c === "number"
+        ? fmtNum(pilot.outside_temperature_c, 0)
+        : "—",
+    air:
+      pilot && typeof pilot.breathable_atmosphere === "boolean"
+        ? pilot.breathable_atmosphere
+          ? "respirable"
+          : "non respirable"
+        : "—",
+    locomotion: pilot && pilot.locomotion ? loco[pilot.locomotion] || "inconnu" : "—",
+    crew: pilot && pilot.crew_role && crew[pilot.crew_role] ? crew[pilot.crew_role] : "—",
+    seat:
+      pilot && typeof pilot.seat === "string" && pilot.seat !== ""
+        ? pilot.seat.replace(/_/g, " ").slice(0, 40)
+        : "",
+  };
+}
+
+/** Weapons of the seat in one sentence, and one row each: red is kept for critical conditions, not for "no power". */
+export function weaponsInfo(weapons: any, off: boolean): any {
+  const list = weapons && Array.isArray(weapons.weapons) ? weapons.weapons : [];
+  let powered = 0;
+  let ready = 0;
+  const rows: any[] = [];
+  for (const w of list) {
+    if (!w || typeof w.name !== "string") continue;
+    if (w.powered === true) powered++;
+    if (w.ready === true) ready++;
+    rows.push({
+      name: w.name.replace(/_/g, " "),
+      state: w.powered ? (w.ready ? "ready" : "powered") : "off",
+      text: w.powered ? (w.ready ? "prête" : "sous tension") : "sans énergie",
+    });
+  }
+  const total = rows.length;
+  let summary: string;
+  if (!weapons) summary = "Pas de trame d’armes : seulement à un poste d’armes.";
+  else if (total === 0) summary = "Aucune arme dans la trame.";
+  else if (off) summary = total + (total > 1 ? " armes" : " arme") + " · vaisseau éteint";
+  else if (powered === 0)
+    summary = total + (total > 1 ? " armes sans énergie" : " arme sans énergie");
+  else
+    summary =
+      ready +
+      " prête" +
+      (ready > 1 ? "s" : "") +
+      " sur " +
+      total +
+      (powered < total ? " · " + (total - powered) + " sans énergie" : "");
+  return {
+    total,
+    powered,
+    ready,
+    rows,
+    summary,
+    gimbals:
+      weapons && typeof weapons.gimbals_locked === "boolean"
+        ? weapons.gimbals_locked
+          ? "Cardans verrouillés"
+          : "Cardans libres"
+        : "",
+  };
+}
+
+/** Countermeasures: the count, and the share of the highest count seen for this vehicle (not a maximum the game gives). */
+export function cmInfo(weapons: any, peaks: any): any[] {
+  const cm =
+    weapons && weapons.countermeasures && typeof weapons.countermeasures === "object"
+      ? weapons.countermeasures
+      : {};
+  const out: any[] = [];
+  for (const kind of ["decoy", "noise"]) {
+    const v = cm[kind];
+    if (typeof v !== "number") {
+      out.push({
+        kind,
+        label: countermeasureLabel(kind),
+        known: false,
+        text: "—",
+        fraction: null,
+        peak: 0,
+      });
+      continue;
+    }
+    const peak = Math.max(v, peaks && typeof peaks[kind] === "number" ? peaks[kind] : v);
+    out.push({
+      kind,
+      label: countermeasureLabel(kind),
+      known: true,
+      text: fmtNum(v),
+      peak,
+      fraction: peak > 0 ? v / peak : null,
+      level: peak > 0 ? levelFor(v / peak, 0.34, 0.01) : "none",
+    });
+  }
+  return out;
+}
+
+/** One chronology: the events and the player's markers together, oldest first. `filter`: all, alerts or markers. */
+export function chronology(events: any[], markers: any[], filter: string, limit: number): any[] {
+  const alertTypes = [
+    "shields_down",
+    "locked_on",
+    "under_fire",
+    "proximity_warning",
+    "engines_damaged",
+    "engines_offline",
+    "powerplant_offline",
+    "weapons_unavailable",
+    "boost_depleted",
+    "hydrogen_low",
+    "countermeasures_low",
+    "countermeasures_empty",
+    "health_low",
+    "player_down",
+    "oxygen_low",
+    "not_breathable",
+    "hunger_low",
+    "thirst_low",
+  ];
+  const items: any[] = [];
+  if (filter !== "markers") {
+    for (const e of events || []) {
+      if (!e || typeof e.type !== "string") continue;
+      if (filter === "alerts" && alertTypes.indexOf(e.type) < 0) continue;
+      items.push({
+        at: e.at,
+        label: eventLabel(e),
+        kind: "event",
+        verified: e.confidence === "confirmed",
+        alert: alertTypes.indexOf(e.type) >= 0,
+      });
+    }
+  }
+  if (filter !== "alerts") {
+    const marks: any = {
+      start: "Début de session",
+      end: "Fin de session",
+      reset_delta: "Solde remis à zéro",
+    };
+    for (const m of markers || []) {
+      if (m && marks[m.kind])
+        items.push({
+          at: m.at,
+          label: marks[m.kind],
+          kind: "marker",
+          verified: true,
+          alert: false,
+        });
+    }
+  }
+  items.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  return items.slice(-limit).reverse();
+}
+
+/** The unverified values as labelled lines, each marked as unverified by the page. */
+export function unverifiedItems(poll: any): any[] {
+  const out: any[] = [];
+  const u = poll && poll.unverified;
+  if (!u || typeof u !== "object") return out;
+  const labels: any = {
+    oxygen: "Oxygène",
+    body_temperature: "Température corporelle",
+    intoxication_level: "Niveau d’intoxication",
+    ambient_radiation_rate: "Rayonnement ambiant",
+    quantum_fuel: "Carburant quantique",
+    manufacturer: "Constructeur (champ du jeu)",
+    transformation: "Transformation",
+    flight_settings: "Réglages de vol",
+    doors: "Portes",
+    spacebreak_enables_boost: "Frein spatial active le boost",
+    g_safe_disabled_by_boost: "G-safe coupé par le boost",
+    open_state: "ouverture",
+    lock_state: "verrou",
+    current: "valeur",
+    max: "max",
+    percent: "part",
+  };
+  const show = (key: string, v: any): string => {
+    if (typeof v === "boolean") return v ? "oui" : "non";
+    if (typeof v === "number")
+      return key === "percent" ? fmtNum(v * 100, 0) + "\u00a0%" : fmtNum(v, 2);
+    if (typeof v === "string") return v.replace(/_/g, " ").slice(0, 40);
+    return "";
+  };
+  for (const side of ["pilot", "ship"]) {
+    const m = u[side];
+    if (!m || typeof m !== "object") continue;
+    for (const key of Object.keys(m)) {
+      const v = m[key];
+      let text: string;
+      if (v && typeof v === "object") {
+        const parts: string[] = [];
+        for (const k of Object.keys(v)) {
+          const s = show(k, v[k]);
+          if (s) parts.push((labels[k] || k.replace(/_/g, " ")) + " " + s);
+        }
+        text = parts.join(" · ");
+      } else text = show(key, v);
+      if (text)
+        out.push({ key: side + "." + key, label: labels[key] || key.replace(/_/g, " "), text });
+    }
+  }
+  return out;
+}
+
+/** What the stream does not contain, in French; ids the page does not know are shown as they come. */
+export function missingItems(ids: any): string[] {
+  const names: any = {
+    position: "Position",
+    camera_direction: "Direction de la caméra",
+    shield_level: "Niveau des boucliers",
+    hull_and_component_health: "Coque et composants",
+    heat: "Chaleur",
+    ammo: "Munitions",
+    power_allocation: "Répartition de l’énergie",
+    quantum_fuel: "Carburant quantique",
+    doors: "Portes",
+    weapon_presets: "Présélections d’armes",
+    death_events: "Événements de mort",
+    force_feedback: "Retour de force",
+    missiles: "Missiles",
+  };
+  const list = Array.isArray(ids) && ids.length > 0 ? ids : Object.keys(names);
+  const out: string[] = ["Cargaison"];
+  for (const id of list) {
+    if (typeof id !== "string") continue;
+    out.push(names[id] || id.replace(/_/g, " ").slice(0, 40));
+  }
+  return out;
+}
+
+/** The pinned data, as short "label value" texts for the bar at the top. */
+export function pinnedItems(poll: any, view: any, pins: any): any[] {
+  const ins = instrumentInfo(poll, view);
+  const v = vitalsInfo(poll);
+  const defs: any[] = [
+    ["speed", "Vitesse", ins.speed.known ? ins.speed.text + "\u00a0" + ins.speed.unit : "—"],
+    ["g", "Force G", ins.g.known ? ins.g.text + "\u00a0G" : "—"],
+    ["altitude", "Altitude", ins.altitude.text],
+    ["vspeed", "Vit. verticale", ins.vspeed.known ? ins.vspeed.text + "\u00a0m/s" : "—"],
+    ["hydrogen", "Hydrogène", ins.hydrogen.text],
+    ["boost", "Boost", ins.boost.known ? ins.boost.reserve.text : "—"],
+    ["health", "Santé", v.health.text],
+    ["hunger", "Faim", v.hunger.text],
+    ["thirst", "Soif", v.thirst.text],
+    ["heart", "Rythme", v.heart === "—" ? "—" : v.heart + "\u00a0bpm"],
+  ];
+  const out: any[] = [];
+  for (const d of defs) {
+    if (pins && pins[d[0]]) out.push({ key: d[0], label: d[1], text: d[2] });
+  }
+  return out;
+}
+
 /** The names the page needs, in the order they are serialised. */
 export const VIEW_FUNCTIONS = [
   viewConfig,
@@ -1577,6 +2103,19 @@ export const VIEW_FUNCTIONS = [
   safeStyleVariables,
   pollArguments,
   niceScale,
+  formatSpeed,
+  cardinal,
+  shipIsOff,
+  shipContext,
+  summaryInfo,
+  instrumentInfo,
+  vitalsInfo,
+  weaponsInfo,
+  cmInfo,
+  chronology,
+  unverifiedItems,
+  missingItems,
+  pinnedItems,
   makeViewId,
   electLeader,
   notePeer,

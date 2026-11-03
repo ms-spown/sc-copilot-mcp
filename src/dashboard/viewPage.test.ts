@@ -4,6 +4,7 @@ import { dashboardHtml, viewScript } from "./page.js";
 import { Scenario } from "./testing/scenario.js";
 import {
   extractElement,
+  findAll,
   findButton,
   isShown,
   startPage,
@@ -306,7 +307,8 @@ describe("Feature: the balance stays hidden until the player asks", () => {
     await w.advance(100 * SECOND); // past the sale at 90 s
     expect(polls(w).every((p) => !p.includeBalance)).toBe(true);
     expect(NBSP_FREE(visibleText(w.root))).not.toMatch(BALANCE_DIGITS);
-    expect(visibleText(w.root)).toContain("masqué par défaut");
+    expect(visibleText(w.root)).toContain("••••••");
+    expect(visibleText(w.root)).toContain("Afficher le solde");
     expect(w.host.log.messages).toEqual([]);
     for (const c of w.host.log.contexts) expect(NBSP_FREE(c)).not.toMatch(BALANCE_DIGITS);
   });
@@ -452,7 +454,6 @@ describe("Feature: nothing is invented, and what the stream lacks is said", () =
     const text = visibleText(w.root);
     expect(text).toContain("Boucliers tombés");
     expect(text).toContain("Verrouillage hostile");
-    expect(text).toContain("confirmé");
     expect(text).toContain("SHLD");
     expect(text).toContain("alerte majeure");
     expect(text).toMatch(/Leurres/);
@@ -467,12 +468,23 @@ describe("Feature: nothing is invented, and what the stream lacks is said", () =
     w.host.overrides.poll = (base) => ({
       ...base,
       pilot: { ...base.pilot, health: { current: 0, max: 100, percent: 0 } },
+      conditions: [
+        { id: "down_or_dead", level: "critical", confidence: "confirmed", since: base.at - 3000 },
+      ],
     });
     await w.advance(2 * SECOND);
+    // The compact dial says it, and the verdict is an alert.
+    expect(visibleText(w.root)).toContain("à terre ou mort");
     expect(visibleText(w.root)).toContain("À terre ou mort");
-    w.host.overrides.poll = (base) => ({ ...base, pilot: { locomotion: "seated" } });
+    findButton(w.root, FULL).click();
+    // An overridden section must not be reported as unchanged (the View would put its old copy back).
+    w.host.overrides.poll = (base) => ({
+      ...base,
+      unchanged: undefined,
+      pilot: { locomotion: "seated" },
+    });
     await w.advance(2 * SECOND);
-    expect(visibleText(w.root)).not.toContain("À terre ou mort");
+    expect(visibleText(w.root)).not.toMatch(/à terre ou mort/i);
     expect(visibleText(w.root)).toContain("non fourni");
   });
 
@@ -480,8 +492,8 @@ describe("Feature: nothing is invented, and what the stream lacks is said", () =
     const w = await startPage();
     await w.advance(8 * SECOND); // on foot
     const text = visibleText(w.root);
-    expect(text).toContain("Sans vaisseau");
-    expect(text).toContain("pas de données de vaisseau");
+    expect(text).toContain("À pied");
+    expect(text).not.toContain("Cutter");
     expect(text).not.toMatch(/ne tourne pas|erreur/i);
     // The Instruments card (full screen) explains it as a normal thing.
     findButton(w.root, FULL).click();
@@ -527,8 +539,8 @@ describe("Feature: state alerts (conditions) come before the recent events", () 
     let text = visibleText(w.root);
     expect(text).toContain("Boucliers coupés · mode quantique");
     expect(text).toMatch(/depuis \d/);
-    expect(text).toContain("Mode quantique");
-    expect(text).not.toContain("Aucune alerte récente");
+    expect(text).toMatch(/Saut quantique|Mode quantique/);
+    expect(text).not.toContain("Aucune alerte");
     const chips = w.root.children.find((c) => c.className === "alerts")!;
     const first = chips.children.filter((c) => c.className.startsWith("alert condition"));
     expect(
@@ -659,11 +671,19 @@ describe("Feature: session, pace and the route plan", () => {
     const w = await live();
     findButton(w.root, FULL).click();
     await w.advance(2 * SECOND);
-    // Pin buttons are labelled "Épingler" and flip to "Épinglé".
-    const pin = findButton(w.root, "Épingler");
+    // A pin is an icon button named by its label; the pinned datum goes to the bar at the top, in both modes.
+    const pin = findAll(w.root, (n) => n.attrs["aria-label"] === "Épingler : vitesse")[0]!;
+    expect(pin.attrs["aria-pressed"]).toBe("false");
     pin.click();
-    expect(pin.textContent).toBe("Épinglé");
     expect(pin.attrs["aria-pressed"]).toBe("true");
+    const bar = findAll(w.root, (n) => n.className === "pinbar")[0]!;
+    expect(isShown(bar)).toBe(true);
+    expect(visibleText(bar)).toMatch(/Vitesse\n\d/);
+    findButton(w.root, "Réduire").click();
+    await w.advance(100);
+    expect(visibleText(w.root)).toMatch(/Vitesse\n\d+\nm\/s|Vitesse\n\d/);
+    pin.click();
+    expect(isShown(bar)).toBe(false);
   });
 });
 
@@ -671,12 +691,14 @@ describe("Feature: the compact view stays small and stable", () => {
   it("Given a live ship, Then the compact view shows the five data, the stream state and no more than five tiles by default", async () => {
     const w = await live();
     const text = visibleText(w.root);
-    for (const label of ["Vaisseau", "Vitesse", "Hydrogène", "Santé", "Solde"]) {
+    for (const label of ["Vitesse", "Hydrogène", "Santé", "Solde"]) {
       expect(text).toContain(label);
     }
     expect(text).toContain("En direct");
+    expect(text).toContain("Tout va bien");
     expect(text).toContain("Cutter");
-    expect(text).toContain("Drake \u00b7 En vol");
+    expect(text).toContain("Drake");
+    expect(text).toMatch(/En vol \u00b7 /);
     expect(text).not.toContain("Instruments"); // full screen only
   });
 
