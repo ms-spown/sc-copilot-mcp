@@ -62,6 +62,11 @@ export interface PollResult {
    * attention AND when the stream is not live: a stale state is never presented as current.
    */
   conditions: Condition[];
+  /**
+   * Present in the stream but never verified live (field test): the View labels each one "non vérifié". Only values
+   * the game really sent (a default value of a field that is never filled is left out).
+   */
+  unverified: { ship?: Record<string, unknown>; pilot?: Record<string, unknown> };
   not_available: string[];
   events: PublicEvent[];
   last_seq: number;
@@ -99,6 +104,7 @@ export function offPoll(nowMs: number, session: SessionState = EMPTY_SESSION): P
     weapons: null,
     derived: null,
     conditions: [],
+    unverified: {},
     not_available: [],
     events: [],
     last_seq: 0,
@@ -218,6 +224,26 @@ function publicShip(ship: Ship): PublicShip {
   return rest;
 }
 
+/** The unverified values the stream carried, without the defaults of fields the game never fills. */
+function publicUnverified(state: TelemetrySnapshot["state"] | null): PollResult["unverified"] {
+  const out: PollResult["unverified"] = {};
+  if (state?.ship && Object.keys(state.ship.unverified).length > 0)
+    out.ship = { ...state.ship.unverified };
+  if (state?.pilot) {
+    const pilot: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(state.pilot.unverified)) {
+      if (
+        (key === "intoxication_level" || key === "ambient_radiation_rate") &&
+        !(Number(value) > 0)
+      )
+        continue;
+      pilot[key] = value;
+    }
+    if (Object.keys(pilot).length > 0) out.pilot = pilot;
+  }
+  return out;
+}
+
 export function buildPoll(input: PollInput): PollResult {
   const { status, snapshot, includeBalance, nowMs } = input;
   const state = snapshot?.state ?? null;
@@ -258,6 +284,7 @@ export function buildPoll(input: PollInput): PollResult {
       snapshot && state && status.state === "live" && snapshot.frame_age_ms <= LIVE_CONDITIONS_MS
         ? state.conditions
         : [],
+    unverified: publicUnverified(state),
     not_available: unavailable,
     events: input.events.map(publicEvent),
     last_seq: input.lastSeq,

@@ -133,6 +133,146 @@ raisonnez pas à partir d'eux.
 - Les données du véhicule arrivent 6 à 9 secondes après que vous vous êtes assis.
 - La première trame après un changement de siège peut porter des réglages périmés.
 
+## Couverture
+
+Ce que devient chaque champ du flux. `poll.` est la réponse de `sc_live_poll` (ce que reçoit le tableau de bord), `state.` l'état de `sc_live_state`. Les valeurs présentes mais non vérifiées sont sous `unverified` dans le poll et étiquetées comme telles dans la page. Un test (`coverage.test.ts`) échoue quand un champ du schéma n'a pas de ligne ici : un nouveau champ dans un patch force une décision.
+
+131 champs : 104 exposés par le serveur, 27 ignorés volontairement ; 93 affichés par le tableau de bord (les autres sont exposés au modèle seulement, ou ignorés).
+
+| Champ | Serveur | Tableau de bord |
+| --- | --- | --- |
+| `Availability.enabled` | `poll.ship.flight_modes.coupled.enabled` | Ligne des modes de vol (`modes`) |
+| `Availability.active` | `poll.ship.flight_modes.coupled.active` | Ligne des modes de vol (`modes`) |
+| `Gauge.current` | `poll.pilot.health.current` | Santé (`health`) |
+| `Gauge.max` | `poll.pilot.health.max` | Santé (`health`) |
+| `VehicleDoorState.open_state` | `poll.unverified.ship.doors.open_state` | Carte des valeurs non vérifiées (`unverified`) |
+| `VehicleDoorState.lock_state` | `poll.unverified.ship.doors.lock_state` | Carte des valeurs non vérifiées (`unverified`) |
+| `VehicleFlightSettings.ifcs_coupled` | `poll.ship.flight_modes.coupled` | Ligne des modes de vol (`modes`) |
+| `VehicleFlightSettings.ifcs_esp` | `poll.ship.flight_modes.esp` | Ligne des modes de vol (`modes`) |
+| `VehicleFlightSettings.ifcs_gravity_compensation` | `poll.ship.flight_modes.gravity_compensation` | Ligne des modes de vol (`modes`) |
+| `VehicleFlightSettings.ifcs_g_safe` | `poll.ship.flight_modes.g_safe` | Ligne des modes de vol (`modes`) |
+| `VehicleFlightSettings.ifcs_cruise_mode` | `poll.ship.flight_modes.cruise_mode` | Ligne des modes de vol (`modes`) |
+| `VehicleFlightSettings.ifcs_spacebreak_enables_boost` | `poll.unverified.ship.flight_settings.spacebreak_enables_boost` | Carte des valeurs non vérifiées (`unverified`) |
+| `VehicleFlightSettings.ifcs_speed_limiter` | `poll.ship.flight_modes.speed_limiter` | Ligne des modes de vol (`modes`) |
+| `VehicleFlightSettings.ifcs_proximity_assist` | `poll.ship.flight_modes.proximity_assist` | ignoré : Hors de la liste des modes de vol vérifiés : disponible pour le modèle, non dessiné. |
+| `VehicleFlightSettings.ifcs_proximity_assist_landing` | `poll.ship.flight_modes.proximity_assist_landing` | ignoré : Hors de la liste des modes de vol vérifiés : disponible pour le modèle, non dessiné. |
+| `VehicleFlightSettings.ifcs_stability` | `poll.ship.flight_modes.stability` | ignoré : Hors de la liste des modes de vol vérifiés : disponible pour le modèle, non dessiné. |
+| `VehicleFlightSettings.ifcs_core` | `poll.ship.flight_modes.core` | ignoré : Hors de la liste des modes de vol vérifiés : disponible pour le modèle, non dessiné. |
+| `VehicleFlightSettings.advanced_hud_enabled_scm` | ignoré : Une préférence d'affichage ou de visée du joueur, sans utilité sur un tableau de bord ; la première trame après un changement de siège peut aussi porter des réglages périmés. | - |
+| `VehicleFlightSettings.advanced_hud_enabled_nav` | ignoré : Une préférence d'affichage ou de visée du joueur, sans utilité sur un tableau de bord ; la première trame après un changement de siège peut aussi porter des réglages périmés. | - |
+| `VehicleFlightSettings.advanced_hud_labels` | ignoré : Une préférence d'affichage ou de visée du joueur, sans utilité sur un tableau de bord ; la première trame après un changement de siège peut aussi porter des réglages périmés. | - |
+| `VehicleFlightSettings.course_prediction` | ignoré : Une préférence d'affichage ou de visée du joueur, sans utilité sur un tableau de bord ; la première trame après un changement de siège peut aussi porter des réglages périmés. | - |
+| `VehicleFlightSettings.ifcs_wind_compensation` | `poll.ship.flight_modes.wind_compensation` | ignoré : Hors de la liste des modes de vol vérifiés : disponible pour le modèle, non dessiné. |
+| `VehicleFlightSettings.ifcs_g_safe_disabled_by_boost` | `poll.unverified.ship.flight_settings.g_safe_disabled_by_boost` | Carte des valeurs non vérifiées (`unverified`) |
+| `VehicleFlightSettings.ifcs_command_behaviour` | `poll.ship.flight_modes.command_behaviour` | ignoré : Hors de la liste des modes de vol vérifiés : disponible pour le modèle, non dessiné. |
+| `VehicleFlightSettings.flight_light_amplification` | ignoré : Une préférence d'affichage ou de visée du joueur, sans utilité sur un tableau de bord ; la première trame après un changement de siège peut aussi porter des réglages périmés. | - |
+| `VehicleFlightState.is_landed` | `poll.ship.landed` | Bandeau d'état du vaisseau (`mode`) |
+| `VehicleFlightState.gear` | `poll.ship.gear` | Train et VTOL (`gear`) |
+| `VehicleFlightState.vtol` | `poll.ship.vtol` | Train et VTOL (`gear`) |
+| `VehicleFlightState.transformation` | `poll.unverified.ship.transformation` | Carte des valeurs non vérifiées (`unverified`) |
+| `VehicleFlight.state` | `poll.ship.landed` | Bandeau d'état du vaisseau (`mode`) |
+| `VehicleFlight.settings` | `poll.ship.flight_modes` | Ligne des modes de vol (`modes`) |
+| `VehicleFlight.instruments` | `poll.ship.instruments` | Cadran de vitesse (`speed`) |
+| `VehicleFlightInstruments.speed` | `poll.ship.instruments.speed_ms` | Cadran de vitesse (`speed`) |
+| `VehicleFlightInstruments.hydrogen_fuel` | `poll.ship.instruments.hydrogen_fuel` | Jauge d'hydrogène et autonomie estimée (`hydrogen`) |
+| `VehicleFlightInstruments.quantum_fuel` | `poll.unverified.ship.quantum_fuel` | Carte des valeurs non vérifiées (`unverified`) |
+| `VehicleFlightInstruments.g_meter` | `poll.ship.instruments.g` | Cadran de force G (`g`) |
+| `VehicleFlightInstruments.boost` | `poll.ship.instruments.boost` | Jauge de boost (`boost`) |
+| `VehicleFlightInstruments.altitude` | `poll.ship.instruments.altitude_m` | Altitude et altitude radar (`altitude`) |
+| `VehicleFlightInstruments.radar_altitude` | `poll.ship.instruments.radar_altitude_m` | Altitude et altitude radar (`altitude`) |
+| `VehicleFlightInstruments.vertical_speed_indicator` | `poll.ship.instruments.vertical_speed_ms` | Barre de vitesse verticale (`vspeed`) |
+| `VehicleFlightInstruments.atmospheric_density` | `poll.ship.instruments.atmospheric_density` | Densité atmosphérique (`atmosphere`) |
+| `VehicleFlightInstruments.heading` | `poll.ship.instruments.heading_deg` | Boussole (`heading`) |
+| `VehicleThrusterBoost.engaged` | `poll.ship.instruments.boost.engaged` | Jauge de boost (`boost`) |
+| `VehicleThrusterBoost.output` | `poll.ship.instruments.boost.output` | Jauge de boost (`boost`) |
+| `VehicleThrusterBoost.reserves` | `poll.ship.instruments.boost.reserves` | Jauge de boost (`boost`) |
+| `VehicleThrusterBoost.critical` | `poll.ship.instruments.boost.critical` | Jauge de boost (`boost`) |
+| `VehiclePowerState.powerplants` | `poll.ship.power.powerplants` | Schéma d'alimentation (`power`) |
+| `VehiclePowerState.engines` | `poll.ship.power.engines` | Schéma d'alimentation (`power`) |
+| `VehiclePowerState.weapons` | `poll.ship.power.weapons` | Schéma d'alimentation (`power`) |
+| `VehiclePowerState.coolers` | `poll.ship.power.coolers` | Schéma d'alimentation (`power`) |
+| `VehiclePowerState.life_support` | `poll.ship.power.life_support` | Schéma d'alimentation (`power`) |
+| `VehiclePowerState.gravity_generators` | `poll.ship.power.gravity_generators` | Schéma d'alimentation (`power`) |
+| `VehiclePowerState.sensors` | `poll.ship.power.sensors` | Schéma d'alimentation (`power`) |
+| `VehiclePowerState.shield_generators` | `poll.ship.power.shield_generators` | Schéma d'alimentation (`power`) |
+| `VehiclePowerState.shield_emitters` | `poll.ship.power.shield_emitters` | Schéma d'alimentation (`power`) |
+| `VehicleAnnunciator.pwr` | `poll.ship.warning_lights.pwr` | Panneau des voyants (`lights`) |
+| `VehicleAnnunciator.wpn` | `poll.ship.warning_lights.wpn` | Panneau des voyants (`lights`) |
+| `VehicleAnnunciator.thr` | `poll.ship.warning_lights.thr` | Panneau des voyants (`lights`) |
+| `VehicleAnnunciator.shld` | `poll.ship.warning_lights.shld` | Panneau des voyants (`lights`) |
+| `VehicleAnnunciator.cool` | `poll.ship.warning_lights.cool` | Panneau des voyants (`lights`) |
+| `VehicleAnnunciator.qdrv` | `poll.ship.warning_lights.qdrv` | Panneau des voyants (`lights`) |
+| `VehicleAnnunciator.radr` | `poll.ship.warning_lights.radr` | Panneau des voyants (`lights`) |
+| `VehicleAnnunciator.prox` | `poll.ship.warning_lights.prox` | Panneau des voyants (`lights`) |
+| `VehicleAnnunciator.hit` | `poll.ship.warning_lights.hit` | Panneau des voyants (`lights`) |
+| `VehicleAnnunciator.misl` | `poll.ship.warning_lights.misl` | Panneau des voyants (`lights`) |
+| `VehicleState.name` | `poll.ship.name` | Nom et constructeur du vaisseau (`ship`) |
+| `VehicleState.class_name` | `poll.ship.class_name` | Nom et constructeur du vaisseau (`ship`) |
+| `VehicleState.manufacturer` | `poll.unverified.ship.manufacturer` | ignoré : Le jeu ne remplit jamais le constructeur : le serveur le déduit du préfixe de classe (`ship.manufacturer_derived`) et la vue montre celui-là. |
+| `VehicleState.type` | `poll.ship.type` | ignoré : Toujours la même valeur pour les vaisseaux qui envoient des données de véhicule (les véhicules terrestres n'en envoient pas). |
+| `VehicleState.lights_enabled` | `poll.ship.lights_on` | Phares du vaisseau (`headlights`) |
+| `VehicleState.doors` | `poll.unverified.ship.doors` | Carte des valeurs non vérifiées (`unverified`) |
+| `VehicleState.annunciators` | `poll.ship.warning_lights` | Panneau des voyants (`lights`) |
+| `VehicleState.flight` | `poll.ship.instruments` | Cadran de vitesse (`speed`) |
+| `VehicleState.power` | `poll.ship.power` | Schéma d'alimentation (`power`) |
+| `VehicleFrame.state` | `poll.ship` | Nom et constructeur du vaisseau (`ship`) |
+| `WeaponsSettings.fallback_convergence_distance` | ignoré : Une préférence d'affichage ou de visée du joueur, sans utilité sur un tableau de bord ; la première trame après un changement de siège peut aussi porter des réglages périmés. | - |
+| `WeaponsSettings.magnified_ui` | ignoré : Une préférence d'affichage ou de visée du joueur, sans utilité sur un tableau de bord ; la première trame après un changement de siège peut aussi porter des réglages périmés. | - |
+| `WeaponsSettings.precision_lines` | ignoré : Une préférence d'affichage ou de visée du joueur, sans utilité sur un tableau de bord ; la première trame après un changement de siège peut aussi porter des réglages périmés. | - |
+| `WeaponsSettings.staggered_fire` | ignoré : Une préférence d'affichage ou de visée du joueur, sans utilité sur un tableau de bord ; la première trame après un changement de siège peut aussi porter des réglages périmés. | - |
+| `WeaponsSettings.use_lag_pips` | ignoré : Une préférence d'affichage ou de visée du joueur, sans utilité sur un tableau de bord ; la première trame après un changement de siège peut aussi porter des réglages périmés. | - |
+| `WeaponsSettings.use_single_pips` | ignoré : Une préférence d'affichage ou de visée du joueur, sans utilité sur un tableau de bord ; la première trame après un changement de siège peut aussi porter des réglages périmés. | - |
+| `WeaponsSettings.use_fading_pips` | ignoré : Une préférence d'affichage ou de visée du joueur, sans utilité sur un tableau de bord ; la première trame après un changement de siège peut aussi porter des réglages périmés. | - |
+| `WeaponsSettings.gimbals_locked` | `poll.weapons.gimbals_locked` | Verrouillage des cardans (`gimbals`) |
+| `WeaponState.name` | `poll.weapons.weapons[].name` | Armes du poste (`weapons`) |
+| `WeaponState.is_powered` | `poll.weapons.weapons[].powered` | Armes du poste (`weapons`) |
+| `WeaponState.ready_to_fire` | `poll.weapons.weapons[].ready` | Armes du poste (`weapons`) |
+| `WeaponState.contained_in_preset` | ignoré : Les présélections d'armes ne sont pas dans le flux (test terrain) : non exposées. | - |
+| `Countermeasures.type` | `poll.weapons.countermeasures` | Contre-mesures (`cm`) |
+| `Countermeasures.amount` | `poll.weapons.countermeasures.decoy` | Contre-mesures (`cm`) |
+| `WeaponsFrame.settings` | `poll.weapons.gimbals_locked` | Verrouillage des cardans (`gimbals`) |
+| `WeaponsFrame.preset_index` | ignoré : Les présélections d'armes ne sont pas dans le flux (test terrain) : non exposées. | - |
+| `WeaponsFrame.preset_name` | ignoré : Les présélections d'armes ne sont pas dans le flux (test terrain) : non exposées. | - |
+| `WeaponsFrame.weapons` | `poll.weapons.weapons` | Armes du poste (`weapons`) |
+| `WeaponsFrame.countermeasures` | `poll.weapons.countermeasures` | Contre-mesures (`cm`) |
+| `GameEvent.type` | `state.game_events[]` | ignoré : Le jeu n'a envoyé aucun événement exploitable pendant le test terrain ; les noms de la dernière trame restent dans `sc_live_state` et rien n'est construit dessus. |
+| `EventsFrame.events` | `state.game_events` | ignoré : Le jeu n'a envoyé aucun événement exploitable pendant le test terrain ; les noms de la dernière trame restent dans `sc_live_state` et rien n'est construit dessus. |
+| `AxisFeedback.resistance` | ignoré : Retour de force des manches : absent du flux (test terrain) et sans utilité ici. | - |
+| `AxisFeedback.damping` | ignoré : Retour de force des manches : absent du flux (test terrain) et sans utilité ici. | - |
+| `FeedbackAxes.x` | ignoré : Retour de force des manches : absent du flux (test terrain) et sans utilité ici. | - |
+| `FeedbackAxes.y` | ignoré : Retour de force des manches : absent du flux (test terrain) et sans utilité ici. | - |
+| `FeedbackAxes.z` | ignoré : Retour de force des manches : absent du flux (test terrain) et sans utilité ici. | - |
+| `ForceFeedbackFrame.angular` | ignoré : Retour de force des manches : absent du flux (test terrain) et sans utilité ici. | - |
+| `ForceFeedbackFrame.linear` | ignoré : Retour de force des manches : absent du flux (test terrain) et sans utilité ici. | - |
+| `ForceFeedbackFrame.gunfire` | ignoré : Retour de force des manches : absent du flux (test terrain) et sans utilité ici. | - |
+| `ForceFeedbackFrame.stick_shaker` | ignoré : Retour de force des manches : absent du flux (test terrain) et sans utilité ici. | - |
+| `ActorVitals.health` | `poll.pilot.health` | Santé (`health`) |
+| `ActorVitals.oxygen` | `poll.unverified.pilot.oxygen` | Carte des valeurs non vérifiées (`unverified`) |
+| `ActorVitals.hunger` | `poll.pilot.hunger` | Faim (`hunger`) |
+| `ActorVitals.thirst` | `poll.pilot.thirst` | Soif (`thirst`) |
+| `ActorVitals.body_temperature` | `poll.unverified.pilot.body_temperature` | Carte des valeurs non vérifiées (`unverified`) |
+| `ActorVitals.heart_rate` | `poll.pilot.heart_rate_bpm` | Rythme cardiaque (`heart`) |
+| `ActorVitals.gravity` | `poll.pilot.gravity_g` | Gravité (`gravity`) |
+| `ActorVitals.pressure` | `poll.pilot.pressure` | Pression (`pressure`) |
+| `ActorVitals.intoxication_level` | `poll.unverified.pilot.intoxication_level` | Carte des valeurs non vérifiées (`unverified`) |
+| `ActorEnvironment.external_temperature` | `poll.pilot.outside_temperature_c` | Température extérieure (`temperature`) |
+| `ActorEnvironment.ambient_radiation_rate` | `poll.unverified.pilot.ambient_radiation_rate` | Carte des valeurs non vérifiées (`unverified`) |
+| `ActorEnvironment.breathable_atmosphere` | `poll.pilot.breathable_atmosphere` | Atmosphère respirable (`air`) |
+| `ActorState.locomotion` | `poll.pilot.locomotion` | Position du corps (`locomotion`) |
+| `ActorState.crew_role` | `poll.pilot.crew_role` | Rôle et siège (`crew`) |
+| `ActorState.seat_name` | `poll.pilot.seat` | Rôle et siège (`crew`) |
+| `ActorState.uec_balance` | `poll.balance.uec` | Solde (masqué par défaut) (`balance`) |
+| `ActorFrame.vitals` | `poll.pilot` | Santé (`health`) |
+| `ActorFrame.state` | `poll.pilot.locomotion` | Position du corps (`locomotion`) |
+| `ActorFrame.environment` | `poll.pilot.outside_temperature_c` | Température extérieure (`temperature`) |
+| `TurretFrame.light_amplification` | ignoré : Sièges de tourelle seulement, jamais vérifié, sans utilité sur un tableau de bord. | - |
+| `TelemetryStreamResponse.vehicle` | `poll.ship` | Nom et constructeur du vaisseau (`ship`) |
+| `TelemetryStreamResponse.weapons` | `poll.weapons` | Armes du poste (`weapons`) |
+| `TelemetryStreamResponse.events` | `state.game_events` | ignoré : Le jeu n'a envoyé aucun événement exploitable pendant le test terrain ; les noms de la dernière trame restent dans `sc_live_state` et rien n'est construit dessus. |
+| `TelemetryStreamResponse.actor` | `poll.pilot` | Santé (`health`) |
+| `TelemetryStreamResponse.force_feedback` | ignoré : Retour de force des manches : absent du flux (test terrain) et sans utilité ici. | - |
+| `TelemetryStreamResponse.turret` | ignoré : Sièges de tourelle seulement, jamais vérifié, sans utilité sur un tableau de bord. | - |
+
 ## Ce que les outils en font
 
 | Outil | Listé | Rôle |

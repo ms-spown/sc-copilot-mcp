@@ -25,6 +25,19 @@ describe("Feature: the poll answer carries the conditions of the moment", () => 
     expect(off.text).toBe("The shields were powered off (quantum mode).");
   });
 
+  it("Given unverified values, Then the poll labels them under `unverified` and leaves out the defaults of fields never filled", () => {
+    const s = new Scenario();
+    s.advanceTo(30_000);
+    const p = s.poll(false);
+    // The scenario sends no oxygen, intoxication or radiation: nothing is invented for the pilot.
+    expect(p.unverified.pilot).toBeUndefined();
+    expect(p.unverified.ship).toEqual({
+      flight_settings: { spacebreak_enables_boost: false, g_safe_disabled_by_boost: false },
+    });
+    expect(p.pilot).not.toHaveProperty("unverified");
+    expect(p.ship).not.toHaveProperty("unverified");
+  });
+
   it("Given the stream is cut, Then no stale condition is offered as current", () => {
     const s = new Scenario();
     s.advanceTo(53_000);

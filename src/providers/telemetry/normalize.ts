@@ -290,8 +290,17 @@ function readShip(vehicle: Decoded): Ship | null {
     const vtol = enm(flightState, "vtol");
     if (gear) ship.gear = gear;
     if (vtol) ship.vtol = vtol;
+    // Sent only by ships that transform; never seen in the field test.
+    const transformation = enm(flightState, "transformation");
+    if (transformation) ship.unverified["transformation"] = transformation;
   }
   if (settings) {
+    // The two flight settings that explain how boost interacts with the flight modes. The other booleans of the
+    // section (HUD labels, course prediction, light amplification...) are display preferences: see coverage.ts.
+    ship.unverified["flight_settings"] = {
+      spacebreak_enables_boost: bool(settings, "ifcs_spacebreak_enables_boost"),
+      g_safe_disabled_by_boost: bool(settings, "ifcs_g_safe_disabled_by_boost"),
+    };
     ship.flight_modes = {};
     for (const key of MODES) {
       const a = msg(settings, key);
