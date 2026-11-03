@@ -22,11 +22,12 @@ touche, n'automatise rien et n'écrit jamais dans le dossier du jeu. Le seul fic
 
 Chaque réponse indique d'où proviennent les données. Les résultats d'outils ont la forme `{ provenance, data }` :
 
-| Champ `provenance`        | Signification                                                                                                                            |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `source`, `kind`          | Quelle source, et s'il s'agit de `datamined`, `crowdsourced`, `editorial`, `local_log`, `user` ou `computed`                             |
-| `channel`, `game_version` | `live`, `ptu` ou `unknown` (jamais deviné), ainsi que le numéro de build lorsque la source le fournit                                    |
-| `fetched_at`, `data_age`  | Date de récupération des données et leur ancienneté                                                                                      |
+| Champ `provenance`        | Signification                                                                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `source`, `kind`          | Quelle source, et s'il s'agit de `datamined`, `crowdsourced`, `editorial`, `local_log`, `user` ou `computed`                                                        |
+| `channel`, `game_version` | `live`, `ptu` ou `unknown` (jamais deviné), ainsi que le numéro de build lorsque la source le fournit                                                               |
+| `fetched_at`, `cache_age` | Date de récupération des données par ce serveur et ancienneté de cette récupération (un hit de cache garde la date d'origine)                                       |
+| `data_age`, `data_date`   | Ancienneté des DONNÉES, d'après les dates fournies par la source (dates des lignes UEX, date du canal SCMDB) ; `null` si aucune, `data_age_note` en donne la raison |
 | `trust`                   | `untrusted_text` pour le texte rédigé par des joueurs ou éditeurs web : nettoyé, raccourci, à lire comme donnée et jamais comme consigne |
 | `stale`, `stale_reason`   | Présents uniquement lorsque la requête en direct a échoué et que la dernière copie valide en cache a été servie                          |
 
@@ -164,8 +165,8 @@ du format ; `npm run check:sources` vérifie que l'en-tête se parse toujours.
 
 ## Limites à connaître
 
-- **Les prix participatifs peuvent être erronés.** Lisez `data_age` et vérifiez la cohérence d'une route avant de
-  décoller avec 696 SCU.
+- **Les prix participatifs peuvent être erronés.** Lisez `data_age` (`null` signifie qu'UEX n'a fourni aucune date) et le `updated_at` de chaque ligne, et vérifiez la
+  cohérence d'une route avant de décoller avec 696 SCU.
 - **L'historique des patchs est succinct.** Le dépôt de dumps ne conserve actuellement que deux builds non étiquetés, de
   sorte que `sc_diff_versions` a peu d'éléments à comparer. `scmdb_changes` est l'outil recommandé pour savoir « ce qui
   a changé ».

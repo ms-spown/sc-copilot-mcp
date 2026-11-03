@@ -46,7 +46,7 @@ beforeEach(() => {
 });
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-const BOM = "﻿";
+const BOM = "\uFEFF";
 const awkward = (nl: string, indent: string, bom = "") =>
   `${bom}{${nl}${indent}"big": 12345678901234567890,${nl}${indent}"pi": 1.0,${nl}${indent}"name": "Rémi — ☃",${nl}${indent}"mcpServers": {${nl}${indent}${indent}"sc-copilot": {${nl}${indent}${indent}${indent}"command": "node",${nl}${indent}${indent}${indent}"env": {${nl}${indent}${indent}${indent}${indent}"2": "b",${nl}${indent}${indent}${indent}${indent}"1": "a",${nl}${indent}${indent}${indent}${indent}"SCMCP_PROFILES": "core"${nl}${indent}${indent}${indent}}${nl}${indent}${indent}}${nl}${indent}}${nl}}${nl}`;
 

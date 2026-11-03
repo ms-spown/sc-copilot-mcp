@@ -170,7 +170,7 @@ export function planEnvKey(
   const merged = { ...config, mcpServers: { ...servers, [name]: nextEntry } };
 
   // Edit the text itself, then prove the result means exactly what the object-level change would.
-  const bom = rawConfig !== null && stripBom(rawConfig) !== rawConfig ? "﻿" : "";
+  const bom = rawConfig !== null && stripBom(rawConfig) !== rawConfig ? "\uFEFF" : "";
   let edited: string | null;
   try {
     edited = editEnvKeyText(stripBom(rawConfig ?? ""), name, key, value);

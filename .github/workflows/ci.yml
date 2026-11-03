@@ -49,6 +49,9 @@ jobs:
       - run: npm test
       # tsc is both the build and the type gate.
       - run: npm run build
+      # Hidden characters, comments, unreviewed link hosts and translation drift in the files
+      # Claude reads (needs dist/, hence after the build).
+      - run: npm run check:docs
 
   audit:
     name: Dependency audit
