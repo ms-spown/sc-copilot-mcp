@@ -47,23 +47,74 @@ Changes to the check itself (`src/docs/docsSafety.ts`, `scripts/check-docs-safet
 tool descriptions in `src/tools/`, the prompts in `src/prompts.ts`, `CLAUDE.md` and the README tell the model
 what to do. A booby-trapped contribution there would be executed by the model of every user. Therefore:
 
-- No invisible or look-alike characters: no zero-width, bidirectional-control, Unicode tag or variation-selector
-  characters, no control characters other than tab and line breaks, no word mixing Latin letters with Cyrillic
-  or Greek ones.
+- No invisible or look-alike characters, in any tracked text file: no zero-width, bidirectional-control, Unicode
+  tag or variation-selector characters, no control characters other than tab and line breaks, no carriage
+  return without a line feed (CRLF line endings are fine). No letter outside the Latin script (Cyrillic, Greek,
+  Armenian, Cherokee, Han...), whether a word mixes scripts or is entirely made of them, and no character that
+  Unicode compatibility folding (NFKC) turns into another one: fullwidth and mathematical letters, circled
+  letters, a no-break space... Only the ellipsis is tolerated. A test that needs such a sample builds it from
+  code points (`String.fromCodePoint`). A file that truly needs another script is registered with a reason in
+  `ALLOWED_NON_LATIN_FILES` (none today).
 - No HTML comments and no active HTML in Markdown (script, iframe, object, embed, style, form, input, meta,
-  link, base, svg, event-handler attributes, `javascript:`, `data:` or `vbscript:` links). Say it in plain,
-  visible text. The centred paragraph, link and image of the README are the only HTML in use.
+  link, base, svg, event-handler, `style` and `hidden` attributes, `javascript:`, `data:` or `vbscript:` links).
+  Say it in plain, visible text. The centred paragraph, link and image of the README are the only HTML in use.
+  The same goes for every extension that is read as prose (`.md`, `.markdown`, `.mdx`, `.mdc`, `.txt`, `.html`...,
+  in any case), for prompts and tool descriptions under `src/tools/`, and for YAML and JSON files.
+- No invisible Markdown either: a link definition (`[label]: target`) must be used, must point to a URL or a
+  file of the repository, and carries no title; a link has no title (`[x](url "text")`). That is how a Markdown
+  comment is written.
 - A link or image to a host that is not already used needs a review. Hosts are listed in
   `ALLOWED_LINK_HOSTS` in `src/docs/docsSafety.ts`; justify the new link in the pull request, and add the host
-  there in the same change.
+  there in the same change. github.com is allowed under reviewed projects only (`ALLOWED_PATH_PREFIXES`:
+  this repository, upstream, the data and credit projects). A relative link must name a file or folder that
+  exists. Credentials in a URL, a port, a punycode (`xn--`) host and any scheme but https are refused, and every
+  host is compared in lower case. Bare `www.` addresses, e-mail addresses and `mailto:` are links too: put them
+  in a code span. All of this applies to the URLs in code under `src/`, where the hosts the server talks to
+  (`ALLOWED_API_HOSTS`) are also accepted, except in prompts and tool descriptions.
+- `package.json` scripts and `.claude/` (hooks, settings, commands) are reviewed by a human: the check reports a
+  script that contains a URL or a network command (`curl`, `wget`, `Invoke-WebRequest`, `http`...), an npm
+  lifecycle script (`postinstall`, `prepare`, `pre*`/`post*` of another script), any script or hook setting
+  under `.claude/`, and any lock file entry that does not come from the npm registry over https. A pull
+  request that adds a hook edits the check, which puts it in front of a maintainer.
 - No new dependency without a written justification, never one that needs an install script or ships native
-  code. The project installs with `npm ci --ignore-scripts` and that must keep working.
+  code **in production**. The production dependencies (`dependencies` in `package.json`) contain no native code
+  and no install script. The development tools do: `@rolldown/binding-*` (Vite's bundler, used by Vitest),
+  `lightningcss-*` and, on macOS, `fsevents` (the only one with an install script, which `--ignore-scripts`
+  skips). They are prebuilt binaries published as optional packages per platform (see `package-lock.json`,
+  entries marked `dev`); they are never part of what users install, but the bundler binary does run on a
+  developer's machine and in CI when the tests start. The project installs with `npm ci --ignore-scripts` and
+  that must keep working.
 - No new network host outside `ALLOWED_HOSTS` (`src/core/http.ts`), no scraping, no remote write.
 - No secret, token, personal data or real game data (never a real `Game.log`). Fixtures are tiny and hand-made.
 - Third-party text shown to the model is marked `untrusted_text` (see SECURITY.md).
 
 `npm run check:docs` enforces the mechanical part of these rules. It runs in the tests and in CI. It narrows the
 hiding places; it does not replace the review.
+
+### What `check:docs` does NOT detect
+
+Be honest about its reach: it looks for places where text hides, not for hostile text.
+
+- **Hostile text written in plain sight.** A sentence in the README, in the Claude block or in a tool
+  description that tells the model to do something harmful, in clear and correctly spelled words, passes. Only a
+  human reading the diff catches it. The same goes for a misleading but visible link text or a plausible lie
+  in the documentation.
+- **A reviewed host used badly.** A link to an allowed host, or to a path under an allowed GitHub project, can
+  still point to content that someone else controls there (an issue, a wiki page, a release asset).
+- **URLs assembled at run time or by concatenation**, and content fetched at run time (UEX, wiki, SCMDB, patch
+  dumps): that is what `untrusted_text` and the host allowlist in `src/core/http.ts` are for, not this check.
+- **Files with no extension** (`LICENSE`, `NOTICE`): they get the character rules only, no link or comment
+  rules. The same goes for `scripts/*.mjs` and other root JavaScript, `vitest.config.ts` and `eslint.config.mjs`:
+  their strings are not link-checked, and `npm run` scripts that call them are not read for what they do.
+- **Test files and test helpers** (`*.test.ts`, `testing/` folders): they hold hostile samples on purpose and are
+  exempt from the link, comment and tag rules (the character rules apply to them).
+- **Markup in code that is not model-facing.** Providers, core and install code are checked for link hosts,
+  schemes and look-alikes, not for HTML comments or tags.
+- **Look-alikes that are really Latin or Common**, outside the blocks it knows (IPA, phonetic and extended Latin
+  blocks): the Latin script allows thousands of letters.
+- **Binary content** inside the known image formats, and anything in a file the repository does not track.
+- **Behaviour.** It does not run code, and does not judge whether a dependency, a hook or a script does what
+  it claims.
 
 ## Translations
 

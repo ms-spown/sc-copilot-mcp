@@ -36,6 +36,40 @@ points and uses no network).
 - **A collection name could leave the build cache folder** (`ships__../../../x` in `sc_diff_versions`). It is now
   restricted to letters, digits, `_`, `-` and `.` without `..`, and the resolved path must stay inside the cache;
   the dataset name of `collectLabels` gets the same check as the other local readers.
+- **`npm run check:docs` hardened** after an independent audit executed bypasses that the check accepted:
+  - Invisible Markdown: a link definition (`[//]: # (text)`, `[x]: <>`) must be used, point to a reviewed URL or a
+    file of the repository, and carry no title; links and images with a title are refused.
+  - Every link target is judged: bare `www.` addresses, e-mail addresses, `<...>` links, images, `srcset`, and URLs
+    in HTML attributes; a relative link must name a file or folder that exists.
+  - A lone carriage return (it hides text in a terminal) is refused; CRLF stays allowed.
+  - Look-alike letters: any letter outside the Latin script (whole words included), any character that NFKC folds
+    into another (fullwidth, mathematical, circled...), Latin look-alike blocks, non-ASCII digits and slash-like
+    punctuation are refused in every tracked text file (the ellipsis is tolerated). No file needs an exception.
+  - Extensions are compared without regard to case and cover `.markdown`, `.mdx`, `.mdc` and other prose formats;
+    translations too.
+  - github.com is allowed under reviewed project prefixes only (`ALLOWED_PATH_PREFIXES`), not for any path.
+    Credentials in a URL, ports, punycode hosts and non-https schemes are refused; hosts are compared in lower case.
+  - YAML and JSON files, `.claude/` and all of `src/` (tests and `testing/` helpers aside) are now checked for link
+    hosts and look-alikes; prompts, tools and configuration also for comments and tags. The lock file is checked for
+    entries that do not come from the npm registry over https.
+  - `package.json` scripts with a URL, a network command or an npm lifecycle hook, and any hook, script or
+    setting under `.claude/`, are reported for review.
+  - CONTRIBUTING.md lists what the check does not detect, and no longer says "no native code" without nuance:
+    production dependencies have none, development tools ship prebuilt native binaries.
+- **Live telemetry reader hardened against a local program that pretends to be the game** (port 2942 has no
+  authentication). Found by an independent audit that ran the attacks:
+  - A 1 MiB frame of empty weapons gave 500 000 entries (250 ms, 65 MB of heap) and a 21 MB `sc_live_state` answer.
+    Now at most 64 weapons, 16 countermeasure entries and 32 game events are decoded per frame (the surplus is
+    ignored and noted as an anomaly), a frame with more than 5 000 fields is refused, and `sc_live_state` /
+    `sc_live_events` cut their lists under 40 000 characters and say so. The 1 MiB message limit is kept.
+  - A flood of empty messages used about half a core. Frames are now decoded at most about 33 times a second: the
+    newest frame of a burst is kept and handled in the next slot, all frames are still counted in
+    `frames_received`. The game's ~17 frames a second are unaffected.
+  - The gRPC framer copied the whole buffer on every chunk. It now keeps a list of chunks and joins them once per
+    message (100 000 one-byte chunks: well under a second).
+  - Event data is cut to 80 characters per value (the ring already held 200 events and names are filtered).
+  - The handler tracks 8 countermeasure kinds at most (a program could invent a new one per frame).
+  - Limits are documented in `docs/TELEMETRY.md` and `SECURITY.md`.
 
 ### Fixed
 - Tools no longer show full local paths (they hold the Windows user name): `scw_snapshot_save`, `scw_snapshot_list`,
