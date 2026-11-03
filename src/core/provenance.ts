@@ -126,7 +126,7 @@ export interface Provenance {
 }
 
 export const DATA_AGE_UNKNOWN_DEFAULT =
-  "the source does not date what this tool returns; cache_age only says when this server fetched it";
+  "this tool reads no date from the source for what it returns; cache_age only says when this server fetched it";
 
 /**
  * The oldest fetch sets fetched_at and cache_age: an answer was retrieved as long ago as its

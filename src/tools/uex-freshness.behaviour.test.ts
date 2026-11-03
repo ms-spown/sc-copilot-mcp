@@ -181,7 +181,7 @@ describe("Feature: UEX prices say which patch they are from and how old they are
       });
       const { provenance } = body(await registry.call("uex_get_terminals", {}));
       expect(provenance.data_age).toBeNull();
-      expect(provenance.data_age_note).toMatch(/does not date/);
+      expect(provenance.data_age_note).toMatch(/reads no date/);
     });
   });
 
@@ -201,6 +201,30 @@ describe("Feature: UEX prices say which patch they are from and how old they are
       expect(names(data.buy_locations.rows).slice(0, 2)).toEqual(["T0", "T1"]);
       expect(names(data.sell_locations.rows).slice(0, 2)).toEqual(["T0", "T1"]);
       expect(data.buy_locations.sorted_by).toMatch(/cheapest first/);
+    });
+
+    it("Given wide real-sized rows and the largest limit on both sides, Then the answer is still complete JSON, not a 'too large' error", async () => {
+      const wide = Array.from({ length: 120 }, (_, i) => ({
+        ...row(`Terminal number ${i} of the Stanton system`, {
+          price_buy: 100 + i,
+          price_sell: 1000 - i,
+          game_version: "4.10.2",
+          date_modified: ago(HOUR),
+        }),
+        ...Object.fromEntries(
+          Array.from({ length: 22 }, (_, k) => [`field_${k}_name`, `some plausible string ${k}`]),
+        ),
+      }));
+      const registry = world({ ...live, "/commodities_prices": { data: wide } });
+      const result = await registry.call("uex_get_commodity_prices", {
+        commodity_name: "RMC",
+        limit: 9999,
+      });
+      const { data } = body(result);
+      expect(data.error).toBeUndefined();
+      expect(data.note).toMatch(/to fit the output size/);
+      expect(data.buy_locations.shown).toBeGreaterThan(5);
+      expect(data.buy_locations.total).toBe(120);
     });
 
     it("Given side = sell and a limit of 3, Then only the sell list comes back, 3 rows, best price first", async () => {

@@ -15,6 +15,21 @@ describe("collectStatus", () => {
     expect(out.warnings).toEqual([]);
   });
 
+  it("says how old a source's own data date is, apart from when we asked", async () => {
+    const out = await collectStatus(
+      [
+        ok("scmdb", "4.10.2-live.12913470", {
+          live: { version: "x", as_of: "2026-10-13T19:26:16Z" },
+        }),
+      ],
+      NOW,
+    );
+    expect(out.sources[0]).toMatchObject({
+      cache_age: "2m",
+      live: { as_of: "2026-10-13T19:26:16Z", as_of_age: "20d" },
+    });
+  });
+
   it("treats 4.10.2 and 4.10.2-LIVE.12881860 as the same release", async () => {
     const out = await collectStatus([ok("uex", "4.10.2"), ok("wiki", "4.10.2-LIVE.12881860")], NOW);
     expect(out.warnings).toEqual([]);

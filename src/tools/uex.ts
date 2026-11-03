@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { fetchWithCache } from "../core/cache.js";
-import { formatOutput, formatOutputRaw, optimizeData } from "../core/format.js";
+import { formatOutput, formatOutputRaw, MAX_OUTPUT_CHARS, optimizeData } from "../core/format.js";
 import { resolveShip } from "../providers/fleet/resolve.js";
 import { reportRowDates, rowUpdatedAt, splitByVersion } from "../providers/uex/freshness.js";
 import type { HttpClient } from "../core/http.js";
@@ -147,62 +147,78 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
           ...(optimizeData(r) as Record<string, unknown>),
           updated_at: rowUpdatedAt(r),
         });
-        const ranked = (field: "price_buy" | "price_sell", cheapestFirst: boolean) => {
-          const all = considered
+        const ranked = (field: "price_buy" | "price_sell", cheapestFirst: boolean) => ({
+          sorted_by: `${field}, ${cheapestFirst ? "cheapest first" : "highest first"}`,
+          all: considered
             .filter((r) => amount(r, field) > 0)
             .sort((a, b) =>
               cheapestFirst
                 ? amount(a, field) - amount(b, field)
                 : amount(b, field) - amount(a, field),
-            );
-          const rows = all.slice(0, cap);
-          return {
-            total: all.length,
-            shown: rows.length,
-            sorted_by: `${field}, ${cheapestFirst ? "cheapest first" : "highest first"}`,
-            rows,
-          };
-        };
+            ),
+        });
         const want = side ?? "both";
         const buy = want === "sell" ? null : ranked("price_buy", true);
         const sell = want === "buy" ? null : ranked("price_sell", false);
 
-        const shownRows = [...(buy?.rows ?? []), ...(sell?.rows ?? [])];
-        reportRowDates([...new Set(shownRows)], "price rows");
+        const render = (n: number) => {
+          const list = (l: NonNullable<typeof buy>) => {
+            const rows = l.all.slice(0, n);
+            return { total: l.all.length, shown: rows.length, sorted_by: l.sorted_by, rows };
+          };
+          const b = buy ? list(buy) : null;
+          const sl = sell ? list(sell) : null;
+          return { b, sl };
+        };
+        // Real UEX rows are wide: shrink the lists until the answer fits the output budget,
+        // and say so, rather than hand back a broken or "too large" payload.
+        const compose = (n: number) => {
+          const { b, sl } = render(n);
+          const shownRows = [...(b?.rows ?? []), ...(sl?.rows ?? [])];
+          return {
+            shownRows,
+            payload: {
+              commodity: commodity_name,
+              rows_from_uex: located.length,
+              game_version_reference: split.reference
+                ? {
+                    version: split.reference,
+                    source:
+                      split.referenceSource === "uex_live"
+                        ? "UEX LIVE version"
+                        : "newest version found in the rows (UEX did not give LIVE)",
+                  }
+                : null,
+              excluded_older_version: {
+                count: include_older_versions ? 0 : split.older.length,
+                versions: include_older_versions ? {} : olderVersions,
+                ...(split.older.length > 0
+                  ? {
+                      note: include_older_versions
+                        ? `${split.older.length} rows from an older version are INCLUDED (include_older_versions); read each row's game_version.`
+                        : `${split.older.length} rows from an older game version were left out; set include_older_versions to see them.`,
+                    }
+                  : {}),
+              },
+              ...(n < cap
+                ? { note: `Lists cut to ${n} rows each (asked ${cap}) to fit the output size.` }
+                : {}),
+              ...(b ? { buy_locations: { ...b, rows: b.rows.map(view) } } : {}),
+              ...(sl ? { sell_locations: { ...sl, rows: sl.rows.map(view) } } : {}),
+            },
+          };
+        };
+        let n = cap;
+        let composed = compose(n);
+        while (n > 1 && JSON.stringify(composed.payload, null, 2).length > MAX_OUTPUT_CHARS) {
+          n = Math.max(1, Math.floor(n / 2));
+          composed = compose(n);
+        }
+        reportRowDates([...new Set(composed.shownRows)], "price rows");
 
         return {
-          content: [
-            {
-              type: "text",
-              // Not formatOutput: a count of 0 (nothing excluded) is information here.
-              text: formatOutputRaw({
-                commodity: commodity_name,
-                rows_from_uex: located.length,
-                game_version_reference: split.reference
-                  ? {
-                      version: split.reference,
-                      source:
-                        split.referenceSource === "uex_live"
-                          ? "UEX LIVE version"
-                          : "newest version found in the rows (UEX did not give LIVE)",
-                    }
-                  : null,
-                excluded_older_version: {
-                  count: include_older_versions ? 0 : split.older.length,
-                  versions: include_older_versions ? {} : olderVersions,
-                  ...(split.older.length > 0
-                    ? {
-                        note: include_older_versions
-                          ? `${split.older.length} rows from an older version are INCLUDED (include_older_versions); read each row's game_version.`
-                          : `${split.older.length} rows from an older game version were left out; set include_older_versions to see them.`,
-                      }
-                    : {}),
-                },
-                ...(buy ? { buy_locations: { ...buy, rows: buy.rows.map(view) } } : {}),
-                ...(sell ? { sell_locations: { ...sell, rows: sell.rows.map(view) } } : {}),
-              }),
-            },
-          ],
+          // Not formatOutput: a count of 0 (nothing excluded) is information here.
+          content: [{ type: "text", text: JSON.stringify(composed.payload, null, 2) }],
         };
       },
     },
