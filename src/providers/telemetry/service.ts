@@ -6,6 +6,7 @@ import {
   type TelemetryState,
   type Thresholds,
 } from "./handler.js";
+import { FrameGate } from "./frameGate.js";
 import { NOT_IN_STREAM, normalizeFrame } from "./normalize.js";
 import {
   GAME_ENDPOINT,
@@ -41,8 +42,12 @@ export interface TelemetryServiceOptions {
   now?: () => number;
   gameLogHint?: () => Promise<GameLogHint | null>;
   thresholds?: Thresholds;
+  /** Frames closer together than this are coalesced (the newest wins). Default 30; tests may pass 0 for no limit. */
+  frameIntervalMs?: number;
 }
 
+/** About 33 frames a second at most are decoded; the game sends about 17, so nothing changes in normal use. */
+export const DEFAULT_FRAME_INTERVAL_MS = 30;
 export const DEFAULT_IDLE_MS = 5 * 60 * 1000;
 export const DEFAULT_LIVE_WINDOW_MS = 5000;
 /** This many bad frames in a row, and the stream is reported incompatible. */
@@ -104,6 +109,7 @@ export class TelemetryService {
   private readonly idleMs: number;
   private readonly liveWindowMs: number;
   private readonly thresholds: Thresholds;
+  private readonly gate: FrameGate<Uint8Array>;
 
   constructor(private options: TelemetryServiceOptions = {}) {
     this.now = options.now ?? Date.now;
@@ -111,6 +117,15 @@ export class TelemetryService {
     this.liveWindowMs = options.liveWindowMs ?? DEFAULT_LIVE_WINDOW_MS;
     this.thresholds = options.thresholds ?? DEFAULT_THRESHOLDS;
     this.handler = new TelemetryHandler(this.thresholds, this.events);
+    this.gate = new FrameGate<Uint8Array>(
+      options.frameIntervalMs ?? DEFAULT_FRAME_INTERVAL_MS,
+      this.now,
+      (bytes, t, deferred) => {
+        const ok = this.process(bytes, t);
+        // A frame that waited was already counted when it arrived.
+        if (ok && !deferred) this.countFrame(t);
+      },
+    );
   }
 
   /** Lazy start and keep-alive: every request that needs the stream calls this. */
@@ -151,6 +166,7 @@ export class TelemetryService {
     this.idleTimer = null;
     const reader = this.reader;
     this.reader = null;
+    this.gate.clear();
     this.readerState = "stopped";
     this.everLive = false;
     if (reader) await reader.stop();
@@ -163,6 +179,7 @@ export class TelemetryService {
     if (state === "connected" && previous !== "live") {
       // A new stream (game started, or restarted): fresh baselines, same event ring.
       this.handler = new TelemetryHandler(this.thresholds, this.events);
+      this.gate.clear(); // a frame of the old stream must not land in the new state
       this.badStreak = 0;
       this.uecBaseline = null;
       if (this.everLive) this.reconnects++;
@@ -172,6 +189,17 @@ export class TelemetryService {
 
   private onMessage(bytes: Uint8Array): void {
     const t = this.now();
+    // Counted and timestamped on arrival even when decoding waits for its slot: the stream is alive.
+    if (!this.gate.offer(bytes, t)) this.countFrame(t);
+  }
+
+  private countFrame(t: number): void {
+    this.frames++;
+    this.lastFrameAt = t;
+  }
+
+  /** Decodes one message into the state. False when it is not a well-formed message. */
+  private process(bytes: Uint8Array, t: number): boolean {
     try {
       const { frame, report } = decodeFrame(bytes);
       for (const u of report.unknown) addBounded(this.unknown, u);
@@ -188,14 +216,13 @@ export class TelemetryService {
           this.uecBaseline = { start: balance, since: t };
         }
       }
+      return true;
     } catch {
       // Not a well-formed message. Never log the bytes.
       this.rejected++;
       this.badStreak++;
-      return;
+      return false;
     }
-    this.frames++;
-    this.lastFrameAt = t;
   }
 
   private async refreshHint(): Promise<void> {

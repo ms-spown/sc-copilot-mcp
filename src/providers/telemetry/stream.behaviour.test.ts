@@ -46,6 +46,9 @@ function service(
   const s = new TelemetryService({
     endpointForTests: { host: "127.0.0.1", port: g.port },
     reader: FAST,
+    // These tests send frames back to back and count each one; the frame rate limit has its own tests
+    // (bounds.behaviour.test.ts), which run with the production default.
+    frameIntervalMs: 0,
     ...extra,
   });
   cleanup.push(() => s.stop());
