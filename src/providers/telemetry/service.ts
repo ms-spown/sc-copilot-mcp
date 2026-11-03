@@ -52,6 +52,10 @@ export const DEFAULT_IDLE_MS = 5 * 60 * 1000;
 export const DEFAULT_LIVE_WINDOW_MS = 5000;
 /** This many bad frames in a row, and the stream is reported incompatible. */
 export const INCOMPATIBLE_AFTER_BAD_FRAMES = 5;
+/** The first status of a new reader waits this long at most for the first outcome of the first attempt. */
+export const FIRST_OUTCOME_WAIT_MS = 1500;
+/** After a first "connected", a refusal or a first frame that follows within this time is awaited too. */
+export const SETTLE_AFTER_CONNECTED_MS = 150;
 
 export interface TelemetryStatusReport {
   state: TelemetryStateName;
@@ -100,6 +104,9 @@ export class TelemetryService {
   private badStreak = 0;
   private reconnects = 0;
   private everLive = false;
+  /** The reader of the moment has reported at least one outcome (connected, live, a failed attempt, incompatible). */
+  private hadOutcome = false;
+  private outcomeWaiters = new Set<() => void>();
   private unknown = new Set<string>();
   private anomalies = new Set<string>();
   private uecBaseline: { start: number; since: number } | null = null;
@@ -132,6 +139,7 @@ export class TelemetryService {
   ensureStarted(): void {
     this.lastTouch = this.now();
     if (!this.reader) {
+      this.hadOutcome = false;
       // Events of a reader that has been replaced (stop() then a new request) must not touch the new one.
       const reader: GrpcStreamReader = new GrpcStreamReader(
         {
@@ -169,7 +177,33 @@ export class TelemetryService {
     this.gate.clear();
     this.readerState = "stopped";
     this.everLive = false;
+    this.hadOutcome = false;
+    this.wakeWaiters();
     if (reader) await reader.stop();
+  }
+
+  private wakeWaiters(): void {
+    for (const check of [...this.outcomeWaiters]) check();
+  }
+
+  /** Resolves when `done()` is true (checked at every reader event), the reader is gone, or after `ms`. */
+  private waitUntil(done: () => boolean, ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      let timer: NodeJS.Timeout | undefined;
+      const check = () => {
+        if (!done() && this.reader) return;
+        if (timer) clearTimeout(timer);
+        this.outcomeWaiters.delete(check);
+        resolve();
+      };
+      timer = setTimeout(() => {
+        timer = undefined;
+        this.outcomeWaiters.delete(check);
+        resolve();
+      }, ms);
+      this.outcomeWaiters.add(check);
+      check();
+    });
   }
 
   private onReaderState(state: ReaderState, detail?: string): void {
@@ -185,6 +219,8 @@ export class TelemetryService {
       if (this.everLive) this.reconnects++;
     }
     if (state === "live") this.everLive = true;
+    if (state !== "stopped") this.hadOutcome = true;
+    this.wakeWaiters();
   }
 
   private onMessage(bytes: Uint8Array): void {
@@ -237,7 +273,18 @@ export class TelemetryService {
 
   /** Where the stream stands. Starts the reader when asked (the default), as any request does. */
   async status(start = true): Promise<TelemetryStatusReport> {
-    if (start) this.ensureStarted();
+    if (start) {
+      this.ensureStarted();
+      // A reader that has just been started has no answer yet: say nothing until its first attempt has an outcome
+      // (bounded), otherwise a game that is there would be reported as absent. A peek never waits.
+      if (!this.hadOutcome) {
+        await this.waitUntil(() => this.hadOutcome, FIRST_OUTCOME_WAIT_MS);
+        // "Connected" comes with the HTTP/2 SETTINGS; a refusal or the first frame follows within a moment.
+        if (this.readerState === "connected") {
+          await this.waitUntil(() => this.readerState !== "connected", SETTLE_AFTER_CONNECTED_MS);
+        }
+      }
+    }
     const frameAge = this.lastFrameAt === null ? undefined : this.now() - this.lastFrameAt;
     let state: TelemetryStateName;
     let cause: string;
@@ -259,17 +306,23 @@ export class TelemetryService {
     } else if (this.readerState === "live" || this.readerState === "connected") {
       state = "connected";
       cause =
-        "Connected to the game, no recent frames: menus or loading screens send none until the character has spawned.";
+        frameAge === undefined
+          ? "Connected to the game, no frame yet: menus or a loading screen. The stream starts once the character has appeared."
+          : "Connected to the game, no recent frame: menus or a loading screen. The stream resumes once the character has appeared.";
     } else {
       await this.refreshHint();
       if (this.hint?.running && !this.hint.telemetryRegistered) {
         state = "game_without_telemetry";
         cause =
           "The game is running but its Game.log has no telemetry service line: it was started without GRPC_CLIENT_SERVER_ENABLED. Quit the RSI Launcher completely (tray icon too) and start it again.";
+      } else if (this.hint?.running) {
+        state = "waiting";
+        cause =
+          "The game is running with telemetry switched on; the stream starts once the character has appeared.";
       } else {
         state = "waiting";
         cause =
-          "Nothing answers on the telemetry port: the game is not running, or it was started without the game-side setting.";
+          "No telemetry for now. This is normal in menus, during a loading screen, before the character has appeared, or if the game was started without the game-side setting. This server cannot tell whether the game is running.";
       }
     }
     return {

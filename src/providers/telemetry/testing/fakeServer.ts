@@ -23,11 +23,18 @@ export interface FakeGame {
   close(): Promise<void>;
 }
 
-export type FakeMode = "stream" | "unimplemented" | "not_grpc" | "unavailable";
+/**
+ * - stream: answers the call at once, then sends frames.
+ * - first_frame: like the real game in the menus (suspected): the call is accepted but `respond` is only sent
+ *   together with the first frame, so before it the client sees an open session and nothing else.
+ */
+export type FakeMode = "stream" | "first_frame" | "unimplemented" | "not_grpc" | "unavailable";
 
 export async function startFakeGame(mode: FakeMode = "stream", port = 0): Promise<FakeGame> {
   const server = http2.createServer();
   const streams = new Set<http2.ServerHttp2Stream>();
+  /** first_frame mode: calls accepted but not answered yet. */
+  const pending = new Set<http2.ServerHttp2Stream>();
   const sockets = new Set<import("node:net").Socket>();
   let connections = 0;
   const requestBodies: Buffer[] = [];
@@ -62,9 +69,26 @@ export async function startFakeGame(mode: FakeMode = "stream", port = 0): Promis
       );
       return;
     }
+    if (mode === "first_frame") {
+      pending.add(stream);
+      stream.on("close", () => {
+        pending.delete(stream);
+        streams.delete(stream);
+      });
+      return;
+    }
     stream.respond({ ":status": 200, "content-type": "application/grpc" });
     streams.add(stream);
     stream.on("close", () => streams.delete(stream));
+  };
+  /** first_frame mode: the answer goes out with the first thing sent. */
+  const answerPending = () => {
+    for (const s of pending) {
+      if (!s.destroyed && !s.headersSent)
+        s.respond({ ":status": 200, "content-type": "application/grpc" });
+      streams.add(s);
+    }
+    pending.clear();
   };
   server.on("session", (session) => {
     session.on("error", () => undefined);
@@ -79,16 +103,20 @@ export async function startFakeGame(mode: FakeMode = "stream", port = 0): Promis
     connections: () => connections,
     requestBodies,
     send(...frames) {
+      answerPending();
       for (const s of streams) for (const f of frames) s.write(grpcMessage(f));
     },
     sendRaw(...chunks) {
+      answerPending();
       for (const s of streams) for (const c of chunks) s.write(c);
     },
     endStreams() {
       for (const s of streams) s.close();
+      for (const s of pending) s.close();
     },
     close() {
       for (const s of streams) s.destroy();
+      for (const s of pending) s.destroy();
       for (const socket of sockets) socket.destroy();
       return new Promise<void>((resolve) => server.close(() => resolve()));
     },

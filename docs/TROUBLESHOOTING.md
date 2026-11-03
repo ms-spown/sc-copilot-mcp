@@ -54,13 +54,14 @@ without changing anything; `npm run doctor` repeats it. Full explanations and th
 
 - **`off`**: `SC_TELEMETRY=on` is not set in the `sc-copilot` entry. `npm run telemetry -- enable --apply`, then
   restart Claude Desktop.
-- **`waiting`, game not running**: nothing to read. Start the game.
-- **`waiting` or `game_without_telemetry` with the game running**: the game was started without the variable. Quit
+- **`waiting`**: no telemetry for now. This is normal in menus, during a loading screen and before the character has
+  appeared; it does not mean the game is off (this server cannot know). Nothing to fix then.
+- **`game_without_telemetry`, or `waiting` that lasts once the character has spawned**: the game was started without the variable. Quit
   the RSI Launcher completely, tray icon included (a launcher left in the tray keeps its old environment), start it
   again, start the game. `Game.log` must then contain `Service 'sc.game.telemetry.v1.GameTelemetryService' registered`.
-- **`connected` but no data**: menus or loading screens send nothing. Data starts once the character has spawned;
+- **`connected` but no data**: the session with the game is open; menus or loading screens send nothing. Data starts once the character has spawned;
   ship data comes 6 to 9 seconds after you sit down.
-- **`live` but `sc_live_state` has no ship**: you are on foot or in a ground vehicle (they send no vehicle data).
+- **`live` but `sc_live_state` has no ship**: you are on foot or in a ground vehicle (they send no ship data). This is normal: ship data comes once you are seated in a ship.
 - **`incompatible`**: the game answers in a shape this version does not know, usually after a patch. Update the
   server and open an issue with the game version; nothing else is needed from you.
 - **Nothing happens after `enable --apply`**: the server and Claude Desktop read their environment at start. Restart

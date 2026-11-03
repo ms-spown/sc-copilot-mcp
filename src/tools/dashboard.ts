@@ -52,7 +52,7 @@ export function dashboardTools({ telemetry }: { telemetry?: Telemetry }): ToolDe
     {
       name: "sc_live_dashboard",
       description:
-        "Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance stays hidden until the player clicks). Call it when the player asks to see their ship or session live. Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Optional plan: after uex_get_trade_routes, pass the route so the View compares planned and measured profit.",
+        "Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance stays hidden until the player clicks). Call it when the player asks to see their ship or session live. Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Waiting or connected means no data yet (menus, loading): never say the game is not running or that something is wrong, no troubleshooting unless it shows a game launched without telemetry or an unknown format. On foot only character data exists; ship instruments need the player seated in a ship. Optional plan: after uex_get_trade_routes, pass the route so the View compares planned and measured profit.",
       inputSchema: {
         type: "object",
         properties: {

@@ -196,7 +196,7 @@ describe("Feature: polling is bounded, adaptive and suspended when nobody looks"
 
   it("Given the game is absent, Then it slows down to one request every 5 seconds", async () => {
     const w = await startPage();
-    expect(visibleText(w.root)).toContain("En attente du jeu");
+    expect(visibleText(w.root)).toContain("En attente du premier signal du jeu");
     w.scenario.forced = "waiting";
     await w.advance(61 * SECOND);
     const times = polls(w).map((p) => p.at);
@@ -223,7 +223,7 @@ describe("Feature: polling is bounded, adaptive and suspended when nobody looks"
     w.scenario.cut = true;
     await w.advance(10 * SECOND);
     expect(w.root.attrs["data-grey"]).toBe("1");
-    expect(visibleText(w.root)).toMatch(/Connecté, aucune trame|Flux interrompu/);
+    expect(visibleText(w.root)).toMatch(/Connecté, pas encore de trame|Flux interrompu/);
     const start = polls(w).length;
     await w.advance(30 * SECOND);
     expect(polls(w).length - start).toBeLessThanOrEqual(15);
@@ -482,6 +482,26 @@ describe("Feature: nothing is invented, and what the stream lacks is said", () =
     const text = visibleText(w.root);
     expect(text).toContain("Sans vaisseau");
     expect(text).toContain("pas de données de vaisseau");
+    expect(text).not.toMatch(/ne tourne pas|erreur/i);
+    // The Instruments card (full screen) explains it as a normal thing.
+    findButton(w.root, FULL).click();
+    await w.advance(100);
+    expect(visibleText(w.root)).toContain(
+      "À pied : seules les données du personnage sont disponibles. Les instruments apparaissent quand vous êtes assis dans un vaisseau.",
+    );
+  });
+
+  it("Given connected without a frame, Then the View says it is normal (menus, loading), not that the game is off", async () => {
+    const w = await startPage();
+    // The story is connected without frames from 3 to 6 s; the polls are slow while nothing is there yet.
+    let text = visibleText(w.root);
+    for (let i = 0; i < 10 && !text.includes("Connecté"); i++) {
+      await w.advance(SECOND);
+      text = visibleText(w.root);
+    }
+    expect(text).toContain("Connecté, pas encore de trame");
+    expect(text).toContain("Rien d’anormal");
+    expect(text).not.toMatch(/ne tourne pas|lance le jeu/);
   });
 
   it("Given each data, Then its age is shown", async () => {
