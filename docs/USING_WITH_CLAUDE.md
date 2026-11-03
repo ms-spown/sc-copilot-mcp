@@ -1,5 +1,7 @@
 # Using sc-copilot-mcp from Claude
 
+English · [Français](USING_WITH_CLAUDE.fr.md)
+
 Paste the block below into your Claude project's instructions (or your custom instructions) so Claude picks
 the right tool and reads the provenance. It is short on purpose.
 
