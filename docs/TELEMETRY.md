@@ -197,6 +197,29 @@ the local address it prints (loopback, port 4173 by default). It plays a made-up
   is withheld unless the tool is called with `include_balance`, and Claude is told to ask you first. What you let
   Claude read is what leaves your machine.
 
+### Limits against a program that pretends to be the game
+
+Port 2942 has no authentication: any local program can answer on it. The reader therefore treats the stream as
+untrusted input and bounds it. The figures are in the code (`decode.ts`, `reader.ts`, `service.ts`, `events.ts`,
+`tools/telemetry.ts`) and tested with a fake game; real frames are never used.
+
+| What | Limit | When it is exceeded |
+| --- | --- | --- |
+| One message | 1 MiB (the declared length is checked before the body is waited for) | The stream is reported `incompatible` |
+| Fields read in one frame (nested messages included) | 5 000 | The frame is refused and counted in `frames_rejected` |
+| Weapons per frame | 64 | The rest is not decoded; the anomaly `WeaponsFrame.weapons: more than 64 entries, the rest ignored` is listed |
+| Countermeasure entries per frame | 16 | Same, with `WeaponsFrame.countermeasures` |
+| Game events per frame | 32 | Same, with `EventsFrame.events` |
+| Frames decoded per second | About 33 (at most one every 30 ms) | Frames that arrive faster are counted in `frames_received` but only the newest of a burst is decoded, in the next slot (the ones in between are never decoded). The game sends about 17 a second, so nothing changes in normal use |
+| Names (ship, seat, weapon) | 64 characters of `[A-Za-z0-9_.-]` | Replaced by `(unrecognised name)` |
+| Text kept in one event | 80 characters per value | Cut |
+| Event ring | 200 events | The oldest are dropped |
+| Countermeasure kinds tracked | 8 | New kinds are ignored |
+| One `sc_live_state` / `sc_live_events` answer | 40 000 characters of payload (before the provenance envelope) | The weapons list or the older events are cut, and the answer says so |
+
+A frame that goes over a cap is still used for the rest of its content, but it counts as a bad frame: five in a row
+and the state becomes `incompatible`.
+
 ## Risks
 
 Written to be neither alarming nor reassuring. This is not legal advice.

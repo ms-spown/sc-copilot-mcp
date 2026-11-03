@@ -1,6 +1,7 @@
 import type { Telemetry } from "../providers/telemetry/index.js";
 import { POLL_CACHE_MS, POLL_EVENT_COUNT } from "./constants.js";
 import {
+  boundPoll,
   buildPoll,
   EMPTY_SESSION,
   offPoll,
@@ -78,7 +79,7 @@ export class DashboardService {
       );
       sessionEvents = all.events;
     }
-    return buildPoll({
+    const answer = buildPoll({
       status,
       snapshot,
       events: recent.events,
@@ -88,6 +89,7 @@ export class DashboardService {
       includeBalance,
       nowMs,
     });
+    return boundPoll(answer);
   }
 
   /** Session markers. Memory only. Never sent to the game. */

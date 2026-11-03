@@ -63,6 +63,8 @@ export interface PollResult {
   /** Present only when the View asked for it (after the player clicked "show balance"). */
   balance?: { uec: number | string; delta: number | null; since: string | null };
   not_in_stream: readonly string[];
+  /** Present only when the answer had to be cut to stay bounded. */
+  truncated?: string;
 }
 
 export const EMPTY_SESSION: SessionState = {
@@ -142,6 +144,38 @@ export function summarizeSession(
     flight_ms_is_estimate: true,
     markers: session.markers.slice(-40),
   };
+}
+
+/** The poll answer never exceeds this many characters once serialised (the telemetry tools use the same bound). */
+export const MAX_POLL_CHARS = 40_000;
+const MAX_POLL_WEAPONS = 64;
+
+/**
+ * Keeps an answer under MAX_POLL_CHARS whatever the stream sent: weapons are cut to 64, then, while the answer is
+ * still too large, events and weapons are halved. What was cut is said in `truncated`. Never raises the size.
+ */
+export function boundPoll(result: PollResult, maxChars: number = MAX_POLL_CHARS): PollResult {
+  let out = result;
+  const notes: string[] = [];
+  if (out.weapons && out.weapons.weapons.length > MAX_POLL_WEAPONS) {
+    out = {
+      ...out,
+      weapons: { ...out.weapons, weapons: out.weapons.weapons.slice(0, MAX_POLL_WEAPONS) },
+    };
+    notes.push(`weapons cut to ${MAX_POLL_WEAPONS}`);
+  }
+  for (let i = 0; i < 8 && JSON.stringify(out).length > maxChars; i++) {
+    const events = out.events.slice(Math.floor(out.events.length / 2));
+    const weapons = out.weapons
+      ? {
+          ...out.weapons,
+          weapons: out.weapons.weapons.slice(0, Math.floor(out.weapons.weapons.length / 2)),
+        }
+      : out.weapons;
+    out = { ...out, events, weapons };
+    notes.push("events and weapons halved");
+  }
+  return notes.length ? { ...out, truncated: notes.join("; ") } : out;
 }
 
 export interface PollInput {

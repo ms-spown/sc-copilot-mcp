@@ -41,23 +41,87 @@ const INCOMPATIBLE_STATUS = new Map<number, string>([
   [15, "DATA_LOSS"],
 ]);
 
-/** Splits a byte stream into gRPC messages. Throws on a compressed or oversized message. */
+/** More chunks than this waiting for one message: the newest ones are merged (see MessageFramer). */
+const COMPACT_AFTER_CHUNKS = 512;
+
+/**
+ * Splits a byte stream into gRPC messages. Throws on a compressed or oversized message.
+ *
+ * Chunks are kept in a list with a byte counter and joined only when a whole message is available, so a message
+ * arriving one byte at a time costs one copy of the message, not one copy of everything buffered per chunk. The
+ * length in the header is checked as soon as the header is complete, before the body is waited for.
+ */
 export class MessageFramer {
-  private buf: Buffer = Buffer.alloc(0);
+  private chunks: Buffer[] = [];
+  private size = 0;
+  /** Body length of the message being waited for, once its 5-byte header has been read. */
+  private bodyLength: number | null = null;
+  /** Chunks before this index are already merged blocks. */
+  private merged = 0;
 
   /** Feed a chunk, get the complete messages it finishes (a chunk may hold several, or part of one). */
   push(chunk: Buffer): Buffer[] {
-    this.buf = this.buf.length ? Buffer.concat([this.buf, chunk]) : chunk;
+    if (chunk.length === 0) return [];
+    this.chunks.push(chunk);
+    this.size += chunk.length;
+    if (this.chunks.length - this.merged >= COMPACT_AFTER_CHUNKS) this.compact();
     const out: Buffer[] = [];
-    while (this.buf.length >= 5) {
-      const flag = this.buf[0]!;
-      const len = this.buf.readUInt32BE(1);
-      if (flag !== 0) throw new Error("compressed message (flag " + flag + ")");
-      if (len > MAX_MESSAGE_BYTES) throw new Error(`message of ${len} bytes is beyond the limit`);
-      if (this.buf.length < 5 + len) break;
-      out.push(this.buf.subarray(5, 5 + len));
-      this.buf = this.buf.subarray(5 + len);
+    for (;;) {
+      if (this.bodyLength === null) {
+        if (this.size < 5) break;
+        const header = this.take(5);
+        const flag = header[0]!;
+        const len = header.readUInt32BE(1);
+        if (flag !== 0) throw new Error("compressed message (flag " + flag + ")");
+        if (len > MAX_MESSAGE_BYTES) throw new Error(`message of ${len} bytes is beyond the limit`);
+        this.bodyLength = len;
+      }
+      if (this.size < this.bodyLength) break;
+      out.push(this.take(this.bodyLength));
+      this.bodyLength = null;
     }
+    return out;
+  }
+
+  /**
+   * A flood of tiny chunks would otherwise leave millions of Buffer objects in the list: merge the chunks that
+   * arrived since the last merge into one. Each byte is copied once here, never again for the same run.
+   */
+  private compact(): void {
+    const block = Buffer.concat(this.chunks.slice(this.merged));
+    this.chunks.length = this.merged;
+    this.chunks.push(block);
+    this.merged = this.chunks.length;
+  }
+
+  /** Removes and returns the first `n` bytes (the caller checked that `size >= n`). */
+  private take(n: number): Buffer {
+    if (n === 0) return Buffer.alloc(0); // an empty message: a valid frame
+    this.size -= n;
+    const first = this.chunks[0]!;
+    let out: Buffer;
+    if (first.length >= n) {
+      out = first.subarray(0, n); // no copy
+      if (first.length === n) this.chunks.shift();
+      else this.chunks[0] = first.subarray(n);
+    } else {
+      const parts: Buffer[] = [];
+      let missing = n;
+      while (missing > 0) {
+        const c = this.chunks[0]!;
+        if (c.length <= missing) {
+          parts.push(c);
+          missing -= c.length;
+          this.chunks.shift();
+        } else {
+          parts.push(c.subarray(0, missing));
+          this.chunks[0] = c.subarray(missing);
+          missing = 0;
+        }
+      }
+      out = Buffer.concat(parts, n);
+    }
+    this.merged = 0;
     return out;
   }
 }

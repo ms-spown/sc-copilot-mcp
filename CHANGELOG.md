@@ -24,6 +24,22 @@ versions follow [Semantic Versioning](https://semver.org/).
   - Documentation: the "Live dashboard" section of [docs/TELEMETRY.md](docs/TELEMETRY.md), a rule in the Claude block,
     troubleshooting, architecture and the threat model.
 
+### Security
+- **Live telemetry reader hardened against a local program that pretends to be the game** (port 2942 has no
+  authentication). Found by an independent audit that ran the attacks:
+  - A 1 MiB frame of empty weapons gave 500 000 entries (250 ms, 65 MB of heap) and a 21 MB `sc_live_state` answer.
+    Now at most 64 weapons, 16 countermeasure entries and 32 game events are decoded per frame (the surplus is
+    ignored and noted as an anomaly), a frame with more than 5 000 fields is refused, and `sc_live_state` /
+    `sc_live_events` cut their lists under 40 000 characters and say so. The 1 MiB message limit is kept.
+  - A flood of empty messages used about half a core. Frames are now decoded at most about 33 times a second: the
+    newest frame of a burst is kept and handled in the next slot, all frames are still counted in
+    `frames_received`. The game's ~17 frames a second are unaffected.
+  - The gRPC framer copied the whole buffer on every chunk. It now keeps a list of chunks and joins them once per
+    message (100 000 one-byte chunks: well under a second).
+  - Event data is cut to 80 characters per value (the ring already held 200 events and names are filtered).
+  - The handler tracks 8 countermeasure kinds at most (a program could invent a new one per frame).
+  - Limits are documented in `docs/TELEMETRY.md` and `SECURITY.md`.
+
 ## [2.1.0] - 2026-11-03
 
 ### Added

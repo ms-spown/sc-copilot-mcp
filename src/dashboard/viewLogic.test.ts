@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from "vitest";
 import { parsePlan } from "./plan.js";
-import { summarizeSession, type SessionState } from "./poll.js";
+import { boundPoll, MAX_POLL_CHARS, summarizeSession, type SessionState } from "./poll.js";
 import * as L from "./viewLogic.js";
 
 const NB = (s: string) => s.replace(/[\u00a0\u202f]/g, " ");
@@ -486,6 +486,33 @@ describe("Feature: input from outside the View is cleaned again", () => {
       "--bad3": "a{b}",
     });
     expect(ok.map((kv: any) => kv[0])).toEqual(["--color-text-primary", "--font-sans"]);
+  });
+});
+
+describe("Feature: the poll answer stays bounded whatever the stream sends", () => {
+  it("Given thousands of weapons and long events, Then the answer is cut under the bound and says so", () => {
+    const weapons = Array.from({ length: 5000 }, (_, i) => ({
+      name: `KLWE_Laser_${i}`.repeat(3),
+      powered: true,
+      ready: true,
+    }));
+    const events = Array.from({ length: 30 }, (_, i) => ({
+      seq: i,
+      type: "took_off",
+      group: "ship",
+      confidence: "confirmed",
+      at: "2026-11-03T12:00:00Z",
+      text: "x".repeat(2000),
+      data: {},
+    }));
+    const big = { v: 1, events, weapons: { weapons, countermeasures: {} } } as any;
+    expect(JSON.stringify(big).length).toBeGreaterThan(MAX_POLL_CHARS);
+    const bounded = boundPoll(big);
+    expect(JSON.stringify(bounded).length).toBeLessThanOrEqual(MAX_POLL_CHARS);
+    expect(bounded.weapons!.weapons.length).toBeLessThanOrEqual(64);
+    expect(bounded.truncated).toMatch(/weapons cut to 64/);
+    const small = { v: 1, events: [], weapons: null } as any;
+    expect(boundPoll(small)).toBe(small);
   });
 });
 
