@@ -726,6 +726,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const ship = p && p.ship;
     const ins = ship && ship.instruments;
     const pilot = p && p.pilot;
+    const mode = L.modeInfo(p);
     const win60 = cfg.historyMs;
     const fmtMap: any = {
       speed: (v: number) => L.fmtNum(v, 0) + "\u00a0m/s",
@@ -761,7 +762,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
         ? "Altitude, cap et altitude radar n\u2019existent que dans le champ d\u2019une planète ; le cap est figé pendant un saut."
         : ship
           ? "Courbes : les 60 dernières secondes, calculées par cette vue à partir des relevés."
-          : "Pas de données de vaisseau (à pied, véhicule terrestre ou pas encore envoyées : 6 à 9 s après être assis).",
+          : mode.id === "foot"
+            ? "À pied : seules les données du personnage sont disponibles. Les instruments apparaissent quand vous êtes assis dans un vaisseau."
+            : "Pas de données de vaisseau pour l’instant (véhicule terrestre, ou pas encore envoyées : 6 à 9 s après être assis dans un vaisseau).",
     );
 
     // Energy and flight

@@ -214,6 +214,9 @@ export class GrpcStreamReader {
       let settled = false;
       let opened = false;
       let sawResponse = false;
+      // The session is up and the server sent its SETTINGS: something speaks HTTP/2 on the port.
+      let settingsSeen = false;
+      let request: http2.ClientHttp2Stream | null = null;
       const framer = new MessageFramer();
       const session = http2.connect(`http://${this.endpoint.host}:${this.endpoint.port}`);
       this.session = session;
@@ -225,7 +228,16 @@ export class GrpcStreamReader {
         clearTimeout(connectTimer);
         if (!this.stopped) this.setState(state, detail);
         if (!session.destroyed) session.destroy();
-        resolve(opened);
+        // A connection that was established but whose call was answered with a refusal does not count as reached:
+        // the delay before the next attempt must keep growing.
+        resolve(opened || (settingsSeen && !sawResponse));
+      };
+      // The game may send its response headers only together with the first frame: in the menus the call is open
+      // and nothing else comes. "Connected" is the session up, SETTINGS received and the call open.
+      const markConnectedIfOpen = () => {
+        if (settled || this.stopped || !settingsSeen || !request || this.state === "live") return;
+        if (sawResponse && !opened) return; // the answer was a refusal, settled elsewhere
+        this.setState("connected");
       };
       const connectTimer = setTimeout(
         () => finish("waiting", "connection timed out"),
@@ -247,6 +259,10 @@ export class GrpcStreamReader {
       };
       session.on("error", (error: NodeJS.ErrnoException) => fail(error, "connection error"));
       session.on("close", () => finish("waiting", "connection closed"));
+      session.on("remoteSettings", () => {
+        settingsSeen = true;
+        markConnectedIfOpen();
+      });
       session.on("goaway", () => finish("waiting", "the game closed the connection"));
 
       session.on("connect", () => {
@@ -254,9 +270,9 @@ export class GrpcStreamReader {
         // stop() may have destroyed the session between the connection and this event: asking a destroyed
         // session for a stream throws ERR_HTTP2_INVALID_SESSION, from an event handler, which nothing catches.
         if (settled || this.stopped || session.destroyed) return;
-        let request: http2.ClientHttp2Stream;
+        let call: http2.ClientHttp2Stream;
         try {
-          request = session.request(
+          call = session.request(
             {
               ":method": "POST",
               ":path": SERVICE_PATH,
@@ -269,10 +285,11 @@ export class GrpcStreamReader {
           finish("waiting", "the connection closed before the call");
           return;
         }
+        request = call;
         // The empty TelemetryStreamRequest: no compression, zero length. The only bytes we ever send.
-        request.end(Buffer.from([0, 0, 0, 0, 0]));
+        call.end(Buffer.from([0, 0, 0, 0, 0]));
 
-        request.on("response", (headers) => {
+        call.on("response", (headers) => {
           sawResponse = true;
           const status = headers[":status"];
           const type = String(headers["content-type"] ?? "");
@@ -287,9 +304,9 @@ export class GrpcStreamReader {
             return;
           }
           opened = true;
-          this.setState("connected");
+          if (this.state !== "live") this.setState("connected");
         });
-        request.on("data", (chunk: Buffer) => {
+        call.on("data", (chunk: Buffer) => {
           let messages: Buffer[];
           try {
             messages = framer.push(chunk);
@@ -306,15 +323,16 @@ export class GrpcStreamReader {
             }
           }
         });
-        request.on("trailers", (trailers) => {
+        call.on("trailers", (trailers) => {
           const code = grpcStatus(trailers);
           if (code !== undefined && code !== 0) {
             const name = INCOMPATIBLE_STATUS.get(code);
             finish(name ? "incompatible" : "waiting", `gRPC status ${name ?? code}`);
           }
         });
-        request.on("error", (error: NodeJS.ErrnoException) => fail(error, "stream error"));
-        request.on("close", () => finish("waiting", "the game closed the stream"));
+        call.on("error", (error: NodeJS.ErrnoException) => fail(error, "stream error"));
+        call.on("close", () => finish("waiting", "the game closed the stream"));
+        markConnectedIfOpen(); // the SETTINGS may have arrived before the call existed
       });
     });
   }

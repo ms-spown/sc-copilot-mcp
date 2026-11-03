@@ -6,6 +6,21 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Telemetry no longer says the game is off when it is not.** Measured with the real game: the first
+  `sc_live_status` or `sc_live_state` call started the reader and answered `waiting` before the first connection
+  attempt had finished, and the model told the player the game was not running. Now the first request waits (at most
+  1.5 s) for the first outcome of the first attempt; a peek (`status(false)`) still never starts or waits.
+- `connected` is reached as soon as the HTTP/2 session is open, the server's SETTINGS are received and the call is
+  open, even when the game sends its response headers only with the first frame (menus). A refusal that follows
+  (UNIMPLEMENTED, another content type) still gives `incompatible`.
+- The causes no longer claim the game is not running, which this server cannot know. `waiting` now means "no
+  telemetry for now", normal in menus, loading screens and before the character has appeared. The tool
+  descriptions, the `limits` field, the dashboard View, `docs/USING_WITH_CLAUDE.md`, `docs/TELEMETRY.md` and
+  `docs/TROUBLESHOOTING.md` (English and French) tell the model not to say the game is off and to offer no
+  troubleshooting unless the state is `game_without_telemetry` or `incompatible`, and explain that on foot only
+  character data exists while ship data needs the player seated in a ship.
+
 ## [2.1.0] - 2026-11-03
 
 ### Added

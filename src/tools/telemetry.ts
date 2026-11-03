@@ -60,9 +60,11 @@ export const HOW_TO_ENABLE = [
 ];
 
 const LIMITS = [
+  "States waiting and connected are NORMAL, never a fault: NEVER tell the player the game is not running or that something is wrong (this server cannot know whether the game runs). Say only that there is no data for now and why that is normal: menus, a loading screen, the character not yet spawned, or a game started without the game-side setting. Offer no troubleshooting unless the state is game_without_telemetry or incompatible.",
+  'On foot only the character data exists (health, hunger, thirst, heart rate, atmosphere, balance). Ship data (speed, altitude, warning lights, power, weapons) arrives only while the player is SEATED in a ship, a few seconds after sitting down (6 to 9 s); ground vehicles (Ursa, Cyclone) send none. Say it as ordinary information ("no ship data until you are seated in a ship"), never as an error.',
   "The stream has no position, no camera, no shield level, no hull or heat, no ammo, no power distribution and no quantum fuel: do not infer them.",
   "Health 0 means down OR dead; the stream cannot tell them apart.",
-  "A value is only as fresh as frame_age_ms says. Ground vehicles (Ursa, Cyclone) send no vehicle data.",
+  "A value is only as fresh as frame_age_ms says.",
   "Fields missing from the stream are left out or listed as not available; they are never a real zero.",
 ];
 
@@ -130,7 +132,7 @@ export function telemetryTools({
     {
       name: "sc_live_status",
       description:
-        "State of the optional live telemetry from the running game: off, waiting, game_without_telemetry, connected, live or incompatible, the cause in one sentence, the age of the last frame, and, when it is off or not working, exactly how to enable it. Always safe to call. Telemetry is OFF by default (it needs SC_TELEMETRY=on on the server AND a game-side variable) and is an undocumented game feature; this tool never changes any setting. When it is off, nothing is read and no connection is made.",
+        "State of the optional live telemetry: off, waiting, game_without_telemetry, connected, live or incompatible, the cause, the age of the last frame and, when not live, how to enable it. Always safe to call. Telemetry is OFF by default (it needs SC_TELEMETRY=on on the server AND a game-side variable) and is an undocumented game feature; this tool never changes any setting. When it is off, nothing is read and no connection is made. In waiting or connected there is simply no data yet (normal in menus and loading): never say the game is not running or that something is wrong, and offer no troubleshooting unless the state is game_without_telemetry or incompatible. On foot only character data exists; ship data needs the player seated in a ship.",
       inputSchema: { type: "object", properties: {} },
       handler: async (): Promise<ToolResult> => {
         if (!telemetry || !enabled()) {
@@ -158,7 +160,7 @@ export function telemetryTools({
     {
       name: "sc_live_state",
       description:
-        "Snapshot of the running game from its local telemetry, only when the user enabled it: ship (name, speed, vertical speed, altitude and heading when inside a planet's frame, hydrogen, boost, g-force, landing gear, flight modes, nine power flags, warning lights), weapons per seat and countermeasure counts, and the pilot (locomotion, health, hunger, thirst, heart rate, atmosphere). Every answer carries frame_age_ms: say how old it is and do not present an old frame as current. Fields the game does not send are left out or listed, never shown as zero. NOT in the stream: position, shield level, hull, heat, ammo, power distribution, quantum fuel. Health 0 is 'down or dead'. The UEC balance is withheld unless include_balance is true (ask the player first). Not advertised when telemetry is off.",
+        "Snapshot of the running game from its local telemetry, only when the user enabled it: ship (name, speed, altitude, heading, hydrogen, boost, g-force, gear, flight modes, power flags, warning lights), weapons per seat, countermeasures, and the pilot (locomotion, health, hunger, thirst, heart rate, atmosphere). Say how old it is (frame_age_ms); fields not sent are left out, never zero. NOT in the stream: position, shield level, hull, heat, ammo, power distribution, quantum fuel. Health 0 is 'down or dead'. The UEC balance is withheld unless include_balance is true (ask the player first). available=false (waiting or connected) means no data yet, normal in menus and loading: never say the game is not running or that something is wrong. On foot only pilot data exists; ship data needs the player seated in a ship. Not advertised when telemetry is off.",
       inputSchema: {
         type: "object",
         properties: {
@@ -187,17 +189,22 @@ export function telemetryTools({
           })
           .parse(args || {});
         await addLogContext();
-        const snapshot = await telemetry.snapshot();
+        let snapshot = await telemetry.snapshot();
         if (!snapshot) {
+          // The first request starts the reader: status(true) waits for its first outcome (bounded), then look again.
           const status = await telemetry.status(true);
-          return ok({
-            available: false,
-            reason:
-              status.state === "live" || status.state === "connected"
-                ? "Connected, but no frame yet: the game sends none in menus or loading screens, only after the character has spawned."
-                : status.cause,
-            status,
-          });
+          snapshot = await telemetry.snapshot();
+          if (!snapshot) {
+            return ok({
+              available: false,
+              reason:
+                status.state === "live" || status.state === "connected"
+                  ? "Connected to the game, no frame yet: the game sends none in menus or loading screens, only after the character has appeared. This is normal; do not present it as a problem."
+                  : status.cause,
+              status,
+              limits: LIMITS,
+            });
+          }
         }
         recordFetch({ fetchedAt: Date.now() - snapshot.frame_age_ms, cache: "network" });
         addNote("Live telemetry: a frame is only as current as frame_age_ms says.");

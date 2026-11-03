@@ -3,7 +3,7 @@
  * normaliser and event handler, so the poll answers have exactly the shape and the debouncing of production.
  * Frames are hand-made decoded objects. No real frame, no network, no Node-only module: the browser imports it.
  *
- * Timeline (seconds): 0-3 game not running, 3-6 connected without frames, 6-12 on foot, 12-16 seated in a landed
+ * Timeline (seconds): 0-3 no signal yet, 3-6 connected without frames, 6-12 on foot, 12-16 seated in a landed
  * ship, 16 take-off and climb, 30-48 cruise, 48-60 quantum jump, 60-80 combat (shields down, hostile lock,
  * countermeasures spent, health drops), 80-90 landing, 90 a sale (the balance jumps), 100-110 the stream is cut.
  */
@@ -221,7 +221,7 @@ export class Scenario {
       cause = "Connected to the game, no recent frames.";
     } else {
       state = "waiting";
-      cause = "Nothing answers on the telemetry port.";
+      cause = "No telemetry for now.";
     }
     return {
       state,

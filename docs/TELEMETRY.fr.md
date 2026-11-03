@@ -108,6 +108,15 @@ condensateur, répartition de puissance, carburant quantique. Portes, prérégla
 savoir lequel. Les véhicules terrestres (l'Ursa a été testé) n'envoient aucune donnée de véhicule, seulement le nom
 du siège.
 
+Ce qui existe dépend de ce que fait le joueur :
+
+| Le joueur est | Données du personnage (santé, faim, soif, rythme cardiaque, atmosphère, solde) | Données de vaisseau (vitesse, altitude, voyants, alimentation, armes) |
+| --- | --- | --- |
+| Dans les menus ou un écran de chargement | Aucune trame | Non |
+| À pied | Oui | Non, c'est normal |
+| Assis dans un vaisseau | Oui | Oui, 6 à 9 secondes après s'être assis |
+| Dans un véhicule terrestre | Oui | Non, les véhicules terrestres n'en envoient pas |
+
 ### Présent mais non vérifié
 
 Oxygène, température corporelle, niveau d'intoxication, radiation, voyants PWR / COOL / MISL, hydrogène bientôt
@@ -134,8 +143,8 @@ raisonnez pas à partir d'eux.
 | `sc_live_dashboard` | quand `SC_TELEMETRY=on` et que le client sait afficher des Views | Ouvre le [tableau de bord en direct](#tableau-de-bord-en-direct) dans la conversation |
 | `sc_live_poll`, `sc_live_mark` | idem | Utilisés par le tableau de bord lui-même pour se rafraîchir et poser des repères de session. Claude a pour consigne de ne pas les appeler |
 
-États : `off` (interrupteur serveur non défini), `waiting` (rien ne répond sur le port), `game_without_telemetry` (le
-jeu tourne, `Game.log` n'a pas de ligne d'enregistrement : relancez le launcher), `connected` (port ouvert, pas encore
+États : `off` (interrupteur serveur non défini), `waiting` (pas de télémétrie pour l'instant : normal dans les menus, pendant un chargement, avant l'apparition du personnage, ou si le jeu a été lancé sans le réglage côté jeu ; ce serveur ne peut pas savoir si le jeu tourne), `game_without_telemetry` (le
+jeu tourne, `Game.log` n'a pas de ligne d'enregistrement : relancez le launcher), `connected` (la session HTTP/2 avec le jeu est ouverte, pas encore
 de trames), `live`, `incompatible` (le jeu répond sous une forme que nous ne connaissons pas : un patch l'a changée).
 
 Le lecteur démarre à la première requête, se reconnecte avec un délai croissant, s'arrête après cinq minutes sans
@@ -262,10 +271,10 @@ cela, pour autant que nous puissions l'établir.
 | Symptôme | Cause probable | Que faire |
 | --- | --- | --- |
 | `sc_live_status` indique `off` | L'interrupteur serveur n'est pas défini | `npm run telemetry -- enable --apply`, redémarrez Claude Desktop |
-| `waiting`, jeu non lancé | Rien à lire | Lancez le jeu |
-| `waiting` ou `game_without_telemetry`, jeu lancé | Le jeu a été démarré sans la variable | Quittez complètement le RSI Launcher, icône de la zone de notification comprise, relancez-le, lancez le jeu. Cherchez la ligne « registered » dans `Game.log` |
+| `waiting` | Pas de télémétrie pour l'instant. Ne prouve pas que le jeu est éteint : ce serveur ne peut pas le savoir | Rien à corriger si vous êtes dans les menus ou un chargement. Si vous êtes en jeu, personnage apparu, et que cela reste `waiting`, voir la ligne suivante |
+| `waiting` (personnage apparu depuis un moment) ou `game_without_telemetry` | Le jeu a été démarré sans la variable | Quittez complètement le RSI Launcher, icône de la zone de notification comprise, relancez-le, lancez le jeu. Cherchez la ligne « registered » dans `Game.log` |
 | `connected` mais aucune donnée | Menus ou chargement | Faites apparaître votre personnage. Les données commencent une fois le personnage créé |
-| `live` mais aucune donnée de vaisseau | Vous êtes à pied ou dans un véhicule terrestre | Asseyez-vous dans un vaisseau. Les données du véhicule arrivent 6 à 9 secondes plus tard |
+| `live` mais aucune donnée de vaisseau | Vous êtes à pied ou dans un véhicule terrestre. C'est normal | Asseyez-vous dans un vaisseau. Les données du vaisseau arrivent 6 à 9 secondes plus tard |
 | `incompatible` | Un patch a changé le schéma | Mettez le serveur à jour ; signalez-le avec la version du jeu |
 | Port 2942 utilisé par autre chose | Un autre client de télémétrie n'est pas le problème (plusieurs sont permis) ; un autre programme, si | `npm run telemetry -- status` et vos outils habituels pour les ports |
 

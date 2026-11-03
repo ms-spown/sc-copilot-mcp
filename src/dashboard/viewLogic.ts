@@ -183,8 +183,9 @@ export function streamInfo(view: any, now: number): any {
       return {
         id: "waiting",
         tone: "neutral",
-        label: "En attente du jeu",
-        detail: "Rien n\u2019écoute sur le port : lance le jeu.",
+        label: "En attente du premier signal",
+        detail:
+          "En attente du premier signal du jeu : menus, chargement ou avant l’apparition du personnage.",
         grey: true,
         help: "",
       };
@@ -211,9 +212,9 @@ export function streamInfo(view: any, now: number): any {
       return {
         id: "connected",
         tone: "neutral",
-        label: "Connecté, aucune trame",
+        label: "Connecté, pas encore de trame",
         detail:
-          "Menus ou écran de chargement : les données arrivent une fois le personnage apparu.",
+          "Menus ou chargement : le flux commence une fois le personnage apparu. Rien d’anormal.",
         grey: true,
         help: "",
       };
@@ -223,7 +224,11 @@ export function streamInfo(view: any, now: number): any {
         id: stale ? "stale" : "live",
         tone: stale ? "warn" : "ok",
         label: stale ? "Flux interrompu" : "En direct",
-        detail: stale ? "Dernière trame il y a " + formatAge(age) : "",
+        detail: stale
+          ? "Dernière trame il y a " +
+            formatAge(age) +
+            ". Le flux reprend dès que le jeu renvoie des données."
+          : "",
         grey: stale,
         help: "",
       };

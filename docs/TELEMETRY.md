@@ -105,6 +105,15 @@ distribution, quantum fuel. Doors, weapon presets, force feedback, missiles. **D
 and health 0 means "down or dead" with no way to tell which. Ground vehicles (the Ursa was tested) send no vehicle
 data at all, only the seat name.
 
+What exists depends on what the player is doing:
+
+| The player is | Character data (health, hunger, thirst, heart rate, atmosphere, balance) | Ship data (speed, altitude, warning lights, power, weapons) |
+| --- | --- | --- |
+| In menus or a loading screen | No frames at all | No |
+| On foot | Yes | No, this is normal |
+| Seated in a ship | Yes | Yes, 6 to 9 seconds after sitting down |
+| In a ground vehicle | Yes | No, ground vehicles send none |
+
 ### Present but not verified
 
 Oxygen, body temperature, intoxication level, radiation, PWR / COOL / MISL lights, hydrogen running low, an
@@ -130,8 +139,10 @@ from them.
 | `sc_live_dashboard` | when `SC_TELEMETRY=on` and the client can show Views | Opens the [live dashboard](#live-dashboard) in the conversation |
 | `sc_live_poll`, `sc_live_mark` | same | Used by the dashboard itself to refresh and to set session markers. Claude is told not to call them |
 
-States: `off` (server switch not set), `waiting` (nothing answers on the port), `game_without_telemetry` (the game
-runs, `Game.log` has no registration line: restart the launcher), `connected` (port open, no frames yet), `live`,
+States: `off` (server switch not set), `waiting` (no telemetry for now: normal in menus, during loading, before the
+character has appeared, or if the game was started without the game-side setting; this server cannot tell whether
+the game is running), `game_without_telemetry` (the game runs, `Game.log` has no registration line: restart the
+launcher), `connected` (the HTTP/2 session with the game is open, no frames yet: menus or loading), `live`,
 `incompatible` (the game answers in a shape we do not know: a patch changed it).
 
 The reader starts at the first request, reconnects with a growing delay, stops after five minutes without a request,
@@ -246,10 +257,10 @@ far as we can establish.
 | Symptom | Likely cause | What to do |
 | --- | --- | --- |
 | `sc_live_status` says `off` | The server switch is not set | `npm run telemetry -- enable --apply`, restart Claude Desktop |
-| `waiting`, game not running | Nothing to read | Start the game |
-| `waiting` or `game_without_telemetry`, game running | The game was started without the variable | Quit the RSI Launcher completely, tray icon included, start it again, start the game. Check `Game.log` for the "registered" line |
+| `waiting` | No telemetry for now. Not a sign that the game is off: this server cannot know | Nothing to fix if you are in menus or loading. If you are in the game with your character spawned and it stays `waiting`, see the next line |
+| `waiting` (character spawned for a while) or `game_without_telemetry` | The game was started without the variable | Quit the RSI Launcher completely, tray icon included, start it again, start the game. Check `Game.log` for the "registered" line |
 | `connected` but no data | Menus or loading | Spawn in. Data starts after the character exists |
-| `live` but no ship data | You are on foot or in a ground vehicle | Sit in a ship. Vehicle data comes 6 to 9 seconds later |
+| `live` but no ship data | You are on foot or in a ground vehicle. This is normal | Sit in a ship. Ship data comes 6 to 9 seconds later |
 | `incompatible` | A patch changed the schema | Update the server; report it with the game version |
 | Port 2942 in use by something else | Another telemetry client is not the problem (several are allowed); another program is | `npm run telemetry -- status` and your usual port tools |
 

@@ -386,6 +386,168 @@ describe("Feature: reading the stream from the game", () => {
   });
 });
 
+describe("Feature: an honest first answer", () => {
+  describe("Scenario: the first status of a new reader", () => {
+    it("Given a game that answers, When the very first status(true) is asked, Then it already says connected or live, not waiting", async () => {
+      const g = await game();
+      const s = service(g);
+      const first = await s.status(true);
+      expect(["connected", "live"]).toContain(first.state);
+      expect(first.state).not.toBe("waiting");
+    });
+
+    it("Given a game that is already sending, When the first status(true) is asked, Then it is live", async () => {
+      const g = await game();
+      const timer = setInterval(() => g.send(aFrame(3)), 10);
+      cleanup.push(async () => clearInterval(timer));
+      const s = service(g);
+      expect((await s.status(true)).state).toBe("live");
+    });
+
+    it("Given nothing on the port, When the first status(true) is asked, Then it waits for the failed attempt and only then says waiting, with a cause that does not claim the game is off", async () => {
+      const g = await game();
+      const port = g.port;
+      await g.close();
+      const s = new TelemetryService({
+        endpointForTests: { host: "127.0.0.1", port },
+        reader: FAST,
+      });
+      cleanup.push(() => s.stop());
+      const started = Date.now();
+      const first = await s.status(true);
+      expect(first.state).toBe("waiting");
+      expect(Date.now() - started).toBeLessThan(1600);
+      expect(first.cause).toMatch(/cannot tell whether the game is running/);
+      expect(first.cause).not.toMatch(/not running|nothing answers/i);
+    });
+
+    it("Given a peek (status(false)), Then it neither starts the reader nor waits", async () => {
+      const g = await game();
+      const s = service(g);
+      const started = Date.now();
+      const peek = await s.status(false);
+      expect(Date.now() - started).toBeLessThan(50);
+      expect(peek.state).toBe("waiting");
+      await new Promise((r) => setTimeout(r, 50));
+      expect(g.connections()).toBe(0);
+    });
+
+    it("Given a server that accepts the connection and never answers, Then the first status(true) is bounded", async () => {
+      const sockets = new Set<net.Socket>();
+      const server = net.createServer((socket) => {
+        sockets.add(socket);
+        socket.on("error", () => undefined);
+      });
+      await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+      cleanup.push(
+        () =>
+          new Promise<void>((r) => {
+            for (const socket of sockets) socket.destroy();
+            server.close(() => r());
+          }),
+      );
+      const port = (server.address() as net.AddressInfo).port;
+      const s = new TelemetryService({
+        endpointForTests: { host: "127.0.0.1", port },
+        reader: { retryMs: [20], connectTimeoutMs: 5000 },
+      });
+      cleanup.push(() => s.stop());
+      const started = Date.now();
+      const first = await s.status(true);
+      expect(Date.now() - started).toBeLessThan(2500);
+      expect(first.state).toBe("waiting");
+    });
+
+    it("Given the game log says the game runs with the telemetry line but no port answers, Then the cause says so and stays waiting", async () => {
+      const g = await game();
+      const port = g.port;
+      await g.close();
+      const s = new TelemetryService({
+        endpointForTests: { host: "127.0.0.1", port },
+        reader: FAST,
+        gameLogHint: async () => ({ running: true, telemetryRegistered: true }),
+      });
+      cleanup.push(() => s.stop());
+      const status = await s.status(true);
+      expect(status.state).toBe("waiting");
+      expect(status.cause).toMatch(/running with telemetry/);
+    });
+  });
+
+  describe("Scenario: a game that sends its response headers only with the first frame", () => {
+    it("Given an open session and no frame, Then the state is connected; given a frame, Then it is live", async () => {
+      const g = await game("first_frame");
+      const s = service(g);
+      const first = await s.status(true);
+      expect(first.state).toBe("connected");
+      expect(first.cause).toMatch(/no frame yet/);
+      expect(first.cause).not.toMatch(/not running/);
+      expect(s.snapshot()).toBeNull();
+      // Stays connected while the game is silent (menus).
+      await new Promise((r) => setTimeout(r, 150));
+      expect((await s.status(true)).state).toBe("connected");
+      g.send(aFrame(42));
+      await waitFor(async () => (await s.status(false)).state === "live", "live");
+      expect(s.snapshot()!.state.ship?.instruments?.speed_ms).toBeCloseTo(42);
+    });
+
+    it("Given the reader states, Then they come in the order connected -> live", async () => {
+      const g = await game("first_frame");
+      const seen: ReaderState[] = [];
+      const reader = new GrpcStreamReader(
+        { onMessage: () => undefined, onState: (st) => seen.push(st) },
+        { host: "127.0.0.1", port: g.port },
+        FAST,
+      );
+      reader.start();
+      await waitFor(() => seen.includes("connected"), "connected");
+      g.send(aFrame());
+      await waitFor(() => seen.includes("live"), "live");
+      await reader.stop();
+      expect(seen).toEqual(["connected", "live", "stopped"]);
+    });
+
+    it("Given the game goes away while connected without frames, Then the reader keeps trying and comes back to connected", async () => {
+      const g = await game("first_frame");
+      const s = service(g);
+      expect((await s.status(true)).state).toBe("connected");
+      g.endStreams();
+      await waitFor(() => g.connections() >= 2, "reconnect");
+      await waitFor(async () => (await s.status(false)).state === "connected", "connected again");
+    });
+  });
+
+  describe("Scenario: a HTTP/2 server that refuses the call", () => {
+    it("Given UNIMPLEMENTED, Then the first status(true) says incompatible, never connected or live", async () => {
+      const g = await game("unimplemented");
+      const s = service(g);
+      const first = await s.status(true);
+      expect(first.state).toBe("incompatible");
+      expect(first.cause).toMatch(/UNIMPLEMENTED/);
+    });
+
+    it("Given something that answers HTTP/2 with another content type, Then the first status(true) says incompatible", async () => {
+      const g = await game("not_grpc");
+      const s = service(g);
+      expect((await s.status(true)).state).toBe("incompatible");
+    });
+
+    it("Given UNAVAILABLE, Then the state ends up waiting, and the retry delay keeps growing", async () => {
+      const g = await game("unavailable");
+      const s = new TelemetryService({
+        endpointForTests: { host: "127.0.0.1", port: g.port },
+        reader: { retryMs: [30, 400], connectTimeoutMs: 500 },
+      });
+      cleanup.push(() => s.stop());
+      await s.status(true);
+      await new Promise((r) => setTimeout(r, 300));
+      expect((await s.status(false)).state).toBe("waiting");
+      // 30 ms first, then 400 ms: at most 3 attempts in 300 ms. A reset to the short delay would give about 10.
+      expect(g.connections()).toBeLessThanOrEqual(3);
+    });
+  });
+});
+
 describe("Feature: switched off, nothing is loaded and nothing connects", () => {
   it("Given SC_TELEMETRY is not on, Then every call answers 'off' and no HTTP/2 connection is ever opened", async () => {
     const connect = vi.spyOn(http2, "connect");

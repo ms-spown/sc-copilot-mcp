@@ -132,7 +132,18 @@ describe("Feature: what to say about the stream", () => {
       grey: true,
       help: "npm run telemetry -- enable",
     });
-    expect(view(poll({ state: "waiting" })).label).toBe("En attente du jeu");
+    expect(view(poll({ state: "waiting" })).detail).toBe(
+      "En attente du premier signal du jeu : menus, chargement ou avant l’apparition du personnage.",
+    );
+    // The server cannot know whether the game runs: no text of the View says it does not.
+    for (const state of ["waiting", "connected", "off", "game_without_telemetry", "incompatible"]) {
+      const info = view(poll({ state }));
+      expect(info.label + " " + info.detail, state).not.toMatch(
+        /ne tourne pas|lance le jeu|Rien n.écoute/,
+      );
+    }
+    expect(view(poll({ state: "off" })).label).toBe("Télémétrie désactivée");
+    expect(view(poll({ state: "game_without_telemetry" })).label).toBe("Jeu lancé sans télémétrie");
     expect(view(poll({ state: "game_without_telemetry" })).detail).toContain(
       "Quitte complètement le launcher",
     );
