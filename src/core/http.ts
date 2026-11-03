@@ -31,6 +31,8 @@ export const ALLOWED_HOSTS = {
 } as const;
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
+/** Largest response body accepted from an API; dump downloads raise it for themselves. */
+export const DEFAULT_MAX_BYTES = 25 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
 
 export interface HostPolicy {
@@ -102,6 +104,7 @@ export function createGuardedClient(options: GuardedClientOptions): AxiosInstanc
   const client = axios.create({
     baseURL: options.baseURL,
     timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    maxContentLength: DEFAULT_MAX_BYTES,
     maxRedirects: MAX_REDIRECTS,
     headers: { "User-Agent": options.userAgent, ...options.headers },
     beforeRedirect: (redirectOptions) => {

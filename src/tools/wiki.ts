@@ -1,9 +1,12 @@
+import axios from "axios";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { fetchWithCache } from "../core/cache.js";
 import {
   formatOutput,
+  formatRecord,
+  isObject,
   optimizeData,
   summarizeItem,
   summarizeList,
@@ -31,7 +34,8 @@ export function wikiTools({ scwClient }: { scwClient: HttpClient }): ToolDefinit
   return [
     {
       name: "scw_search",
-      description: "Search the Star Citizen Wiki for any item, ship, or lore topic.",
+      description:
+        "Search page titles on the Star Citizen Wiki (star-citizen.wiki); returns up to 10 titles. Use it to find the exact name of a ship, item or topic before calling scw_get_vehicle or scw_get_item. Wiki text is community-written.",
       inputSchema: {
         type: "object",
         properties: {
@@ -61,7 +65,7 @@ export function wikiTools({ scwClient }: { scwClient: HttpClient }): ToolDefinit
     {
       name: "scw_get_vehicle",
       description:
-        "Get detailed information about a vehicle (ship/ground vehicle) from the Star Citizen Wiki.",
+        "One ship or ground vehicle from the Star Citizen Wiki API: manufacturer, role, size, crew, cargo SCU, health, shields, speeds, price (the full record with hardpoints when it fits). Look it up by name, for example 'Carrack'. Most ships exceed the output limit, so you get the key figures (summary view) with a note; to compare several ships use scw_get_ship_comparison.",
       inputSchema: {
         type: "object",
         properties: {
@@ -79,14 +83,14 @@ export function wikiTools({ scwClient }: { scwClient: HttpClient }): ToolDefinit
           `/vehicles/${encodeURIComponent(vehicleName)}`,
         );
         return {
-          content: [{ type: "text", text: formatOutput(response.data.data) }],
+          content: [{ type: "text", text: formatRecord(response.data.data, summarizeVehicle) }],
         };
       },
     },
     {
       name: "scw_get_item",
       description:
-        "Get detailed information about an item (weapon, armor, component) from the Star Citizen Wiki.",
+        "One item (weapon, armor, ship component) from the Star Citizen Wiki API, by name, for example 'FS-9 LMG': the full record, or a summary view when it is too large. To find the name use scw_search; to browse many items use scw_list_items.",
       inputSchema: {
         type: "object",
         properties: {
@@ -101,7 +105,7 @@ export function wikiTools({ scwClient }: { scwClient: HttpClient }): ToolDefinit
         const { name: itemName } = z.object({ name: z.string() }).parse(args);
         const response = await fetchWithCache(scwClient, `/items/${encodeURIComponent(itemName)}`);
         return {
-          content: [{ type: "text", text: formatOutput(response.data.data) }],
+          content: [{ type: "text", text: formatRecord(response.data.data, summarizeItem) }],
         };
       },
     },
@@ -319,7 +323,7 @@ export function wikiTools({ scwClient }: { scwClient: HttpClient }): ToolDefinit
     {
       name: "scw_get_ship_comparison",
       description:
-        "Compare specs (size, crew, cargo, speed, etc.) between two or more ships from the Star Citizen Wiki.",
+        "Compare two or more ships side by side (size, crew, cargo, speed, shields, price) from the Star Citizen Wiki API. A ship that cannot be found is reported as such rather than dropped.",
       inputSchema: {
         type: "object",
         properties: {
@@ -342,9 +346,21 @@ export function wikiTools({ scwClient }: { scwClient: HttpClient }): ToolDefinit
                 scwClient,
                 `/vehicles/${encodeURIComponent(shipName)}`,
               );
-              return { ship: shipName, data: optimizeData(response.data.data) };
-            } catch {
-              return { ship: shipName, error: "Ship not found" };
+              const record = response.data.data;
+              // The summary view, always: full records are 5x the output budget.
+              return {
+                ship: shipName,
+                data: isObject(record) ? summarizeVehicle(record) : optimizeData(record),
+              };
+            } catch (error) {
+              // Only a 404 means "no such ship"; an outage must not read as one.
+              if (axios.isAxiosError(error) && error.response?.status === 404) {
+                return { ship: shipName, error: "Ship not found" };
+              }
+              return {
+                ship: shipName,
+                error: `Could not be fetched: ${error instanceof Error ? error.message : String(error)}`,
+              };
             }
           }),
         );

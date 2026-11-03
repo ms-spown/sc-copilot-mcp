@@ -1,7 +1,13 @@
 [
   {
+    "name": "sc_data_status",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
     "name": "sc_diff_versions",
-    "description": "Compare game data between any two patch versions. Reports what was added, removed, and changed. Pass item_name to get every changed field for one ship/weapon/component, otherwise returns a summary with the most-changed entries. This is the tool for questions like 'what changed for X between 4.9 and 4.10'.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -55,7 +61,6 @@
   },
   {
     "name": "sc_get_vocabulary",
-    "description": "Distinct in-game names for biasing a speech recognizer's initial prompt - commodities, manufacturers, FPS and ship weapons, weapon attachments, and (when SCMCP_GAME_DATA_DIR is set) locally extracted names like ore signatures, blueprints, and Wikelo trades no public API exposes. Local and public sources are merged; local is preferred when both exist for the same term. Armor and clothes are excluded by default - thousands of cosmetic colour variants that dilute the prompt far more than they help. Always works with no local data configured - it just returns fewer terms.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -96,7 +101,6 @@
   },
   {
     "name": "sc_list_builds",
-    "description": "List the game builds (patch versions) for which historical data dumps exist, newest first. Use this to discover which versions can be compared.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -109,7 +113,6 @@
   },
   {
     "name": "sc_local_datasets",
-    "description": "List locally extracted game data (mining, blueprints, reputation, ordnance, components, lore) with the game build it came from. This data is extracted from the shipped game files and covers domains no public API exposes.",
     "inputSchema": {
       "type": "object",
       "properties": {}
@@ -117,7 +120,6 @@
   },
   {
     "name": "sc_read_local_collection",
-    "description": "Read one collection from a locally extracted dataset, with paging. Use after sc_local_datasets to browse in bulk.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -146,7 +148,6 @@
   },
   {
     "name": "sc_search_local",
-    "description": "Search locally extracted game data for records matching a term. Use for mining ore signatures and spawn locations, crafting blueprints, reputation and mission brokers, quality bands, and Wikelo trades.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -175,7 +176,6 @@
   },
   {
     "name": "sct_get_article",
-    "description": "Get the text content of an article from Star Citizen Tools (starcitizen.tools).",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -191,7 +191,6 @@
   },
   {
     "name": "sct_search",
-    "description": "Search Star Citizen Tools (starcitizen.tools) for any topic.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -207,7 +206,6 @@
   },
   {
     "name": "scw_get_filters",
-    "description": "Get all valid filter names and allowed values for vehicles or items. Call this before filtering to use exact values.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -227,7 +225,6 @@
   },
   {
     "name": "scw_get_item",
-    "description": "Get detailed information about an item (weapon, armor, component) from the Star Citizen Wiki.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -243,7 +240,6 @@
   },
   {
     "name": "scw_get_ship_comparison",
-    "description": "Compare specs (size, crew, cargo, speed, etc.) between two or more ships from the Star Citizen Wiki.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -263,7 +259,6 @@
   },
   {
     "name": "scw_get_vehicle",
-    "description": "Get detailed information about a vehicle (ship/ground vehicle) from the Star Citizen Wiki.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -279,7 +274,6 @@
   },
   {
     "name": "scw_list_items",
-    "description": "Browse/list weapons, armor, and ship components from the Star Citizen Wiki. Pick a category endpoint and optionally filter by type, size, grade, class, or manufacturer. Use scw_get_filters to see valid values.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -340,7 +334,6 @@
   },
   {
     "name": "scw_list_vehicles",
-    "description": "Browse/list ships and ground vehicles from the Star Citizen Wiki. Filter by manufacturer, role (e.g. 'Medical', 'Cargo'), career, or size. Use scw_get_filters to see all valid values.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -377,7 +370,6 @@
   },
   {
     "name": "scw_search",
-    "description": "Search the Star Citizen Wiki for any item, ship, or lore topic.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -393,7 +385,6 @@
   },
   {
     "name": "scw_search_ships_by_vendor",
-    "description": "Search for ships available at a specific vendor/location, optionally filtered by system.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -413,7 +404,6 @@
   },
   {
     "name": "scw_snapshot_diff",
-    "description": "Compare two saved snapshots to see what changed between patches (added, removed, and changed stats).",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -442,7 +432,6 @@
   },
   {
     "name": "scw_snapshot_list",
-    "description": "List all saved data snapshots available for patch comparison.",
     "inputSchema": {
       "type": "object",
       "properties": {}
@@ -450,7 +439,6 @@
   },
   {
     "name": "scw_snapshot_save",
-    "description": "Save a snapshot of current ship or item data, keyed by game version, for later patch-to-patch comparison.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -478,7 +466,6 @@
   },
   {
     "name": "uex_get_commodities",
-    "description": "Get a list of all commodities in Star Citizen from UEX Corp.",
     "inputSchema": {
       "type": "object",
       "properties": {}
@@ -486,7 +473,6 @@
   },
   {
     "name": "uex_get_commodity_averages",
-    "description": "Get average prices for a specific commodity over time from UEX Corp.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -502,7 +488,6 @@
   },
   {
     "name": "uex_get_commodity_prices",
-    "description": "Get current prices for a specific commodity from UEX Corp. Returns buy/sell prices at various terminals.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -530,7 +515,6 @@
   },
   {
     "name": "uex_get_commodity_ranking",
-    "description": "Get ranking of commodities based on various metrics (e.g., profit) from UEX Corp.",
     "inputSchema": {
       "type": "object",
       "properties": {}
@@ -538,7 +522,6 @@
   },
   {
     "name": "uex_get_game_versions",
-    "description": "Get current Star Citizen game versions (LIVE and PTU build strings) tracked by UEX Corp.",
     "inputSchema": {
       "type": "object",
       "properties": {}
@@ -546,7 +529,6 @@
   },
   {
     "name": "uex_get_ship_prices",
-    "description": "Find where a ship can be bought or rented in game, with prices and terminal locations, from UEX Corp. This is the tool to answer 'where can I get ship X'.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -570,7 +552,6 @@
   },
   {
     "name": "uex_get_terminal_inventory",
-    "description": "Get inventory (items, ships, weapons) sold at a specific terminal from UEX data.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -598,7 +579,6 @@
   },
   {
     "name": "uex_get_terminals",
-    "description": "Get a list of all terminals (locations) in Star Citizen from UEX Corp.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -615,24 +595,38 @@
   },
   {
     "name": "uex_get_trade_routes",
-    "description": "Get suggested trade routes based on current market data from UEX Corp.",
     "inputSchema": {
       "type": "object",
       "properties": {
+        "commodity_name": {
+          "type": "string",
+          "description": "Commodity to haul (e.g. 'Laranite'). Exact name first, then a unique partial match."
+        },
+        "origin_terminal_name": {
+          "type": "string",
+          "description": "Terminal to buy at (e.g. 'Admin - ARC-L1' or 'ARC-L1')."
+        },
+        "origin_planet_name": {
+          "type": "string",
+          "description": "Planet whose terminals to buy at (e.g. 'ArcCorp')."
+        },
         "investment": {
           "type": "number",
-          "description": "Available credits for investment."
+          "description": "Available credits (aUEC) for the purchase."
         },
         "cargo_capacity": {
           "type": "number",
-          "description": "Cargo capacity in SCU."
+          "description": "Cargo capacity in SCU (e.g. 696)."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Routes to return, best profit first (default 10, max 50)."
         }
       }
     }
   },
   {
     "name": "uex_search_marketplace",
-    "description": "Search the UEX Corp player marketplace (player-to-player buy/sell/service ads, not shop prices). Matches query text against listing title/description. The API caps results at 100 unless id_item + operation are both given, which unlocks 1,000; for a broad text search only the first 100 active listings are visible to filter over.",
     "inputSchema": {
       "type": "object",
       "properties": {
