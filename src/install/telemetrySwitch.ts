@@ -20,7 +20,13 @@ import {
 } from "../core/telemetryNotice.js";
 import type { TelemetryFacts } from "./doctor.js";
 import type { EnvStore } from "./envStore.js";
-import { ConfigError, describeEnvKeyPlan, planEnvKey, type EnvKeyPlan } from "./mergeConfig.js";
+import {
+  ConfigError,
+  describeEnvKeyPlan,
+  planEnvKey,
+  stripBom,
+  type EnvKeyPlan,
+} from "./mergeConfig.js";
 import type { PortProbe, PortState } from "./portProbe.js";
 
 export interface SwitchDeps {
@@ -37,6 +43,8 @@ export interface SwitchDeps {
   /** Standard places of the RSI Launcher, tried in order when --launcher is not given. */
   launcherCandidates: string[];
   fileExists: (file: string) => boolean;
+  /** True for a regular file (not a folder). */
+  isFile: (file: string) => boolean;
 }
 
 export interface SwitchResult {
@@ -98,8 +106,13 @@ function deleteMarker(markerDir: string): void {
 
 function writeAtomic(file: string, content: string): void {
   const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, content);
-  fs.renameSync(tmp, file);
+  try {
+    fs.writeFileSync(tmp, content);
+    fs.renameSync(tmp, file);
+  } catch (error) {
+    fs.rmSync(tmp, { force: true });
+    throw error;
+  }
 }
 
 const emptyMarker = (): Marker => ({
@@ -144,7 +157,7 @@ function readServerSwitch(
 ): { entryPresent: boolean; state: ServerSwitchState; valid: boolean } {
   if (raw === null) return { entryPresent: false, state: "absent", valid: true };
   try {
-    const entry = JSON.parse(raw)?.mcpServers?.[name];
+    const entry = JSON.parse(stripBom(raw))?.mcpServers?.[name];
     if (!entry || typeof entry !== "object")
       return { entryPresent: false, state: "absent", valid: true };
     const value = entry.env?.[SERVER_SWITCH];
@@ -399,9 +412,32 @@ export async function enableCommand(deps: SwitchDeps, opts: EnableOptions): Prom
     // The marker comes first: if the set is written but reports a failure (a timeout while Windows broadcasts
     // the change), disable must still know the variable is ours. If the set never happened, disable finds the
     // variable unset and does nothing.
+    // If it is then found unset, the marker is put back as it was: it must not claim a variable that is not there.
+    const previousGameVar = marker.gameVar;
     marker.gameVar = { origin: "tool" };
     writeMarker(deps, marker);
-    await deps.store.set(GAME_SWITCH, "true");
+    const undoMarker = async () => {
+      let after: GameVarState = "unknown";
+      try {
+        after = await readGameVar(deps);
+      } catch {
+        // Cannot tell: keep the marker, which is the safe side for a variable that may exist.
+      }
+      if (after !== "unset") return;
+      marker.gameVar = previousGameVar;
+      if (marker.gameVar || marker.config || marker.session) writeMarker(deps, marker);
+      else deleteMarker(deps.markerDir);
+    };
+    try {
+      await deps.store.set(GAME_SWITCH, "true");
+    } catch (error) {
+      await undoMarker();
+      throw error;
+    }
+    if ((await readGameVar(deps)) !== "true") {
+      await undoMarker();
+      throw new Error(`${GAME_SWITCH} is not set after the PowerShell call: nothing was recorded.`);
+    }
     done.push(`Set the user variable ${GAME_SWITCH}=true.`);
   } else if (!opts.session && gameVar === "true") {
     // Present already. If we set it on an earlier run the marker keeps saying so; otherwise it is a hand-set one.
@@ -424,8 +460,8 @@ export async function enableCommand(deps: SwitchDeps, opts: EnableOptions): Prom
     done.push(`Wrote the session launcher: ${scriptPath}`);
   }
 
-  if (configPlan.merged) {
-    const backup = writeConfigWithBackup(deps, config, configPlan.merged);
+  if (configPlan.text !== null) {
+    const backup = writeConfigWithBackup(deps, config, configPlan.text);
     marker.config = { path: deps.configPath, backup: backup ?? marker.config?.backup ?? null };
     writeMarker(deps, marker);
     done.push(
@@ -456,7 +492,7 @@ export async function enableCommand(deps: SwitchDeps, opts: EnableOptions): Prom
 function writeConfigWithBackup(
   deps: SwitchDeps,
   current: ConfigFacts,
-  merged: Record<string, unknown>,
+  text: string,
 ): string | null {
   let backup: string | null = null;
   if (current.exists) {
@@ -464,7 +500,7 @@ function writeConfigWithBackup(
     backup = `${deps.configPath}.bak-${stamp}`;
     fs.copyFileSync(deps.configPath, backup);
   }
-  writeAtomic(deps.configPath, `${JSON.stringify(merged, null, 2)}\n`);
+  writeAtomic(deps.configPath, text);
   return backup;
 }
 
@@ -481,23 +517,34 @@ export function launcherCandidatesFromEnv(env: Record<string, string | undefined
 }
 
 function resolveLauncher(deps: SwitchDeps, given: string | undefined): string | { error: string } {
+  let chosen: string;
   if (given !== undefined) {
-    // eslint-disable-next-line no-control-regex
-    if (/["%\u0000-\u001f]/.test(given))
+    if (!path.win32.isAbsolute(given))
+      return { error: `The --launcher path must be absolute: ${given}` };
+    if (!deps.fileExists(given)) return { error: `The --launcher path does not exist: ${given}` };
+    if (!deps.isFile(given))
+      return { error: `The --launcher path is a folder, not RSI Launcher.exe: ${given}` };
+    chosen = given;
+  } else {
+    const found = deps.launcherCandidates.find((c) => deps.isFile(c));
+    if (!found)
       return {
         error:
-          'The --launcher path contains a character that is not allowed in the generated launcher (", % or a control character).',
+          'The RSI Launcher was not found in its standard places. Give its path: npm run telemetry -- enable --session --launcher "C:\\path\\to\\RSI Launcher.exe"',
       };
-    if (!deps.fileExists(given)) return { error: `The --launcher path does not exist: ${given}` };
-    return given;
+    chosen = found;
   }
-  const found = deps.launcherCandidates.find((c) => deps.fileExists(c));
-  if (!found)
+  if (/["%]/.test(chosen))
     return {
       error:
-        'The RSI Launcher was not found in its standard places. Give its path: npm run telemetry -- enable --session --launcher "C:\\path\\to\\RSI Launcher.exe"',
+        'The launcher path contains " or %, which cannot go safely into the generated launcher. Use --launcher with a path without them.',
     };
-  return found;
+  // cmd.exe reads a .cmd file in the console's OEM code page, not UTF-8: a non-ASCII path would be corrupted.
+  if (/[^\x20-\x7e]/.test(chosen))
+    return {
+      error: `The launcher path contains non-ASCII characters, which a .cmd file cannot carry reliably (${chosen}). Give a path without them with --launcher: for example copy or link RSI Launcher.exe to a short ASCII folder, or use its 8.3 short path (dir /x).`,
+    };
+  return chosen;
 }
 
 function sessionScript(launcher: string): string {
@@ -527,12 +574,14 @@ export async function disableCommand(
   }
 
   const config = readConfigFile(deps.configPath);
-  let configPlan: EnvKeyPlan;
+  // An unreadable config must not stop us from undoing the rest: the variable we set is removed anyway.
+  let configPlan: EnvKeyPlan | null = null;
+  let configProblem: string | null = null;
   try {
     configPlan = planEnvKey(config.raw, deps.serverName, SERVER_SWITCH, null);
   } catch (error) {
-    if (error instanceof ConfigError) return fail(`${error.message} Nothing was changed.`);
-    throw error;
+    if (!(error instanceof ConfigError)) throw error;
+    configProblem = error.message;
   }
   let gameVar: GameVarState;
   try {
@@ -544,8 +593,13 @@ export async function disableCommand(
   const marker = readMarker(deps.markerDir);
   const ours = marker?.gameVar?.origin === "tool";
   const removeVar = ours && gameVar === "true";
+  // The marker is a file anyone could edit: only the one launcher path this tool generates is ever deleted.
   const script = marker?.session?.script ?? null;
-  const removeScript = script !== null && deps.fileExists(script);
+  const expectedScript = path.join(deps.markerDir, SESSION_SCRIPT);
+  const scriptIsOurs =
+    script !== null &&
+    path.resolve(script).toLowerCase() === path.resolve(expectedScript).toLowerCase();
+  const removeScript = scriptIsOurs && deps.fileExists(expectedScript);
 
   lines.push(opts.apply ? "Doing:" : "Would do (dry run):");
   const kept: string[] = [];
@@ -564,10 +618,15 @@ export async function disableCommand(
     lines.push(`  - ${GAME_SWITCH}: not set. Nothing to do.`);
   }
 
-  if (configPlan.action === "remove") {
+  if (configProblem !== null || configPlan === null) {
+    lines.push(
+      `  - Config NOT changed: ${configProblem} ${SERVER_SWITCH} stays where it is until the file is fixed (then run disable again) or you remove it by hand.`,
+    );
+  } else if (configPlan.action === "remove") {
     anything = true;
     lines.push(
       `  - ${describeEnvKeyPlan(configPlan, deps.serverName, null).split("\n").join("\n    ")}`,
+      `    ${SERVER_SWITCH} exists only for this feature, so it is removed even if you added it by hand.`,
     );
   } else if (configPlan.action === "no_entry") {
     lines.push(
@@ -579,9 +638,14 @@ export async function disableCommand(
 
   if (removeScript) {
     anything = true;
-    lines.push(`  - Delete the session launcher this tool generated: ${script}`);
+    lines.push(`  - Delete the session launcher this tool generated: ${expectedScript}`);
+  } else if (script !== null && !scriptIsOurs) {
+    kept.push(
+      "The marker names a launcher file outside this tool's folder; it is ignored and nothing is deleted there.",
+    );
   }
   if (marker) anything = true;
+  const code = configProblem !== null ? 1 : 0;
 
   if (!opts.apply) {
     lines.push(...(kept.length ? ["", ...kept] : []));
@@ -589,12 +653,12 @@ export async function disableCommand(
       "",
       anything ? "Dry run: nothing was changed. Re-run with --apply to do it." : "Nothing to do.",
     );
-    return { code: 0, lines };
+    return { code, lines };
   }
 
   const done: string[] = [];
-  if (configPlan.merged) {
-    const backup = writeConfigWithBackup(deps, config, configPlan.merged);
+  if (configPlan?.text != null) {
+    const backup = writeConfigWithBackup(deps, config, configPlan.text);
     done.push(
       `Removed ${SERVER_SWITCH} from the "${deps.serverName}" entry.${backup ? ` Backup: ${backup}` : ""}`,
     );
@@ -603,11 +667,19 @@ export async function disableCommand(
     await deps.store.remove(GAME_SWITCH);
     done.push(`Removed the user variable ${GAME_SWITCH}.`);
   }
-  if (removeScript && script) {
-    fs.rmSync(script, { force: true });
-    done.push(`Deleted ${script}`);
+  if (removeScript) {
+    fs.rmSync(expectedScript, { force: true });
+    done.push(`Deleted ${expectedScript}`);
   }
-  if (marker) deleteMarker(deps.markerDir);
+  if (marker) {
+    if (configProblem === null) deleteMarker(deps.markerDir);
+    else {
+      // Keep a trace of the config we could not clean; what was undone above is forgotten.
+      writeMarker(deps, { ...marker, gameVar: null, session: null });
+    }
+  }
+  if (configProblem !== null)
+    done.push(`${SERVER_SWITCH} was NOT removed from the config (see above).`);
 
   lines.push(
     "",
@@ -616,5 +688,5 @@ export async function disableCommand(
   );
   if (done.length)
     lines.push("", "Restart Claude Desktop. " + (removeVar ? LAUNCHER_REMINDER : ""));
-  return { code: 0, lines };
+  return { code, lines };
 }

@@ -15,6 +15,7 @@ if (!distBuilt) {
 }
 const { diagnose, summarize } = await load("install/doctor.js");
 const { gatherTelemetryFacts } = await load("install/telemetrySwitch.js");
+const { stripBom } = await load("install/mergeConfig.js");
 const { WindowsUserEnvStore } = await load("install/envStore.js");
 const { probeLoopbackPort } = await load("install/portProbe.js");
 const { claudeConfigPath } = await load("install/claudeConfigPath.js");
@@ -37,7 +38,7 @@ const claudeConfig = readOrNull(configPath);
 // The game log settings live in the Claude config entry, because that is the environment the server runs in.
 let entryEnv = {};
 try {
-  entryEnv = JSON.parse(claudeConfig ?? "{}")?.mcpServers?.[serverName]?.env ?? {};
+  entryEnv = JSON.parse(stripBom(claudeConfig ?? "{}"))?.mcpServers?.[serverName]?.env ?? {};
 } catch {
   // Reported by the config check.
 }
