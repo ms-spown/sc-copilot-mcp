@@ -319,7 +319,7 @@ describe("GameLog reader", () => {
     });
 
     it("sc_log_status reports the session and the log's age in its provenance", async () => {
-      const file = write("Game.log", LOG);
+      const file = write("one/two/three/Game.log", LOG);
       const r = body(await registry(new GameLog({ logPath: file })).call("sc_log_status", {}));
       expect(r.provenance).toMatchObject({
         kind: "local_log",
@@ -330,7 +330,8 @@ describe("GameLog reader", () => {
       expect(r.data.session.state).toMatch(/ended \(clean quit\)/);
       expect(r.data.events_found.zone_change).toBe(4);
       expect(JSON.stringify(r)).not.toContain(PILOT);
-      expect(JSON.stringify(r)).not.toContain(os.tmpdir());
+      // Only the last three path parts are shown, so nothing of the folder above them can leak.
+      expect(JSON.stringify(r)).not.toContain(dir);
     });
 
     it("sc_log_recent_events filters, limits, and fences the text as untrusted", async () => {

@@ -236,7 +236,7 @@ describe("fleet tools", () => {
         data: { name: "C2 Hercules Starlifter", cargo_capacity: 696 },
       },
     });
-    const fleet = new FleetStore(path.join(dir, "fleet.json"));
+    const fleet = new FleetStore(path.join(dir, "one", "two", "three", "fleet.json"));
     const empty = clientFor({}).client;
     const registry = createRegistry(
       allTools({
@@ -297,7 +297,7 @@ describe("fleet tools", () => {
     await registry.call("sc_fleet_upsert", { name: "Vulture", origin: "pledge" });
     const out = (await registry.call("sc_fleet_get", {})).content[0].text;
     expect(out).not.toMatch(/msrp|price/i);
-    expect(out).not.toContain(os.tmpdir());
+    expect(out).not.toContain(dir);
   });
 
   it("returns candidates for an ambiguous name and says so for an unknown one", async () => {
