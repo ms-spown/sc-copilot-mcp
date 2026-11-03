@@ -27,10 +27,13 @@ const sct = {
   trust: "untrusted_text",
   channel: "live",
 } as const;
+// The dump repository is configurable (SCMCP_DATA_REPO) and is third-party: tag names, record
+// names and every changed field value are its text, so these tools are untrusted_text. The
+// guard test is dumps.behaviour.test.ts.
 const dumps = {
   source: "sc-gamedata-dumps",
   kind: "datamined",
-  trust: "structured",
+  trust: "untrusted_text",
   channel: "unknown",
 } as const;
 // SCMDB is a community-maintained repository: every string it returns (titles, descriptions,
@@ -67,13 +70,30 @@ export const CATALOG: Record<string, CatalogEntry> = {
   },
 
   uex_get_game_versions: { ...uex, profiles: ["core", "trade"] },
-  uex_get_commodity_prices: { ...uex, profiles: ["core", "trade"] },
+  uex_get_commodity_prices: {
+    ...uex,
+    trust: "untrusted_text",
+    maxText: 200,
+    profiles: ["core", "trade"],
+  },
   uex_get_trade_routes: { ...uex, profiles: ["core", "trade"] },
-  uex_get_ship_prices: { ...uex, profiles: ["core", "trade"] },
-  uex_get_commodities: { ...uex, profiles: ["trade"] },
-  uex_get_commodity_averages: { ...uex, profiles: ["trade"] },
-  uex_get_commodity_ranking: { ...uex, profiles: ["trade"] },
-  uex_get_terminals: { ...uex, profiles: ["trade"] },
+  uex_get_ship_prices: {
+    ...uex,
+    trust: "untrusted_text",
+    maxText: 200,
+    profiles: ["core", "trade"],
+  },
+  // These return UEX's rows as they come (no projection): whatever text a row holds goes with it,
+  // so they are untrusted_text. The guard test is untrusted.hardening.behaviour.test.ts.
+  uex_get_commodities: { ...uex, trust: "untrusted_text", maxText: 200, profiles: ["trade"] },
+  uex_get_commodity_averages: {
+    ...uex,
+    trust: "untrusted_text",
+    maxText: 200,
+    profiles: ["trade"],
+  },
+  uex_get_commodity_ranking: { ...uex, trust: "untrusted_text", maxText: 200, profiles: ["trade"] },
+  uex_get_terminals: { ...uex, trust: "untrusted_text", maxText: 200, profiles: ["trade"] },
   uex_get_terminal_inventory: { ...uex, profiles: ["trade"] },
   scw_search_ships_by_vendor: { ...uex, profiles: ["trade"] },
   // Player-written ads: the only UEX tool whose text is not ours to trust.
@@ -85,7 +105,8 @@ export const CATALOG: Record<string, CatalogEntry> = {
   scw_get_ship_comparison: { ...wiki, profiles: ["core"] },
   scw_search: { ...wiki, kind: "editorial", profiles: ["data"] },
   scw_list_items: { ...wiki, profiles: ["data"] },
-  scw_get_filters: { ...wiki, trust: "structured", profiles: ["data"] },
+  // The filter values are the wiki's own strings (manufacturers, roles, careers): short, but text.
+  scw_get_filters: { ...wiki, maxText: 80, profiles: ["data"] },
   scw_snapshot_save: { ...wiki, source: "star-citizen.wiki + local snapshots", profiles: ["data"] },
   scw_snapshot_list: {
     ...wiki,

@@ -461,7 +461,9 @@ describe("uex_get_trade_routes", () => {
       origin_terminal_name: "Admin",
     });
     expect(result.isError).toBe(true);
-    expect(text(result)).toMatch(/matches several terminals \(Admin - ARC-L1; Admin - ARC-L2\)/);
+    expect(text(result)).toMatch(
+      /matches several terminals \(<<<UNTRUSTED_TEXT source=uex>>> Admin - ARC-L1; Admin - ARC-L2 <<<END_UNTRUSTED_TEXT>>>\)/,
+    );
   });
 });
 

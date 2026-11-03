@@ -1,6 +1,7 @@
 import axios from "axios";
 import { ALLOWED_HOSTS, createGuardedClient } from "../../core/http.js";
 import { USER_AGENT } from "../../core/useragent.js";
+import { remoteText } from "../../core/untrusted.js";
 
 /**
  * UEX answers every call with {status, http_code, data, message}; status is "ok" on success
@@ -9,6 +10,17 @@ import { USER_AGENT } from "../../core/useragent.js";
  */
 function isEnvelope(body: unknown): body is { status?: string; message?: string; data?: unknown } {
   return typeof body === "object" && body !== null;
+}
+
+/**
+ * What UEX said about a failure: its status code and message are third-party text (a hostile or
+ * compromised answer can put anything there), so they are cleaned, cut and fenced.
+ */
+function describeUexFailure(status: unknown, message: unknown): string {
+  // A status is a code such as "missing_one_required_inputs"; anything else is text, so it is fenced.
+  const plain = typeof status === "string" && /^[A-Za-z0-9_.-]{1,60}$/.test(status);
+  const code = plain ? status : remoteText(status, "uex", 80);
+  return `${code}${message ? `: ${remoteText(message, "uex")}` : ""}`;
 }
 
 /** UEX Corp API client. The bearer token is attached per request, and only to UEX hosts. */
@@ -31,7 +43,7 @@ export function createUexClient(baseURL: string, token: string | undefined) {
         );
       }
       if (body.status !== undefined && body.status !== "ok") {
-        throw new Error(`UEX error ${body.status}${body.message ? `: ${body.message}` : ""}`);
+        throw new Error(`UEX error ${describeUexFailure(body.status, body.message)}`);
       }
       return response;
     },
@@ -40,7 +52,7 @@ export function createUexClient(baseURL: string, token: string | undefined) {
       if (axios.isAxiosError(error) && isEnvelope(error.response?.data)) {
         const { status, message } = error.response.data;
         if (status)
-          error.message = `UEX ${error.response.status} ${status}${message ? `: ${message}` : ""}`;
+          error.message = `UEX ${error.response.status} ${describeUexFailure(status, message)}`;
       }
       return Promise.reject(error);
     },

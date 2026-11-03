@@ -19,6 +19,7 @@ import { ALLOWED_HOSTS, createGuardedClient } from "../../core/http.js";
 import { userCacheDir } from "../../core/paths.js";
 import { isRepoName } from "../../core/validate.js";
 import { USER_AGENT } from "../../core/useragent.js";
+import { cleanLabel, remoteText } from "../../core/untrusted.js";
 
 const REPO = process.env.SCMCP_DATA_REPO || "voidput/sc-gamedata-dumps";
 const DATA_PATH = process.env.SCMCP_DATA_REPO_PATH || "data";
@@ -136,21 +137,23 @@ export async function listBuilds(limit = 40): Promise<Build[]> {
 
   const dates = new Map<string, string>();
   for (const commit of commitsResponse.data ?? []) {
-    dates.set(commit.sha, (commit.commit?.author?.date ?? "").slice(0, 10));
+    dates.set(commit.sha, cleanLabel(commit.commit?.author?.date)?.slice(0, 10) ?? "");
   }
 
   const builds: Build[] = [];
   const seen = new Set<string>();
 
   for (const tag of tagsResponse.data ?? []) {
-    const version: string = (tag.name ?? "").trim();
+    // A tag name is third-party text (the repository is configurable): cleaned and bounded where it enters.
+    const version: string = cleanLabel(tag.name) ?? "";
     const sha: string | undefined = tag.commit?.sha;
     // Anything that is not a build string (a "v1.0.0" release tag, say) is not
     // a patch and must not show up as one.
     // The sha ends up in a cache file name and a URL: only a full hex commit id is accepted, so a
     // malformed or hostile API answer cannot steer either.
     if (!sha || !/^[0-9a-f]{40}$/.test(sha)) continue;
-    if (!/^\d+\.\d+/.test(version) || seen.has(version)) continue;
+    // A build string has no spaces: a "tag" that carries a sentence is not a patch.
+    if (!/^\d+\.\d+[A-Za-z0-9._+-]*$/.test(version) || seen.has(version)) continue;
     seen.add(version);
     builds.push({ version, sha, date: dates.get(sha) ?? "" });
   }
@@ -204,6 +207,26 @@ function entriesOf(collection: unknown): Entry[] {
   return [];
 }
 
+/** A collection name goes into a cache file name: plain characters only, nothing that climbs a path. */
+export function isSafeCollectionName(name: string): boolean {
+  return /^[A-Za-z0-9_.-]+$/.test(name) && !name.includes("..");
+}
+
+/** The cache file of one collection at one build. Throws when the name could leave the cache folder. */
+export function cachePathFor(dataset: string, wanted: string, sha: string): string {
+  if (!isSafeCollectionName(wanted)) {
+    throw new Error(
+      `Invalid collection name: use letters, digits, "_", "-" and "." only (no "..", no path).`,
+    );
+  }
+  const root = path.resolve(CACHE_DIR);
+  const target = path.resolve(root, `${dataset}__${wanted}__${sha.slice(0, 10)}.json`);
+  if (path.dirname(target) !== root) {
+    throw new Error("Invalid collection name: the cache path leaves the cache folder.");
+  }
+  return target;
+}
+
 /**
  * Fetch one collection of a dataset at a build, caching it on disk since a
  * tagged dump never changes.
@@ -215,7 +238,7 @@ export async function fetchDataset(
 ): Promise<Entry[]> {
   const { file, collection: defaultCollection } = DATASETS[dataset];
   const wanted = collection ?? defaultCollection;
-  const cachePath = path.join(CACHE_DIR, `${dataset}__${wanted}__${build.sha.slice(0, 10)}.json`);
+  const cachePath = cachePathFor(dataset, wanted, build.sha);
 
   try {
     return JSON.parse(await fs.readFile(cachePath, "utf-8"));
@@ -245,10 +268,10 @@ export async function fetchDataset(
   if (!dump || typeof dump !== "object" || Array.isArray(dump)) {
     throw new Error(`Unexpected shape for ${file} at ${build.version}: expected an object.`);
   }
-  if (!(wanted in dump)) {
+  if (!Object.hasOwn(dump, wanted)) {
     const available = Object.keys(dump).filter((k) => !META_KEYS.has(k));
     throw new Error(
-      `Dataset "${dataset}" has no collection "${wanted}" at ${build.version}. Available: ${available.join(", ")}`,
+      `Dataset "${dataset}" has no collection "${wanted}" at ${build.version}. Available: ${remoteText(available.join(", "), "sc-gamedata-dumps")}`,
     );
   }
 

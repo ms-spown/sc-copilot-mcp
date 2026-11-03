@@ -419,16 +419,19 @@ describe("Feature: a query with no usable word matches nothing, it does not retu
     },
   );
 
+  // Built from code points: the repository check refuses letters of other scripts in the text.
+  const JAPANESE = String.fromCodePoint(0x65e5, 0x672c, 0x8a9e);
+
   it("Given letters of other scripts, Then they are searched (not erased into an empty query)", async () => {
-    expect(fold("日本語")).toBe("日本語");
+    expect(fold(JAPANESE)).toBe(JAPANESE);
     expect(fold("Ørbit")).toBe("ørbit");
     const { data } = await call(
       "scmdb_search_missions",
-      { query: "日本語" },
+      { query: JAPANESE },
       stub({ merged: three }),
     );
     expect(data.total_matches).toBe(0);
-    expect(data.note).toMatch(/No match for "日本語"/);
+    expect(data.note).toContain(`No match for "${JAPANESE}"`);
   });
 
   it("Given a blank query, Then everything is still listed", async () => {

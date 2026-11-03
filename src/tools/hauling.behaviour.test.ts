@@ -95,7 +95,7 @@ describe("Feature: hauling routes sized to my ship", () => {
       });
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toMatch(
-        /fits several ships \(Crusader C2 Hercules Starlifter; Crusader M2/,
+        /fits several ships \(<<<UNTRUSTED_TEXT source=uex>>> Crusader C2 Hercules Starlifter; Crusader M2/,
       );
       expect(get.mock.calls.some((c) => c[0] === "/commodities_routes")).toBe(false);
     });
@@ -109,7 +109,9 @@ describe("Feature: hauling routes sized to my ship", () => {
         ship_name: "Harbinger",
       });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toMatch(/Aegis Vanguard Harbinger has no cargo capacity/);
+      expect(result.content[0].text).toMatch(
+        /UNTRUSTED_TEXT source=uex>>> Aegis Vanguard Harbinger <<<END_UNTRUSTED_TEXT>>> has no cargo capacity/,
+      );
     });
   });
 

@@ -6,7 +6,7 @@
  * into it: the UEX token lives in a .env file next to the package, which the server reads
  * itself. The planning step is pure, so it can be shown to the user before anything is written.
  */
-import { editEnvKeyText } from "./jsonEdit.js";
+import { editEnvKeyText, editServerEntryText } from "./jsonEdit.js";
 
 export interface ServerEntry {
   command: string;
@@ -18,8 +18,10 @@ export interface MergePlan {
   action: "add" | "update" | "unchanged";
   entry: ServerEntry;
   previous: ServerEntry | null;
-  /** The whole file after the merge, ready to write. */
+  /** The whole file after the merge, parsed. */
   merged: Record<string, unknown>;
+  /** The text to write: the original with only this entry changed. Null when nothing changes. */
+  text: string | null;
   /** How many other servers are kept untouched. Their names and settings are never shown. */
   otherServers: number;
 }
@@ -94,8 +96,34 @@ export function planMerge(rawConfig: string | null, name: string, entry: ServerE
     entry: finalEntry,
     previous,
     merged,
+    text: action === "unchanged" ? null : mergedText(rawConfig, name, finalEntry, merged),
     otherServers: Object.keys(existing).filter((k) => k !== name).length,
   };
+}
+
+/**
+ * The new file text: the original with only this entry added or replaced, byte for byte otherwise
+ * (BOM, line endings, indentation, number spellings such as 1.0 or 12345678901234567890 kept).
+ * The result is proved to mean exactly what the object-level merge means; when it does not,
+ * nothing is written and the line to add by hand is given.
+ */
+function mergedText(
+  rawConfig: string | null,
+  name: string,
+  entry: ServerEntry,
+  merged: Record<string, unknown>,
+): string {
+  if (rawConfig === null || rawConfig.trim() === "") return `${JSON.stringify(merged, null, 2)}\n`;
+  const bom = stripBom(rawConfig) !== rawConfig ? "\uFEFF" : "";
+  try {
+    const edited = editServerEntryText(stripBom(rawConfig), name, entry);
+    if (JSON.stringify(JSON.parse(edited)) === JSON.stringify(merged)) return bom + edited;
+  } catch {
+    // Falls through to the explanation below.
+  }
+  throw new ConfigError(
+    `The config could not be edited safely, so it was not touched. Do it by hand: under "mcpServers", set ${JSON.stringify(name)}: ${JSON.stringify(entry)}.`,
+  );
 }
 
 export interface EnvKeyPlan {
@@ -202,6 +230,31 @@ export function describeEnvKeyPlan(plan: EnvKeyPlan, name: string, value: string
   ].join("\n");
 }
 
+/**
+ * An entry already in the user's file, safe to show: the values of its env are replaced, only the key
+ * names stay. That file may hold a token the user put there by hand; a dry run must not print it.
+ */
+function maskEnv(entry: unknown): unknown {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return "(not an object)";
+  const hidden = "(value hidden)";
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(entry as Record<string, unknown>)) {
+    if (key === "command" && typeof value === "string") out[key] = value;
+    else if (key === "args" && Array.isArray(value)) {
+      // An argument that names a secret, and the one after it (its value), are hidden.
+      let hide = false;
+      out[key] = value.map((arg) => {
+        const secret = hide || looksSecret.test(String(arg));
+        hide = typeof arg === "string" && /^--?[\w-]+$/.test(arg) && looksSecret.test(arg);
+        return secret ? hidden : arg;
+      });
+    } else if (key === "env" && value && typeof value === "object" && !Array.isArray(value))
+      out[key] = Object.fromEntries(Object.keys(value).map((k) => [k, hidden]));
+    else out[key] = hidden; // any other key (headers, url...) could carry a credential too
+  }
+  return out;
+}
+
 /** What is shown before writing: only this server's entry and a count of the others. */
 export function describePlan(plan: MergePlan, name: string): string {
   const lines = [
@@ -217,7 +270,7 @@ export function describePlan(plan: MergePlan, name: string): string {
     lines.push(
       "",
       "Replaces:",
-      ...JSON.stringify({ [name]: plan.previous }, null, 2)
+      ...JSON.stringify({ [name]: maskEnv(plan.previous) }, null, 2)
         .split("\n")
         .map((l) => `  ${l}`),
     );
