@@ -366,7 +366,7 @@ describe("uex_get_trade_routes", () => {
     origin_planet_name: "ArcCorp",
     destination_terminal_name: "Rest Stop",
     price_origin: 10,
-    price_destination: 20,
+    price_destination: 10 + profit,
     price_margin: 0,
     profit,
     ...extra,
@@ -424,7 +424,7 @@ describe("uex_get_trade_routes", () => {
     });
   });
 
-  it("sorts by profit, keeps zero values, and honours the limit", async () => {
+  it("sorts by profit per SCU when no cargo size is given, and honours the limit", async () => {
     const { client } = setup();
     const { data } = parsed(
       await registryWith({ uexClient: client }).call("uex_get_trade_routes", {
@@ -433,8 +433,8 @@ describe("uex_get_trade_routes", () => {
       }),
     );
     expect(data.total_routes).toBe(3);
-    expect(data.routes.map((r: { profit: number }) => r.profit)).toEqual([500, 50]);
-    expect(data.routes[0].margin).toBe(0);
+    expect(data.routes.map((r: { profit_per_scu: number }) => r.profit_per_scu)).toEqual([500, 50]);
+    expect(data.sorted_by).toMatch(/profit_per_scu/);
   });
 
   it("lists the candidates when a name is ambiguous instead of guessing", async () => {

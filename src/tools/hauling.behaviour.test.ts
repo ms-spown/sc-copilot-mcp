@@ -14,12 +14,17 @@ const VEHICLES = [
   { id: 3, name: "Vulture", name_full: "Drake Vulture", scu: 12 },
   { id: 4, name: "Vanguard Harbinger", name_full: "Aegis Vanguard Harbinger", scu: 0 },
 ];
-const route = (profit: number, reports = 0) => ({
+// Buys at 100, sells at 100 + perScu. UEX's own "profit" is for scu_reachable (a huge volume),
+// which is exactly the figure that must NOT be shown for a 696 SCU hold.
+const route = (perScu: number, reports = 0, reachable = 100_000) => ({
   commodity_name: "Laranite",
   origin_terminal_name: "Admin - ARC-L1",
   destination_terminal_name: "Rest Stop",
-  price_margin: 0,
-  profit,
+  price_origin: 100,
+  price_destination: 100 + perScu,
+  scu_reachable: reachable,
+  profit: perScu * reachable,
+  investment: 100 * reachable,
   price_origin_users_rows: reports,
   price_destination_users_rows: 0,
 });
@@ -29,7 +34,7 @@ function world() {
   const get = vi.fn(async (url: string) => {
     if (url === "/vehicles") return { data: { data: VEHICLES } };
     if (url === "/commodities") return { data: { data: [{ id: 79, name: "Laranite" }] } };
-    if (url === "/commodities_routes") return { data: { data: [route(100), route(900, 7)] } };
+    if (url === "/commodities_routes") return { data: { data: [route(100), route(900, 7, 50)] } };
     throw new Error(`unexpected ${url}`);
   });
   const uex = {
@@ -131,22 +136,61 @@ describe("Feature: hauling routes sized to my ship", () => {
     });
   });
 
+  describe("Scenario: UEX quotes profit for a volume my ship cannot carry", () => {
+    it("Then profit is recomputed for the cargo that fits: per SCU times SCU hauled", async () => {
+      const { registry } = world();
+      const { data } = body(
+        await registry.call("uex_get_trade_routes", {
+          commodity_name: "Laranite",
+          cargo_capacity: 696,
+        }),
+      );
+      const [first, second] = data.routes;
+      // 900/SCU but only 50 SCU can move on that route: 45,000. The other is 100/SCU x 696 = 69,600.
+      expect(first).toMatchObject({
+        profit_per_scu: 100,
+        scu_to_haul: 696,
+        profit_for_cargo: 69_600,
+        cost_for_cargo: 69_600,
+      });
+      expect(second).toMatchObject({
+        profit_per_scu: 900,
+        scu_to_haul: 50,
+        profit_for_cargo: 45_000,
+      });
+      expect(JSON.stringify(data)).not.toContain("10000000"); // UEX's 100,000-SCU profit is gone
+    });
+  });
+
+  describe("Scenario: my budget is smaller than my hold", () => {
+    it("Then I only haul what I can pay for", async () => {
+      const { registry } = world();
+      const { data } = body(
+        await registry.call("uex_get_trade_routes", {
+          commodity_name: "Laranite",
+          cargo_capacity: 696,
+          investment: 1000,
+        }),
+      );
+      expect(data.routes[0]).toMatchObject({ scu_to_haul: 10, cost_for_cargo: 1000 });
+    });
+  });
+
   describe("Scenario: I want to judge how far to trust a route", () => {
     it("Then each route shows how many player reports back its prices, and zeros stay visible", async () => {
       const { registry } = world();
       const { data } = body(
         await registry.call("uex_get_trade_routes", { commodity_name: "Laranite" }),
       );
-      expect(
-        data.routes.map((r: { profit: number; reports_origin: number }) => [
-          r.profit,
-          r.reports_origin,
-        ]),
-      ).toEqual([
+      const seen = data.routes.map((r: { profit_per_scu: number; reports_origin: number }) => [
+        r.profit_per_scu,
+        r.reports_origin,
+      ]);
+      expect(seen).toEqual([
         [900, 7],
         [100, 0],
       ]);
-      expect(data.routes[0].margin).toBe(0);
+      expect(data.routes[0].scu_to_haul).toBeNull(); // no cargo size and no budget: nothing to size
     });
   });
 });

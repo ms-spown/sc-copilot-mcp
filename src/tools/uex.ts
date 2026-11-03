@@ -171,7 +171,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
     {
       name: "uex_get_trade_routes",
       description:
-        "Best trade routes (buy here, sell there) from UEX, sorted by profit. UEX requires an ORIGIN: give at least one of commodity_name, origin_terminal_name or origin_planet_name, otherwise the call fails. Size the answer to the ship with ship_name (for example one from sc_fleet_get: its cargo capacity is used) or cargo_capacity in SCU, and to the budget with investment (aUEC). Each route shows how many player reports back its prices (reports_origin, reports_destination; 0 means UEX's own estimate). Crowdsourced prices: check provenance.data_age and sanity-check a route before flying it.",
+        "Best trade routes (buy here, sell there) from UEX, sorted by profit. UEX requires an ORIGIN: give at least one of commodity_name, origin_terminal_name or origin_planet_name, otherwise the call fails. Size the answer to the ship with ship_name (for example one from sc_fleet_get: its cargo capacity is used) or cargo_capacity in SCU, and to the budget with investment (aUEC). Profit is computed for the cargo that fits (profit_for_cargo), not UEX's figure for the route's maximum volume. Each route shows how many player reports back its prices (reports_origin, reports_destination; 0 means UEX's own estimate). Crowdsourced prices: check provenance.data_age and sanity-check a route before flying it.",
       inputSchema: {
         type: "object",
         properties: {
@@ -293,10 +293,37 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
           ? response.data.data
           : [];
         const num = (v: unknown) => (typeof v === "number" ? v : 0);
-        const routes = rows
-          .sort((a, b) => num(b.profit) - num(a.profit))
+        // UEX's own profit and investment are for the largest volume the route can take
+        // (scu_reachable, often tens of thousands of SCU), not for this player's hold. They are
+        // recomputed here for the cargo that fits: units = ship or budget limit, capped by volume.
+        const sized = rows.map((r) => {
+          const buy = num(r.price_origin);
+          const perScu = num(r.price_destination) - buy;
+          // Without a cargo size or a budget there is nothing to size: the route's own maximum
+          // volume would just bring back the misleading figure this block exists to replace.
+          const sizing = cargo_capacity !== undefined || investment !== undefined;
+          const caps = (
+            sizing
+              ? [
+                  cargo_capacity,
+                  r.scu_reachable === undefined ? undefined : num(r.scu_reachable),
+                  investment !== undefined && buy > 0 ? Math.floor(investment / buy) : undefined,
+                ]
+              : []
+          ).filter((v): v is number => typeof v === "number" && v >= 0);
+          const units = caps.length ? Math.min(...caps) : null;
+          return {
+            r,
+            perScu,
+            units,
+            total: units === null ? null : perScu * units,
+            cost: units === null ? null : buy * units,
+          };
+        });
+        sized.sort((x, y) => (y.total ?? y.perScu) - (x.total ?? x.perScu));
+        const routes = sized
           .slice(0, Math.min(Math.max(limit ?? 10, 1), 50))
-          .map((r) => ({
+          .map(({ r, perScu, units, total, cost }) => ({
             commodity: r.commodity_name,
             origin: {
               terminal: r.origin_terminal_name,
@@ -310,15 +337,15 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             },
             buy_price: r.price_origin,
             sell_price: r.price_destination,
-            margin: r.price_margin,
-            roi: r.price_roi,
+            profit_per_scu: perScu,
+            scu_to_haul: units,
+            cost_for_cargo: cost,
+            profit_for_cargo: total,
+            roi_percent: r.price_roi,
             scu_reachable: r.scu_reachable,
             reports_origin: r.price_origin_users_rows,
             reports_destination: r.price_destination_users_rows,
-            investment: r.investment,
-            profit: r.profit,
             distance: r.distance,
-            score: r.score,
             origin_status: r.status_origin,
             destination_status: r.status_destination,
             game_version_origin: r.game_version_origin,
@@ -335,7 +362,10 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
                 cargo_scu_used: cargo_capacity ?? null,
                 total_routes: rows.length,
                 shown: routes.length,
-                sorted_by: "profit, descending",
+                sorted_by:
+                  cargo_capacity !== undefined || investment !== undefined
+                    ? "profit_for_cargo, descending"
+                    : "profit_per_scu, descending (no cargo size given)",
                 routes,
               }),
             },
