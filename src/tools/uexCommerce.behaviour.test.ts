@@ -288,6 +288,8 @@ describe("Feature: uex_get_refining_margins ranks refineries and ores without in
         "Laranite (Raw)",
       ]);
       expect(ores[0].value_index_best_is_100).toBe(100);
+      // One refinery reported Quantainium: the ranking says its best yield rests on very little.
+      expect(ores[0]).toMatchObject({ refineries_reporting: 1, thin_data: true });
       expect(ores[2].value_index_best_is_100).toBeLessThan(10);
       expect(ores[2]).toMatchObject({
         best_yield_bonus_percent: 7,
@@ -374,7 +376,7 @@ const shopRow = (
   date_modified: ago(days),
   ...extra,
 });
-const MU = cp(0xb5); // the micro sign of the unit µSCU, built from its code point
+const MU = cp(0xb5); // the micro sign that starts UEX's volume unit, built from its code point
 const attribute = (item: number, name: string, value: string, unit = "") => ({
   id_item: item,
   attribute_name: name,

@@ -234,6 +234,8 @@ export interface OreRankRow {
   value_index_best_is_100: number;
   ore_sale_median_unit_unverified: number | null;
   refineries_reporting: number;
+  /** Fewer than 5 refineries reported this ore: its best yield rests on very few reports. */
+  thin_data: boolean;
 }
 
 /**
@@ -281,6 +283,7 @@ export function rankOres(
         .sort(),
       ore_sale_median_unit_unverified: sales,
       refineries_reporting: rows.length,
+      thin_data: rows.length < 5,
       value: price * (1 + best / 100),
     });
   }

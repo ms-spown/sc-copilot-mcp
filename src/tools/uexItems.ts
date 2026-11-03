@@ -265,10 +265,11 @@ export function uexItemTools({ uexClient }: { uexClient: HttpClient }): ToolDefi
               .data.data,
           );
           const { summary, used } = summarisePrices(priceRows, now, live, 3);
-          return { attrs: attributeViews(attrRows), attrRows, summary, used };
+          return { attrs: attributeViews(attrRows), summary, used };
         };
         const [la, lb] = [await load(a), await load(b)];
-        reportRowDates([...la.used, ...lb.used, ...la.attrRows, ...lb.attrRows], "item rows");
+        // Only the price rows date the answer: the attribute rows are datamined stats, a different clock.
+        reportRowDates([...la.used, ...lb.used], "item price rows");
 
         const pa = la.summary.cheapest;
         const pb = lb.summary.cheapest;
@@ -281,7 +282,7 @@ export function uexItemTools({ uexClient }: { uexClient: HttpClient }): ToolDefi
             : {}),
           attributes: compareAttributes(la.attrs, lb.attrs),
           attributes_note:
-            "difference = b minus a, only for numbers in the same unit. UEX does not say whether a higher value is better; read it for the stat in question (e.g. a lower mass or fuel burn is not always better).",
+            "difference = b minus a, only for numbers in the same unit. UEX does not say whether a higher value is better; read each stat for what it means.",
           prices: {
             a: {
               cheapest: pa,
