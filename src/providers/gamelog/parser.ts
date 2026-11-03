@@ -15,6 +15,8 @@
  * (Stanton <-> Pyro) ARE logged, by the jump drive's state machine, and are reported.
  */
 
+import { parseCommerceLine, type TradeRecord } from "./trade.js";
+
 export type EventType =
   | "session_start"
   | "login_completed"
@@ -90,6 +92,11 @@ export interface ParsedLog {
   stats: { lines: number; recognized: number; ignored: number };
   /** First and last timestamps in the text: the session's span, by the log's own clock (UTC). */
   span: { first: string | null; last: string | null };
+  /**
+   * Commerce lines (shop and cargo requests, their outcomes, location hints), kept apart from
+   * `events` so the frozen event list of the log tools does not change. See trade.ts.
+   */
+  commerce: TradeRecord[];
 }
 
 const TS = /^<(\d{4}-\d{2}-\d{2}T[\d:.]+Z)>/;
@@ -128,6 +135,7 @@ function field(line: string, name: string): string | null {
 export function parseLog(text: string): ParsedLog {
   const lines = text.split(/\r?\n/);
   const events: LogEvent[] = [];
+  const commerce: TradeRecord[] = [];
   const session: SessionInfo = {
     started_local: null,
     game_version: null,
@@ -245,6 +253,8 @@ export function parseLog(text: string): ParsedLog {
       }
       continue;
     }
+    const trade = parseCommerceLine(body, ts);
+    if (trade) commerce.push(trade);
     if (/<CWallet::ProcessClaimToNextStep> New Insurance Claim Request/.test(body)) {
       push("insurance_claim_requested");
       continue;
@@ -263,6 +273,11 @@ export function parseLog(text: string): ParsedLog {
         shop: field(body, "shopName"),
         result: field(body, "result"),
       });
+      continue;
+    }
+    if (trade) {
+      // Cargo requests, sells, location hints: read into `commerce` only.
+      recognized += 1;
       continue;
     }
 
@@ -304,6 +319,7 @@ export function parseLog(text: string): ParsedLog {
     events,
     stats: { lines: counted, recognized, ignored: counted - recognized },
     span: { first: firstTime, last: lastTime },
+    commerce,
   };
 }
 
