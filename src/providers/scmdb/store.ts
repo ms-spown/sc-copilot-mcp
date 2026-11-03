@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fetchWithCache, isOutage } from "../../core/cache.js";
 import type { HttpClient } from "../../core/http.js";
-import { recordFetch, setChannel, setGameVersion } from "../../core/provenance.js";
+import { recordFetch, setChannel, setDataDates, setGameVersion } from "../../core/provenance.js";
 import { isRepoName } from "../../core/validate.js";
 
 /**
@@ -170,6 +170,16 @@ export class Scmdb {
     if (channel) {
       setChannel(channel);
       setGameVersion(version);
+      // The date of the channel's data (latest.json), not of our download: a channel can sit
+      // unchanged for weeks while the manifest is refreshed every few hours.
+      const generated = Date.parse(generatedAt);
+      if (Number.isFinite(generated)) {
+        setDataDates(
+          generated,
+          generated,
+          `SCMDB ${channel.toUpperCase()} channel generated_at (data/latest.json)`,
+        );
+      }
     }
 
     const sha = await this.commitSha();

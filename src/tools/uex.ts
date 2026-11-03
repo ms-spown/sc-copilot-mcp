@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { fetchWithCache } from "../core/cache.js";
-import { formatOutput, formatOutputRaw } from "../core/format.js";
+import { formatOutput, formatOutputRaw, MAX_OUTPUT_CHARS, optimizeData } from "../core/format.js";
 import { resolveShip } from "../providers/fleet/resolve.js";
+import { reportRowDates, rowUpdatedAt, splitByVersion } from "../providers/uex/freshness.js";
 import type { HttpClient } from "../core/http.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
@@ -29,7 +30,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
     {
       name: "uex_get_commodity_prices",
       description:
-        "Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced: check provenance.data_age). Optionally narrow by star system, planet or terminal with exact names. Use for 'where do I sell X' and 'what does X cost at Y'.",
+        "Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced). Two lists: buy_locations (cheapest first) and sell_locations (best first), each cut to `limit` rows (default 15) with totals; `side` keeps one. Rows older than UEX's LIVE version are left out and counted (excluded_older_version) unless include_older_versions; newer (PTU) rows are kept and counted. Rows reported by players come before UEX estimates (is_estimate). Each row has updated_at. Optionally narrow by star system, planet or terminal with exact names. Use for 'where do I sell X' and 'what does X cost at Y'.",
       inputSchema: {
         type: "object",
         properties: {
@@ -49,16 +50,42 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             type: "string",
             description: "Optional: Filter by terminal name.",
           },
+          side: {
+            type: "string",
+            enum: ["buy", "sell", "both"],
+            description:
+              "buy = where the player can BUY it (cheapest first), sell = where the player can SELL it (best price first), both = two lists (default).",
+          },
+          limit: {
+            type: "number",
+            description: "Rows per list (default 15, max 50). The total count is always given.",
+          },
+          include_older_versions: {
+            type: "boolean",
+            description:
+              "Also return rows from an older game version than LIVE (default false: they are left out and counted).",
+          },
         },
         required: ["commodity_name"],
       },
       handler: async (args: unknown): Promise<ToolResult> => {
-        const { commodity_name, star_system_name, planet_name, terminal_name } = z
+        const {
+          commodity_name,
+          star_system_name,
+          planet_name,
+          terminal_name,
+          side,
+          limit,
+          include_older_versions,
+        } = z
           .object({
             commodity_name: z.string(),
             star_system_name: z.string().optional(),
             planet_name: z.string().optional(),
             terminal_name: z.string().optional(),
+            side: z.enum(["buy", "sell", "both"]).optional(),
+            limit: z.number().optional(),
+            include_older_versions: z.boolean().optional(),
           })
           .parse(args);
         const response = await fetchWithCache(uexClient, "/commodities_prices", {
@@ -89,9 +116,142 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             );
           }
         }
+        if (!Array.isArray(data)) {
+          return { content: [{ type: "text", text: formatOutput(data) }] };
+        }
+
+        // LIVE's version decides what is "old". Asking again is free (same cache as the
+        // provenance lookup). If UEX cannot say, nothing is excluded: the newest row could be PTU.
+        let live: unknown;
+        try {
+          const versions = await fetchWithCache(uexClient, "/game_versions", undefined, {
+            record: false,
+          });
+          live = versions.data?.data?.live;
+        } catch {
+          live = null;
+        }
+        const located = data as Record<string, unknown>[];
+        const split = splitByVersion(located, live);
+        const considered = include_older_versions ? located : split.kept;
+        const countVersions = (list: Record<string, unknown>[]) => {
+          const out: Record<string, number> = {};
+          for (const r of list)
+            out[String(r.game_version)] = (out[String(r.game_version)] ?? 0) + 1;
+          return out;
+        };
+        const olderVersions = countVersions(split.older);
+        const newerVersions = countVersions(split.newer);
+
+        const cap = Math.min(Math.max(Math.floor(limit ?? 15), 1), 50);
+        const amount = (r: Record<string, unknown>, field: string) =>
+          typeof r[field] === "number" && Number.isFinite(r[field]) ? (r[field] as number) : 0;
+        // A price nobody reported is UEX's estimate. A missing count is not read as 0.
+        const reportsField = {
+          price_buy: "price_buy_users_rows",
+          price_sell: "price_sell_users_rows",
+        };
+        const isEstimate = (r: Record<string, unknown>, field: "price_buy" | "price_sell") =>
+          r[reportsField[field]] === 0;
+        const view = (r: Record<string, unknown>, field: "price_buy" | "price_sell") => ({
+          ...(optimizeData(r) as Record<string, unknown>),
+          is_estimate: isEstimate(r, field),
+          updated_at: rowUpdatedAt(r),
+        });
+        // Rows a player reported come before estimates; within each group, the best price.
+        const ranked = (field: "price_buy" | "price_sell", cheapestFirst: boolean) => ({
+          field,
+          sorted_by: `${field}, ${cheapestFirst ? "cheapest first" : "highest first"}; rows reported by players before UEX estimates (is_estimate)`,
+          all: considered
+            .filter((r) => amount(r, field) > 0)
+            .sort(
+              (a, b) =>
+                Number(isEstimate(a, field)) - Number(isEstimate(b, field)) ||
+                (cheapestFirst
+                  ? amount(a, field) - amount(b, field)
+                  : amount(b, field) - amount(a, field)),
+            ),
+        });
+        const want = side ?? "both";
+        const buy = want === "sell" ? null : ranked("price_buy", true);
+        const sell = want === "buy" ? null : ranked("price_sell", false);
+
+        const render = (n: number) => {
+          const list = (l: NonNullable<typeof buy>) => {
+            const rows = l.all.slice(0, n);
+            return {
+              total: l.all.length,
+              estimates: l.all.filter((r) => isEstimate(r, l.field)).length,
+              shown: rows.length,
+              sorted_by: l.sorted_by,
+              rows,
+            };
+          };
+          const b = buy ? list(buy) : null;
+          const sl = sell ? list(sell) : null;
+          return { b, sl };
+        };
+        // Real UEX rows are wide: shrink the lists until the answer fits the output budget,
+        // and say so, rather than hand back a broken or "too large" payload.
+        const compose = (n: number) => {
+          const { b, sl } = render(n);
+          const shownRows = [...(b?.rows ?? []), ...(sl?.rows ?? [])];
+          return {
+            shownRows,
+            payload: {
+              commodity: commodity_name,
+              rows_from_uex: located.length,
+              game_version_reference: split.reference
+                ? { version: split.reference, source: "UEX LIVE version" }
+                : {
+                    version: null,
+                    source:
+                      "UEX did not give its LIVE version, so no row was excluded as old; read each row's game_version",
+                    versions_in_rows: split.versions,
+                  },
+              ...(split.newer.length > 0
+                ? {
+                    newer_than_live: {
+                      count: split.newer.length,
+                      versions: newerVersions,
+                      note: `${split.newer.length} rows are from a version newer than LIVE (a PTU build?). They are kept: read each row's game_version.`,
+                    },
+                  }
+                : {}),
+              excluded_older_version: {
+                count: include_older_versions ? 0 : split.older.length,
+                versions: include_older_versions ? {} : olderVersions,
+                ...(split.older.length > 0
+                  ? {
+                      note: include_older_versions
+                        ? `${split.older.length} rows from an older version are INCLUDED (include_older_versions); read each row's game_version.`
+                        : `${split.older.length} rows from an older game version were left out; set include_older_versions to see them.`,
+                    }
+                  : {}),
+              },
+              ...(n < cap
+                ? { note: `Lists cut to ${n} rows each (asked ${cap}) to fit the output size.` }
+                : {}),
+              ...(b
+                ? { buy_locations: { ...b, rows: b.rows.map((r) => view(r, "price_buy")) } }
+                : {}),
+              ...(sl
+                ? { sell_locations: { ...sl, rows: sl.rows.map((r) => view(r, "price_sell")) } }
+                : {}),
+            },
+          };
+        };
+        let n = cap;
+        let composed = compose(n);
+        while (n > 1 && JSON.stringify(composed.payload, null, 2).length > MAX_OUTPUT_CHARS) {
+          n = Math.max(1, Math.floor(n / 2));
+          composed = compose(n);
+        }
+        reportRowDates([...new Set(composed.shownRows)], "price rows");
 
         return {
-          content: [{ type: "text", text: formatOutput(data) }],
+          // Not formatOutput: a count of 0 (nothing excluded) is information here.
+          content: [{ type: "text", text: JSON.stringify(composed.payload, null, 2) }],
         };
       },
     },
@@ -171,7 +331,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
     {
       name: "uex_get_trade_routes",
       description:
-        "Best trade routes (buy here, sell there) from UEX, sorted by profit. UEX requires an ORIGIN: give at least one of commodity_name, origin_terminal_name or origin_planet_name, otherwise the call fails. Size the answer to the ship with ship_name (for example one from sc_fleet_get: its cargo capacity is used) or cargo_capacity in SCU, and to the budget with investment (aUEC). Profit is computed for the cargo that fits (profit_for_cargo), not UEX's figure for the route's maximum volume. Each route shows how many player reports back its prices (reports_origin, reports_destination; 0 means UEX's own estimate). Crowdsourced prices: check provenance.data_age and sanity-check a route before flying it.",
+        "Best trade routes (buy here, sell there) from UEX, sorted by profit. UEX requires an ORIGIN: give at least one of commodity_name, origin_terminal_name or origin_planet_name, otherwise the call fails. Size it to a ship with ship_name (e.g. from sc_fleet_get) or cargo_capacity in SCU, and to the budget with investment (aUEC). Profit is computed for the cargo that fits (profit_for_cargo), not UEX's figure for the route's maximum volume. Each route shows its player reports (reports_origin, reports_destination) and is_estimate: true when an end has 0 reports, i.e. a UEX estimate no player saw (estimated_sides says which). Reported routes come first, estimates after, each by profit; min_reports drops routes with fewer reports at either end (default 0). Crowdsourced: data_age is null when UEX dates no route; sanity-check a route before flying it.",
       inputSchema: {
         type: "object",
         properties: {
@@ -206,6 +366,11 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             type: "number",
             description: "Routes to return, best profit first (default 10, max 50).",
           },
+          min_reports: {
+            type: "number",
+            description:
+              "Drop routes that have fewer than this many player reports at the origin OR at the destination (default 0: keep UEX estimates, but rank them after reported routes). 1 = only routes both ends of which a player has reported.",
+          },
         },
       },
       handler: async (args: unknown): Promise<ToolResult> => {
@@ -217,6 +382,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
           cargo_capacity: requestedScu,
           ship_name,
           limit,
+          min_reports,
         } = z
           .object({
             commodity_name: z.string().optional(),
@@ -226,6 +392,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             cargo_capacity: z.number().optional(),
             ship_name: z.string().optional(),
             limit: z.number().optional(),
+            min_reports: z.number().min(0).optional(),
           })
           .parse(args || {});
 
@@ -320,10 +487,35 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             cost: units === null ? null : buy * units,
           };
         });
-        sized.sort((x, y) => (y.total ?? y.perScu) - (x.total ?? x.perScu));
-        const routes = sized
-          .slice(0, Math.min(Math.max(limit ?? 10, 1), 50))
-          .map(({ r, perScu, units, total, cost }) => ({
+        // A price nobody reported is UEX's estimate. A count that is missing is not read as 0.
+        const estimatedSides = (r: Record<string, unknown>) =>
+          (
+            [
+              ["origin", r.price_origin_users_rows],
+              ["destination", r.price_destination_users_rows],
+            ] as const
+          ).flatMap(([side, count]) => (count === 0 ? [side] : []));
+        const enough = (r: Record<string, unknown>) =>
+          !min_reports ||
+          (num(r.price_origin_users_rows) >= min_reports &&
+            num(r.price_destination_users_rows) >= min_reports);
+        const kept = sized.filter(({ r }) => enough(r));
+        // Routes both ends of which a player reported come first; estimates follow. Within a
+        // group, the best profit first. Otherwise an invented price tops the list.
+        kept.sort(
+          (x, y) =>
+            Number(estimatedSides(x.r).length > 0) - Number(estimatedSides(y.r).length > 0) ||
+            (y.total ?? y.perScu) - (x.total ?? x.perScu),
+        );
+        const shownRows = kept.slice(0, Math.min(Math.max(limit ?? 10, 1), 50));
+        reportRowDates(
+          shownRows.map(({ r }) => r),
+          "route rows",
+          "UEX computes routes itself: their date_added is when the route was recalculated, not when the prices under it were reported",
+        );
+        const routes = shownRows.map(({ r, perScu, units, total, cost }) => {
+          const estimated = estimatedSides(r);
+          return {
             commodity: r.commodity_name,
             origin: {
               terminal: r.origin_terminal_name,
@@ -350,7 +542,10 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             destination_status: r.status_destination,
             game_version_origin: r.game_version_origin,
             game_version_destination: r.game_version_destination,
-          }));
+            is_estimate: estimated.length > 0,
+            estimated_sides: estimated,
+          };
+        });
 
         return {
           content: [
@@ -361,11 +556,16 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
                 ...(ship ? { ship } : {}),
                 cargo_scu_used: cargo_capacity ?? null,
                 total_routes: rows.length,
+                excluded_below_min_reports: rows.length - kept.length,
+                min_reports: min_reports ?? 0,
+                estimates_among_all_routes: sized.filter(({ r }) => estimatedSides(r).length > 0)
+                  .length,
                 shown: routes.length,
                 sorted_by:
-                  cargo_capacity !== undefined || investment !== undefined
+                  (cargo_capacity !== undefined || investment !== undefined
                     ? "profit_for_cargo, descending"
-                    : "profit_per_scu, descending (no cargo size given)",
+                    : "profit_per_scu, descending (no cargo size given)") +
+                  "; routes with a UEX estimate (is_estimate) after those reported at both ends",
                 routes,
               }),
             },
@@ -552,7 +752,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
         );
         const vehicle = exact ?? matches[0];
 
-        const filterSystem = (rows: unknown) => {
+        const filterSystem = (rows: unknown): Record<string, unknown>[] => {
           if (!Array.isArray(rows)) return [];
           if (!star_system_name) return rows;
           return rows.filter(
@@ -567,13 +767,18 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
         });
         const purchases = filterSystem(purchaseResponse.data.data);
 
-        let rentals: unknown[] = [];
+        let rentals: Record<string, unknown>[] = [];
         if (include_rentals !== false) {
           const rentalResponse = await fetchWithCache(uexClient, "/vehicles_rentals_prices", {
             params: { id_vehicle: vehicle.id },
           });
           rentals = filterSystem(rentalResponse.data.data);
         }
+
+        reportRowDates([...purchases, ...rentals], "ship price rows");
+        // formatOutput strips the raw date fields, so the date is restated as updated_at.
+        const dated = (rows: Record<string, unknown>[]) =>
+          rows.map((r) => ({ ...r, updated_at: rowUpdatedAt(r) }));
 
         return {
           content: [
@@ -587,8 +792,8 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
                   matches.length > 1
                     ? matches.filter((m) => m.id !== vehicle.id).map((m) => m.name_full ?? m.name)
                     : undefined,
-                purchase_locations: purchases,
-                rental_locations: rentals,
+                purchase_locations: dated(purchases),
+                rental_locations: dated(rentals),
               }),
             },
           ],

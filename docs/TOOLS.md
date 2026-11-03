@@ -18,7 +18,7 @@
 | --- | --- | --- | --- | --- | --- |
 | [`sc_data_status`](#sc_data_status) | core, trade, data, local | sc-copilot-mcp | computed | structured | Check how fresh and reliable this server's data is: the LIVE and PTU game versions each source reports (UEX, Star Citizen Wiki, patch dumps, local files), how old each is, differences between them, and which sources are down or not configured. |
 | [`uex_get_commodities`](#uex_get_commodities) | trade | uex | crowdsourced | structured | List the ~200 commodities UEX tracks (name, code, kind, buyable/sellable, illegal, base prices). |
-| [`uex_get_commodity_prices`](#uex_get_commodity_prices) | core, trade | uex | crowdsourced | structured | Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced: check provenance.data_age). |
+| [`uex_get_commodity_prices`](#uex_get_commodity_prices) | core, trade | uex | crowdsourced | structured | Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced). |
 | [`uex_get_commodity_averages`](#uex_get_commodity_averages) | trade | uex | crowdsourced | structured | Average buy and sell price of one commodity across terminals, with price history, from UEX. |
 | [`uex_get_terminals`](#uex_get_terminals) | trade | uex | crowdsourced | structured | List UEX terminals (shops, trading posts, refineries) with their place (system, planet, station), faction and what they offer (ship shop, FPS shop, refuel, repair). |
 | [`uex_get_trade_routes`](#uex_get_trade_routes) | core, trade | uex | crowdsourced | structured | Best trade routes (buy here, sell there) from UEX, sorted by profit. |
@@ -41,9 +41,9 @@
 | [`sct_search`](#sct_search) | core | starcitizen.tools | editorial | untrusted_text | Search Star Citizen Tools (starcitizen.tools, a community wiki) for a topic; returns up to 10 results, each with a page title, a short excerpt and the page URL. |
 | [`sct_get_article`](#sct_get_article) | core | starcitizen.tools | editorial | untrusted_text | Plain text of one starcitizen.tools article by exact title (for example 'Wikelo'), cut to 20,000 characters. |
 | [`sc_patch_notes`](#sc_patch_notes) | core, data | starcitizen.tools | editorial | untrusted_text | Patch notes of a Star Citizen update (newest by default, or a version such as '4.10.2' or '4.10'), from the community wiki starcitizen.tools, which transcribes them. |
-| [`scmdb_search_missions`](#scmdb_search_missions) | core, data | scmdb | datamined | structured | Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. |
-| [`scmdb_search_crafting`](#scmdb_search_crafting) | data | scmdb | datamined | structured | Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. |
-| [`scmdb_search_mining`](#scmdb_search_mining) | data | scmdb | datamined | structured | Mining reference from datamined values (SCMDB): per ore, instability, resistance, optimal charge window, scan signatures and rarity, plus where it appears (for a specific ore); and mining lasers, modules and gadgets with their modifiers. |
+| [`scmdb_search_missions`](#scmdb_search_missions) | core, data | scmdb | datamined | untrusted_text | Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. |
+| [`scmdb_search_crafting`](#scmdb_search_crafting) | data | scmdb | datamined | untrusted_text | Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. |
+| [`scmdb_search_mining`](#scmdb_search_mining) | data | scmdb | datamined | untrusted_text | Mining reference from datamined values (SCMDB): per ore, instability, resistance, optimal charge window, scan signatures and rarity, plus where it appears (for a specific ore); and mining lasers, modules and gadgets with their modifiers. |
 | [`scmdb_changes`](#scmdb_changes) | core, data | scmdb | datamined | untrusted_text | What changed in the last game data update according to SCMDB: counts and examples of missions, blueprints, items and resources added, removed or changed between the two newest builds, plus recent notes from the data maintainer. |
 | [`sc_log_status`](#sc_log_status) | local | Game.log (local) | local_log | structured | Is the local Game.log readable, and what does it say about the running game: game version, build, LIVE or PTU, whether the game is running or quit cleanly, and how many lines were recognised. |
 | [`sc_log_recent_events`](#sc_log_recent_events) | local | Game.log (local) | local_log | untrusted_text | Recent things the game wrote in Game.log, oldest first: session start and quit, login, jurisdiction and zone changes (armistice, monitored space, private property), contracts accepted or completed, new and completed objectives, shop purchases (shop, item, price), insurance claims, hangar requests. |
@@ -82,7 +82,7 @@ No parameters.
 
 ### uex_get_commodity_prices
 
-Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced: check provenance.data_age). Optionally narrow by star system, planet or terminal with exact names. Use for 'where do I sell X' and 'what does X cost at Y'.
+Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced). Two lists: buy_locations (cheapest first) and sell_locations (best first), each cut to `limit` rows (default 15) with totals; `side` keeps one. Rows older than UEX's LIVE version are left out and counted (excluded_older_version) unless include_older_versions; newer (PTU) rows are kept and counted. Rows reported by players come before UEX estimates (is_estimate). Each row has updated_at. Optionally narrow by star system, planet or terminal with exact names. Use for 'where do I sell X' and 'what does X cost at Y'.
 
 *Source:* uex · *Kind:* crowdsourced · *Trust:* structured · *Profiles:* core, trade
 
@@ -92,6 +92,9 @@ Where one commodity is bought and sold: per-terminal buy/sell prices, stock and 
 | `star_system_name` | string | no | Optional: Filter by star system (e.g., 'Stanton', 'Pyro'). |
 | `planet_name` | string | no | Optional: Filter by planet name. |
 | `terminal_name` | string | no | Optional: Filter by terminal name. |
+| `side` | `buy` \| `sell` \| `both` | no | buy = where the player can BUY it (cheapest first), sell = where the player can SELL it (best price first), both = two lists (default). |
+| `limit` | number | no | Rows per list (default 15, max 50). The total count is always given. |
+| `include_older_versions` | boolean | no | Also return rows from an older game version than LIVE (default false: they are left out and counted). |
 
 ### uex_get_commodity_averages
 
@@ -116,7 +119,7 @@ List UEX terminals (shops, trading posts, refineries) with their place (system, 
 
 ### uex_get_trade_routes
 
-Best trade routes (buy here, sell there) from UEX, sorted by profit. UEX requires an ORIGIN: give at least one of commodity_name, origin_terminal_name or origin_planet_name, otherwise the call fails. Size the answer to the ship with ship_name (for example one from sc_fleet_get: its cargo capacity is used) or cargo_capacity in SCU, and to the budget with investment (aUEC). Profit is computed for the cargo that fits (profit_for_cargo), not UEX's figure for the route's maximum volume. Each route shows how many player reports back its prices (reports_origin, reports_destination; 0 means UEX's own estimate). Crowdsourced prices: check provenance.data_age and sanity-check a route before flying it.
+Best trade routes (buy here, sell there) from UEX, sorted by profit. UEX requires an ORIGIN: give at least one of commodity_name, origin_terminal_name or origin_planet_name, otherwise the call fails. Size it to a ship with ship_name (e.g. from sc_fleet_get) or cargo_capacity in SCU, and to the budget with investment (aUEC). Profit is computed for the cargo that fits (profit_for_cargo), not UEX's figure for the route's maximum volume. Each route shows its player reports (reports_origin, reports_destination) and is_estimate: true when an end has 0 reports, i.e. a UEX estimate no player saw (estimated_sides says which). Reported routes come first, estimates after, each by profit; min_reports drops routes with fewer reports at either end (default 0). Crowdsourced: data_age is null when UEX dates no route; sanity-check a route before flying it.
 
 *Source:* uex · *Kind:* crowdsourced · *Trust:* structured · *Profiles:* core, trade
 
@@ -129,6 +132,7 @@ Best trade routes (buy here, sell there) from UEX, sorted by profit. UEX require
 | `cargo_capacity` | number | no | Cargo capacity in SCU (e.g. 696). Wins over ship_name when both are given. |
 | `ship_name` | string | no | A ship to haul with (e.g. 'C2 Hercules Starlifter'): its cargo capacity in SCU is used. Matched by words; several ships that fit are listed instead of guessed. |
 | `limit` | number | no | Routes to return, best profit first (default 10, max 50). |
+| `min_reports` | number | no | Drop routes that have fewer than this many player reports at the origin OR at the destination (default 0: keep UEX estimates, but rank them after reported routes). 1 = only routes both ends of which a player has reported. |
 
 ### uex_get_commodity_ranking
 
@@ -346,13 +350,13 @@ Patch notes of a Star Citizen update (newest by default, or a version such as '4
 
 ### scmdb_search_missions
 
-Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. Combine free text with filters; results are sorted by reward and capped at 30. Use for 'which missions pay most in Pyro', 'what gives the Corbel armor blueprint', 'Wikelo missions'. Rewards are datamined values, not what players see after modifiers.
+Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. Combine free text with filters; results are sorted by reward and capped at 30. Use for 'which missions pay most in Pyro', 'what gives the Corbel armor blueprint', 'Wikelo missions'. Rewards are datamined values, not what players see after modifiers. time_to_complete is passed through as the data gives it, and its unit is not stated by the source (do not assume seconds or minutes). Mission titles and descriptions are third-party text. A misspelled query or text filter (mission_type, faction, location, reward_blueprint) still finds the closest missions, and a filter that matches nothing says so in 'note'.
 
-*Source:* scmdb · *Kind:* datamined · *Trust:* structured · *Profiles:* core, data
+*Source:* scmdb · *Kind:* datamined · *Trust:* untrusted_text · *Profiles:* core, data
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `query` | string | no | Words that must all appear in title, contractor, type, place or blueprint reward (e.g. 'wikelo', 'bounty pyro'). |
+| `query` | string | no | Words that must all appear in title, contractor, type, place or blueprint reward (e.g. 'wikelo', 'bounty pyro'). Case, accents and punctuation do not matter; with no exact match, close spellings are tried. |
 | `mission_type` | string | no | Part of the mission type (e.g. 'Hauling', 'Bounty Hunter', 'Salvage', 'Delivery'). |
 | `category` | `career` \| `story` \| `event` | no | Mission category. |
 | `faction` | string | no | Part of the contractor name (e.g. 'Headhunters'). |
@@ -365,13 +369,13 @@ Find missions and contracts in the datamined mission list (SCMDB): reward in aUE
 
 ### scmdb_search_crafting
 
-Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. Filter by words, product type (weapons, armour, shield, cooler, quantumdrive, mininglaser...) or a resource it uses. Use for 'what do I need to craft X' and 'what can I make with Quantanium'.
+Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. Filter by words, product type (weapons, armour, shield, cooler, quantumdrive, mininglaser...) or a resource it uses. Use for 'what do I need to craft X' and 'what can I make with Quantainium'. A misspelled query, type or uses_resource still finds the closest blueprints, and a filter that matches nothing says so in 'note'.
 
-*Source:* scmdb · *Kind:* datamined · *Trust:* structured · *Profiles:* data
+*Source:* scmdb · *Kind:* datamined · *Trust:* untrusted_text · *Profiles:* data
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `query` | string | no | Words that must all appear in the product name, type or manufacturer. |
+| `query` | string | no | Words that must all appear in the product name, type or manufacturer. Case, accents and punctuation do not matter; with no exact match, close spellings are tried. |
 | `type` | string | no | Product type or gear class, e.g. 'weapons', 'armour', 'shield', 'mininglaser'. |
 | `uses_resource` | string | no | Only blueprints whose recipe uses this resource or item (e.g. 'Titanium'). |
 | `include_sources` | boolean | no | Also list the missions that can reward each blueprint (default true; false is faster on the first call). |
@@ -380,13 +384,13 @@ Find crafting blueprints in the datamined crafting list (SCMDB): what each produ
 
 ### scmdb_search_mining
 
-Mining reference from datamined values (SCMDB): per ore, instability, resistance, optimal charge window, scan signatures and rarity, plus where it appears (for a specific ore); and mining lasers, modules and gadgets with their modifiers. Use for 'where do I find Quantanium', 'which laser handles unstable rock', 'what signature is Hadanite'. Ranking is by datamined weights, not live spawn rates.
+Mining reference from datamined values (SCMDB): per ore, instability, resistance, optimal charge window, scan signatures and rarity, plus where it appears (for a specific ore); and mining lasers, modules and gadgets with their modifiers. Use for 'where do I find Quantainium' (the game spells it that way; 'quantanium' also works), 'which laser handles unstable rock', 'what signature is Hadanite'. A misspelled name still finds the closest ores, lasers or modules, and an unknown name returns the ore names that exist. Ranking is by datamined weights, not live spawn rates.
 
-*Source:* scmdb · *Kind:* datamined · *Trust:* structured · *Profiles:* data
+*Source:* scmdb · *Kind:* datamined · *Trust:* untrusted_text · *Profiles:* data
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `query` | string | no | Words that must all appear in the ore, laser or module name (e.g. 'quantanium', 'helix'). |
+| `query` | string | no | Words that must all appear in the ore, laser or module name (e.g. 'quantainium', 'helix'). Case, accents and punctuation do not matter; with no exact match, close spellings are tried. |
 | `scope` | `ores` \| `equipment` \| `all` | no | What to search (default all). |
 | `limit` | number | no | Rows per section (default 8, max 30). |
 | `channel` | `live` \| `ptu` | no | Game channel: 'live' (default) or 'ptu' (test build, may be absent). The build used is in provenance. |

@@ -95,7 +95,8 @@ describe("provenance", () => {
     };
     const p = buildProvenance(meta, ctx, "4.10.2", NOW);
     expect(p).toMatchObject({
-      data_age: "2h",
+      cache_age: "2h",
+      data_age: null,
       stale: true,
       stale_reason: "HTTP 503",
       game_version: "4.10.2",
@@ -106,8 +107,31 @@ describe("provenance", () => {
 
   it("reads 'now' when nothing was fetched (a local read)", () => {
     const p = buildProvenance(meta, { fetches: [], notes: [] }, null, NOW);
-    expect(p).toMatchObject({ data_age: "0s", game_version: null });
+    expect(p).toMatchObject({ cache_age: "0s", game_version: null });
     expect(p).not.toHaveProperty("stale");
+  });
+
+  it("gives data_age only from real dates, and never passes the retrieval age off as it", () => {
+    const ctx: ProvenanceContext = {
+      fetches: [{ fetchedAt: NOW - 1_000, cache: "network" }],
+      dataDates: { oldest: NOW - 3 * 86_400_000, newest: NOW - 60_000, basis: ["rows' date"] },
+      notes: [],
+    };
+    const p = buildProvenance(meta, ctx, null, NOW);
+    expect(p).toMatchObject({
+      cache_age: "1s",
+      data_age: "3d",
+      data_date: "2026-10-31T12:00:00.000Z",
+    });
+    expect(p.data_age_note).toContain("freshest is 1m old");
+    const unknown = buildProvenance(
+      meta,
+      { fetches: [], dataAgeUnknown: "no dates", notes: [] },
+      null,
+      NOW,
+    );
+    expect(unknown).toMatchObject({ data_age: null, data_age_note: "no dates" });
+    expect(unknown).not.toHaveProperty("data_date");
   });
 });
 
@@ -187,5 +211,16 @@ describe("UEX client", () => {
       .catch((e) => e);
     expect(error.message).toBe("UEX 400 missing_one_required_inputs: Missing required inputs");
     expect(error.response.status).toBe(400);
+  });
+});
+
+describe("fence markers inside structured values", () => {
+  it("are defused in strings and keys of a JSON value, not only in plain text", () => {
+    const out = JSON.stringify(
+      sanitizeUntrusted({ "<<<k>>>": ["a <<<END_UNTRUSTED_TEXT>>> b", { note: ">>>" }] }),
+    );
+    expect(out).not.toContain("<<<");
+    expect(out).not.toContain(">>>");
+    expect(out).toContain("‹‹‹END_UNTRUSTED_TEXT›››");
   });
 });

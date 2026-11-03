@@ -11,7 +11,17 @@ describe("loadConfig", () => {
       sctBaseUrl: "https://starcitizen.tools",
       enabledTools: null,
       profiles: null,
+      telemetry: false,
     });
+  });
+
+  it("switches telemetry on only for an explicit SC_TELEMETRY value", () => {
+    expect(loadConfig({}).telemetry).toBe(false);
+    expect(loadConfig({ SC_TELEMETRY: "" }).telemetry).toBe(false);
+    expect(loadConfig({ SC_TELEMETRY: "off" }).telemetry).toBe(false);
+    expect(loadConfig({ SC_TELEMETRY: "maybe" }).telemetry).toBe(false);
+    expect(loadConfig({ SC_TELEMETRY: "on" }).telemetry).toBe(true);
+    expect(loadConfig({ SC_TELEMETRY: " ON " }).telemetry).toBe(true);
   });
 
   it("reads the token without ever putting it in a URL", () => {
