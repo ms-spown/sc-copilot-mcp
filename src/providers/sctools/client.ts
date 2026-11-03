@@ -7,5 +7,6 @@ export function createSctClient(baseURL: string) {
     baseURL,
     allowedHosts: ALLOWED_HOSTS.wikiTools,
     userAgent: USER_AGENT,
+    ratePerMinute: 50,
   });
 }

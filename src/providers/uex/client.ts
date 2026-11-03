@@ -18,6 +18,8 @@ export function createUexClient(baseURL: string, token: string | undefined) {
     allowedHosts: ALLOWED_HOSTS.uex,
     userAgent: USER_AGENT,
     token,
+    // UEX allows 120 requests a minute per key; stay well under it.
+    ratePerMinute: 100,
   });
 
   client.interceptors.response.use(

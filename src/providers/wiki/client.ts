@@ -7,5 +7,7 @@ export function createScwClient(baseURL: string) {
     baseURL,
     allowedHosts: ALLOWED_HOSTS.wikiApi,
     userAgent: USER_AGENT,
+    // The wiki API limits searches to 60 a minute.
+    ratePerMinute: 50,
   });
 }

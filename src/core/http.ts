@@ -18,7 +18,8 @@
  * from the hard-coded list: the list is the trust decision, not the environment.
  */
 
-import axios, { type AxiosInstance } from "axios";
+import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from "axios";
+import { createRateLimiter, defaultSleep, isRetriableStatus, retryDelay } from "./resilience.js";
 
 /** Hosts each upstream is allowed to be reached on. Change these in code review, not at runtime. */
 export const ALLOWED_HOSTS = {
@@ -90,7 +91,18 @@ export interface GuardedClientOptions extends HostPolicy {
   token?: string;
   timeoutMs?: number;
   headers?: Record<string, string>;
+  /** Extra tries after a failure that says "try again" (no answer, 429, 502-504). Default 2; 0 turns it off. */
+  retries?: number;
+  /** Most requests per minute this client will send; beyond that it waits briefly, then fails clearly. */
+  ratePerMinute?: number;
+  /** Longest a request will wait for a rate-limit slot before failing instead (default 10 s). */
+  maxRateWaitMs?: number;
+  /** Tests only: replace the clock and the waiting. */
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
 }
+
+type RetryConfig = InternalAxiosRequestConfig & { __attempt?: number };
 
 /** Build an axios client that enforces the host policy on requests and redirects. */
 export function createGuardedClient(options: GuardedClientOptions): AxiosInstance {
@@ -115,10 +127,40 @@ export function createGuardedClient(options: GuardedClientOptions): AxiosInstanc
     },
   });
 
-  client.interceptors.request.use((config) => {
+  const takeSlot = options.ratePerMinute
+    ? createRateLimiter(options.ratePerMinute, {
+        now: options.now,
+        sleep: options.sleep,
+        maxWaitMs: options.maxRateWaitMs,
+      })
+    : null;
+
+  client.interceptors.request.use(async (config) => {
     assertAllowedUrl(new URL(client.getUri(config)), policy);
+    // After the host check, so a blocked request does not use up quota.
+    if (takeSlot) await takeSlot();
     if (options.token) config.headers.set("Authorization", `Bearer ${options.token}`);
     return config;
+  });
+
+  const maxRetries = options.retries ?? 2;
+  const sleep = options.sleep ?? defaultSleep;
+  client.interceptors.response.use(undefined, async (error: unknown) => {
+    if (!axios.isAxiosError(error) || !error.config) throw error;
+    const config = error.config as RetryConfig;
+    const attempt = (config.__attempt ?? 0) + 1;
+    const method = (config.method ?? "get").toLowerCase();
+    if (method !== "get" || attempt > maxRetries || !isRetriableStatus(error.response?.status)) {
+      throw error;
+    }
+    // A timeout already cost the full wait: trying again would leave the question hanging for minutes.
+    if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") throw error;
+    const header = error.response?.headers?.["retry-after"];
+    const wait = retryDelay(attempt, typeof header === "string" ? header : undefined);
+    if (wait === null) throw error; // the server asked for longer than a question can wait
+    await sleep(wait);
+    config.__attempt = attempt;
+    return client.request(config);
   });
 
   return client;
