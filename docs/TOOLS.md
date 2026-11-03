@@ -41,9 +41,9 @@
 | [`sct_search`](#sct_search) | core | starcitizen.tools | editorial | untrusted_text | Search Star Citizen Tools (starcitizen.tools, a community wiki) for a topic; returns up to 10 page titles. |
 | [`sct_get_article`](#sct_get_article) | core | starcitizen.tools | editorial | untrusted_text | Plain text of one starcitizen.tools article by exact title (for example 'Wikelo'), cut to 20,000 characters. |
 | [`sc_patch_notes`](#sc_patch_notes) | core, data | starcitizen.tools | editorial | untrusted_text | Patch notes of a Star Citizen update (newest by default, or a version such as '4.10.2' or '4.10'), from the community wiki starcitizen.tools, which transcribes them. |
-| [`scmdb_search_missions`](#scmdb_search_missions) | core, data | scmdb | datamined | structured | Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. |
-| [`scmdb_search_crafting`](#scmdb_search_crafting) | data | scmdb | datamined | structured | Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. |
-| [`scmdb_search_mining`](#scmdb_search_mining) | data | scmdb | datamined | structured | Mining reference from datamined values (SCMDB): per ore, instability, resistance, optimal charge window, scan signatures and rarity, plus where it appears (for a specific ore); and mining lasers, modules and gadgets with their modifiers. |
+| [`scmdb_search_missions`](#scmdb_search_missions) | core, data | scmdb | datamined | untrusted_text | Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. |
+| [`scmdb_search_crafting`](#scmdb_search_crafting) | data | scmdb | datamined | untrusted_text | Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. |
+| [`scmdb_search_mining`](#scmdb_search_mining) | data | scmdb | datamined | untrusted_text | Mining reference from datamined values (SCMDB): per ore, instability, resistance, optimal charge window, scan signatures and rarity, plus where it appears (for a specific ore); and mining lasers, modules and gadgets with their modifiers. |
 | [`scmdb_changes`](#scmdb_changes) | core, data | scmdb | datamined | untrusted_text | What changed in the last game data update according to SCMDB: counts and examples of missions, blueprints, items and resources added, removed or changed between the two newest builds, plus recent notes from the data maintainer. |
 | [`sc_log_status`](#sc_log_status) | local | Game.log (local) | local_log | structured | Is the local Game.log readable, and what does it say about the running game: game version, build, LIVE or PTU, whether the game is running or quit cleanly, and how many lines were recognised. |
 | [`sc_log_recent_events`](#sc_log_recent_events) | local | Game.log (local) | local_log | untrusted_text | Recent things the game wrote in Game.log, oldest first: session start and quit, login, jurisdiction and zone changes (armistice, monitored space, private property), contracts accepted or completed, new and completed objectives, shop purchases (shop, item, price), insurance claims, hangar requests. |
@@ -346,13 +346,13 @@ Patch notes of a Star Citizen update (newest by default, or a version such as '4
 
 ### scmdb_search_missions
 
-Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. Combine free text with filters; results are sorted by reward and capped at 30. Use for 'which missions pay most in Pyro', 'what gives the Corbel armor blueprint', 'Wikelo missions'. Rewards are datamined values, not what players see after modifiers.
+Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. Combine free text with filters; results are sorted by reward and capped at 30. Use for 'which missions pay most in Pyro', 'what gives the Corbel armor blueprint', 'Wikelo missions'. Rewards are datamined values, not what players see after modifiers. time_to_complete is passed through as the data gives it, and its unit is not stated by the source (do not assume seconds or minutes). Mission titles and descriptions are third-party text. A misspelled name still finds the closest missions, with a 'Did you mean' note.
 
-*Source:* scmdb · *Kind:* datamined · *Trust:* structured · *Profiles:* core, data
+*Source:* scmdb · *Kind:* datamined · *Trust:* untrusted_text · *Profiles:* core, data
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `query` | string | no | Words that must all appear in title, contractor, type, place or blueprint reward (e.g. 'wikelo', 'bounty pyro'). |
+| `query` | string | no | Words that must all appear in title, contractor, type, place or blueprint reward (e.g. 'wikelo', 'bounty pyro'). Case, accents and punctuation do not matter; with no exact match, close spellings are tried. |
 | `mission_type` | string | no | Part of the mission type (e.g. 'Hauling', 'Bounty Hunter', 'Salvage', 'Delivery'). |
 | `category` | `career` \| `story` \| `event` | no | Mission category. |
 | `faction` | string | no | Part of the contractor name (e.g. 'Headhunters'). |
@@ -365,13 +365,13 @@ Find missions and contracts in the datamined mission list (SCMDB): reward in aUE
 
 ### scmdb_search_crafting
 
-Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. Filter by words, product type (weapons, armour, shield, cooler, quantumdrive, mininglaser...) or a resource it uses. Use for 'what do I need to craft X' and 'what can I make with Quantanium'.
+Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. Filter by words, product type (weapons, armour, shield, cooler, quantumdrive, mininglaser...) or a resource it uses. Use for 'what do I need to craft X' and 'what can I make with Quantainium'. A misspelled name still finds the closest blueprints, with a 'Did you mean' note.
 
-*Source:* scmdb · *Kind:* datamined · *Trust:* structured · *Profiles:* data
+*Source:* scmdb · *Kind:* datamined · *Trust:* untrusted_text · *Profiles:* data
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `query` | string | no | Words that must all appear in the product name, type or manufacturer. |
+| `query` | string | no | Words that must all appear in the product name, type or manufacturer. Case, accents and punctuation do not matter; with no exact match, close spellings are tried. |
 | `type` | string | no | Product type or gear class, e.g. 'weapons', 'armour', 'shield', 'mininglaser'. |
 | `uses_resource` | string | no | Only blueprints whose recipe uses this resource or item (e.g. 'Titanium'). |
 | `include_sources` | boolean | no | Also list the missions that can reward each blueprint (default true; false is faster on the first call). |
@@ -380,13 +380,13 @@ Find crafting blueprints in the datamined crafting list (SCMDB): what each produ
 
 ### scmdb_search_mining
 
-Mining reference from datamined values (SCMDB): per ore, instability, resistance, optimal charge window, scan signatures and rarity, plus where it appears (for a specific ore); and mining lasers, modules and gadgets with their modifiers. Use for 'where do I find Quantanium', 'which laser handles unstable rock', 'what signature is Hadanite'. Ranking is by datamined weights, not live spawn rates.
+Mining reference from datamined values (SCMDB): per ore, instability, resistance, optimal charge window, scan signatures and rarity, plus where it appears (for a specific ore); and mining lasers, modules and gadgets with their modifiers. Use for 'where do I find Quantainium' (the game spells it that way; 'quantanium' also works), 'which laser handles unstable rock', 'what signature is Hadanite'. A misspelled name still finds the closest ores, lasers or modules, and an unknown name returns the ore names that exist. Ranking is by datamined weights, not live spawn rates.
 
-*Source:* scmdb · *Kind:* datamined · *Trust:* structured · *Profiles:* data
+*Source:* scmdb · *Kind:* datamined · *Trust:* untrusted_text · *Profiles:* data
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `query` | string | no | Words that must all appear in the ore, laser or module name (e.g. 'quantanium', 'helix'). |
+| `query` | string | no | Words that must all appear in the ore, laser or module name (e.g. 'quantainium', 'helix'). Case, accents and punctuation do not matter; with no exact match, close spellings are tried. |
 | `scope` | `ores` \| `equipment` \| `all` | no | What to search (default all). |
 | `limit` | number | no | Rows per section (default 8, max 30). |
 | `channel` | `live` \| `ptu` | no | Game channel: 'live' (default) or 'ptu' (test build, may be absent). The build used is in provenance. |

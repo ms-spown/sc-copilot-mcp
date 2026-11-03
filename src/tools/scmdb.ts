@@ -33,14 +33,14 @@ export function scmdbTools({ scmdb }: { scmdb: Scmdb }): ToolDefinition[] {
     {
       name: "scmdb_search_missions",
       description:
-        "Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. Combine free text with filters; results are sorted by reward and capped at 30. Use for 'which missions pay most in Pyro', 'what gives the Corbel armor blueprint', 'Wikelo missions'. Rewards are datamined values, not what players see after modifiers.",
+        "Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. Combine free text with filters; results are sorted by reward and capped at 30. Use for 'which missions pay most in Pyro', 'what gives the Corbel armor blueprint', 'Wikelo missions'. Rewards are datamined values, not what players see after modifiers. time_to_complete is passed through as the data gives it, and its unit is not stated by the source (do not assume seconds or minutes). Mission titles and descriptions are third-party text. A misspelled name still finds the closest missions, with a 'Did you mean' note.",
       inputSchema: {
         type: "object",
         properties: {
           query: {
             type: "string",
             description:
-              "Words that must all appear in title, contractor, type, place or blueprint reward (e.g. 'wikelo', 'bounty pyro').",
+              "Words that must all appear in title, contractor, type, place or blueprint reward (e.g. 'wikelo', 'bounty pyro'). Case, accents and punctuation do not matter; with no exact match, close spellings are tried.",
           },
           mission_type: {
             type: "string",
@@ -96,13 +96,14 @@ export function scmdbTools({ scmdb }: { scmdb: Scmdb }): ToolDefinition[] {
     {
       name: "scmdb_search_crafting",
       description:
-        "Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. Filter by words, product type (weapons, armour, shield, cooler, quantumdrive, mininglaser...) or a resource it uses. Use for 'what do I need to craft X' and 'what can I make with Quantanium'.",
+        "Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. Filter by words, product type (weapons, armour, shield, cooler, quantumdrive, mininglaser...) or a resource it uses. Use for 'what do I need to craft X' and 'what can I make with Quantainium'. A misspelled name still finds the closest blueprints, with a 'Did you mean' note.",
       inputSchema: {
         type: "object",
         properties: {
           query: {
             type: "string",
-            description: "Words that must all appear in the product name, type or manufacturer.",
+            description:
+              "Words that must all appear in the product name, type or manufacturer. Case, accents and punctuation do not matter; with no exact match, close spellings are tried.",
           },
           type: {
             type: "string",
@@ -144,14 +145,14 @@ export function scmdbTools({ scmdb }: { scmdb: Scmdb }): ToolDefinition[] {
     {
       name: "scmdb_search_mining",
       description:
-        "Mining reference from datamined values (SCMDB): per ore, instability, resistance, optimal charge window, scan signatures and rarity, plus where it appears (for a specific ore); and mining lasers, modules and gadgets with their modifiers. Use for 'where do I find Quantanium', 'which laser handles unstable rock', 'what signature is Hadanite'. Ranking is by datamined weights, not live spawn rates.",
+        "Mining reference from datamined values (SCMDB): per ore, instability, resistance, optimal charge window, scan signatures and rarity, plus where it appears (for a specific ore); and mining lasers, modules and gadgets with their modifiers. Use for 'where do I find Quantainium' (the game spells it that way; 'quantanium' also works), 'which laser handles unstable rock', 'what signature is Hadanite'. A misspelled name still finds the closest ores, lasers or modules, and an unknown name returns the ore names that exist. Ranking is by datamined weights, not live spawn rates.",
       inputSchema: {
         type: "object",
         properties: {
           query: {
             type: "string",
             description:
-              "Words that must all appear in the ore, laser or module name (e.g. 'quantanium', 'helix').",
+              "Words that must all appear in the ore, laser or module name (e.g. 'quantainium', 'helix'). Case, accents and punctuation do not matter; with no exact match, close spellings are tried.",
           },
           scope: {
             type: "string",
