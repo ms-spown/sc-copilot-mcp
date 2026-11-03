@@ -346,7 +346,7 @@ Patch notes of a Star Citizen update (newest by default, or a version such as '4
 
 ### scmdb_search_missions
 
-Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. Combine free text with filters; results are sorted by reward and capped at 30. Use for 'which missions pay most in Pyro', 'what gives the Corbel armor blueprint', 'Wikelo missions'. Rewards are datamined values, not what players see after modifiers. time_to_complete is passed through as the data gives it, and its unit is not stated by the source (do not assume seconds or minutes). Mission titles and descriptions are third-party text. A misspelled name still finds the closest missions, with a 'Did you mean' note.
+Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. Combine free text with filters; results are sorted by reward and capped at 30. Use for 'which missions pay most in Pyro', 'what gives the Corbel armor blueprint', 'Wikelo missions'. Rewards are datamined values, not what players see after modifiers. time_to_complete is passed through as the data gives it, and its unit is not stated by the source (do not assume seconds or minutes). Mission titles and descriptions are third-party text. A misspelled query or text filter (mission_type, faction, location, reward_blueprint) still finds the closest missions, and a filter that matches nothing says so in 'note'.
 
 *Source:* scmdb · *Kind:* datamined · *Trust:* untrusted_text · *Profiles:* core, data
 
@@ -365,7 +365,7 @@ Find missions and contracts in the datamined mission list (SCMDB): reward in aUE
 
 ### scmdb_search_crafting
 
-Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. Filter by words, product type (weapons, armour, shield, cooler, quantumdrive, mininglaser...) or a resource it uses. Use for 'what do I need to craft X' and 'what can I make with Quantainium'. A misspelled name still finds the closest blueprints, with a 'Did you mean' note.
+Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. Filter by words, product type (weapons, armour, shield, cooler, quantumdrive, mininglaser...) or a resource it uses. Use for 'what do I need to craft X' and 'what can I make with Quantainium'. A misspelled query, type or uses_resource still finds the closest blueprints, and a filter that matches nothing says so in 'note'.
 
 *Source:* scmdb · *Kind:* datamined · *Trust:* untrusted_text · *Profiles:* data
 

@@ -7,14 +7,17 @@
  * hits are reported as close matches, never as if they were exact.
  */
 
-/** Lower case, accents removed, anything that is not a letter or a digit becomes a space. */
+/**
+ * Lower case, accents removed, anything that is not a letter or a digit (in any script) becomes
+ * a space. Letters such as the Japanese ones or the Norwegian O-stroke are kept, not erased.
+ */
 export function fold(text: unknown): string {
   if (typeof text !== "string") return "";
   return text
     .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/\p{M}/gu, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 }
 
@@ -67,27 +70,103 @@ export interface Searched<T> {
   loose: boolean;
 }
 
-/** Exact matches first; if there are none, close matches. With no words, everything matches. */
+/**
+ * Exact matches first; if there are none and loose matching is allowed, close matches. With no
+ * words, everything matches.
+ */
 export function searchByName<T>(
   items: T[],
   words: string[],
   text: (item: T) => string,
+  allowLoose = true,
 ): Searched<T> {
   if (!words.length) return { hits: items, loose: false };
   const folded = items.map((item) => ({ item, text: fold(text(item)) }));
   const exact = folded.filter((f) => exactMatch(f.text, words)).map((f) => f.item);
-  if (exact.length) return { hits: exact, loose: false };
+  if (exact.length || !allowLoose) return { hits: exact, loose: false };
   return {
     hits: folded.filter((f) => looseMatch(f.text, words)).map((f) => f.item),
     loose: true,
   };
 }
 
+const asked = (value: string, label: string) => `${label ? `${label} ` : ""}"${value.trim()}"`;
+
 /** The message that goes with close matches, or with no match at all. */
-export function closeMatchNote(rawQuery: string | undefined, names: string[]): string {
-  const asked = `"${(rawQuery ?? "").trim()}"`;
+export function closeMatchNote(rawQuery: string | undefined, names: string[], label = ""): string {
+  const what = asked(rawQuery ?? "", label);
   const unique = [...new Set(names)].slice(0, 5);
   return unique.length
-    ? `No exact match for ${asked}: showing close matches (spelling may differ from the game's). Did you mean: ${unique.join(", ")}?`
-    : `No match for ${asked}, even allowing for typos. Try fewer or shorter words, or search with no query to browse.`;
+    ? `No exact match for ${what}: showing close matches (spelling may differ from the game's). Did you mean: ${unique.join(", ")}?`
+    : `No match for ${what}, even allowing for typos. Try fewer or shorter words, or search with no query to browse.`;
+}
+
+/** A query made only of punctuation or symbols has no word to search for: say so, match nothing. */
+export const unusableNote = (rawQuery: string, label = "") =>
+  `No usable word in ${asked(rawQuery, label)} (only punctuation or symbols), so nothing was searched.`;
+
+/** A non-blank text that folds to no word at all. */
+export const isUnusable = (raw: string | undefined) =>
+  Boolean(raw?.trim()) && !queryWords(raw).length;
+
+export interface NameFilter<T> {
+  /** What the filter is called in messages ("" for the main query). */
+  label: string;
+  value?: string;
+  /** The text of the item this filter looks at. */
+  text: (item: T) => string;
+  /** Names to offer as "did you mean" for an item that matched loosely. */
+  suggest?: (item: T) => string[];
+}
+
+export interface Filtered<T> {
+  hits: T[];
+  /** True when some filter fell back to close matches. */
+  loose: boolean;
+  notes: string[];
+}
+
+/**
+ * Apply text filters, each judged on its own: a filter that matches nothing exactly falls back to
+ * close spellings, and one that matches nothing at all says so in a note (never a silent zero).
+ * Several filters together are an AND, as before.
+ */
+export function filterByNames<T>(items: T[], filters: NameFilter<T>[]): Filtered<T> {
+  const notes: string[] = [];
+  let loose = false;
+  let alive = items.map(() => true);
+  const active = filters.filter((f) => f.value?.trim());
+
+  for (const f of active) {
+    const value = f.value as string;
+    const words = queryWords(value);
+    if (!words.length) {
+      notes.push(unusableNote(value, f.label));
+      alive = alive.map(() => false);
+      continue;
+    }
+    const folded = items.map((item) => fold(f.text(item)));
+    let keep = folded.map((t) => exactMatch(t, words));
+    if (!keep.some(Boolean)) {
+      keep = folded.map((t) => looseMatch(t, words));
+      const names: string[] = [];
+      keep.forEach((k, i) => {
+        if (!k || !f.suggest) return;
+        const all = f.suggest(items[i]);
+        const near = all.filter((s) => looseMatch(fold(s), words));
+        names.push(...(near.length ? near : all));
+      });
+      if (keep.some(Boolean)) loose = true;
+      notes.push(closeMatchNote(value, names, f.label));
+    }
+    alive = alive.map((a, i) => a && keep[i]);
+  }
+
+  const hits = items.filter((_, i) => alive[i]);
+  if (!hits.length && active.length > 1 && !notes.length) {
+    notes.push(
+      "Each filter matches something on its own, but nothing matches all of them together: relax one.",
+    );
+  }
+  return { hits, loose, notes };
 }

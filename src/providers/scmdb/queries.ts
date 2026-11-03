@@ -8,7 +8,17 @@
  */
 
 import { stripTags } from "../../core/text.js";
-import { closeMatchNote, queryWords, searchByName, type Searched } from "./fuzzy.js";
+import { cleanString } from "../../core/untrusted.js";
+import {
+  closeMatchNote,
+  filterByNames,
+  isUnusable,
+  queryWords,
+  searchByName,
+  unusableNote,
+  type Filtered,
+  type NameFilter,
+} from "./fuzzy.js";
 
 export const MAX_ROWS = 30;
 export const DEFAULT_ROWS = 10;
@@ -17,9 +27,11 @@ const clampLimit = (limit: number | undefined, fallback = DEFAULT_ROWS) =>
   Math.min(Math.max(Math.floor(limit ?? fallback), 1), MAX_ROWS);
 
 const lower = (v: unknown) => (typeof v === "string" ? v.toLowerCase() : "");
-/** What a close-match search adds to an answer: the flag and a "did you mean" message. */
-const looseInfo = (s: Searched<unknown>, query: string | undefined, names: string[]) =>
-  s.loose ? { close_matches: true, note: closeMatchNote(query, s.hits.length ? names : []) } : {};
+/** What the text filters add to an answer: the close-match flag and the messages. */
+const filterInfo = (f: Filtered<unknown>) => ({
+  ...(f.loose ? { close_matches: true } : {}),
+  ...(f.notes.length ? { note: f.notes.join(" ") } : {}),
+});
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 /** Game text carries markup such as <EM4>…</EM4>. */
 const plain = (s: unknown, max = 300) => {
@@ -44,6 +56,7 @@ export interface MissionQuery {
 interface MissionIndex {
   placeName: (id: string) => string;
   placeText: (id: string) => string;
+  placeTerms: (id: string) => string[];
   poolBlueprints: Map<string, string[]>;
 }
 
@@ -63,6 +76,10 @@ function missionIndex(merged: any): MissionIndex {
   }
   const index: MissionIndex = {
     placeName: (id) => places[id]?.name ?? id,
+    placeTerms: (id) => {
+      const p = places[id];
+      return p ? [p.name, p.planet, p.moon, p.system].filter(Boolean) : [id];
+    },
     placeText: (id) => {
       const p = places[id];
       return p ? [p.name, p.planet, p.moon, p.system].filter(Boolean).join(" ") : id;
@@ -82,32 +99,52 @@ function rewardBlueprintNames(c: any, ix: MissionIndex): string[] {
 
 export function searchMissions(merged: any, q: MissionQuery) {
   const ix = missionIndex(merged);
-  const words = queryWords(q.query);
   const limit = clampLimit(q.limit);
 
   const candidates = (merged.contracts as any[]).filter((c) => {
-    if (q.mission_type && !lower(c.missionType).includes(q.mission_type.toLowerCase()))
-      return false;
     if (q.category && lower(c.category) !== q.category.toLowerCase()) return false;
-    if (q.faction && !lower(c.contractorName).includes(q.faction.toLowerCase())) return false;
     if (q.illegal !== undefined && Boolean(c.illegal) !== q.illegal) return false;
     if (q.min_reward !== undefined && num(c.rewardUEC) < q.min_reward) return false;
-
-    const placeText = (c.locations ?? []).map(ix.placeText).join(" ").toLowerCase();
-    const systems = (c.systems ?? c.availableSystems ?? []).join(" ").toLowerCase();
-    if (q.location && !`${placeText} ${systems}`.includes(q.location.toLowerCase())) return false;
-
-    const blueprints = rewardBlueprintNames(c, ix).join(" ").toLowerCase();
-    if (q.reward_blueprint && !blueprints.includes(q.reward_blueprint.toLowerCase())) return false;
     return true;
   });
 
-  // The words of the query are matched last, with a fallback to close matches (typos).
-  const found = searchByName(candidates, words, (c) => {
-    const placeText = (c.locations ?? []).map(ix.placeText).join(" ");
-    const systems = (c.systems ?? c.availableSystems ?? []).join(" ");
-    return `${c.title} ${c.contractorName} ${c.missionType} ${c.category} ${placeText} ${systems} ${rewardBlueprintNames(c, ix).join(" ")}`;
-  });
+  // Every text filter forgives a typo and says so when it matches nothing.
+  const placeText = (c: any) => (c.locations ?? []).map(ix.placeText).join(" ");
+  const systems = (c: any) => (c.systems ?? c.availableSystems ?? []).join(" ");
+  const filters: NameFilter<any>[] = [
+    {
+      label: "mission_type",
+      value: q.mission_type,
+      text: (c) => String(c.missionType ?? ""),
+      suggest: (c) => [String(c.missionType ?? "")].filter(Boolean),
+    },
+    {
+      label: "faction",
+      value: q.faction,
+      text: (c) => String(c.contractorName ?? ""),
+      suggest: (c) => [String(c.contractorName ?? "")].filter(Boolean),
+    },
+    {
+      label: "location",
+      value: q.location,
+      text: (c) => `${placeText(c)} ${systems(c)}`,
+      suggest: (c) => [...(c.locations ?? []).flatMap(ix.placeTerms), ...(c.systems ?? [])],
+    },
+    {
+      label: "reward_blueprint",
+      value: q.reward_blueprint,
+      text: (c) => rewardBlueprintNames(c, ix).join(" "),
+      suggest: (c) => rewardBlueprintNames(c, ix),
+    },
+    {
+      label: "",
+      value: q.query,
+      text: (c) =>
+        `${c.title} ${c.contractorName} ${c.missionType} ${c.category} ${placeText(c)} ${systems(c)} ${rewardBlueprintNames(c, ix).join(" ")}`,
+      suggest: (c) => [String(c.title ?? "")],
+    },
+  ];
+  const found = filterByNames(candidates, filters);
   const hits = found.hits;
 
   hits.sort((a, b) => num(b.rewardUEC) - num(a.rewardUEC));
@@ -144,11 +181,7 @@ export function searchMissions(merged: any, q: MissionQuery) {
     total_matches: hits.length,
     shown: rows.length,
     sorted_by: "reward_uec, descending",
-    ...looseInfo(
-      found,
-      q.query,
-      hits.map((c) => c.title),
-    ),
+    ...filterInfo(found),
     ...(rows.some((r) => r.time_to_complete !== null)
       ? {
           units_note:
@@ -206,32 +239,35 @@ function sourcesByBlueprint(merged: any): Map<string, string[]> {
 }
 
 export function searchCrafting(blueprintsFile: any, merged: any | null, q: CraftingQuery) {
-  const words = queryWords(q.query);
   const limit = clampLimit(q.limit);
-  const res = q.uses_resource?.toLowerCase();
+  const resourcesUsed = (bp: any): string[] =>
+    (bp.tiers ?? [])
+      .flatMap((t: any) => t.slots ?? [])
+      .flatMap((s: any) => s.options ?? [])
+      .map((o: any) => o.resourceName ?? o.itemName)
+      .filter((n: unknown) => typeof n === "string");
 
-  const candidates = (blueprintsFile.blueprints as any[]).filter((bp) => {
-    if (
-      q.type &&
-      !lower(bp.type).includes(q.type.toLowerCase()) &&
-      !lower(bp.gear).includes(q.type.toLowerCase())
-    ) {
-      return false;
-    }
-    if (res) {
-      const used = (bp.tiers ?? [])
-        .flatMap((t: any) => t.slots ?? [])
-        .flatMap((s: any) => s.options ?? [])
-        .some((o: any) => lower(o.resourceName ?? o.itemName).includes(res));
-      if (!used) return false;
-    }
-    return true;
-  });
-  const found = searchByName(
-    candidates,
-    words,
-    (bp) => `${bp.productName} ${bp.tag} ${bp.type} ${bp.subtype} ${bp.gear} ${bp.manufacturer}`,
-  );
+  const found = filterByNames(blueprintsFile.blueprints as any[], [
+    {
+      label: "type",
+      value: q.type,
+      text: (bp) => `${bp.type ?? ""} ${bp.gear ?? ""}`,
+      suggest: (bp) => [bp.type, bp.gear].filter((n) => typeof n === "string" && n),
+    },
+    {
+      label: "uses_resource",
+      value: q.uses_resource,
+      text: (bp) => resourcesUsed(bp).join(" "),
+      suggest: resourcesUsed,
+    },
+    {
+      label: "",
+      value: q.query,
+      text: (bp) =>
+        `${bp.productName} ${bp.tag} ${bp.type} ${bp.subtype} ${bp.gear} ${bp.manufacturer}`,
+      suggest: (bp) => [String(bp.productName ?? bp.tag ?? "")],
+    },
+  ]);
   const hits = found.hits;
 
   const sources = q.include_sources !== false && merged ? sourcesByBlueprint(merged) : null;
@@ -257,11 +293,7 @@ export function searchCrafting(blueprintsFile: any, merged: any | null, q: Craft
   return {
     total_matches: hits.length,
     shown: rows.length,
-    ...looseInfo(
-      found,
-      q.query,
-      hits.map((bp) => bp.productName ?? bp.tag),
-    ),
+    ...filterInfo(found),
     blueprints: rows,
   };
 }
@@ -311,27 +343,54 @@ function oreLocations(mining: any, oreGuid: string, oreName: string) {
 
 export function searchMining(mining: any, equipment: any, q: MiningQuery) {
   const words = queryWords(q.query);
+  const raw = q.query ?? "";
+  const unusable = isUnusable(raw);
   const scope = q.scope ?? "all";
   const limit = clampLimit(q.limit, 8);
   const out: Record<string, unknown> = {};
 
-  if (scope === "ores" || scope === "all") {
-    const elements = Object.entries<any>(mining.mineableElements);
-    const found = searchByName(
-      elements,
-      words,
-      ([, e]) => `${e.name} ${e.materialName ?? ""} ${e.rarity ?? ""}`,
-    );
-    const hits = found.hits;
+  const elements = Object.entries<any>(mining.mineableElements);
+  const wantOres = scope === "ores" || scope === "all";
+  const wantEquipment = (scope === "equipment" || scope === "all") && Boolean(equipment);
+  const oreText = ([, e]: [string, any]) => `${e.name} ${e.materialName ?? ""} ${e.rarity ?? ""}`;
+  const gearText = (e: any) => `${e.name} ${e.manufacturer ?? ""}`;
+
+  // Exact first, in every section asked for. Close spellings are tried only when NOTHING in the
+  // scope matched exactly, so a laser name does not drag in look-alike ores, and vice versa.
+  const run = (allowLoose: boolean) => ({
+    ores: wantOres
+      ? unusable
+        ? { hits: [], loose: false }
+        : searchByName(elements, words, oreText, allowLoose)
+      : null,
+    gear: wantEquipment
+      ? (["lasers", "modules", "gadgets"] as const).map((k) =>
+          unusable
+            ? { hits: [] as any[], loose: false }
+            : searchByName<any>(equipment[k] ?? [], words, gearText, allowLoose),
+        )
+      : [],
+  });
+  const total = (r: ReturnType<typeof run>) =>
+    (r.ores?.hits.length ?? 0) + r.gear.reduce((n, g) => n + g.hits.length, 0);
+  let r = run(false);
+  if (words.length && total(r) === 0) r = run(true);
+  const anyHits = total(r) > 0;
+
+  // A note only when it helps: close matches that were shown, or nothing found anywhere.
+  const noMatch = (names: string[]) => (unusable ? unusableNote(raw) : closeMatchNote(raw, names));
+  const searching = Boolean(raw.trim());
+
+  if (r.ores) {
+    const { hits, loose } = r.ores;
     out.ores = {
       total_matches: hits.length,
-      ...looseInfo(
-        found,
-        q.query,
-        hits.map(([, e]) => e.name),
-      ),
-      // Nothing matched, even loosely: give the names that exist rather than a silent zero.
-      ...(found.loose && !hits.length
+      ...(loose && hits.length ? { close_matches: true } : {}),
+      ...(searching && ((loose && hits.length) || !anyHits)
+        ? { note: noMatch(hits.map(([, e]) => e.name)) }
+        : {}),
+      // Nothing matched anywhere: give the ore names that exist rather than a silent zero.
+      ...(searching && !anyHits
         ? { available_ores: elements.slice(0, 40).map(([, e]) => e.name) }
         : {}),
       rows: hits.slice(0, limit).map(([guid, e]) => ({
@@ -357,24 +416,10 @@ export function searchMining(mining: any, equipment: any, q: MiningQuery) {
     };
   }
 
-  if ((scope === "equipment" || scope === "all") && equipment) {
-    const pick = (list: any[]) =>
-      searchByName(list, words, (e) => `${e.name} ${e.manufacturer ?? ""}`);
-    const lists = [
-      pick(equipment.lasers ?? []),
-      pick(equipment.modules ?? []),
-      pick(equipment.gadgets ?? []),
-    ];
-    [out.lasers, out.modules, out.gadgets] = lists.map((r) => r.hits.slice(0, limit));
-    // The close-match message is for a search that needed it: some list fell back to loose
-    // matches and found something, or none of them found anything at all.
-    const loose = lists.filter((r) => r.loose);
-    if (loose.length === lists.length || loose.some((r) => r.hits.length)) {
-      out.equipment_note = closeMatchNote(
-        q.query,
-        loose.flatMap((r) => r.hits.map((e: any) => e.name)),
-      );
-    }
+  if (wantEquipment) {
+    [out.lasers, out.modules, out.gadgets] = r.gear.map((g) => g.hits.slice(0, limit));
+    const looseNames = r.gear.flatMap((g) => (g.loose ? g.hits.map((e: any) => e.name) : []));
+    if (searching && (looseNames.length || !anyHits)) out.equipment_note = noMatch(looseNames);
   }
 
   out.note =
@@ -432,7 +477,7 @@ export function summarizeChanges(deltas: any, changelog: any[] | null, q: Change
     throw new Error(
       `No update ends at a build matching "${q.to}". Available: ${pairs
         .slice(0, 8)
-        .map((p: any) => p.to)
+        .map((p: any) => cleanString(String(p.to), 60))
         .join(", ")}.`,
     );
   }
