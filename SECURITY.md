@@ -4,21 +4,28 @@
 
 It runs locally over stdio and is **read-only toward the game and every remote service**.
 
-It never: scrapes RSI, Erkul, SPViewer or SC Trade Tools; enables the game's local gRPC telemetry
-(`GRPC_CLIENT_SERVER_ENABLED`); reads game memory; sends keys or automates the game; writes in the game
-folder; extracts `Data.p4k`; or calls any remote write endpoint, including UEX data submission. The only
-writes are local: the cache, wiki snapshots, and the fleet file.
+It never: scrapes RSI, Erkul, SPViewer or SC Trade Tools; reads game memory; sends keys or automates the game;
+writes in the game folder; extracts `Data.p4k`; or calls any remote write endpoint, including UEX data
+submission. The only writes are local: the cache, wiki snapshots, and the fleet file.
 
-Contacted hosts are fixed in `src/core/http.ts`: `api.uexcorp.uk`, `api.uexcorp.space`,
+**Live telemetry is opt-in and off by default.** The game has an undocumented local gRPC server
+(`GRPC_CLIENT_SERVER_ENABLED`). This server can read it only when the user sets `SC_TELEMETRY=on` in its
+entry; the game-side variable is set by a command the user runs, never by the installer. Without
+`SC_TELEMETRY=on` no gRPC/HTTP2 code is loaded and no connection is attempted. When on, it connects only to
+`127.0.0.1:2942` (fixed in code, not configurable), sends only the empty `TelemetryStream` request, keeps
+frames in memory, and never logs, writes or transmits them. The risks are described in `docs/TELEMETRY.md`
+(written in a later milestone).
+
+Contacted hosts are fixed in `src/core/http.ts` (plus the opt-in loopback telemetry port above, which is not a host and not HTTP): `api.uexcorp.uk`, `api.uexcorp.space`,
 `api.star-citizen.wiki`, `star-citizen.wiki`, `starcitizen.tools`, `api.github.com`,
-`raw.githubusercontent.com`. Nothing else, and no telemetry.
+`raw.githubusercontent.com`. Nothing else, and no analytics or usage reporting of any kind.
 
 ## Threat model
 
 | Threat                                                                                                                                                         | Defence                                                                                                                                                                                                                                                                                                                                                                                                   |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Token leak.** The UEX token sent to the wrong host, through a redirect, an absolute URL or a configured base URL                                             | Hard-coded host allowlist per upstream, checked on every request and every redirect; https only; the token is attached per request after that check, never stored in default headers; base-URL overrides must be on the same allowlist or startup fails; the token lives in `.env` next to the package, never in the Claude config; tests prove no token reaches a non-allowlisted host                   |
-| **Prompt injection through data.** Marketplace ads, wiki and website text, contract titles, and the maintainer's changelog can contain text aimed at the model | Every result carries `trust`. Third-party text is marked `untrusted_text`, stripped of invisible and bidi-control characters, shortened, and fenced; raw article text sits between `<<<UNTRUSTED_TEXT>>>` markers that cannot be closed from inside; a notice tells the model to treat it as data. This lowers the risk; it cannot remove it: do not give the model tools that act on what a listing says |
+| **Prompt injection through data.** Marketplace ads, wiki and website text, contract titles, and the maintainer's changelog can contain text aimed at the model | Every result carries `trust`. Third-party text is marked `untrusted_text`, stripped of invisible and bidi-control characters, shortened, and fenced; raw article text sits between `<<<UNTRUSTED_TEXT>>>` markers that cannot be closed from inside (fence markers are also defused inside structured values); a notice tells the model to treat it as data. This lowers the risk; it cannot remove it: do not give the model tools that act on what a listing says |
 | **Stale data presented as fresh**                                                                                                                              | `fetched_at`, `cache_age`, `data_age`, `stale`; an outage serves old data only when flagged; 4xx errors never fall back to cache                                                                                                                                                                                                                                                                                       |
 | **Source changes its format**                                                                                                                                  | Files are validated for the fields we read; an unsupported schema or changed shape is an explicit error, not an empty answer                                                                                                                                                                                                                                                                              |
 | **Supply chain**                                                                                                                                               | `npm ci --ignore-scripts`; lockfile committed; `npm audit` (production, high+) and `npm audit signatures` block CI; actions pinned by commit SHA with `contents: read`; Dependabot for npm and actions; secret scanning and push protection on; nothing is published                                                                                                                                      |

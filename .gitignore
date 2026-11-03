@@ -30,3 +30,6 @@ scratch/
 # Project-scoped MCP config with this machine's paths: copy .mcp.example.json to .mcp.json and edit it
 .mcp.json
 Claude outputs/
+
+# Claude Code agent worktrees (local)
+.claude/worktrees/

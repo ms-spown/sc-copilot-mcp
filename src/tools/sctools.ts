@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { fetchWithCache } from "../core/cache.js";
-import { formatOutput, isObject } from "../core/format.js";
+import { formatOutput, formatOutputRaw, isObject } from "../core/format.js";
 import type { HttpClient } from "../core/http.js";
+import { parseSearchResults } from "../providers/sctools/search.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
 /** Tools backed by Star Citizen Tools (starcitizen.tools, a MediaWiki). */
@@ -10,7 +11,7 @@ export function sctTools({ sctClient }: { sctClient: HttpClient }): ToolDefiniti
     {
       name: "sct_search",
       description:
-        "Search Star Citizen Tools (starcitizen.tools, a community wiki) for a topic; returns up to 10 page titles. Use it for lore, guides and mechanics, then read a page with sct_get_article. Content is community-written.",
+        "Search Star Citizen Tools (starcitizen.tools, a community wiki) for a topic; returns up to 10 results, each with a page title, a short excerpt and the page URL. Use it for lore, guides and mechanics, then read a page with sct_get_article. Content is community-written.",
       inputSchema: {
         type: "object",
         properties: {
@@ -25,14 +26,29 @@ export function sctTools({ sctClient }: { sctClient: HttpClient }): ToolDefiniti
         const { query } = z.object({ query: z.string() }).parse(args);
         const response = await fetchWithCache(sctClient, "/api.php", {
           params: {
-            action: "opensearch",
-            search: query,
+            action: "query",
+            list: "search",
+            srsearch: query,
+            srprop: "snippet",
+            srlimit: 10,
             format: "json",
-            limit: 10,
           },
         });
+        const results = parseSearchResults(response.data, sctClient.defaults?.baseURL);
         return {
-          content: [{ type: "text", text: formatOutput(response.data) }],
+          content: [
+            {
+              type: "text",
+              text: formatOutputRaw({
+                query,
+                count: results.length,
+                results,
+                ...(results.length === 0
+                  ? { hint: "No page matched. Try fewer or different words." }
+                  : {}),
+              }),
+            },
+          ],
         };
       },
     },

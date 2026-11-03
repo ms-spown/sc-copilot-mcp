@@ -1,5 +1,6 @@
 import { fetchWithCache } from "../core/cache.js";
 import type { ToolMeta } from "../core/provenance.js";
+import { cleanString } from "../core/untrusted.js";
 import type { StatusProbe } from "../tools/status.js";
 import type { ToolClients } from "../tools/registry.js";
 import { listBuilds } from "./dumps/versions.js";
@@ -19,6 +20,7 @@ export function createProbes({
   sctClient,
   scmdb,
   gameLog,
+  telemetry,
 }: ToolClients): StatusProbe[] {
   return [
     {
@@ -75,7 +77,11 @@ export function createProbes({
         const { manifest, fetchedAt, stale } = await scmdb.manifest();
         const channel = (name: string) => {
           const c = manifest.channels[name];
-          return { version: c?.version ?? null, as_of: c?.generated_at ?? null };
+          // sc_data_status is a structured tool: strings that come from a third-party file are cleaned.
+          return {
+            version: c?.version ? cleanString(c.version, 80) : null,
+            as_of: c?.generated_at ? cleanString(c.generated_at, 80) : null,
+          };
         };
         return {
           status: stale ? "degraded" : "ok",
@@ -93,7 +99,10 @@ export function createProbes({
         const builds = await listBuilds(5);
         return {
           status: "ok",
-          unlabelled: builds.map((b) => ({ version: b.version, as_of: b.date || null })),
+          unlabelled: builds.map((b) => ({
+            version: cleanString(b.version, 80),
+            as_of: b.date ? cleanString(b.date, 80) : null,
+          })),
           note: "Build tags do not say LIVE or PTU, so they are listed, not classified. Tags can be republished: results are cached by commit.",
           fetchedAt: Date.now(),
         };
@@ -125,6 +134,26 @@ export function createProbes({
               : { unlabelled: [info] }),
           fetchedAt: r.modifiedAt,
           note: "The game on this PC, from its own log header. Its file version has a different format from the public version number; compare builds.",
+        };
+      },
+    },
+    {
+      id: "live-telemetry",
+      run: async () => {
+        if (!telemetry?.enabled) {
+          return {
+            status: "not_configured",
+            state: "off",
+            note: "Live telemetry is off (the default). sc_live_status explains how to enable it; nothing is read or connected while it is off.",
+          };
+        }
+        // Peek only: asking for the status of the sources must not start the reader.
+        const s = await telemetry.status(false);
+        return {
+          status: s.state === "incompatible" ? "degraded" : "ok",
+          state: s.state,
+          ...(s.state === "incompatible" ? { error: s.cause } : {}),
+          note: `${s.cause} The game-side switch is separate (GRPC_CLIENT_SERVER_ENABLED); see sc_live_status.`,
         };
       },
     },

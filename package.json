@@ -21,7 +21,8 @@
     "test:coverage": "vitest run --coverage",
     "golden:update": "node scripts/update-golden.mjs",
     "doctor": "node scripts/doctor.mjs",
-    "check:docs": "node scripts/check-docs-safety.mjs"
+    "check:docs": "node scripts/check-docs-safety.mjs",
+    "check:telemetry-silence": "node scripts/check-no-telemetry-connection.mjs"
   },
   "repository": {
     "type": "git",

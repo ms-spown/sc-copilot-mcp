@@ -183,6 +183,65 @@
     }
   },
   {
+    "name": "sc_live_events",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "after_seq": {
+          "type": "number",
+          "description": "Only events with a higher seq (default 0)."
+        },
+        "limit": {
+          "type": "number",
+          "description": "At most this many, the newest (default 30, max 100)."
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "confirmed",
+            "all"
+          ],
+          "description": "'confirmed' hides unverified events (default all)."
+        },
+        "include_balance": {
+          "type": "boolean",
+          "description": "Include balance-change events (default false)."
+        }
+      }
+    }
+  },
+  {
+    "name": "sc_live_state",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "ship",
+              "pilot",
+              "weapons"
+            ]
+          },
+          "description": "Only these parts (default all). Smaller answers cost less."
+        },
+        "include_balance": {
+          "type": "boolean",
+          "description": "Include the aUEC balance and its change since the reader started. Default false: the result goes into the conversation."
+        }
+      }
+    }
+  },
+  {
+    "name": "sc_live_status",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
     "name": "sc_local_datasets",
     "inputSchema": {
       "type": "object",
@@ -385,7 +444,7 @@
       "properties": {
         "query": {
           "type": "string",
-          "description": "Words that must all appear in the product name, type or manufacturer."
+          "description": "Words that must all appear in the product name, type or manufacturer. Case, accents and punctuation do not matter; with no exact match, close spellings are tried."
         },
         "type": {
           "type": "string",
@@ -421,7 +480,7 @@
       "properties": {
         "query": {
           "type": "string",
-          "description": "Words that must all appear in the ore, laser or module name (e.g. 'quantanium', 'helix')."
+          "description": "Words that must all appear in the ore, laser or module name (e.g. 'quantainium', 'helix'). Case, accents and punctuation do not matter; with no exact match, close spellings are tried."
         },
         "scope": {
           "type": "string",
@@ -454,7 +513,7 @@
       "properties": {
         "query": {
           "type": "string",
-          "description": "Words that must all appear in title, contractor, type, place or blueprint reward (e.g. 'wikelo', 'bounty pyro')."
+          "description": "Words that must all appear in title, contractor, type, place or blueprint reward (e.g. 'wikelo', 'bounty pyro'). Case, accents and punctuation do not matter; with no exact match, close spellings are tried."
         },
         "mission_type": {
           "type": "string",
