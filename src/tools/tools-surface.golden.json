@@ -279,6 +279,26 @@
     }
   },
   {
+    "name": "sc_patch_notes",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Update to read, e.g. '4.10.2' or '4.10' (newest 4.10.x). Default: the newest listed."
+        },
+        "section": {
+          "type": "string",
+          "description": "Part of a section heading to read in full (e.g. 'Ships', 'Hauling', 'Bug fixes')."
+        },
+        "search": {
+          "type": "string",
+          "description": "A word or phrase to find in the notes; returns the passages and their headings."
+        }
+      }
+    }
+  },
+  {
     "name": "sc_read_local_collection",
     "inputSchema": {
       "type": "object",

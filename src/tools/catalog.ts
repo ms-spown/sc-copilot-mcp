@@ -72,7 +72,7 @@ export const CATALOG: Record<string, CatalogEntry> = {
   scw_get_item: { ...wiki, profiles: ["core"] },
   scw_list_vehicles: { ...wiki, profiles: ["data"] },
   scw_get_ship_comparison: { ...wiki, profiles: ["core"] },
-  scw_search: { ...wiki, kind: "editorial", profiles: ["core"] },
+  scw_search: { ...wiki, kind: "editorial", profiles: ["data"] },
   scw_list_items: { ...wiki, profiles: ["data"] },
   scw_get_filters: { ...wiki, trust: "structured", profiles: ["data"] },
   scw_snapshot_save: { ...wiki, source: "star-citizen.wiki + local snapshots", profiles: ["data"] },
@@ -84,6 +84,8 @@ export const CATALOG: Record<string, CatalogEntry> = {
   },
   scw_snapshot_diff: { ...wiki, source: "star-citizen.wiki + local snapshots", profiles: ["data"] },
 
+  // A community transcription of the official notes; the official ones are on RSI's site, not read here.
+  sc_patch_notes: { ...sct, maxText: 12_000, profiles: ["core", "data"] },
   sct_search: { ...sct, profiles: ["core"] },
   sct_get_article: { ...sct, maxText: 20_000, profiles: ["core"] },
 

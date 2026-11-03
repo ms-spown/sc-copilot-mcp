@@ -18,6 +18,7 @@ import {
 import { CATALOG, PROFILE_NAMES, type Profile } from "./catalog.js";
 import { dumpTools } from "./dumps.js";
 import { localTools } from "./local.js";
+import { patchNotesTools } from "./patchnotes.js";
 import { scmdbTools } from "./scmdb.js";
 import { fleetTools } from "./fleet.js";
 import { gameLogTools } from "./gamelog.js";
@@ -44,6 +45,7 @@ export function allTools(clients: ToolClients, probes: StatusProbe[] = []): Tool
     ...uexTools(clients),
     ...wikiTools(clients),
     ...sctTools(clients),
+    ...patchNotesTools(clients),
     ...scmdbTools(clients),
     ...gameLogTools(clients),
     ...fleetTools(clients),
