@@ -7,6 +7,8 @@
  * already cut to a size an answer can hold. Nothing here returns a file, or a long list.
  */
 
+import { stripTags } from "../../core/text.js";
+
 export const MAX_ROWS = 30;
 export const DEFAULT_ROWS = 10;
 
@@ -20,13 +22,7 @@ const matchesAll = (text: string, words: string[]) => words.every((w) => text.in
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 /** Game text carries markup such as <EM4>…</EM4>. */
 const plain = (s: unknown, max = 300) => {
-  const t =
-    typeof s === "string"
-      ? s
-          .replace(/<[^>]*>/g, "")
-          .replace(/\s+/g, " ")
-          .trim()
-      : "";
+  const t = typeof s === "string" ? stripTags(s).replace(/\s+/g, " ").trim() : "";
   return t.length > max ? `${t.slice(0, max)}…` : t;
 };
 

@@ -26,20 +26,44 @@ function decodeEntities(text: string): string {
     .replace(/&([a-z]+);/gi, (m, name: string) => ENTITIES[name.toLowerCase()] ?? m);
 }
 
+/**
+ * Remove tags until none are left. One pass can assemble a new tag out of what is left around a
+ * removed one ("<scr<b>ipt>" becomes "<script>"), so this repeats until the text stops changing.
+ */
+export function stripTags(input: string): string {
+  let current = input;
+  for (let pass = 0; pass < 10; pass++) {
+    const next = current.replace(/<[^>]*>/g, "");
+    if (next === current) break;
+    current = next;
+  }
+  return current;
+}
+
+/** Same idea for whole <style>/<script> blocks: repeat until none remain. */
+function removeActiveBlocks(input: string): string {
+  let current = input;
+  for (let pass = 0; pass < 10; pass++) {
+    const next = current.replace(/<(style|script|noscript)\b[\s\S]*?<\/\1\s*>/gi, " ");
+    if (next === current) break;
+    current = next;
+  }
+  return current;
+}
+
 export function htmlToText(html: string): string {
-  const text = html
-    .replace(/<(style|script|noscript)[\s\S]*?<\/\1>/gi, " ")
-    .replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_, level: string, inner: string) => {
-      const title = inner
-        .replace(/<[^>]+>/g, "")
-        .replace(/\[edit\]/gi, "")
-        .trim();
-      return `\n\n${"#".repeat(Number(level))} ${title}\n`;
-    })
-    .replace(/<li[^>]*>/gi, "\n- ")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|ul|ol|table|tr|dd|dt)>/gi, "\n")
-    .replace(/<[^>]+>/g, "");
+  const text = stripTags(
+    removeActiveBlocks(html)
+      .replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_, level: string, inner: string) => {
+        const title = stripTags(inner)
+          .replace(/\[edit\]/gi, "")
+          .trim();
+        return `\n\n${"#".repeat(Number(level))} ${title}\n`;
+      })
+      .replace(/<li[^>]*>/gi, "\n- ")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|ul|ol|table|tr|dd|dt)>/gi, "\n"),
+  );
   return decodeEntities(text)
     .replace(/\[edit\]/gi, "")
     .replace(/^edit$/gm, "")

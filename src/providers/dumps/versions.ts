@@ -147,7 +147,10 @@ export async function listBuilds(limit = 40): Promise<Build[]> {
     const sha: string | undefined = tag.commit?.sha;
     // Anything that is not a build string (a "v1.0.0" release tag, say) is not
     // a patch and must not show up as one.
-    if (!sha || !/^\d+\.\d+/.test(version) || seen.has(version)) continue;
+    // The sha ends up in a cache file name and a URL: only a full hex commit id is accepted, so a
+    // malformed or hostile API answer cannot steer either.
+    if (!sha || !/^[0-9a-f]{40}$/.test(sha)) continue;
+    if (!/^\d+\.\d+/.test(version) || seen.has(version)) continue;
     seen.add(version);
     builds.push({ version, sha, date: dates.get(sha) ?? "" });
   }

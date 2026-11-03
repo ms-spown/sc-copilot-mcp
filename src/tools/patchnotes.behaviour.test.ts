@@ -27,6 +27,12 @@ describe("Feature: reading wiki HTML as text", () => {
     expect(text.length).toBeGreaterThan(5000);
   });
 
+  it("Given fragments that would assemble into a tag after one pass, Then no tag survives", () => {
+    const text = htmlToText("<scr<b>ipt>alert(1)</scr</b>ipt>ok <<i>b>bold</b>");
+    expect(text).not.toMatch(/<\/?(script|b)\b/i);
+    expect(text).toContain("ok");
+  });
+
   it("Given script or style content, Then it is dropped, never shown", () => {
     expect(htmlToText("a<script>steal()</script>b<style>p{}</style>c")).toBe("a b c");
   });

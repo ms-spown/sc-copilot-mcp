@@ -19,7 +19,8 @@ const firstSentence = (text: string) => {
   const end = flat.search(/[.!?](\s|$)/);
   return end > 0 ? flat.slice(0, end + 1) : flat;
 };
-const cell = (text: string) => oneLine(text).replace(/\|/g, "\\|");
+/** Table-cell safe: backslashes first, then pipes, so an existing "\|" cannot unescape one. */
+const cell = (text: string) => oneLine(text).replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
 
 function typeOf(p: Property): string {
   if (p.enum) return p.enum.map((v) => `\`${v}\``).join(" \\| ");

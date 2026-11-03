@@ -209,8 +209,14 @@ export class Scmdb {
     };
 
     try {
-      const stat = await fs.stat(file);
-      return finish(JSON.parse(await fs.readFile(file, "utf8")), stat.mtimeMs, "memory");
+      // One handle for the size/time and the content, so the file cannot change in between.
+      const handle = await fs.open(file, "r");
+      try {
+        const stat = await handle.stat();
+        return finish(JSON.parse(await handle.readFile("utf8")), stat.mtimeMs, "memory");
+      } finally {
+        await handle.close();
+      }
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("SCMDB")) throw error;
       // Not cached under this SHA (or unreadable): download it.

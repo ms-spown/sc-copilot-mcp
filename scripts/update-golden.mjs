@@ -32,7 +32,12 @@ const now = registry
   .sort((a, b) => a.name.localeCompare(b.name));
 
 const file = path.join(root, "src", "tools", "tools-surface.golden.json");
-const before = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : [];
+let before = [];
+try {
+  before = JSON.parse(fs.readFileSync(file, "utf8"));
+} catch {
+  // No previous file: everything counts as added.
+}
 const old = new Map(before.map((t) => [t.name, JSON.stringify(t.inputSchema)]));
 
 const added = now.filter((t) => !old.has(t.name)).map((t) => t.name);
