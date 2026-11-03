@@ -1,6 +1,8 @@
 import { LEDGER_VIEW_FUNCTIONS } from "./ledgerPanel.js";
 import { LEDGER_CSS } from "./ledgerStyles.js";
 import { dashboardMain } from "./viewApp.js";
+import { SPECS_VIEW_FUNCTIONS } from "./specsView.js";
+import { SPECS_CSS } from "./specsStyles.js";
 import { VIEW_FUNCTIONS } from "./viewLogic.js";
 import { VIEW_CSS } from "./viewStyles.js";
 
@@ -16,8 +18,9 @@ const CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'";
 
 export function viewScript(): string {
-  // The transport ledger panel is a module of its own (ledgerPanel.ts), compiled into the page the same way.
-  const all = [...VIEW_FUNCTIONS, ...LEDGER_VIEW_FUNCTIONS];
+  // viewLogic.ts first, then the ship sheet module (specsView.ts), then the transport ledger panel
+  // (ledgerPanel.ts): one scope, one object L.
+  const all = [...VIEW_FUNCTIONS, ...SPECS_VIEW_FUNCTIONS, ...LEDGER_VIEW_FUNCTIONS];
   const functions = all.map((f) => f.toString()).join("\n");
   const names = all.map((f) => f.name).join(", ");
   return [
@@ -44,7 +47,7 @@ export function dashboardHtml(): string {
     '<meta name="color-scheme" content="light dark">',
     `<meta http-equiv="Content-Security-Policy" content="${CSP}">`,
     "<title>Tableau de bord en direct</title>",
-    `<style>${VIEW_CSS}${LEDGER_CSS}</style>`,
+    `<style>${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}</style>`,
     "</head>",
     "<body>",
     '<div id="app" data-stream="init" data-mode="inline" data-grey="1"></div>',

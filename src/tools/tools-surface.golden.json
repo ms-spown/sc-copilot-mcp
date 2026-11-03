@@ -290,6 +290,40 @@
         "include_balance": {
           "type": "boolean",
           "description": "Include the aUEC balance and its change. Default false."
+        },
+        "include_static": {
+          "type": "boolean",
+          "description": "Include the list of what the stream never contains. The View asks once."
+        },
+        "since_seq": {
+          "type": "number",
+          "description": "The newest event number the View holds: only newer events come back."
+        },
+        "have": {
+          "type": "object",
+          "description": "Hashes (the `hash` of a previous answer) of the sections the View holds; a section with the same hash is left out and listed in `unchanged`.",
+          "properties": {
+            "ship": {
+              "type": "string",
+              "maxLength": 16
+            },
+            "pilot": {
+              "type": "string",
+              "maxLength": 16
+            },
+            "weapons": {
+              "type": "string",
+              "maxLength": 16
+            },
+            "specs": {
+              "type": "string",
+              "maxLength": 16
+            },
+            "ledger": {
+              "type": "string",
+              "maxLength": 16
+            }
+          }
         }
       }
     },

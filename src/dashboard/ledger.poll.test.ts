@@ -32,18 +32,19 @@ const HISTORY: BalancePoint[] = [
 const FORBIDDEN = [BALANCE_NOW, BALANCE_BEFORE, GAIN, SESSION_DELTA].map(String);
 
 function stubTelemetry(
-  extra: { events?: unknown[]; weapons?: unknown; balanceHistory?: boolean } = {},
+  extra: { events?: unknown[]; weapons?: unknown; history?: BalancePoint[] } = {},
 ): Telemetry & { balanceHistory: ReturnType<typeof vi.fn> } {
   const state = {
     ship: null,
     weapons: extra.weapons ?? null,
-    pilot: { uec_balance: BALANCE_NOW, health: { current: 100, max: 100 } },
+    pilot: { uec_balance: BALANCE_NOW, health: { current: 100, max: 100 }, unverified: {} },
+    conditions: [],
     derived: {},
     game_events: [],
     broken: [],
     countermeasure_burst: {},
   };
-  const balanceHistory = vi.fn(async () => HISTORY);
+  const balanceHistory = vi.fn(async () => extra.history ?? HISTORY);
   return {
     enabled: true,
     status: vi.fn(async () => ({
@@ -89,6 +90,8 @@ afterEach(() => {
 function logFile(text: string): GameLog {
   const file = path.join(dir, "Game.log");
   fs.writeFileSync(file, text);
+  const fixed = new Date(EPOCH);
+  fs.utimesSync(file, fixed, fixed); // a fixed date: the ledger carries it (as_of)
   return new GameLog({ logPath: file });
 }
 
@@ -97,14 +100,14 @@ async function readyService(telemetry: Telemetry, text = transportLogText(EPOCH)
   const ledger = new LedgerService(ledgerLogFrom(logFile(text)), () => at(nowS));
   ledger.state();
   await ledger.settled();
-  return new DashboardService(telemetry, () => at(nowS), ledger);
+  return new DashboardService(telemetry, () => at(nowS), undefined, ledger);
 }
 
 describe("Feature: the balance never reaches an answer that did not ask for it", () => {
   it("Given a finished contract and the balance NOT asked, Then no balance, no gain, no delta and no plan figure is in the answer", async () => {
     const service = await readyService(stubTelemetry());
     service.setPlan({ expected_profit_auec: 150_000 });
-    const poll = await service.poll(false);
+    const poll = await service.poll({ includeBalance: false });
     const text = JSON.stringify(poll);
     expect(poll.ledger!.status).toBe("ok");
     expect(poll.ledger!.contracts).toHaveLength(3);
@@ -119,14 +122,14 @@ describe("Feature: the balance never reaches an answer that did not ask for it",
   it("Given the balance NOT asked, Then the history is not even requested from the telemetry", async () => {
     const telemetry = stubTelemetry();
     const service = await readyService(telemetry);
-    await service.poll(false);
+    await service.poll({ includeBalance: false });
     expect(telemetry.balanceHistory).not.toHaveBeenCalled();
   });
 
   it("Given the balance asked, Then the gain, the total and planned against measured are in the ledger, marked raw", async () => {
     const service = await readyService(stubTelemetry());
     service.setPlan({ expected_profit_auec: 300_000 });
-    const poll = await service.poll(true);
+    const poll = await service.poll({ includeBalance: true });
     const done = poll.ledger!.contracts.find((c) => c.state === "completed")!;
     expect(done.gain).toMatchObject({
       auec: GAIN,
@@ -167,15 +170,16 @@ describe("Feature: the poll never waits for the game log", () => {
   it("Given a log read that never finishes, Then the poll still answers, with the ledger 'loading'", async () => {
     const source: LedgerLogSource = {
       configured: true,
-      stat: async () => ({ mtimeMs: 1 }),
+      stat: async () => ({ mtimeMs: 1, size: 0 }),
       read: () => new Promise(() => undefined),
     };
     const service = new DashboardService(
       stubTelemetry(),
       () => at(1),
+      undefined,
       new LedgerService(source, () => at(1)),
     );
-    const poll = await service.poll(false);
+    const poll = await service.poll({ includeBalance: false });
     expect(poll.ledger).toMatchObject({ status: "loading", contracts: [] });
   });
 
@@ -193,7 +197,9 @@ describe("Feature: the poll never waits for the game log", () => {
     const state = vi.fn();
     const ledger = { state, settled: async () => undefined } as unknown as LedgerService;
     const off = { enabled: false } as Telemetry;
-    const poll = await new DashboardService(off, () => at(1), ledger).poll(true);
+    const poll = await new DashboardService(off, () => at(1), undefined, ledger).poll({
+      includeBalance: true,
+    });
     expect(poll).not.toHaveProperty("ledger");
     expect(state).not.toHaveBeenCalled();
   });
@@ -237,7 +243,7 @@ describe("Feature: the whole answer stays bounded", () => {
     };
     const service = await readyService(stubTelemetry({ events, weapons }), lines.join("\n"), 200);
     for (const include of [false, true]) {
-      const poll = await service.poll(include);
+      const poll = await service.poll({ includeBalance: include });
       const size = JSON.stringify(poll).length;
       expect(size, `include=${include}`).toBeLessThanOrEqual(MAX_POLL_CHARS);
       expect(JSON.stringify(poll.ledger).length).toBeLessThanOrEqual(LEDGER_BUDGET_CHARS);
@@ -248,5 +254,51 @@ describe("Feature: the whole answer stays bounded", () => {
         expect(c.title.length).toBeLessThanOrEqual(80);
       }
     }
+  });
+});
+
+describe("Feature: the ledger follows the delta protocol, and a hash never stands for an amount", () => {
+  const hashOf = (poll: { hash?: Record<string, string> }) => poll.hash!.ledger!;
+
+  it("Given a View that holds the ledger, Then the next answer leaves it out and lists it as unchanged", async () => {
+    const service = await readyService(stubTelemetry());
+    const first = await service.poll({ includeBalance: false });
+    expect(first.ledger).toBeDefined();
+    expect(hashOf(first)).toMatch(/^[0-9a-f]{14}$/);
+    const second = await service.poll({
+      includeBalance: false,
+      have: { ledger: hashOf(first) },
+    });
+    expect(second.unchanged).toContain("ledger");
+    expect(second).not.toHaveProperty("ledger");
+    // A hash that is not the current one brings the section whole.
+    const third = await service.poll({ includeBalance: false, have: { ledger: "0123456789abcd" } });
+    expect(third.ledger!.contracts).toHaveLength(3);
+  });
+
+  it("Given the balance is asked, Then its ledger has a hash of its own, and no answer without the balance ever carries it", async () => {
+    const service = await readyService(stubTelemetry());
+    const plain = await service.poll({ includeBalance: false });
+    const rich = await service.poll({ includeBalance: true });
+    expect(hashOf(rich)).not.toBe(hashOf(plain));
+    // A View that holds the version with amounts and asks again without the balance gets the plain ledger whole.
+    const back = await service.poll({ includeBalance: false, have: { ledger: hashOf(rich) } });
+    expect(back.unchanged ?? []).not.toContain("ledger");
+    expect(back.ledger).toEqual(plain.ledger);
+    expect(JSON.stringify(back)).not.toContain(hashOf(rich));
+    expect(JSON.stringify(plain)).not.toContain(hashOf(rich));
+  });
+
+  it("Given two sessions with the same contracts and different balances, Then the hash without the balance is the same (it reveals no amount)", async () => {
+    const other = HISTORY.map((p) => ({ ...p, uec: p.uec * 3 + 17 }));
+    const a = await readyService(stubTelemetry());
+    const b = await readyService(stubTelemetry({ history: other }));
+    expect(hashOf(await a.poll({ includeBalance: false }))).toBe(
+      hashOf(await b.poll({ includeBalance: false })),
+    );
+    // With the balance the content (hence the hash) differs, and only those answers carry it.
+    expect(hashOf(await a.poll({ includeBalance: true }))).not.toBe(
+      hashOf(await b.poll({ includeBalance: true })),
+    );
   });
 });

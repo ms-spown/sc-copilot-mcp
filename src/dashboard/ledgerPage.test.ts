@@ -23,18 +23,16 @@ const GAIN_DIGITS = /184\D?500|434\D?500|250\D?000/;
 
 async function page(variant: TransportVariant = "story", plan = false) {
   const scenario = new Scenario();
-  const w = await startPage({ scenario });
-  w.host.overrides.poll = (base, include) => ({
-    ...base,
-    ledger: transportLedger(
-      scenario.now,
+  // The ledger goes through the real delta protocol of the poll (hash, unchanged), like the other sections.
+  scenario.ledger = (include, nowMs) =>
+    transportLedger(
+      nowMs,
       scenario.epoch,
       include,
       variant,
       plan ? { expected_profit_auec: 150_000 } : undefined,
-    ),
-  });
-  return w;
+    );
+  return startPage({ scenario });
 }
 const fullscreen = async (w: PageWorld) => {
   w.fromHost({
@@ -121,7 +119,7 @@ describe("Feature: the full-screen panel", () => {
     expect(t).not.toContain("Gain mesuré");
     expect(t).not.toContain("Gain total");
     expect(t).not.toContain("Rythme");
-    expect(t).not.toContain("Prévu / réalisé");
+    expect(t).not.toContain("Profit prévu");
     expect(t).not.toMatch(GAIN_DIGITS);
     expect(w.host.log.polls.every((p) => !p.includeBalance)).toBe(true);
     expect(JSON.stringify(w.host.log.contexts)).not.toMatch(GAIN_DIGITS);
@@ -139,9 +137,10 @@ describe("Feature: the full-screen panel", () => {
     expect(t).toContain("Gain total mesuré");
     expect(t).toContain("+184 500 aUEC");
     expect(t).toContain("disponible après 2 min de contrats"); // 76 s of contract time: no pace yet
-    expect(t).toContain("Prévu / réalisé (dernier contrat)");
-    expect(t).toContain("prévu +150 000 aUEC");
-    expect(t).toContain("réalisé +184 500 aUEC");
+    expect(t).toContain("Profit prévu (plan)");
+    expect(t).toContain("Réalisé, dernier contrat");
+    expect(t).toContain("+150 000 aUEC");
+    expect(t).toContain("+184 500 aUEC");
     expect(t).toContain("mêle achats, récompenses et amendes");
     // Showing it did not send anything to the conversation.
     expect(w.host.log.messages).toEqual([]);
@@ -155,7 +154,7 @@ describe("Feature: the full-screen panel", () => {
     findButton(w.root, "Afficher le solde").click();
     await w.advance(3 * SECOND);
     expect(text(w)).toContain("Gain mesuré");
-    findButton(w.root, "Masquer le solde").click();
+    findButton(w.root, "Masquer").click();
     expect(text(w)).not.toContain("Gain mesuré");
   });
 

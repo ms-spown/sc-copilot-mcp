@@ -38,6 +38,22 @@ export function viewConfig() {
     sampleMinGapMs: 400,
     requestTimeoutMs: 8000,
     alertWindowMs: 180000,
+    /** Channel shared by the Views of this connector (same sandbox origin). No network is involved. */
+    channelName: "sc-copilot-dashboard-v2",
+    /** A peer not heard for this long is gone (its heartbeat is every heartbeatMs). */
+    peerTtlMs: 6000,
+    heartbeatMs: 2000,
+    /** The leader shares its answer with the other Views at most this often. */
+    snapshotMinMs: 900,
+    /** Without BroadcastChannel nothing can be coordinated: a View away this long retires. */
+    noChannelRetireMs: 30000,
+    /** Peers remembered at most (a hostile page on the channel must not grow the table). */
+    maxPeers: 32,
+    /** A rank (creation time) further in the future than this is refused. */
+    maxRankSkewMs: 60000,
+    /** Plain series kept for a sparkline, and for the estimates (ms). */
+    sparkKeepMs: 62000,
+    maxSamples: 800,
   };
 }
 
@@ -258,6 +274,15 @@ export function initialViewState(): any {
     lastSeq: 0,
     series: {},
     plan: null,
+    /** The hashes of the sections held, as the server sent them (the next poll says which ones it already has). */
+    hash: {},
+    /** What the stream never contains, once the server has said it. */
+    notInStream: null,
+    /** Highest value seen per countermeasure kind for this vehicle: the reference of the relative bar. */
+    peaks: {},
+    shipKey: "",
+    /** Deduced scales of the dials (never shrink during a session). */
+    scales: { speed: 0, vspeed: 0 },
   };
 }
 
@@ -293,16 +318,49 @@ export function pushSample(series: number[][] | undefined, t: number, v: number,
   const kept = base.filter((s) => t - (s[0] as number) <= windowMs);
   if (last && t - (last[0] as number) < cfg.sampleMinGapMs) return kept;
   kept.push([t, v]);
+  // The window already bounds it (about 2.5 samples a second at most); this is the hard ceiling.
+  if (kept.length > cfg.maxSamples) kept.splice(0, kept.length - cfg.maxSamples);
   return kept;
 }
 
 /** Folds a poll answer into the view state. Pure: returns a new state. */
-export function reducePoll(prev: any, poll: any, now: number): any {
+export function reducePoll(prev: any, incoming: any, now: number): any {
   const cfg = viewConfig();
-  if (!poll || typeof poll !== "object" || poll.v !== 1) {
+  if (!incoming || typeof incoming !== "object" || incoming.v !== 1) {
     return reducePollError(prev, "réponse de version inconnue", now);
   }
+  // Sections the server left out because this View already holds them unchanged: put them back.
+  const poll: any = Object.assign({}, incoming);
+  const names = ["ship", "pilot", "weapons", "specs", "ledger"];
+  if (Array.isArray(incoming.unchanged)) {
+    for (const name of names) {
+      if (incoming.unchanged.indexOf(name) < 0) continue;
+      if (prev.poll && prev.poll[name]) poll[name] = prev.poll[name];
+      else {
+        // Cannot happen with a server that follows the hashes; if it does, ask for everything next time.
+        return reducePollError(Object.assign({}, prev, { hash: {} }), "section absente", now);
+      }
+    }
+  }
+  delete poll.unchanged;
+  const hash: any = {};
+  if (incoming.hash && typeof incoming.hash === "object") {
+    for (const name of names) {
+      const h = incoming.hash[name];
+      if (typeof h === "string" && /^[0-9a-f]{1,16}$/.test(h)) hash[name] = h;
+    }
+  }
+  let notInStream = prev.notInStream;
+  if (Array.isArray(incoming.not_in_stream)) {
+    notInStream = incoming.not_in_stream
+      .filter((x: any) => typeof x === "string")
+      .map((x: string) => x.slice(0, 40))
+      .slice(0, 40);
+  }
+  if (notInStream && !poll.not_in_stream) poll.not_in_stream = notInStream;
   const next: any = Object.assign({}, prev, {
+    hash,
+    notInStream,
     poll,
     receivedAt: now,
     link: "ok",
@@ -343,13 +401,74 @@ export function reducePoll(prev: any, poll: any, now: number): any {
   if (poll.state === "live" && age !== null && age <= cfg.staleAfterMs) {
     const values = seriesValues(poll);
     for (const key of seriesKeys) {
-      if (typeof values[key] === "number") {
-        series[key] = pushSample(series[key], now, values[key], cfg.trendWindowMs);
+      // A switched-off ship reports zeros that are not measurements: nothing is added to its curves.
+      const shipKey = ["speed", "altitude", "vspeed", "g", "hydrogen", "boost"].indexOf(key) >= 0;
+      if (typeof values[key] === "number" && !(shipKey && shipIsOff(poll))) {
+        const keep =
+          key === "hunger" || key === "thirst"
+            ? cfg.trendWindowMs
+            : key === "hydrogen"
+              ? 120000
+              : cfg.sparkKeepMs;
+        series[key] = pushSample(series[key], now, values[key], keep);
       }
     }
   }
   next.series = series;
+  // Per-vehicle references: the highest countermeasure count seen, and the dials' scales (speeds in quantum mode
+  // are left out: they would flatten every other reading).
+  const key = poll.ship && typeof poll.ship.name === "string" ? poll.ship.name : "";
+  const peaks: any = key && key === prev.shipKey ? Object.assign({}, prev.peaks) : {};
+  const cms = poll.weapons && poll.weapons.countermeasures;
+  if (cms && typeof cms === "object") {
+    for (const kind of Object.keys(cms)) {
+      if (typeof cms[kind] === "number") peaks[kind] = Math.max(peaks[kind] || 0, cms[kind]);
+    }
+  }
+  next.peaks = peaks;
+  next.shipKey = key || prev.shipKey;
+  const scales: any = Object.assign({ speed: 0, vspeed: 0 }, prev.scales);
+  const ins = poll.ship && poll.ship.instruments;
+  const quantum = !!(poll.derived && (poll.derived.in_quantum_mode || poll.derived.in_jump));
+  if (ins && poll.state === "live" && !quantum) {
+    if (typeof ins.speed_ms === "number") scales.speed = Math.max(scales.speed, ins.speed_ms);
+    if (typeof ins.vertical_speed_ms === "number") {
+      scales.vspeed = Math.max(scales.vspeed, Math.abs(ins.vertical_speed_ms));
+    }
+  }
+  next.scales = scales;
   return next;
+}
+
+/** What to ask the server for: what this View does not hold yet, so the answer carries only what changed. */
+export function pollArguments(view: any, showBalance: boolean): any {
+  const args: any = {};
+  if (showBalance) args.include_balance = true;
+  if (!Array.isArray(view.notInStream)) args.include_static = true;
+  if (view.lastSeq > 0) args.since_seq = view.lastSeq;
+  const have: any = {};
+  let any = false;
+  const hashes = view.hash || {};
+  for (const name of ["ship", "pilot", "weapons", "specs", "ledger"]) {
+    if (view.poll && view.poll[name] && typeof hashes[name] === "string") {
+      have[name] = hashes[name];
+      any = true;
+    }
+  }
+  if (any) args.have = have;
+  return args;
+}
+
+/** A readable ceiling for a dial from the largest value seen: 1, 1.5, 2, 3, 5 or 7.5 times a power of ten, never below `min`. */
+export function niceScale(seen: number, min: number): number {
+  const target = Math.max(min, Number.isFinite(seen) ? seen * 1.1 : 0);
+  const steps = [1, 1.5, 2, 3, 5, 7.5];
+  let power = Math.pow(10, Math.floor(Math.log(target) / Math.LN10));
+  for (let guard = 0; guard < 40; guard++) {
+    for (const s of steps) if (s * power >= target) return s * power;
+    power *= 10;
+  }
+  return target;
 }
 
 export function reducePollError(prev: any, message: string, now: number): any {
@@ -381,13 +500,17 @@ export function pollingDecision(s: any): any {
   const cfg = viewConfig();
   if (s.tornDown) return { run: false, delayMs: 0, reason: "teardown", retire: false };
   if (s.retired) return { run: false, delayMs: 0, reason: "retired", retire: false };
+  // Another View is the leader: it polls for everybody, this one only shows what the leader shares.
+  if (s.follower && !s.hidden && !s.offscreen) {
+    return { run: false, delayMs: 0, reason: "follower", retire: false };
+  }
   if (s.hidden || s.offscreen) {
     const since = typeof s.awaySince === "number" ? s.awaySince : s.now;
     return {
       run: false,
       delayMs: 0,
       reason: s.hidden ? "hidden" : "offscreen",
-      retire: s.now - since >= cfg.retireAfterMs,
+      retire: s.now - since >= (s.noChannel ? cfg.noChannelRetireMs : cfg.retireAfterMs),
     };
   }
   let delay = cfg.pollMs;
@@ -504,9 +627,22 @@ export function lightsInfo(lights: any): any[] {
     if (raw === "nominal") tone = key === "qdrv" ? "info" : "ok";
     else if (raw === "minor_on" || raw === "minor_flashing") tone = "warn";
     else if (raw === "major_on" || raw === "major_flashing") tone = "bad";
+    const titles: any = {
+      thr: "Poussée",
+      shld: "Boucliers",
+      prox: "Proximité (collision)",
+      hit: "Impacts subis",
+      radr: "Radar : verrouillage hostile",
+      qdrv: "Moteur quantique",
+      wpn: "Armes",
+      pwr: "Alimentation",
+      cool: "Refroidissement",
+      misl: "Missiles",
+    };
     return {
       key,
       label: d[1],
+      title: titles[key] || d[1],
       verified: d[2],
       raw,
       text: texts[raw] || "inconnu",
@@ -527,9 +663,21 @@ export function powerInfo(power: any): any[] {
     ["shield_generators", "Bouclier gén."],
     ["shield_emitters", "Bouclier ém."],
   ];
+  const titles: any = {
+    powerplants: "Centrale (alimente tout le reste)",
+    engines: "Moteurs",
+    weapons: "Armes",
+    coolers: "Refroidissement",
+    life_support: "Support vie",
+    gravity_generators: "Générateurs de gravité",
+    sensors: "Capteurs",
+    shield_generators: "Générateurs de boucliers",
+    shield_emitters: "Émetteurs de boucliers",
+  };
   return defs.map((d) => ({
     key: d[0],
     label: d[1],
+    title: titles[d[0] as string] || d[1],
     known: !!power && typeof power[d[0] as string] === "boolean",
     on: !!power && power[d[0] as string] === true,
   }));
@@ -574,6 +722,8 @@ export function eventLabel(ev: any): string {
     engines_damaged: "Moteurs endommagés",
     shields_down: "Boucliers tombés",
     shields_restored: "Boucliers rétablis",
+    shields_powered_off: "Boucliers coupés{quantum_suffix}",
+    shields_powered_on: "Boucliers réalimentés",
     weapons_unavailable: "Armes sans énergie",
     boost_depleted: "Réserve de boost critique",
     hydrogen_low: "Hydrogène bas ({percent}\u00a0%)",
@@ -608,6 +758,7 @@ export function eventLabel(ev: any): string {
   const data = (ev && ev.data) || {};
   return template.replace(/\{(\w+)\}/g, (_m: string, key: string) => {
     const v = data[key];
+    if (key === "quantum_suffix") return data.quantum === 1 ? " · mode quantique" : "";
     if (key === "vehicle") return isSafeId(v) ? String(v).replace(/_/g, " ") : "?";
     if (key === "kind") return typeof v === "string" ? countermeasureLabel(v).toLowerCase() : "?";
     if (key === "count" || key === "percent") return typeof v === "number" ? fmtNum(v) : "?";
@@ -619,8 +770,9 @@ export function eventLabel(ev: any): string {
  * Alerts to show in the band: recent, important events, newest first, at most `limit`. A "restored" event clears
  * its alert. Confirmed events come first; unverified ones are kept but flagged (`verified: false`).
  */
-export function activeAlerts(events: any[], now: number, limit: number): any[] {
+export function activeAlerts(events: any[], now: number, limit: number, covered?: string[]): any[] {
   const cfg = viewConfig();
+  const skip: string[] = covered || [];
   const important: any = {
     shields_down: ["bad", "shields"],
     locked_on: ["bad", "lock"],
@@ -651,6 +803,7 @@ export function activeAlerts(events: any[], now: number, limit: number): any[] {
     if (imp) byKey[imp[1]] = { event: e, tone: imp[0] };
   }
   const out = Object.keys(byKey)
+    .filter((k) => skip.indexOf(k) < 0)
     .map((k) => byKey[k])
     .filter((a: any) => now - Date.parse(a.event.at) <= cfg.alertWindowMs)
     .map((a: any) => ({
@@ -665,6 +818,86 @@ export function activeAlerts(events: any[], now: number, limit: number): any[] {
   return out.slice(0, limit);
 }
 
+/**
+ * The conditions that hold now, as chips: tone (info, warn, bad), a French label, and how long they have lasted
+ * (the server's `since` against the answer's own clock, so the View and the server never need the same clock).
+ * Ids the View does not know still get a chip with a neutral label: nothing the server flags is hidden.
+ */
+export function conditionItems(poll: any, now: number, receivedAt: number, limit: number): any[] {
+  const list = poll && Array.isArray(poll.conditions) ? poll.conditions : [];
+  const tones: any = { info: "info", warning: "warn", critical: "bad" };
+  const out: any[] = [];
+  for (const c of list) {
+    if (!c || typeof c.id !== "string" || !tones[c.level]) continue;
+    const data = c.data && typeof c.data === "object" ? c.data : {};
+    const pct = typeof data.percent === "number" ? fmtNum(data.percent) + "\u00a0%" : "?";
+    const kind = typeof data.kind === "string" ? countermeasureLabel(data.kind) : "Contre-mesures";
+    const quantum = data.quantum === true;
+    const labels: any = {
+      powerplant_off: "Centrale hors service",
+      engines_off: "Moteurs coupés",
+      engines_damaged: "Moteurs endommagés",
+      shields_off: quantum ? "Boucliers coupés · mode quantique" : "Boucliers coupés",
+      shields_down: "Boucliers tombés",
+      weapons_unpowered: "Armes sans énergie",
+      hostile_lock: "Verrouillage hostile",
+      under_fire: "Touché",
+      proximity: "Proximité : risque de collision",
+      hydrogen_low: "Hydrogène bas (" + pct + ")",
+      boost_critical: "Réserve de boost critique",
+      countermeasures_low:
+        kind + " bas" + (typeof data.count === "number" ? " (" + fmtNum(data.count) + ")" : ""),
+      countermeasures_empty: kind + " épuisé",
+      health_low: "Santé basse (" + pct + ")",
+      down_or_dead: "À terre ou mort",
+      hunger_low: "Faim (" + pct + ")",
+      thirst_low: "Soif (" + pct + ")",
+      not_breathable: "Air non respirable",
+      in_quantum: "Mode quantique",
+      in_jump: "Saut quantique en cours",
+    };
+    const label = typeof labels[c.id] === "string" ? labels[c.id] : "Condition inconnue";
+    let ageMs: number | null = null;
+    if (typeof c.since === "number" && typeof poll.at === "number") {
+      ageMs = Math.max(0, poll.at - c.since + Math.max(0, now - receivedAt));
+    }
+    out.push({
+      key: c.id + (typeof data.kind === "string" && isSafeId(data.kind) ? ":" + data.kind : ""),
+      id: c.id,
+      tone: tones[c.level],
+      verified: c.confidence !== "unverified",
+      label,
+      ageMs,
+    });
+  }
+  return out.slice(0, limit);
+}
+
+/** Alert keys of activeAlerts that an active condition already says (the event band does not repeat them). */
+export function coveredAlertKeys(poll: any): string[] {
+  const map: any = {
+    shields_down: "shields",
+    hostile_lock: "lock",
+    countermeasures_low: "cm",
+    countermeasures_empty: "cm",
+    engines_damaged: "engines",
+    health_low: "health",
+    down_or_dead: "health",
+    powerplant_off: "power",
+    boost_critical: "boost",
+    under_fire: "fire",
+    proximity: "prox",
+    hydrogen_low: "hydrogen",
+    not_breathable: "air",
+  };
+  const out: string[] = [];
+  const list = poll && Array.isArray(poll.conditions) ? poll.conditions : [];
+  for (const c of list) {
+    if (c && typeof c.id === "string" && map[c.id]) out.push(map[c.id]);
+  }
+  return out;
+}
+
 export function timelineItems(events: any[], markers: any[], limit: number): any[] {
   const kept = [
     "took_off",
@@ -674,6 +907,8 @@ export function timelineItems(events: any[], markers: any[], limit: number): any
     "vehicle_changed",
     "under_fire",
     "shields_down",
+    "shields_powered_off",
+    "shields_powered_on",
     "player_down",
     "respawned",
     "locked_on",
@@ -975,6 +1210,854 @@ export function safeStyleVariables(vars: any): any[] {
   return out;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Several Views in one conversation: one of them polls (the leader), the others follow
+// ---------------------------------------------------------------------------------------------
+
+/** A short random identifier for this View. `random` is a number in [0, 1) given by the caller. */
+export function makeViewId(now: number, random: number): string {
+  const a = Math.floor(Math.abs(random) * 1e9).toString(36);
+  const b = Math.floor(Math.abs(now)).toString(36);
+  return ("v" + a + b + "00000000").slice(0, 16).toLowerCase();
+}
+
+/**
+ * Who polls? Among the Views that are visible and have been heard recently (self included when visible), the one
+ * with the highest rank, then the highest id when ranks are equal. The rank is the creation time of the View, or the
+ * time of the last "take over here" click: the most recent View wins, and the others stop calling the server.
+ * A View that is hidden or off screen is never a candidate, so it never polls and never blocks another one; when the
+ * leader disappears (closed, hidden, or silent for peerTtlMs) the next one in line takes over.
+ *   self  = { id, rank, visible }
+ *   peers = { [id]: { id, rank, visible, seenAt } }
+ */
+export function electLeader(self: any, peers: any, now: number): any {
+  const cfg = viewConfig();
+  let best: any = self.visible ? { id: self.id, rank: self.rank } : null;
+  for (const key of Object.keys(peers || {})) {
+    const p = peers[key];
+    if (!p || p.id === self.id || !p.visible) continue;
+    if (!(now - p.seenAt <= cfg.peerTtlMs)) continue;
+    if (!best || p.rank > best.rank || (p.rank === best.rank && p.id > best.id)) {
+      best = { id: p.id, rank: p.rank };
+    }
+  }
+  return { leaderId: best ? best.id : null, isLeader: !!best && best.id === self.id };
+}
+
+/** Peers after one message: updated or added (hello, claim, snapshot), or removed (bye). Pure; bounded. */
+export function notePeer(peers: any, msg: any, now: number): any {
+  const cfg = viewConfig();
+  const next: any = {};
+  for (const key of Object.keys(peers || {})) {
+    const p = peers[key];
+    if (p && now - p.seenAt <= cfg.peerTtlMs * 5) next[key] = p;
+  }
+  if (msg.t === "bye") {
+    delete next[msg.id];
+    return next;
+  }
+  next[msg.id] = { id: msg.id, rank: msg.rank, visible: msg.visible, seenAt: now };
+  const ids = Object.keys(next);
+  if (ids.length > cfg.maxPeers) {
+    ids.sort((a, b) => next[a].seenAt - next[b].seenAt);
+    for (let i = 0; i < ids.length - cfg.maxPeers; i++) delete next[ids[i] as string];
+  }
+  return next;
+}
+
+/** The rank that wins over every peer known now ("take over here"). */
+export function claimRank(peers: any, now: number): number {
+  let top = now;
+  for (const key of Object.keys(peers || {})) {
+    const p = peers[key];
+    if (p && typeof p.rank === "number" && p.rank >= top) top = p.rank + 1;
+  }
+  return top;
+}
+
+/** The answer as it may be shared with the other Views: no balance, and no wallet event (their text has amounts). */
+export function sharablePoll(poll: any): any {
+  if (!poll || typeof poll !== "object") return null;
+  const out: any = Object.assign({}, poll);
+  delete out.balance;
+  delete out.hash;
+  delete out.unchanged;
+  out.events = (Array.isArray(poll.events) ? poll.events : []).filter(
+    (e: any) => e && e.type !== "uec_changed" && e.group !== "wallet",
+  );
+  return out;
+}
+
+/**
+ * A message from the channel, checked. Anything on the channel is data from another page of the same origin, not
+ * a trusted peer: types, ranges and lengths are verified, and the answer in a snapshot is rebuilt field by field
+ * (cleanPoll). Returns null for anything that does not fit.
+ */
+export function parseChannelMessage(data: any, now: number): any {
+  const cfg = viewConfig();
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const t = data.t;
+  if (t !== "hello" && t !== "bye" && t !== "claim" && t !== "snapshot") return null;
+  if (typeof data.id !== "string" || !/^[a-z0-9]{8,32}$/.test(data.id)) return null;
+  if (typeof data.rank !== "number" || !Number.isFinite(data.rank)) return null;
+  if (data.rank < 0 || data.rank > now + cfg.maxRankSkewMs) return null;
+  const out: any = { t, id: data.id, rank: data.rank, visible: true };
+  if (t === "hello" || t === "claim") {
+    if (typeof data.visible !== "boolean") return null;
+    out.visible = data.visible;
+  }
+  if (t === "snapshot") {
+    const poll = cleanPoll(data.poll);
+    if (!poll) return null;
+    out.poll = poll;
+  }
+  return out;
+}
+
+/**
+ * Rebuilds an answer of the server from untrusted data: only known fields, right types, capped lengths and counts.
+ * Nothing is copied wholesale, so a hostile object cannot bring an unexpected field or a huge string into the page.
+ * The balance is never accepted. Returns null when the object is not an answer at all.
+ */
+export function cleanPoll(raw: any): any {
+  const obj = (x: any): any => (x && typeof x === "object" && !Array.isArray(x) ? x : null);
+  const num = (x: any): number | undefined =>
+    typeof x === "number" && Number.isFinite(x) ? x : undefined;
+  const text = (x: any, max: number): string | undefined =>
+    typeof x === "string" ? x.slice(0, max) : undefined;
+  const bool = (x: any): boolean | undefined => (typeof x === "boolean" ? x : undefined);
+  const word = (x: any): string | undefined =>
+    typeof x === "string" && /^[a-z0-9_]{1,40}$/.test(x) ? x : undefined;
+  const gameId = (x: any): string | undefined =>
+    typeof x === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(x) ? x : undefined;
+  const keysOf = (o: any, max: number): string[] => {
+    const keys: string[] = [];
+    for (const k in o) {
+      if (keys.length >= max) break;
+      if (Object.prototype.hasOwnProperty.call(o, k) && /^[a-z0-9_]{1,40}$/.test(k)) keys.push(k);
+    }
+    return keys;
+  };
+  const list = (x: any, max: number): any[] => (Array.isArray(x) ? x.slice(0, max) : []);
+  const set = (o: any, k: string, v: any) => {
+    if (v !== undefined) o[k] = v;
+  };
+  const scalar = (x: any): any => {
+    if (typeof x === "number") return Number.isFinite(x) ? x : undefined;
+    if (typeof x === "boolean") return x;
+    if (typeof x === "string") return x.slice(0, 80);
+    return undefined;
+  };
+  const scalarMap = (x: any, max: number, depth: number): any => {
+    const source = obj(x);
+    if (!source) return undefined;
+    const out: any = {};
+    for (const k of keysOf(source, max)) {
+      const v =
+        depth > 0 && obj(source[k]) ? scalarMap(source[k], 8, depth - 1) : scalar(source[k]);
+      set(out, k, v);
+    }
+    return out;
+  };
+  const gauge = (x: any): any => {
+    const g = obj(x);
+    if (!g) return undefined;
+    const out: any = {};
+    set(out, "current", num(g.current));
+    set(out, "max", num(g.max));
+    set(out, "percent", num(g.percent));
+    return out;
+  };
+
+  const p = obj(raw);
+  if (!p || p.v !== 1) return null;
+  const states = ["off", "waiting", "game_without_telemetry", "connected", "live", "incompatible"];
+  if (states.indexOf(p.state) < 0) return null;
+  const out: any = { v: 1, state: p.state };
+  set(out, "at", num(p.at));
+  set(out, "enabled", bool(p.enabled));
+  set(out, "cause", text(p.cause, 400));
+  out.frame_age_ms = num(p.frame_age_ms) === undefined ? null : p.frame_age_ms;
+  out.received_at = typeof p.received_at === "string" ? p.received_at.slice(0, 40) : null;
+  set(out, "last_seq", num(p.last_seq));
+
+  const ship = obj(p.ship);
+  out.ship = null;
+  if (ship) {
+    const s: any = {};
+    set(s, "name", gameId(ship.name));
+    set(s, "instance_id", gameId(ship.instance_id));
+    set(s, "class_name", gameId(ship.class_name));
+    set(s, "manufacturer_derived", text(ship.manufacturer_derived, 40));
+    set(s, "type", word(ship.type));
+    set(s, "lights_on", bool(ship.lights_on));
+    set(s, "landed", bool(ship.landed));
+    set(s, "gear", word(ship.gear));
+    set(s, "vtol", word(ship.vtol));
+    const ins = obj(ship.instruments);
+    if (ins) {
+      const i: any = {};
+      for (const k of [
+        "speed_ms",
+        "vertical_speed_ms",
+        "hydrogen_fuel",
+        "atmospheric_density",
+        "altitude_m",
+        "radar_altitude_m",
+        "heading_deg",
+      ]) {
+        set(i, k, num(ins[k]));
+      }
+      const boost = obj(ins.boost);
+      if (boost) {
+        const b: any = {};
+        set(b, "engaged", bool(boost.engaged));
+        set(b, "output", num(boost.output));
+        set(b, "reserves", num(boost.reserves));
+        set(b, "critical", bool(boost.critical));
+        i.boost = b;
+      }
+      const g = obj(ins.g);
+      if (g) i.g = { current: num(g.current), max: num(g.max) };
+      s.instruments = i;
+    }
+    const modes = obj(ship.flight_modes);
+    if (modes) {
+      s.flight_modes = {};
+      for (const k of keysOf(modes, 16)) {
+        const m = obj(modes[k]);
+        if (m) s.flight_modes[k] = { enabled: bool(m.enabled), active: bool(m.active) };
+      }
+    }
+    const power = obj(ship.power);
+    if (power) {
+      s.power = {};
+      for (const k of keysOf(power, 16)) set(s.power, k, bool(power[k]));
+    }
+    const lights = obj(ship.warning_lights);
+    if (lights) {
+      s.warning_lights = {};
+      for (const k of keysOf(lights, 16)) set(s.warning_lights, k, word(lights[k]));
+    }
+    out.ship = s;
+  }
+
+  const pilot = obj(p.pilot);
+  out.pilot = null;
+  if (pilot) {
+    const q: any = {};
+    set(q, "locomotion", word(pilot.locomotion));
+    set(q, "crew_role", word(pilot.crew_role));
+    set(q, "seat", pilot.seat === "" ? "" : gameId(pilot.seat));
+    for (const k of ["health", "hunger", "thirst"]) set(q, k, gauge(pilot[k]));
+    for (const k of ["heart_rate_bpm", "gravity_g", "pressure", "outside_temperature_c"]) {
+      set(q, k, num(pilot[k]));
+    }
+    set(q, "breathable_atmosphere", bool(pilot.breathable_atmosphere));
+    out.pilot = q;
+  }
+
+  const weapons = obj(p.weapons);
+  out.weapons = null;
+  if (weapons) {
+    const w: any = { weapons: [], countermeasures: {} };
+    for (const item of list(weapons.weapons, 64)) {
+      const it = obj(item);
+      if (!it) continue;
+      const entry: any = {};
+      set(entry, "name", gameId(it.name));
+      set(entry, "instance_id", gameId(it.instance_id));
+      set(entry, "powered", bool(it.powered));
+      set(entry, "ready", bool(it.ready));
+      w.weapons.push(entry);
+    }
+    set(w, "gimbals_locked", bool(weapons.gimbals_locked));
+    const cms = obj(weapons.countermeasures);
+    if (cms) for (const k of keysOf(cms, 8)) set(w.countermeasures, k, num(cms[k]));
+    out.weapons = w;
+  }
+
+  const derived = obj(p.derived);
+  out.derived = null;
+  if (derived) {
+    out.derived = {};
+    for (const k of keysOf(derived, 16)) {
+      const v = derived[k];
+      if (typeof v === "boolean") out.derived[k] = v;
+      else if (typeof v === "string") out.derived[k] = v.slice(0, 40);
+    }
+  }
+
+  out.conditions = [];
+  for (const item of list(p.conditions, 24)) {
+    const c = obj(item);
+    if (!c || !word(c.id)) continue;
+    if (c.level !== "info" && c.level !== "warning" && c.level !== "critical") continue;
+    const entry: any = { id: c.id, level: c.level };
+    entry.confidence = c.confidence === "unverified" ? "unverified" : "confirmed";
+    set(entry, "since", num(c.since));
+    const data = scalarMap(c.data, 4, 0);
+    if (data) entry.data = data;
+    out.conditions.push(entry);
+  }
+
+  out.unverified = {};
+  const unverified = obj(p.unverified);
+  if (unverified) {
+    for (const side of ["ship", "pilot", "weapons"]) {
+      const m = scalarMap(unverified[side], 12, 1);
+      if (m && Object.keys(m).length > 0) out.unverified[side] = m;
+    }
+  }
+
+  out.not_available = [];
+  for (const item of list(p.not_available, 12)) {
+    const v = text(item, 40);
+    if (v !== undefined) out.not_available.push(v);
+  }
+  if (Array.isArray(p.not_in_stream)) {
+    out.not_in_stream = [];
+    for (const item of list(p.not_in_stream, 40)) {
+      const v = text(item, 40);
+      if (v !== undefined) out.not_in_stream.push(v);
+    }
+  }
+
+  out.events = [];
+  for (const item of list(p.events, 60)) {
+    const e = obj(item);
+    if (!e || num(e.seq) === undefined || !word(e.type)) continue;
+    if (e.type === "uec_changed" || e.group === "wallet") continue;
+    const entry: any = { seq: e.seq, type: e.type };
+    set(entry, "group", word(e.group));
+    entry.confidence = e.confidence === "unverified" ? "unverified" : "confirmed";
+    set(entry, "at", text(e.at, 40));
+    set(entry, "text", text(e.text, 200));
+    entry.data = scalarMap(e.data, 4, 0) || {};
+    out.events.push(entry);
+  }
+
+  const session = obj(p.session);
+  if (session) {
+    const s: any = {};
+    s.started_at = typeof session.started_at === "string" ? session.started_at.slice(0, 40) : null;
+    s.ended_at = typeof session.ended_at === "string" ? session.ended_at.slice(0, 40) : null;
+    for (const k of ["takeoffs", "landings", "jumps", "flight_ms"]) set(s, k, num(session[k]));
+    s.flight_ms_is_estimate = true;
+    s.markers = [];
+    for (const item of list(session.markers, 40)) {
+      const m = obj(item);
+      if (!m || (m.kind !== "start" && m.kind !== "end" && m.kind !== "reset_delta")) continue;
+      const at = text(m.at, 40);
+      if (at !== undefined) s.markers.push({ kind: m.kind, at });
+    }
+    out.session = s;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Display information for the cockpit: everything the page shows, computed here (pure, tested)
+// ---------------------------------------------------------------------------------------------
+
+/** A speed with its unit: m/s up to 9 999, then km/s, then Mm/s (quantum travel is several million m/s). */
+export function formatSpeed(ms: number): any {
+  if (typeof ms !== "number" || !Number.isFinite(ms)) return { value: "—", unit: "" };
+  const a = Math.abs(ms);
+  if (a < 10000) return { value: fmtNum(ms, 0), unit: "m/s" };
+  if (a < 1000000) return { value: fmtNum(ms / 1000, a < 100000 ? 1 : 0), unit: "km/s" };
+  return { value: fmtNum(ms / 1000000, a < 100000000 ? 1 : 0), unit: "Mm/s" };
+}
+
+/** Eight winds, French letters (O for Ouest). */
+export function cardinal(deg: number): string {
+  if (typeof deg !== "number" || !Number.isFinite(deg)) return "";
+  const names = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"];
+  const i = Math.round((((deg % 360) + 360) % 360) / 45) % 8;
+  return names[i] as string;
+}
+
+/** Is the powerplant reported off right now (the server's debounced condition)? */
+export function shipIsOff(poll: any): boolean {
+  const list = poll && Array.isArray(poll.conditions) ? poll.conditions : [];
+  for (const c of list) if (c && c.id === "powerplant_off") return true;
+  return false;
+}
+
+/** Where the ship is, in words, for the banner at the top. */
+export function shipContext(poll: any): any {
+  const ship = poll && poll.ship;
+  const derived = (poll && poll.derived) || {};
+  const out: any = {
+    has: !!ship,
+    title: "",
+    maker: "",
+    state: { id: "none", label: "" },
+    chips: [],
+  };
+  if (!ship) {
+    const mode = modeInfo(poll);
+    out.state = { id: mode.id, label: mode.id === "unknown" ? "" : mode.label };
+    return out;
+  }
+  out.title = shipTitle(ship);
+  out.maker = typeof ship.manufacturer_derived === "string" ? ship.manufacturer_derived : "";
+  if (out.maker && out.title.indexOf(out.maker + " ") === 0) {
+    out.title = out.title.slice(out.maker.length + 1);
+  }
+  let state: any;
+  if (shipIsOff(poll)) state = { id: "off", label: "Vaisseau éteint" };
+  else if (derived.in_jump) state = { id: "jump", label: "Saut quantique" };
+  else if (derived.in_quantum_mode) state = { id: "quantum", label: "Mode quantique" };
+  else if (ship.landed === true) state = { id: "landed", label: "Posé" };
+  else if (ship.landed === false && derived.in_planet_frame) {
+    state = { id: "planet", label: "En vol · près d’une planète" };
+  } else if (ship.landed === false) state = { id: "space", label: "En vol · dans l’espace" };
+  else state = { id: "ship", label: "À bord" };
+  out.state = state;
+  const gear: any = {
+    retracted: "Train rentré",
+    deploying: "Train en sortie",
+    deployed: "Train sorti",
+    retracting: "Train en rentrée",
+  };
+  if (ship.gear && gear[ship.gear]) out.chips.push({ id: "gear", label: gear[ship.gear] });
+  const vtol: any = {
+    retracted: "VTOL rentré",
+    deploying: "VTOL en sortie",
+    deployed: "VTOL sorti",
+    retracting: "VTOL en rentrée",
+  };
+  if (ship.vtol && vtol[ship.vtol]) out.chips.push({ id: "vtol", label: vtol[ship.vtol] });
+  if (typeof ship.lights_on === "boolean") {
+    // The lights field is not in the list of verified data: the chip says so.
+    out.chips.push({
+      id: "lights",
+      label: ship.lights_on ? "Phares allumés" : "Phares éteints",
+      unverified: true,
+    });
+  }
+  return out;
+}
+
+/** The first-glance verdict: "all is well", "watch this" or "alert", from the conditions, or null without data. */
+export function summaryInfo(poll: any, items: any[]): any {
+  if (!poll || poll.state !== "live") return null;
+  if (!poll.ship && !poll.pilot) return null;
+  if (shipIsOff(poll)) {
+    return { id: "off", tone: "neutral", label: "Vaisseau éteint", count: 0 };
+  }
+  const bad = items.filter((i: any) => i.tone === "bad");
+  const warn = items.filter((i: any) => i.tone === "warn");
+  if (bad.length > 0) {
+    const more = bad.length + warn.length - 1;
+    return {
+      id: "alert",
+      tone: "bad",
+      label: "Alerte : " + bad[0].label + (more > 0 ? " (+" + more + ")" : ""),
+      count: bad.length + warn.length,
+    };
+  }
+  if (warn.length > 0) {
+    const more = warn.length - 1;
+    return {
+      id: "watch",
+      tone: "warn",
+      label: "À surveiller : " + warn[0].label + (more > 0 ? " (+" + more + ")" : ""),
+      count: warn.length,
+    };
+  }
+  return { id: "ok", tone: "ok", label: "Tout va bien", count: 0 };
+}
+
+/** Everything the dials and gauges of the ship show, with nothing invented: a missing value is "—". */
+export function instrumentInfo(poll: any, view: any): any {
+  const ship = poll && poll.ship;
+  const ins = ship && ship.instruments;
+  const derived = (poll && poll.derived) || {};
+  const off = shipIsOff(poll);
+  const quantum = !!(derived.in_quantum_mode || derived.in_jump);
+  const scales = (view && view.scales) || { speed: 0, vspeed: 0 };
+  const none = (extra?: any) =>
+    Object.assign(
+      { known: false, text: "—", unit: "", fraction: null, level: "none", sub: "" },
+      extra,
+    );
+  const out: any = { off, quantum };
+
+  // Speed: the scale is deduced from the speeds seen outside quantum mode, and says so.
+  if (ins && typeof ins.speed_ms === "number" && !off) {
+    const f = formatSpeed(ins.speed_ms);
+    const scale = niceScale(scales.speed, 100);
+    out.speed = {
+      known: true,
+      text: f.value,
+      unit: f.unit,
+      fraction: quantum ? 1 : Math.max(0, Math.min(1, Math.abs(ins.speed_ms) / scale)),
+      peak: quantum || scales.speed <= 0 ? null : Math.min(1, scales.speed / scale),
+      level: quantum ? "info" : "ok",
+      sub: quantum
+        ? "mode quantique"
+        : "échelle 0–" + fmtNum(scale) + " m/s, déduite des vitesses vues",
+    };
+  } else out.speed = none({ sub: off ? "éteint" : "" });
+
+  // G: current against the maximum the game reports.
+  if (ins && ins.g && typeof ins.g.current === "number" && !off) {
+    const max = typeof ins.g.max === "number" && ins.g.max > 0 ? ins.g.max : 0;
+    const frac = max > 0 ? Math.max(0, Math.min(1, Math.abs(ins.g.current) / max)) : null;
+    out.g = {
+      known: true,
+      text: fmtNum(ins.g.current, 1),
+      unit: "G",
+      fraction: frac,
+      level: frac === null ? "none" : frac >= 0.9 ? "bad" : frac >= 0.7 ? "warn" : "ok",
+      sub: max > 0 ? "max du jeu " + fmtNum(max, 0) + " G" : "",
+    };
+  } else out.g = none({ sub: off ? "éteint" : "" });
+
+  // Vertical speed: a signed bar around zero, scale from the largest seen.
+  if (ins && typeof ins.vertical_speed_ms === "number" && !off) {
+    const scale = niceScale(scales.vspeed, 20);
+    out.vspeed = {
+      known: true,
+      text: fmtNum(ins.vertical_speed_ms, 1),
+      unit: "m/s",
+      signed: Math.max(-1, Math.min(1, ins.vertical_speed_ms / scale)),
+      sub: "échelle ±" + fmtNum(scale) + " m/s",
+    };
+  } else out.vspeed = { known: false, text: "—", unit: "", signed: 0, sub: "" };
+
+  // Altitude and heading exist only inside a planet's frame.
+  const alt = ins && typeof ins.altitude_m === "number" ? ins.altitude_m : null;
+  out.altitude = {
+    known: alt !== null && !off,
+    text: alt !== null && !off ? formatDistance(alt) : "—",
+    radar:
+      alt !== null && !off && ins && typeof ins.radar_altitude_m === "number"
+        ? "radar " + formatDistance(ins.radar_altitude_m)
+        : "",
+    sub: alt === null && ins && !off ? "hors du champ d’une planète" : off ? "éteint" : "",
+  };
+  const heading = ins && typeof ins.heading_deg === "number" ? ins.heading_deg : null;
+  out.heading = {
+    valid: heading !== null && !off,
+    deg: heading === null ? 0 : ((heading % 360) + 360) % 360,
+    text: heading !== null && !off ? fmtNum(heading, 0) + "°" : "—",
+    cardinal: heading !== null && !off ? cardinal(heading) : "",
+    sub:
+      heading === null && ins && !off
+        ? derived.in_jump
+          ? "figé pendant le saut"
+          : "seulement dans le champ d’une planète"
+        : "",
+  };
+  out.density =
+    ins && typeof ins.atmospheric_density === "number" && ins.atmospheric_density > 0 && !off
+      ? fmtNum(ins.atmospheric_density, 2)
+      : "";
+
+  // Hydrogen and boost.
+  const hyd = ins ? fractionInfo(ins.hydrogen_fuel, 0.25, 0.1) : fractionInfo(undefined, 0.25, 0.1);
+  out.hydrogen = off ? none({ sub: "éteint" }) : hyd;
+  const boost = ins && ins.boost;
+  if (boost && !off) {
+    const reserve = fractionInfo(boost.reserves, 0.25, 0.1);
+    out.boost = {
+      known: reserve.known,
+      reserve,
+      output: fractionInfo(boost.output, 2, 2),
+      engaged: boost.engaged === true,
+      critical: boost.critical === true,
+      level: boost.critical === true ? "bad" : reserve.level,
+    };
+  } else
+    out.boost = {
+      known: false,
+      reserve: none(),
+      output: none(),
+      engaged: false,
+      critical: false,
+      level: "none",
+    };
+  return out;
+}
+
+export function vitalsInfo(poll: any): any {
+  const pilot = poll && poll.pilot;
+  const heart = pilot && typeof pilot.heart_rate_bpm === "number" && pilot.heart_rate_bpm > 0;
+  const loco: any = { on_foot: "à pied", eva: "EVA", seated: "assis" };
+  const crew: any = { pilot: "pilote", gunner: "artilleur", crew: "équipage" };
+  return {
+    health: healthInfo(pilot),
+    hunger: gaugeInfo(pilot && pilot.hunger, 0.25, 0.1),
+    thirst: gaugeInfo(pilot && pilot.thirst, 0.25, 0.1),
+    heart: heart ? fmtNum(pilot.heart_rate_bpm, 0) : "—",
+    gravity: pilot && typeof pilot.gravity_g === "number" ? fmtNum(pilot.gravity_g, 2) : "—",
+    // The unit of the pressure is not given by the game: only the number is shown.
+    pressure:
+      pilot && typeof pilot.pressure === "number" && pilot.pressure !== 0
+        ? fmtNum(pilot.pressure, 1)
+        : "—",
+    temperature:
+      pilot && typeof pilot.outside_temperature_c === "number"
+        ? fmtNum(pilot.outside_temperature_c, 0)
+        : "—",
+    air:
+      pilot && typeof pilot.breathable_atmosphere === "boolean"
+        ? pilot.breathable_atmosphere
+          ? "respirable"
+          : "non respirable"
+        : "—",
+    locomotion: pilot && pilot.locomotion ? loco[pilot.locomotion] || "inconnu" : "—",
+    crew: pilot && pilot.crew_role && crew[pilot.crew_role] ? crew[pilot.crew_role] : "—",
+    seat:
+      pilot && typeof pilot.seat === "string" && pilot.seat !== ""
+        ? pilot.seat.replace(/_/g, " ").slice(0, 40)
+        : "",
+  };
+}
+
+/** Weapons of the seat in one sentence, and one row each: red is kept for critical conditions, not for "no power". */
+export function weaponsInfo(weapons: any, off: boolean): any {
+  const list = weapons && Array.isArray(weapons.weapons) ? weapons.weapons : [];
+  let powered = 0;
+  let ready = 0;
+  const rows: any[] = [];
+  for (const w of list) {
+    if (!w || typeof w.name !== "string") continue;
+    if (w.powered === true) powered++;
+    if (w.ready === true) ready++;
+    rows.push({
+      name: w.name.replace(/_/g, " "),
+      state: w.powered ? (w.ready ? "ready" : "powered") : "off",
+      text: w.powered ? (w.ready ? "prête" : "sous tension") : "sans énergie",
+    });
+  }
+  const total = rows.length;
+  let summary: string;
+  if (!weapons) summary = "Pas de trame d’armes : seulement à un poste d’armes.";
+  else if (total === 0) summary = "Aucune arme dans la trame.";
+  else if (off) summary = total + (total > 1 ? " armes" : " arme") + " · vaisseau éteint";
+  else if (powered === 0)
+    summary = total + (total > 1 ? " armes sans énergie" : " arme sans énergie");
+  else
+    summary =
+      ready +
+      " prête" +
+      (ready > 1 ? "s" : "") +
+      " sur " +
+      total +
+      (powered < total ? " · " + (total - powered) + " sans énergie" : "");
+  return {
+    total,
+    powered,
+    ready,
+    rows,
+    summary,
+    gimbals:
+      weapons && typeof weapons.gimbals_locked === "boolean"
+        ? weapons.gimbals_locked
+          ? "Cardans verrouillés"
+          : "Cardans libres"
+        : "",
+  };
+}
+
+/** Countermeasures: the count, and the share of the highest count seen for this vehicle (not a maximum the game gives). */
+export function cmInfo(weapons: any, peaks: any): any[] {
+  const cm =
+    weapons && weapons.countermeasures && typeof weapons.countermeasures === "object"
+      ? weapons.countermeasures
+      : {};
+  const out: any[] = [];
+  for (const kind of ["decoy", "noise"]) {
+    const v = cm[kind];
+    if (typeof v !== "number") {
+      out.push({
+        kind,
+        label: countermeasureLabel(kind),
+        known: false,
+        text: "—",
+        fraction: null,
+        peak: 0,
+      });
+      continue;
+    }
+    const peak = Math.max(v, peaks && typeof peaks[kind] === "number" ? peaks[kind] : v);
+    out.push({
+      kind,
+      label: countermeasureLabel(kind),
+      known: true,
+      text: fmtNum(v),
+      peak,
+      fraction: peak > 0 ? v / peak : null,
+      level: peak > 0 ? levelFor(v / peak, 0.34, 0.01) : "none",
+    });
+  }
+  return out;
+}
+
+/** One chronology: the events and the player's markers together, oldest first. `filter`: all, alerts or markers. */
+export function chronology(events: any[], markers: any[], filter: string, limit: number): any[] {
+  const alertTypes = [
+    "shields_down",
+    "locked_on",
+    "under_fire",
+    "proximity_warning",
+    "engines_damaged",
+    "engines_offline",
+    "powerplant_offline",
+    "weapons_unavailable",
+    "boost_depleted",
+    "hydrogen_low",
+    "countermeasures_low",
+    "countermeasures_empty",
+    "health_low",
+    "player_down",
+    "oxygen_low",
+    "not_breathable",
+    "hunger_low",
+    "thirst_low",
+  ];
+  const items: any[] = [];
+  if (filter !== "markers") {
+    for (const e of events || []) {
+      if (!e || typeof e.type !== "string") continue;
+      if (filter === "alerts" && alertTypes.indexOf(e.type) < 0) continue;
+      items.push({
+        at: e.at,
+        label: eventLabel(e),
+        kind: "event",
+        verified: e.confidence === "confirmed",
+        alert: alertTypes.indexOf(e.type) >= 0,
+      });
+    }
+  }
+  if (filter !== "alerts") {
+    const marks: any = {
+      start: "Début de session",
+      end: "Fin de session",
+      reset_delta: "Solde remis à zéro",
+    };
+    for (const m of markers || []) {
+      if (m && marks[m.kind])
+        items.push({
+          at: m.at,
+          label: marks[m.kind],
+          kind: "marker",
+          verified: true,
+          alert: false,
+        });
+    }
+  }
+  items.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  return items.slice(-limit).reverse();
+}
+
+/** The unverified values as labelled lines, each marked as unverified by the page. */
+export function unverifiedItems(poll: any): any[] {
+  const out: any[] = [];
+  const u = poll && poll.unverified;
+  if (!u || typeof u !== "object") return out;
+  const labels: any = {
+    oxygen: "Oxygène",
+    body_temperature: "Température corporelle",
+    intoxication_level: "Niveau d’intoxication",
+    ambient_radiation_rate: "Rayonnement ambiant",
+    quantum_fuel: "Carburant quantique",
+    lights_on: "Phares allumés",
+    atmospheric_density: "Densité atmosphérique",
+    gimbals_locked: "Cardans verrouillés",
+    manufacturer: "Constructeur (champ du jeu)",
+    transformation: "Transformation",
+    flight_settings: "Réglages de vol",
+    doors: "Portes",
+    spacebreak_enables_boost: "Frein spatial active le boost",
+    g_safe_disabled_by_boost: "G-safe coupé par le boost",
+    open_state: "ouverture",
+    lock_state: "verrou",
+    current: "valeur",
+    max: "max",
+    percent: "part",
+  };
+  const show = (key: string, v: any): string => {
+    if (typeof v === "boolean") return v ? "oui" : "non";
+    if (typeof v === "number")
+      return key === "percent" ? fmtNum(v * 100, 0) + "\u00a0%" : fmtNum(v, 2);
+    if (typeof v === "string") return v.replace(/_/g, " ").slice(0, 40);
+    return "";
+  };
+  for (const side of ["pilot", "ship", "weapons"]) {
+    const m = u[side];
+    if (!m || typeof m !== "object") continue;
+    for (const key of Object.keys(m)) {
+      const v = m[key];
+      let text: string;
+      if (v && typeof v === "object") {
+        const parts: string[] = [];
+        for (const k of Object.keys(v)) {
+          const s = show(k, v[k]);
+          if (s) parts.push((labels[k] || k.replace(/_/g, " ")) + " " + s);
+        }
+        text = parts.join(" · ");
+      } else text = show(key, v);
+      if (text)
+        out.push({ key: side + "." + key, label: labels[key] || key.replace(/_/g, " "), text });
+    }
+  }
+  return out;
+}
+
+/** What the stream does not contain, in French; ids the page does not know are shown as they come. */
+export function missingItems(ids: any): string[] {
+  const names: any = {
+    position: "Position",
+    camera_direction: "Direction de la caméra",
+    shield_level: "Niveau des boucliers",
+    hull_and_component_health: "Coque et composants",
+    heat: "Chaleur",
+    ammo: "Munitions",
+    power_allocation: "Répartition de l’énergie",
+    quantum_fuel: "Carburant quantique",
+    doors: "Portes",
+    weapon_presets: "Présélections d’armes",
+    death_events: "Événements de mort",
+    force_feedback: "Retour de force",
+    missiles: "Missiles",
+  };
+  const list = Array.isArray(ids) && ids.length > 0 ? ids : Object.keys(names);
+  const out: string[] = ["Cargaison"];
+  for (const id of list) {
+    if (typeof id !== "string") continue;
+    out.push(names[id] || id.replace(/_/g, " ").slice(0, 40));
+  }
+  return out;
+}
+
+/** The pinned data, as short "label value" texts for the bar at the top. */
+export function pinnedItems(poll: any, view: any, pins: any): any[] {
+  const ins = instrumentInfo(poll, view);
+  const v = vitalsInfo(poll);
+  const defs: any[] = [
+    ["speed", "Vitesse", ins.speed.known ? ins.speed.text + "\u00a0" + ins.speed.unit : "—"],
+    ["g", "Force G", ins.g.known ? ins.g.text + "\u00a0G" : "—"],
+    ["altitude", "Altitude", ins.altitude.text],
+    ["vspeed", "Vit. verticale", ins.vspeed.known ? ins.vspeed.text + "\u00a0m/s" : "—"],
+    ["hydrogen", "Hydrogène", ins.hydrogen.text],
+    ["boost", "Boost", ins.boost.known ? ins.boost.reserve.text : "—"],
+    ["health", "Santé", v.health.text],
+    ["hunger", "Faim", v.hunger.text],
+    ["thirst", "Soif", v.thirst.text],
+    ["heart", "Rythme", v.heart === "—" ? "—" : v.heart + "\u00a0bpm"],
+  ];
+  const out: any[] = [];
+  for (const d of defs) {
+    if (pins && pins[d[0]]) out.push({ key: d[0], label: d[1], text: d[2] });
+  }
+  return out;
+}
+
 /** The names the page needs, in the order they are serialised. */
 export const VIEW_FUNCTIONS = [
   viewConfig,
@@ -1006,6 +2089,8 @@ export const VIEW_FUNCTIONS = [
   countermeasureLabel,
   eventLabel,
   activeAlerts,
+  conditionItems,
+  coveredAlertKeys,
   timelineItems,
   trendEstimate,
   estimateText,
@@ -1019,4 +2104,26 @@ export const VIEW_FUNCTIONS = [
   initialContextGate,
   contextDecision,
   safeStyleVariables,
+  pollArguments,
+  niceScale,
+  formatSpeed,
+  cardinal,
+  shipIsOff,
+  shipContext,
+  summaryInfo,
+  instrumentInfo,
+  vitalsInfo,
+  weaponsInfo,
+  cmInfo,
+  chronology,
+  unverifiedItems,
+  missingItems,
+  pinnedItems,
+  makeViewId,
+  electLeader,
+  notePeer,
+  claimRank,
+  sharablePoll,
+  parseChannelMessage,
+  cleanPoll,
 ];

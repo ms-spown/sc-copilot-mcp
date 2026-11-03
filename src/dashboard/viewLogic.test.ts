@@ -590,3 +590,83 @@ describe("Feature: the server-side plan and session summaries", () => {
     expect(s).toMatchObject({ started_at: null, takeoffs: 0, flight_ms: 0 });
   });
 });
+
+describe("Feature: the conditions that hold now", () => {
+  const withConds = (conditions: unknown[], at = T0) => ({ ...poll(), at, conditions });
+  const cond = (over: Record<string, unknown>) => ({
+    id: "shields_off",
+    level: "info",
+    confidence: "confirmed",
+    since: T0 - 1000,
+    ...over,
+  });
+
+  it("Given shields off in quantum mode, Then the chip is info and says so; outside quantum it is a plain warning", () => {
+    const quantum = L.conditionItems(
+      withConds([cond({ since: T0 - 12_000, data: { quantum: true } })]),
+      T0,
+      T0,
+      8,
+    );
+    expect(quantum).toHaveLength(1);
+    expect(quantum[0]).toMatchObject({ tone: "info", verified: true, ageMs: 12_000 });
+    expect(quantum[0].label).toBe("Boucliers coupés · mode quantique");
+    const plain = L.conditionItems(
+      withConds([cond({ level: "warning", data: { quantum: false } })]),
+      T0,
+      T0,
+      8,
+    );
+    expect(plain[0]).toMatchObject({ tone: "warn", label: "Boucliers coupés" });
+  });
+
+  it("Given time passing since the answer arrived, Then the duration grows with it", () => {
+    const p = withConds([cond({ id: "under_fire", level: "warning", since: T0 - 5000 })]);
+    expect(L.conditionItems(p, T0 + 4000, T0, 8)[0].ageMs).toBe(9000);
+  });
+
+  it("Given an unknown id, a bad level or garbage, Then nothing throws and nothing valid is hidden", () => {
+    const items = L.conditionItems(
+      withConds([
+        { id: "brand_new", level: "critical", confidence: "unverified", since: "x" },
+        { id: "shields_off", level: "loud" },
+        null,
+        42,
+        { level: "info" },
+      ]),
+      T0,
+      T0,
+      8,
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      label: "Condition inconnue",
+      tone: "bad",
+      verified: false,
+      ageMs: null,
+    });
+    expect(L.conditionItems(null, T0, T0, 8)).toEqual([]);
+    expect(L.conditionItems({ conditions: "nope" }, T0, T0, 8)).toEqual([]);
+  });
+
+  it("Given a condition, Then the event band does not repeat it, but still shows what has ended", () => {
+    const at = new Date(T0 - 5000).toISOString();
+    const events = [
+      { seq: 1, type: "shields_down", confidence: "confirmed", group: "ship", at, data: {} },
+      { seq: 2, type: "under_fire", confidence: "confirmed", group: "ship", at, data: {} },
+    ];
+    const covered = L.coveredAlertKeys(
+      withConds([cond({ id: "shields_down", level: "critical" })]),
+    );
+    expect(L.activeAlerts(events, T0, 5, covered).map((a: any) => a.label)).toEqual(["Touché"]);
+  });
+
+  it("Given the shield power events, Then the label carries the quantum context only when there was one", () => {
+    const e = (type: string, data: any) => ({ type, data });
+    expect(L.eventLabel(e("shields_powered_off", { quantum: 1 }))).toBe(
+      "Boucliers coupés · mode quantique",
+    );
+    expect(L.eventLabel(e("shields_powered_off", { quantum: 0 }))).toBe("Boucliers coupés");
+    expect(L.eventLabel(e("shields_powered_on", {}))).toBe("Boucliers réalimentés");
+  });
+});

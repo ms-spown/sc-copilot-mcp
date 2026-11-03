@@ -96,6 +96,7 @@ function fake(parts: {
           health_zero: false,
         },
         countermeasure_burst: {},
+        conditions: [],
       },
     }),
     events: async () => ({ events: parts.events ?? [], last_seq: 9 }),

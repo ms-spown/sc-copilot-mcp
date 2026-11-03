@@ -1,7 +1,9 @@
 import type { TelemetryEvent } from "../providers/telemetry/events.js";
+import type { Condition } from "../providers/telemetry/handler.js";
 import type { Pilot, Ship, Weapons } from "../providers/telemetry/normalize.js";
 import type { TelemetrySnapshot, TelemetryStatusReport } from "../providers/telemetry/service.js";
 import type { LedgerPayload } from "./ledger.js";
+import type { ShipSpecs } from "./specs.js";
 
 /**
  * What the View receives from sc_live_poll (as `structuredContent`, which the host does not add to the model's
@@ -44,6 +46,16 @@ export type PublicEvent = Pick<
   "seq" | "type" | "group" | "confidence" | "at" | "text" | "data"
 >;
 
+export type SectionName = "ship" | "pilot" | "weapons" | "specs" | "ledger";
+export const SECTION_NAMES: readonly SectionName[] = [
+  "ship",
+  "pilot",
+  "weapons",
+  "specs",
+  "ledger",
+];
+export type SectionHashes = Record<SectionName, string>;
+
 export interface PollResult {
   v: 1;
   /** Epoch ms on the server when this answer was built. */
@@ -56,16 +68,45 @@ export interface PollResult {
   ship: PublicShip | null;
   pilot: Omit<Pilot, "uec_balance" | "unverified" | "parts_missing"> | null;
   weapons: Weapons | null;
+  /**
+   * The wiki sheet of the flown ship (specs.ts): a fourth section of the delta protocol. Present only while a ship is
+   * flown; third-party figures, bounded. It does not change from one poll to the next (its age is worked out by the
+   * View from `fetched_at`), so once held it is left out of the answers (`unchanged`).
+   */
+  specs?: ShipSpecs;
+  /**
+   * The transport ledger (ledger.ts): a fifth section of the delta protocol. Contracts of the game session; the
+   * figures derived from the balance exist ONLY when the View asked for the balance, and its hash is computed from
+   * the very content sent, so a hash never stands for an amount the View was not allowed to see.
+   */
+  ledger?: LedgerPayload;
   derived: Record<string, boolean | string> | null;
+  /**
+   * What is true now (from the smoothed state, not from the history), most urgent first. Empty when nothing needs
+   * attention AND when the stream is not live: a stale state is never presented as current.
+   */
+  conditions: Condition[];
+  /**
+   * Present in the stream but never verified live (field test): the View labels each one "non vérifié". Only values
+   * the game really sent (a default value of a field that is never filled is left out).
+   */
+  unverified: {
+    ship?: Record<string, unknown>;
+    pilot?: Record<string, unknown>;
+    weapons?: Record<string, unknown>;
+  };
   not_available: string[];
   events: PublicEvent[];
   last_seq: number;
   session: SessionSummary;
   /** Present only when the View asked for it (after the player clicked "show balance"). */
   balance?: { uec: number | string; delta: number | null; since: string | null };
-  not_in_stream: readonly string[];
-  /** The transport ledger (ledger.ts): contracts of the game session, with balance-derived figures only on request. */
-  ledger?: LedgerPayload;
+  /** What the stream never contains. Sent once (see PollRequest.includeStatic), not at every poll. */
+  not_in_stream?: readonly string[];
+  /** A short hash of each section, so the View can say which ones it already holds (see tailorPoll). */
+  hash?: SectionHashes;
+  /** Sections left out of THIS answer because the View already has them unchanged (see PollRequest.have). */
+  unchanged?: SectionName[];
   /** Present only when the answer had to be cut to stay bounded. */
   truncated?: string;
 }
@@ -95,11 +136,13 @@ export function offPoll(nowMs: number, session: SessionState = EMPTY_SESSION): P
     pilot: null,
     weapons: null,
     derived: null,
+    conditions: [],
+    unverified: {},
     not_available: [],
     events: [],
     last_seq: 0,
     session: summarizeSession([], session, nowMs, false),
-    not_in_stream: [],
+    hash: hashSections({ ship: null, pilot: null, weapons: null }),
   };
 }
 
@@ -181,6 +224,9 @@ export function boundPoll(result: PollResult, maxChars: number = MAX_POLL_CHARS)
   return notes.length ? { ...out, truncated: notes.join("; ") } : out;
 }
 
+/** Conditions are only offered while the last frame is at most this old (the stream's own "live" window). */
+const LIVE_CONDITIONS_MS = 5000;
+
 export interface PollInput {
   status: TelemetryStatusReport;
   snapshot: TelemetrySnapshot | null;
@@ -191,6 +237,10 @@ export interface PollInput {
   session: SessionState;
   includeBalance: boolean;
   nowMs: number;
+  /** What the wiki says about the ship being flown (specs.ts). Never fetched here: the caller passes what it has. */
+  specs?: ShipSpecs;
+  /** The transport ledger as built for THIS balance choice (ledger.ts). */
+  ledger?: LedgerPayload;
 }
 
 const publicEvent = (e: TelemetryEvent): PublicEvent => ({
@@ -211,7 +261,42 @@ function publicShip(ship: Ship): PublicShip {
   return rest;
 }
 
+/** The weapons without the `unverified` part (it travels under the answer's own `unverified`). */
+function publicWeapons(weapons: Weapons): Weapons {
+  const { unverified, ...rest } = weapons;
+  void unverified;
+  return rest;
+}
+
+/** The unverified values the stream carried, without the defaults of fields the game never fills. */
+function publicUnverified(state: TelemetrySnapshot["state"] | null): PollResult["unverified"] {
+  const out: PollResult["unverified"] = {};
+  if (state?.ship && Object.keys(state.ship.unverified).length > 0)
+    out.ship = { ...state.ship.unverified };
+  if (state?.weapons?.unverified && Object.keys(state.weapons.unverified).length > 0) {
+    out.weapons = { ...state.weapons.unverified };
+  }
+  if (state?.pilot) {
+    const pilot: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(state.pilot.unverified)) {
+      if (
+        (key === "intoxication_level" || key === "ambient_radiation_rate") &&
+        !(Number(value) > 0)
+      )
+        continue;
+      pilot[key] = value;
+    }
+    if (Object.keys(pilot).length > 0) out.pilot = pilot;
+  }
+  return out;
+}
+
 export function buildPoll(input: PollInput): PollResult {
+  const answer = buildAnswer(input);
+  return { ...answer, hash: hashSections(answer) };
+}
+
+function buildAnswer(input: PollInput): PollResult {
   const { status, snapshot, includeBalance, nowMs } = input;
   const state = snapshot?.state ?? null;
   const unavailable: string[] = [];
@@ -245,8 +330,15 @@ export function buildPoll(input: PollInput): PollResult {
     received_at: snapshot ? snapshot.received_at : null,
     ship: state?.ship ? publicShip(state.ship) : null,
     pilot,
-    weapons: state?.weapons ?? null,
+    weapons: state?.weapons ? publicWeapons(state.weapons) : null,
+    ...(input.specs && state?.ship ? { specs: input.specs } : {}),
+    ...(input.ledger ? { ledger: input.ledger } : {}),
     derived: state ? { ...state.derived } : null,
+    conditions:
+      snapshot && state && status.state === "live" && snapshot.frame_age_ms <= LIVE_CONDITIONS_MS
+        ? state.conditions
+        : [],
+    unverified: publicUnverified(state),
     not_available: unavailable,
     events: input.events.map(publicEvent),
     last_seq: input.lastSeq,
@@ -259,4 +351,71 @@ export function buildPoll(input: PollInput): PollResult {
     ...(balance ? { balance } : {}),
     not_in_stream: status.not_in_stream,
   };
+}
+
+/** A 53-bit string hash (cyrb53), as 14 hex digits. Not a security measure: it only detects "same as before". */
+export function hashText(text: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, "0");
+}
+
+export function hashSections(
+  answer: Pick<PollResult, "ship" | "pilot" | "weapons"> & {
+    specs?: ShipSpecs;
+    ledger?: LedgerPayload;
+  },
+): SectionHashes {
+  return {
+    ship: hashText(JSON.stringify(answer.ship)),
+    pilot: hashText(JSON.stringify(answer.pilot)),
+    weapons: hashText(JSON.stringify(answer.weapons)),
+    specs: hashText(JSON.stringify(answer.specs ?? null)),
+    ledger: hashText(JSON.stringify(answer.ledger ?? null)),
+  };
+}
+
+/** What a View says about itself with each poll. Every part is optional: a View that sends none gets the full answer. */
+export interface PollRequest {
+  includeBalance: boolean;
+  /** Ask for `not_in_stream` (the View does it once). */
+  includeStatic?: boolean;
+  /** The newest event number the View holds: only newer events come back. */
+  sinceSeq?: number;
+  /** The hashes of the sections the View holds: a section with the same hash is left out. */
+  have?: Partial<Record<SectionName, string>>;
+}
+
+/**
+ * The shared (cached) answer, cut to what ONE View still needs: the same events only once, the static list only when
+ * asked, the sections it already holds only if they changed. The work of reading the stream is shared between all
+ * Views; this is cheap and per request. A View that sends nothing gets everything, as before.
+ */
+export function tailorPoll(full: PollResult, request: PollRequest): PollResult {
+  const out: PollResult = { ...full };
+  if (!request.includeStatic) delete out.not_in_stream;
+  if (typeof request.sinceSeq === "number") {
+    // A server that restarted numbers its events again: a cursor ahead of it means "from the start".
+    const after = request.sinceSeq > full.last_seq ? 0 : request.sinceSeq;
+    out.events = full.events.filter((e) => e.seq > after);
+  }
+  const unchanged: SectionName[] = [];
+  const hashes = full.hash;
+  for (const name of SECTION_NAMES) {
+    const have = request.have?.[name];
+    const held = full[name] !== null && full[name] !== undefined;
+    if (hashes && held && typeof have === "string" && have === hashes[name]) {
+      unchanged.push(name);
+      delete (out as unknown as Record<string, unknown>)[name];
+    }
+  }
+  if (unchanged.length > 0) out.unchanged = unchanged;
+  return out;
 }

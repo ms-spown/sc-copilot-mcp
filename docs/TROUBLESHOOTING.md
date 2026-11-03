@@ -82,8 +82,11 @@ without changing anything; `npm run doctor` repeats it. Full explanations and th
 - **It shows "Télémétrie désactivée", "En attente du jeu" or "Jeu lancé sans télémétrie"**: follow the matching
   line of the section above. The page is only a mirror of `sc_live_status`.
 - **It stopped updating**: the page pauses when its window is hidden or scrolled out of view and retires after 30
-  minutes away; click "Reprendre". An older dashboard higher in the conversation is not updated once you scroll
-  away from it.
+  minutes away; click "Reprendre".
+- **"Remplacé par un tableau de bord plus récent"**: Claude opened a second dashboard (they all stay in the
+  conversation). Only the most recent visible one calls the game's data, the older ones follow it. Click "Reprendre
+  ici" to make this one the leader. If a dashboard does not follow, the host may not share the origin of its Views
+  (not verified by us): each one then polls by itself, and one away for 30 seconds retires.
 - **The balance is masked**: that is the default. Click "Afficher le solde" in the page.
 
 ## A tool says "unexpected shape" or "format may have changed"

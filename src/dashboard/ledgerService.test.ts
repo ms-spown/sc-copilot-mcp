@@ -32,7 +32,7 @@ function fakeSource(text: string) {
     stat: async () => {
       state.stats += 1;
       if (state.failStat) throw new Error("gone");
-      return { mtimeMs: state.mtimeMs };
+      return { mtimeMs: state.mtimeMs, size: 0 };
     },
     read: async () => {
       state.reads += 1;
@@ -90,7 +90,7 @@ describe("Feature: the log is read thriftily and never in the way of the poll", 
     let started = 0;
     const source: LedgerLogSource = {
       configured: true,
-      stat: async () => ({ mtimeMs: 1 }),
+      stat: async () => ({ mtimeMs: 1, size: 0 }),
       read: () => {
         started += 1;
         return new Promise(() => undefined);
@@ -189,7 +189,11 @@ describe("Feature: with a real file, only a change of its date makes it read aga
     expect(service.reads).toBe(1); // same date
 
     // The game writes one more line and the date moves on.
-    fs.appendFileSync(file, `\n<2026-11-03T18:02:30.000Z>    "Contract Accepted:  Late Job: " [9]`);
+    fs.appendFileSync(
+      file,
+      `\n<2026-11-03T18:02:30.000Z>    "Contract Accepted:  Late Job: " [9]
+`,
+    );
     const later = new Date("2026-11-03T18:06:00Z");
     fs.utimesSync(file, later, later);
     now = 12_000;

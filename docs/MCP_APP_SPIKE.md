@@ -65,6 +65,9 @@ The spike code lives on the branch `telemetry/m4-spike`; it is not part of the p
 5. **The host does not unmount old Views** (documented by Claude: one frame per tool call stays mounted), so several
    Views can poll at once. The server caches the poll answer for half a second and a View stops polling when it has
    been off screen too long.
+   Update (dashboard v2): the Views of one connector are also documented to share one sandbox origin, so they now
+   elect one leader over a `BroadcastChannel` and only that one polls; this is not verified inside Claude Desktop,
+   and without the channel the old behaviour applies.
 6. **No `pip`.** Only `inline` and `fullscreen`, negotiated, never assumed.
 
 ## Not done, on purpose

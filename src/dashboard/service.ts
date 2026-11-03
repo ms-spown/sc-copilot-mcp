@@ -1,22 +1,19 @@
 import type { Telemetry } from "../providers/telemetry/index.js";
 import { POLL_CACHE_MS, POLL_EVENT_COUNT } from "./constants.js";
-import {
-  buildLedgerPayload,
-  EMPTY_LEDGER,
-  LEDGER_BUDGET_CHARS,
-  type PlanForLedger,
-} from "./ledger.js";
+import { buildLedgerPayload, EMPTY_LEDGER, type PlanForLedger } from "./ledger.js";
 import type { LedgerService } from "./ledgerService.js";
 import {
   boundPoll,
   buildPoll,
   EMPTY_SESSION,
-  MAX_POLL_CHARS,
   offPoll,
+  tailorPoll,
+  type PollRequest,
   type PollResult,
   type SessionMarker,
   type SessionState,
 } from "./poll.js";
+import type { ShipSpecsResolver } from "./specs.js";
 
 /**
  * The server side of the live dashboard: one poll answer shared by every View, and the session markers.
@@ -24,7 +21,9 @@ import {
  * - Everything is in memory. Nothing is written to disk, no frame is kept.
  * - The poll never starts the reader while telemetry is off: it answers `off` without calling the service.
  * - The answer is cached for POLL_CACHE_MS and in-flight requests are shared, so N Views cost one read. The cache
- *   key is `include_balance`, so a balance is never handed to a View that did not ask for it.
+ *   key is `include_balance`, so a balance is never handed to a View that did not ask for it. What each View
+ *   already holds (events, unchanged sections, the static list) is cut AFTER the cache (tailorPoll): the cache key
+ *   never depends on it.
  * - It never sends anything to the game. The markers are this process's own bookkeeping.
  */
 
@@ -50,7 +49,9 @@ export class DashboardService {
   constructor(
     private readonly telemetry: Telemetry | undefined,
     private readonly now: () => number = Date.now,
-    /** The transport ledger's reader. Without one the ledger says it is off. */
+    /** Looks up the wiki sheet of the flown ship in the background (specs.ts). Absent: no `specs` in the answer. */
+    private readonly specs?: ShipSpecsResolver,
+    /** The transport ledger's reader (ledgerService.ts). Without one the ledger says it is off. */
     private readonly ledger?: LedgerService,
   ) {}
 
@@ -64,7 +65,13 @@ export class DashboardService {
     this.cache.clear();
   }
 
-  poll(includeBalance: boolean): Promise<PollResult> {
+  /** The answer for one View: the shared answer, cut to what that View still needs. */
+  async poll(request: PollRequest): Promise<PollResult> {
+    return tailorPoll(await this.shared(request.includeBalance), request);
+  }
+
+  /** The shared answer (cached half a second), complete. */
+  private shared(includeBalance: boolean): Promise<PollResult> {
     const t = this.now();
     const hit = this.cache.get(includeBalance);
     if (hit && t - hit.at >= 0 && t - hit.at < POLL_CACHE_MS) return hit.result;
@@ -97,9 +104,16 @@ export class DashboardService {
       );
       sessionEvents = all.events;
     }
+    // Only reached with telemetry on (the off answer returned above). Answers from memory: it never waits for the wiki.
+    const className = snapshot?.state.ship?.class_name;
+    const specs = className ? this.specs?.current(className, nowMs) : undefined;
+    // The ledger is built for THIS balance choice: the shared answer (and its hash) never mixes the two.
+    const ledger = await this.ledgerPayload(telemetry, includeBalance, nowMs);
     const answer = buildPoll({
       status,
       snapshot,
+      ...(specs ? { specs } : {}),
+      ledger,
       events: recent.events,
       lastSeq: recent.last_seq,
       sessionEvents,
@@ -107,9 +121,7 @@ export class DashboardService {
       includeBalance,
       nowMs,
     });
-    // The ledger keeps its own budget, so the whole answer stays under MAX_POLL_CHARS whatever either side holds.
-    const bounded = boundPoll(answer, MAX_POLL_CHARS - LEDGER_BUDGET_CHARS);
-    return { ...bounded, ledger: await this.ledgerPayload(telemetry, includeBalance, nowMs) };
+    return boundPoll(answer);
   }
 
   /** The ledger as last computed (never waits for the log), with balance figures only when asked. */

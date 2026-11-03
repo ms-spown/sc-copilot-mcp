@@ -17,11 +17,15 @@ import type {
 import {
   buildPoll,
   summarizeSession,
+  tailorPoll,
+  type PollRequest,
   type PollResult,
   type SessionMarker,
   type SessionState,
 } from "../poll.js";
 import { POLL_EVENT_COUNT } from "../constants.js";
+import type { LedgerPayload } from "../ledger.js";
+import type { ShipSpecs } from "../specs.js";
 
 type Frame = Record<string, unknown>;
 
@@ -115,14 +119,14 @@ export function frameAt(t: number): Frame | null {
         life_support: true,
         gravity_generators: true,
         sensors: true,
-        shield_generators: true,
-        shield_emitters: !shieldsDown,
+        shield_generators: !quantum,
+        shield_emitters: !quantum,
       },
       annunciators: {
-        pwr: light("off"),
+        pwr: light("nominal"),
         wpn: light("minor_on"),
-        thr: light(jump ? "major_on" : "off"),
-        shld: light(shieldsDown ? "major_on" : "off"),
+        thr: light(t >= 50 && t < 55 ? "major_on" : "nominal"),
+        shld: light(shieldsDown ? "major_on" : quantum ? "off" : "nominal"),
         cool: light("off"),
         qdrv: light(quantum ? "nominal" : "off"),
         radr: light(lock ? "major_on" : "off"),
@@ -173,6 +177,13 @@ export class Scenario {
   };
   /** Force a stream state to preview it. null: follow the story. */
   forced: ForcedState = null;
+  /** The ship sheet the server would hold for the story's ship (specs.ts). null: none (an older server). */
+  specs: ShipSpecs | null = null;
+  /**
+   * The transport ledger the server would hold (ledgerScenario.ts), built for the balance choice of the poll. Left
+   * unset, the answer has no ledger (an older server). It goes through the same hashes and `unchanged` as the sections.
+   */
+  ledger: ((includeBalance: boolean, nowMs: number) => LedgerPayload) | null = null;
   /** Stop delivering frames (the stream is cut) without ending the story. */
   cut = false;
   /** Virtual time in milliseconds from the start of the story. */
@@ -259,7 +270,10 @@ export class Scenario {
   }
 
   /** What sc_live_poll would answer at the current virtual time. */
-  poll(includeBalance: boolean): PollResult {
+  poll(
+    includeBalance: boolean,
+    request: Omit<PollRequest, "includeBalance"> = { includeStatic: true },
+  ): PollResult {
     const keep = (e: { type: string }) => includeBalance || e.type !== "uec_changed";
     const status = this.status();
     const snapshot = this.snapshot();
@@ -284,8 +298,13 @@ export class Scenario {
       session: this.session,
       includeBalance,
       nowMs: this.now,
+      ...(this.specs ? { specs: this.specs } : {}),
+      ...(this.ledger ? { ledger: this.ledger(includeBalance, this.now) } : {}),
     });
-    return this.forced === "off" ? { ...result, enabled: false } : result;
+    return tailorPoll(this.forced === "off" ? { ...result, enabled: false } : result, {
+      includeBalance,
+      ...request,
+    });
   }
 
   /** sc_live_mark. */

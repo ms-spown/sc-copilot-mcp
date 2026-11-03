@@ -163,6 +163,9 @@ describe("Feature: the dashboard tools are listed only to clients that can show 
     expect(dashboard).toContain("sc_live_state");
     expect(dashboard).toMatch(/never call sc_live_poll/);
     expect(dashboard).toMatch(/no cargo/);
+    expect(dashboard).toMatch(
+      /already open in this conversation, do not open it again unless the player explicitly asks/,
+    );
     const poll = tools.find((t) => t.name === "sc_live_poll")!.description!;
     expect(poll).toMatch(/not for the model/);
   });
@@ -216,7 +219,12 @@ describe("Feature: opening the dashboard", () => {
     expect(typeof sc).toBe("object");
     expect(Array.isArray(sc)).toBe(false);
     expect(sc).toMatchObject({ view: "sc_live_dashboard" });
-    expect(JSON.stringify(sc).length).toBeLessThan(400);
+    expect(JSON.stringify(sc).length).toBeLessThan(900);
+    // The model is told not to open a second copy: the open one updates by itself.
+    expect(sc?.["hint"]).toMatch(
+      /already open[^.]*do not open another one unless the player explicitly asks/,
+    );
+    expect(text).toContain(String(sc?.["hint"]));
     expect(text).toContain("sc_live_state");
     expect(text).toContain("provenance");
   });
@@ -350,7 +358,7 @@ describe("Feature: the poll carries the live state as a structured object", () =
       ),
     );
     await untilState("live");
-    const { sc } = await call("sc_live_poll");
+    const { sc } = await call("sc_live_poll", { include_static: true });
     expect(sc).toMatchObject({ v: 1, enabled: true, state: "live" });
     expect(sc!["frame_age_ms"]).toBeGreaterThanOrEqual(0);
     expect(sc!["ship"].instruments.speed_ms).toBeCloseTo(120);
@@ -380,5 +388,89 @@ describe("Feature: the poll carries the live state as a structured object", () =
     expect(end.sc).toMatchObject({ ok: true });
     expect((await call("sc_live_mark", { action: "end" })).sc).toMatchObject({ ok: false });
     expect((await call("sc_live_mark", { action: "nope" as never })).r.isError).toBe(true);
+  });
+});
+
+describe("Feature: a View only receives what it does not hold yet", () => {
+  async function liveShip() {
+    const world = await liveWorld();
+    await world.untilState("connected");
+    world.game.send(
+      frame(
+        vehicleField({ name: "DRAK_Cutter_1", speed: 120, lights: { shld: "nominal" } }),
+        actorField({ health: 90, uec: 1000 }),
+      ),
+    );
+    await world.untilState("live");
+    return world;
+  }
+
+  it("Given a first poll and a second one that sends the hashes and the event cursor, Then unchanged sections and old events are left out", async () => {
+    const { call } = await liveShip();
+    const first = (await call("sc_live_poll", { include_static: true })).sc!;
+    expect(first["not_in_stream"]).toContain("shield_level");
+    expect(first["hash"]).toEqual({
+      ship: expect.stringMatching(/^[0-9a-f]{14}$/),
+      pilot: expect.stringMatching(/^[0-9a-f]{14}$/),
+      weapons: expect.stringMatching(/^[0-9a-f]{14}$/),
+      specs: expect.stringMatching(/^[0-9a-f]{14}$/),
+      ledger: expect.stringMatching(/^[0-9a-f]{14}$/),
+    });
+    const second = (
+      await call("sc_live_poll", {
+        since_seq: first["last_seq"],
+        have: {
+          ship: first["hash"].ship,
+          pilot: first["hash"].pilot,
+          weapons: first["hash"].weapons,
+          ledger: first["hash"].ledger,
+        },
+      })
+    ).sc!;
+    expect(second).not.toHaveProperty("not_in_stream");
+    expect(second["events"]).toEqual([]);
+    // The frame is the same one: nothing changed in the ship and the pilot.
+    expect(second["unchanged"]).toEqual(expect.arrayContaining(["ship", "pilot"]));
+    expect(second).not.toHaveProperty("ship");
+    expect(second).not.toHaveProperty("pilot");
+    expect(JSON.stringify(second).length).toBeLessThan(JSON.stringify(first).length / 2);
+  });
+
+  it("Given a hash that is not the current one, Then the section comes back whole", async () => {
+    const { call } = await liveShip();
+    const { sc } = await call("sc_live_poll", { have: { ship: "0123456789abcd" } });
+    expect(sc!["ship"]).toMatchObject({ name: "DRAK_Cutter_1" });
+    expect(sc).not.toHaveProperty("unchanged");
+  });
+
+  it("Given an event cursor ahead of the server (it restarted), Then all events come back", async () => {
+    const { call } = await liveShip();
+    const all = (await call("sc_live_poll", {})).sc!["events"];
+    const ahead = (await call("sc_live_poll", { since_seq: 999_999 })).sc!["events"];
+    expect(ahead).toEqual(all);
+  });
+
+  it.each([
+    ["a hash with markup", { have: { ship: "<script>" } }],
+    ["a long hash", { have: { ship: "a".repeat(40) } }],
+    ["a negative cursor", { since_seq: -1 }],
+    ["a cursor that is not a number", { since_seq: "x" }],
+    ["a flag that is not a boolean", { include_static: "yes" }],
+  ])("Given %s, Then the call is refused", async (_name, args) => {
+    const { call } = await liveShip();
+    expect((await call("sc_live_poll", args as never)).r.isError).toBe(true);
+  });
+
+  it("Given two Views asking different things at the same moment, Then the telemetry is still read once", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-03T12:00:00Z"));
+    const spy = spyTelemetry(true);
+    const { call } = await connect(clients(spy), UI_CAPS);
+    await Promise.all([
+      call("sc_live_poll", { include_static: true }),
+      call("sc_live_poll", { since_seq: 5, have: { ship: "abc" } }),
+      call("sc_live_poll", {}),
+    ]);
+    expect(spy.status).toHaveBeenCalledTimes(1);
   });
 });

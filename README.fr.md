@@ -204,10 +204,14 @@ d'atterrissage, alimentation, voyants, santé, faim, soif.
   carburant quantique. Une santé à 0 veut dire à terre ou mort. Le solde aUEC n'est pas transmis à Claude sans votre
   accord (`include_balance`).
 - **Un tableau de bord en direct (optionnel).** Avec la télémétrie activée, Claude Desktop peut afficher un tableau
-  de bord en direct dans la conversation (`sc_live_dashboard`) : vaisseau, vitesse, hydrogène, santé et état du flux
-  en vue compacte ; instruments, voyants, armes, événements et chronologie de session en plein écran. Chaque valeur
-  indique son âge, le solde aUEC reste masqué tant que vous ne cliquez pas, et rien n'est envoyé au jeu. Claude Code
-  ne l'affiche pas. Voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#tableau-de-bord-en-direct).
+  de bord en direct dans la conversation (`sc_live_dashboard`) : le vaisseau, trois cadrans, les alertes du moment (boucliers
+  coupés en mode quantique, énergie perdue, verrouillage hostile...) et un verdict en une ligne en vue compacte ; un
+  cockpit avec cadrans, boussole, schéma d'alimentation, voyants, armes, constantes du pilote et une seule
+  chronologie en plein écran. Seul le tableau de bord le plus récent interroge les données ; les plus anciens le
+  suivent. Chaque valeur indique son âge, rien n'est inventé, le solde aUEC reste masqué tant que vous ne cliquez pas,
+  et rien n'est envoyé au jeu. Le cadran de vitesse utilise les limites du vaisseau prises sur le Star Citizen Wiki
+  quand une seule fiche correspond au vaisseau (étiquetée « wiki »), et le dit quand il garde sa propre échelle. Claude
+  Code ne l'affiche pas. Voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#tableau-de-bord-en-direct).
 - **Un carnet de transport (optionnel, il faut le journal de jeu).** Dans ce tableau de bord, les contrats de la
   session avec leurs étapes de chargement et de livraison et, une fois le solde affiché, la variation brute du solde
   sur chaque contrat terminé ; le journal de jeu ne contient ni quantité ni récompense. Voir

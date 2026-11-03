@@ -104,6 +104,8 @@ function endState(state: unknown): ContractState {
 export function buildContracts(events: readonly LogEvent[]): Contract[] {
   const list: Contract[] = [];
   const byId = new Map<string, Contract>();
+  // The log repeats a pickup line hundreds of times, and a read may cut between two repeats: one step once.
+  const seenSteps = new Map<Contract, Set<string>>();
   const find = (id: unknown) => (typeof id === "string" ? byId.get(id) : undefined);
   const soleOpen = () => {
     const open = list.filter((c) => !isEnded(c));
@@ -144,14 +146,15 @@ export function buildContracts(events: readonly LogEvent[]): Contract[] {
       case "hauling_objective": {
         const c = find(e.mission_id);
         if (!c || (e.kind !== "pickup" && e.kind !== "dropoff")) break;
+        const location = cleanLabel(e.location, LEDGER_LABEL_MAX) ?? "";
+        const cargo = cleanLabel(e.cargo, LEDGER_LABEL_MAX) ?? "";
+        const seen = seenSteps.get(c) ?? new Set<string>();
+        seenSteps.set(c, seen);
+        const key = `${e.kind}|${location}|${cargo}`;
+        if (seen.has(key)) break;
+        seen.add(key);
         c.stepsTotal += 1;
-        if (c.steps.length < LEDGER_MAX_STEPS) {
-          c.steps.push({
-            kind: e.kind,
-            location: cleanLabel(e.location, LEDGER_LABEL_MAX) ?? "",
-            cargo: cleanLabel(e.cargo, LEDGER_LABEL_MAX) ?? "",
-          });
-        }
+        if (c.steps.length < LEDGER_MAX_STEPS) c.steps.push({ kind: e.kind, location, cargo });
         progress(c);
         break;
       }

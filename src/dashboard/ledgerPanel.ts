@@ -83,6 +83,7 @@ export function ledgerNormalize(raw: any): any {
   const b = raw.balance && typeof raw.balance === "object" ? raw.balance : null;
   const p = raw.plan_compare && typeof raw.plan_compare === "object" ? raw.plan_compare : null;
   return {
+    v: 1,
     status,
     partial: raw.partial === true,
     contracts_total: Math.max(contracts.length, ledgerNum(raw.contracts_total) || 0),
@@ -108,6 +109,19 @@ export function ledgerNormalize(raw: any): any {
         }
       : null,
   };
+}
+
+/**
+ * What the channel between Views may carry and accept: the payload rebuilt field by field and stripped of every
+ * figure derived from the balance, whatever the sender put in it. null when it is not a ledger at all.
+ */
+export function ledgerChannelClean(raw: any): any {
+  const n = ledgerNormalize(raw);
+  if (!n) return null;
+  delete n.balance;
+  delete n.plan_compare;
+  for (const c of n.contracts) delete c.gain;
+  return n;
 }
 
 /** The raw payload without anything derived from the balance (used when the player hides the balance again). */
@@ -202,19 +216,6 @@ export function ledgerGainText(L: any, gain: any): any {
   return { text: why[gain.reason] || "Gain indisponible.", tone: "" };
 }
 
-/** Planned against measured, "" when nothing can be said. */
-export function ledgerPlanText(L: any, plan: any): string {
-  if (!plan || typeof plan.expected_auec !== "number") return "";
-  return (
-    "prévu " +
-    L.fmtAuec(plan.expected_auec, true) +
-    "\u00a0aUEC · réalisé " +
-    (typeof plan.measured_auec === "number"
-      ? L.fmtAuec(plan.measured_auec, true) + "\u00a0aUEC"
-      : "—")
-  );
-}
-
 /**
  * Builds the card and the compact line once; `render(raw, ctx)` then only changes text and attributes.
  * ctx: { showBalance, fullscreen, now }.
@@ -244,11 +245,18 @@ export function ledgerPanel(doc: any, L: any): any {
       n.setAttribute(name, value);
     }
   };
+  const setVar = (n: any, name: string, value: string) => {
+    const key = "_v_" + name;
+    if (n[key] !== value) {
+      n[key] = value;
+      n.style.setProperty(name, value);
+    }
+  };
   const show = (n: any, on: boolean) => setAttr(n, "data-hidden", on ? "0" : "1");
   const row = (label: string): any => {
-    const r: any = { root: el("div", "row") };
-    r.value = el("span", "row-value", "—");
-    add(r.root, el("span", "row-label", label), r.value);
+    const r: any = { root: el("div", "fact") };
+    r.value = el("span", "fact-value", "—");
+    add(r.root, el("span", "fact-label", label), r.value);
     return r;
   };
 
@@ -271,6 +279,10 @@ export function ledgerPanel(doc: any, L: any): any {
     s.chip = el("span", "lg-chip", "");
     add(s.head, s.title, s.chip);
     s.meta = el("div", "lg-meta", "");
+    // Steps done out of steps announced: the same gauge as the other bars of the cockpit
+    s.gauge = el("div", "gauge");
+    s.gaugeFill = el("div", "gauge-fill");
+    add(s.gauge, s.gaugeFill);
     s.steps = el("ol", "lg-steps");
     s.stepRows = [];
     for (let k = 0; k < cfg.slotsSteps; k++) {
@@ -283,18 +295,19 @@ export function ledgerPanel(doc: any, L: any): any {
     }
     s.more = el("div", "lg-more", "");
     s.gain = el("div", "lg-gain", "");
-    add(s.root, s.head, s.meta, s.steps, s.more, s.gain);
+    add(s.root, s.head, s.meta, s.gauge, s.steps, s.more, s.gain);
     slots.push(s);
     add(list, s.root);
   }
-  const sum = el("div", "lg-sum");
+  const sum = el("div", "facts lg-sum");
   const rDone = row("Contrats terminés");
   const rOther = row("Abandonnés ou échoués");
   const rTime = row("Durée cumulée des terminés");
   const rGain = row("Gain total mesuré");
   const rRate = row("Rythme");
-  const rPlan = row("Prévu / réalisé (dernier contrat)");
-  add(sum, rDone.root, rOther.root, rTime.root, rGain.root, rRate.root, rPlan.root);
+  const rPlan = row("Profit prévu (plan)");
+  const rReal = row("Réalisé, dernier contrat");
+  add(sum, rDone.root, rOther.root, rTime.root, rGain.root, rRate.root, rPlan.root, rReal.root);
   const note = el(
     "p",
     "note",
@@ -343,6 +356,7 @@ export function ledgerPanel(doc: any, L: any): any {
       setAttr(s.root, "data-state", c.state);
       setText(s.title, c.title || "Contrat sans titre");
       setText(s.chip, ledgerStateLabel(c.state));
+      setAttr(s.chip, "data-state", c.state);
       const accepted = c.accepted_at ? "accepté à " + L.formatClock(c.accepted_at) : "";
       const active = c.state === "accepted" || c.state === "in_progress";
       const span = active
@@ -353,6 +367,14 @@ export function ledgerPanel(doc: any, L: any): any {
           ? "durée " + L.formatDuration(c.duration_ms)
           : "";
       setText(s.meta, [accepted, span].filter(Boolean).join(" · "));
+      const bar = c.steps_total > 0;
+      show(s.gauge, bar);
+      setAttr(s.gauge, "data-level", c.state === "completed" ? "ok" : "info");
+      setVar(
+        s.gaugeFill,
+        "--p",
+        bar ? String(Math.round((c.steps_done / c.steps_total) * 1000) / 10) : "0",
+      );
       for (let k = 0; k < s.stepRows.length; k++) {
         const step = c.steps[k];
         const li = s.stepRows[k];
@@ -398,9 +420,21 @@ export function ledgerPanel(doc: any, L: any): any {
           ? "disponible après 2 min de contrats"
           : "—",
     );
-    const plan = showBalance ? ledgerPlanText(L, ledger.plan_compare) : "";
-    show(rPlan.root, plan !== "");
-    setText(rPlan.value, plan);
+    const pc = showBalance ? ledger.plan_compare : null;
+    show(rPlan.root, !!pc && typeof pc.expected_auec === "number");
+    show(rReal.root, !!pc && typeof pc.expected_auec === "number");
+    setText(
+      rPlan.value,
+      pc && typeof pc.expected_auec === "number"
+        ? L.fmtAuec(pc.expected_auec, true) + "\u00a0aUEC"
+        : "—",
+    );
+    setText(
+      rReal.value,
+      pc && typeof pc.measured_auec === "number"
+        ? L.fmtAuec(pc.measured_auec, true) + "\u00a0aUEC"
+        : "—",
+    );
   }
 
   return { line, card: root, render };
@@ -414,6 +448,7 @@ export const LEDGER_VIEW_FUNCTIONS = [
   ledgerIso,
   ledgerNormalize,
   ledgerStripBalance,
+  ledgerChannelClean,
   ledgerCurrent,
   ledgerStepNumber,
   ledgerInlineText,
@@ -421,6 +456,5 @@ export const LEDGER_VIEW_FUNCTIONS = [
   ledgerPretty,
   ledgerStepText,
   ledgerGainText,
-  ledgerPlanText,
   ledgerPanel,
 ];
