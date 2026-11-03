@@ -34,7 +34,8 @@ src/providers/  uex, wiki, sctools (clients) · scmdb (store + queries) · gamel
                 telemetry (opt-in live stream: wire decoder, schema table, reader on node:http2, handler, service)
 src/tools/      one file per group (definition + handler together), catalog.ts (provenance + profiles),
                 registry.ts (envelope, scoping), status.ts (sc_data_status)
-src/install/    mergeConfig (pure planning of the Claude Desktop config merge)
+src/install/    mergeConfig (pure planning of the Claude Desktop config merge), telemetrySwitch + jsonEdit
+                (npm run telemetry: text-level edit of one key, user variable through an injectable EnvStore)
 src/server.ts   MCP server around a registry (tests connect to it in memory; index.ts adds stdio)
 src/e2e/        protocol-level behaviour tests; src/docs/ generator of docs/TOOLS.md
 scripts/        install-claude-desktop.mjs, check-sources.mjs, mcp-probe.mjs (stale, see CONTRIBUTING)
@@ -71,6 +72,15 @@ touches a source. Report what ran and what did not.
   be 200k characters: tools fall back to a summary view. Name lookup is exact, `filter[name]` is a substring match.
 - SCMDB: `data/latest.json` (schema 2) maps each channel to its files; missions are `merged.contracts`; the deltas
   file lists updates newest first, and the newest ones can have zero data changes.
+- Telemetry (see `docs/TELEMETRY.md`, do not re-derive): gRPC over cleartext HTTP/2 on `127.0.0.1:2942`, service
+  `sc.game.telemetry.v1.GameTelemetryService/TelemetryStream`, an empty request, about 17 frames a second after the
+  spawn and none in menus. The game-side switch is `GRPC_CLIENT_SERVER_ENABLED=true` inherited from the RSI Launcher
+  (quit it completely, tray included). A default value is OMITTED on the wire (proto3): a section missing from a
+  frame is absent, a scalar missing inside a present section is its default. Altitude 3.4e38 = no planet; heading
+  only inside a planet frame and frozen in a quantum jump; health 0 = down or dead; RADR = hostile lock; no
+  position, shield value, hull, heat, ammo, power distribution, quantum fuel, doors, presets or death events;
+  ground vehicles send no vehicle frame. The schema comes from Wingman AI (GPLv3); if a patch breaks it the state
+  is `incompatible`: never redo the extraction.
 - LIVE builds differ between sources (wiki and the game log said 12881860 while SCMDB said 12913470 on 2026-11-03).
   That is normal; show it. The game's file version (4.10.197.2878) is not the public version (4.10.2).
 - Dump tags (`sc-gamedata-dumps`) are republished: cache by SHA, never trust a tag.
