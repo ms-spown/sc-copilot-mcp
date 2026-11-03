@@ -346,3 +346,70 @@ describe("Feature: partial frames and baselines", () => {
     expect(types()).toEqual([]);
   });
 });
+
+describe("Feature: the end of a quantum jump", () => {
+  // Sequence measured on a real Aegis Harbinger (4.10.2): thrust light major while the drive is on and the ship is
+  // weightless, then the drive light goes off and the thrust light back to nominal in the same moment.
+  const base: ShipSpec = {
+    altitude: 60_000,
+    g: 1,
+    lights: { thr: "nominal", qdrv: "nominal" },
+  };
+  const jumping: ShipSpec = { ...base, g: 0, lights: { thr: "major_on", qdrv: "nominal" } };
+  const arrived: ShipSpec = { ...base, g: 1, lights: { thr: "nominal", qdrv: "off" } };
+
+  it("Given the drive light going off at the end of the jump, Then 'jump_finished' follows about a second later, not eight", () => {
+    const { feed, handler, types } = world();
+    feed(0, ship(base));
+    feed(100, ship(jumping));
+    feed(1700, ship(jumping));
+    feed(5000, ship(jumping));
+    expect(types()).toEqual(["jump_started"]);
+    feed(6000, ship(arrived));
+    feed(7100, ship(arrived)); // the drive light has been off for the 1 s hold
+    expect(types()).toEqual(["jump_started", "quantum_mode_off", "jump_finished"]);
+    const finished = handler.events.since(0).find((e) => e.type === "jump_finished");
+    expect(Date.parse(finished!.at)).toBeLessThan(Date.parse("1970-01-01T00:00:08.000Z"));
+  });
+
+  it("Given the thrust light still 'major' for a moment after the drive went off, Then no second jump is started", () => {
+    const { feed, types } = world();
+    feed(0, ship(base));
+    feed(100, ship(jumping));
+    feed(1700, ship(jumping));
+    const leftover: ShipSpec = { ...jumping, lights: { thr: "major_on", qdrv: "off" }, g: 0 };
+    feed(3000, ship(leftover));
+    feed(4100, ship(leftover));
+    feed(6500, ship(leftover)); // long enough for a new jump to start if the latch did not hold
+    expect(types().filter((t) => t === "jump_started")).toHaveLength(1);
+    feed(7000, ship(arrived)); // the raw signal goes false once: the latch is released
+    feed(7100, ship(jumping));
+    feed(8700, ship(jumping)); // ... and a genuine second jump starts normally (drive on again)
+    expect(types().filter((t) => t === "jump_started")).toHaveLength(2);
+  });
+
+  it("Given the thrust light going 'nominal' in the middle of a jump while the drive stays on, Then the jump is not ended early", () => {
+    // Seen on a Vulture: THR nominal for several seconds in a jump. The drive light still says "quantum".
+    const { feed, types } = world();
+    feed(0, ship(base));
+    feed(100, ship(jumping));
+    feed(1700, ship(jumping));
+    feed(3000, ship({ ...jumping, lights: { thr: "nominal", qdrv: "nominal" } }));
+    feed(6000, ship({ ...jumping, lights: { thr: "nominal", qdrv: "nominal" } }));
+    expect(types()).toEqual(["jump_started"]);
+  });
+
+  it("Given a ship that never reports the drive light, Then the jump still ends by the slow rule (eight seconds)", () => {
+    const { feed, types } = world();
+    const noDrive: ShipSpec = { altitude: 60_000, g: 1, lights: { thr: "nominal" } };
+    const jumpNoDrive: ShipSpec = { altitude: 60_000, g: 0, lights: { thr: "major_on" } };
+    feed(0, ship(noDrive));
+    feed(100, ship(jumpNoDrive));
+    feed(1700, ship(jumpNoDrive));
+    feed(3000, ship(noDrive));
+    feed(9000, ship(noDrive));
+    expect(types()).toEqual(["jump_started"]); // not yet: the off hold is eight seconds
+    feed(11_500, ship(noDrive));
+    expect(types()).toEqual(["jump_started", "jump_finished"]);
+  });
+});
