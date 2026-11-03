@@ -177,6 +177,18 @@ describe("price history statistics", () => {
     expect(few?.verdict_text).toContain("3 point");
   });
 
+  it("does not call a price high when it is simply the usual top of the range (median)", () => {
+    // The real Medical Supplies series at CBD Lorville: one dip, otherwise 5400 to 5500.
+    const s = summarizeSide(
+      rows([5500, 4900, 5500, 5500, 5400, 5500, 5500, 5400, 5400, 5500]),
+      "sell",
+      NOW,
+    );
+    expect(s?.position_in_range).toBe(1);
+    expect(s?.median).toBe(5500);
+    expect(s?.verdict).toBe("normal");
+  });
+
   it("calls a price that barely moves normal, without a position-based high or low", () => {
     const s = summarizeSide(rows([1000, 1001, 1000, 1002, 1001]), "sell", NOW);
     expect(s?.verdict).toBe("normal");

@@ -185,8 +185,11 @@ export interface TripPlanResult {
 }
 
 const DAY_MS = 86_400_000;
-const MAX_POOL = 36;
-const MAX_VERIFY_COMMODITIES = 10;
+/** Candidates kept for the report check. Most UEX prices have no player report, so the pool is wide to reach reported ones. */
+const MAX_POOL = 40;
+const MAX_POOL_MIN_REPORTS = 80;
+const MAX_VERIFY_COMMODITIES = 12;
+const MAX_VERIFY_COMMODITIES_MIN_REPORTS = 25;
 const MAX_TERMINAL_DISTANCE_CALLS = 5;
 const MAX_MATRICES = 3;
 
@@ -238,9 +241,10 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
   const objective: Objective = req.objective ?? "profit_per_hour";
   const maxAgeDays = clampInt(req.maxAgeDays, 1, 3650, 7);
   const limit = clampInt(req.limit, 1, 20, 8);
-  const pool = Math.min(MAX_POOL, limit * 3);
   const includeStale = req.includeStale === true;
   const minReports = clampInt(req.minReports, 0, 100, 0);
+  const pool = minReports > 0 ? MAX_POOL_MIN_REPORTS : Math.min(MAX_POOL, limit * 4);
+  const maxVerify = minReports > 0 ? MAX_VERIFY_COMMODITIES_MIN_REPORTS : MAX_VERIFY_COMMODITIES;
   const maxLegs = req.maxLegs === 1 ? 1 : 2;
   if (req.budget !== undefined && !(req.budget > 0))
     throw new TripPlanError("budget must be a positive number of aUEC.");
@@ -523,7 +527,7 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
     for (const l of p.legs) if (!needed.includes(l.commodityId)) needed.push(l.commodityId);
   }
   const reports = new Map<string, { buy: number | null; sell: number | null }>();
-  for (const id of needed.slice(0, MAX_VERIFY_COMMODITIES)) {
+  for (const id of needed.slice(0, maxVerify)) {
     try {
       const res = await fetchWithCache(
         deps.uexClient,
@@ -545,10 +549,10 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
       // This commodity stays "unverified": said so in the answer.
     }
   }
-  const unverifiedCommodities = needed.length - Math.min(needed.length, MAX_VERIFY_COMMODITIES);
+  const unverifiedCommodities = needed.length - Math.min(needed.length, maxVerify);
   if (unverifiedCommodities > 0) {
     notes.push(
-      `${unverifiedCommodities} commodit${unverifiedCommodities === 1 ? "y was" : "ies were"} not checked for player reports (limit of ${MAX_VERIFY_COMMODITIES} extra calls): their legs are report_status "unverified".`,
+      `${unverifiedCommodities} commodit${unverifiedCommodities === 1 ? "y was" : "ies were"} not checked for player reports (limit of ${maxVerify} extra calls): their legs are report_status "unverified".`,
     );
   }
 
@@ -668,12 +672,12 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
   const assumptions = tripAssumptions(model, maxAgeDays);
   if (options.some((o) => o.legs.some((l) => l.report_status !== "reported"))) {
     notes.push(
-      "report_status: reported = a player reported both prices; estimate = UEX has no player report for that price (is_estimate), do not count on it; unverified = not checked (the price file does not say). Reported options come first.",
+      "report_status: reported = a player reported both prices; estimate = UEX counts 0 player reports for that price (the is_estimate convention of uex_get_trade_routes, whatever the date of the price: most UEX prices are in that state today, so reported options are rare, and min_reports 1 asks for them), do not count on it; unverified = not checked (the price file does not say). Reported options come first.",
     );
   }
   if (options.length === 0) {
     notes.push(
-      "No option matched. Loosen the filters (max_age_days, include_stale, armistice_only, budget) or choose another origin.",
+      "No option matched. Loosen the filters (max_age_days, include_stale, armistice_only, min_reports, budget) or choose another origin.",
     );
   }
   if (places.armisticeUnavailable)

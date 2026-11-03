@@ -34,6 +34,8 @@ export interface SideSummary {
   low: number;
   high: number;
   mean: number;
+  /** The middle price: a price at the top of the range that is also the usual one is not called high. */
+  median: number;
   std_dev: number;
   /** std_dev / mean: 0.1 = the price typically moves by 10 % around its mean. */
   volatility: number;
@@ -51,7 +53,10 @@ export interface SideSummary {
 
 const priceField: Record<Side, string> = { sell: "price_sell", buy: "price_buy" };
 
-/** Lowest and highest quarter of the range are "low" and "high". Below 2 % of the mean the price is flat. */
+/**
+ * "high": in the top quarter of the range AND above the median; "low": the bottom quarter AND below the
+ * median (a price that is the usual cap of the range is not called high). Below 2 % of the mean it is flat.
+ */
 const EDGE = 0.25;
 const FLAT_RELATIVE_RANGE = 0.02;
 
@@ -69,7 +74,10 @@ function verdictFor(
   const flat = s.mean > 0 && (s.high - s.low) / s.mean < FLAT_RELATIVE_RANGE;
   const pos = s.position_in_range;
   let verdict: Verdict = "normal";
-  if (!flat && pos !== null) verdict = pos >= 1 - EDGE ? "high" : pos <= EDGE ? "low" : "normal";
+  if (!flat && pos !== null) {
+    if (pos >= 1 - EDGE && s.current > s.median) verdict = "high";
+    else if (pos <= EDGE && s.current < s.median) verdict = "low";
+  }
   const who = side === "sell" ? "what this terminal pays" : "what this terminal charges";
   const base = `Based on ${n} points over a short window`;
   const flavour =
@@ -99,6 +107,9 @@ export function summarizeSide(rows: readonly Row[], side: Side, now: number): Si
   const low = Math.min(...prices);
   const high = Math.max(...prices);
   const mean = prices.reduce((a, b) => a + b, 0) / prices.length;
+  const ordered = [...prices].sort((a, b) => a - b);
+  const mid = Math.floor(ordered.length / 2);
+  const median = ordered.length % 2 ? ordered[mid] : (ordered[mid - 1] + ordered[mid]) / 2;
   const variance = prices.reduce((a, p) => a + (p - mean) ** 2, 0) / prices.length;
   const std = Math.sqrt(variance);
   const newest = pts[pts.length - 1];
@@ -114,6 +125,7 @@ export function summarizeSide(rows: readonly Row[], side: Side, now: number): Si
     low,
     high,
     mean: round(mean, 1),
+    median,
     std_dev: round(std, 1),
     volatility: round(mean > 0 ? std / mean : 0, 3),
     current: newest.price,
