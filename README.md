@@ -1,8 +1,13 @@
 # Star Citizen MCP (SCMCP)
 
-[![CI/CD](https://github.com/voidput/SCMCP/actions/workflows/main.yml/badge.svg)](https://github.com/voidput/SCMCP/actions/workflows/main.yml)
-[![Docker Image Version](https://img.shields.io/docker/v/voidput/scmcp?sort=semver)](https://hub.docker.com/r/voidput/scmcp)
-[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
+[![CI](https://github.com/ms-spown/sc-copilot-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/ms-spown/sc-copilot-mcp/actions/workflows/ci.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
+> **sc-copilot-mcp** is a fork of [voidput/SCMCP](https://github.com/voidput/SCMCP), being hardened and
+> extended (work in progress, documentation below still describes the upstream project).
+> The repository's `LICENSE` file is GPLv3; this fork is treated as GPLv3. Upstream's `package.json` and
+> README said ISC, which contradicts it - that question is open with the author. Nothing is published to
+> npm or Docker Hub from this fork: the `voidput/scmcp` image is the upstream author's, not ours.
 
 A Model Context Protocol (MCP) server providing real-time access to Star Citizen market data, trade routes, and wiki information. This MCP is designed to enable AI assistants like Claude and Gemini to seamlessly retrieve the latest Star Citizen trading data and lore directly into your chat!
 
@@ -48,6 +53,9 @@ A Model Context Protocol (MCP) server providing real-time access to Star Citizen
 | `SCMCP_BUILD_CACHE_DIR` | no | Where fetched dumps are cached (default `.build-cache/`) |
 | `SCMCP_GAME_DATA_DIR` | no | Directory of local `game-*.json` files, for the `sc_*_local` tools |
 | `SCMCP_SNAPSHOT_DIR` | no | Where wiki-API snapshots are written (default `.snapshots/`) |
+| `SCMCP_UEX_BASE_URL` | no | UEX API base (default `https://api.uexcorp.uk/2.0`). Must be https on `api.uexcorp.uk` or `api.uexcorp.space`, otherwise the server refuses to start |
+| `SCMCP_SCW_BASE_URL` | no | Star Citizen Wiki API base (default `https://api.star-citizen.wiki/api/v2`), same allowlist rule |
+| `SCMCP_SCT_BASE_URL` | no | Star Citizen Tools base (default `https://starcitizen.tools`), same allowlist rule |
 
 ## Installation & Local Development
 
@@ -89,35 +97,14 @@ npm start
 
 ## Docker
 
-Multi-arch images (`linux/amd64`, `linux/arm64`) are built, tested, and published
-to Docker Hub on every release.
-
-```bash
-docker pull voidput/scmcp           # latest release
-docker pull voidput/scmcp:1.2.3     # exact version
-docker pull voidput/scmcp:1.2       # latest patch of 1.2
-docker pull voidput/scmcp:1         # latest minor of 1.x
-
-docker run -e UEXTOKEN=your_token voidput/scmcp
-```
-
-Prereleases ship from branch name: `develop`/`dev` cut `X.Y.Z-beta.N` and move
-the `beta` tag, `next` cuts `X.Y.Z-next.N` and moves `next`. Prereleases never
-move `latest`, `:1` or `:1.2` — those stay on the newest stable build.
-
-```bash
-docker pull voidput/scmcp:beta            # newest develop/dev prerelease
-docker pull voidput/scmcp:1.3.0-beta.2    # exact prerelease
-```
-
-Every push to a release branch also publishes a `sha-<commit>` tag for the exact
-build, released or not. `:main` is kept alive as a straight alias of `:latest`
-(same image, same stable release) for anyone still pulling the old tag.
+No image is published for this fork. The `Dockerfile` is kept for building one locally
+(`docker build -t sc-copilot-mcp .`); do not pull `voidput/scmcp`, which is the upstream
+author's image and not built from this code.
 
 ## Credits & Data Sources
 
 SCMCP stores no game data of its own — every answer comes from somebody else's
-work. Each request carries a `SCMCP/<version> (+https://github.com/voidput/SCMCP)`
+work. Each request carries a `sc-copilot-mcp/<version> (+https://github.com/ms-spown/sc-copilot-mcp)`
 User-Agent so these projects can see who is calling.
 
 | Source | Used for | Terms |
@@ -143,13 +130,8 @@ registered trademarks of Cloud Imperium Rights LLC. All rights reserved.
 
 ## Release & Versioning
 
-This project uses `semantic-release` to automate versioning and changelog generation based on commit messages. Follow conventional commit standards (e.g., `feat:`, `fix:`) to trigger automated releases!
-
-| Branch | Channel | Version shape |
-| --- | --- | --- |
-| `main` | stable | `1.4.2` |
-| `develop`, `dev` | `beta` | `1.5.0-beta.1` |
-| `next` | `next` | `2.0.0-next.1` |
+Releases are manual in this fork: there is no semantic-release and nothing is published automatically.
+Conventional commit messages (`feat:`, `fix:`) are still welcome.
 
 ---
 
