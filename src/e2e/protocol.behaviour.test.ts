@@ -97,6 +97,11 @@ describe("Feature: Claude uses the Star Citizen tools", () => {
   });
 
   describe("Scenario: Claude connects and looks at what it can use", () => {
+    it("Given a connection, Then the server announces sc-copilot-mcp, the package name, not the old star-citizen-mcp", async () => {
+      await connect();
+      expect(client.getServerVersion()?.name).toBe("sc-copilot-mcp");
+    });
+
     it("Given no scoping, Then every tool is listed with a description and an input schema", async () => {
       await connect();
       const { tools } = await client.listTools();
@@ -128,7 +133,7 @@ describe("Feature: Claude uses the Star Citizen tools", () => {
       });
       expect(added.isError).toBeFalsy();
       const fleet = JSON.parse(text(await call("sc_fleet_get")));
-      expect(fleet.provenance).toMatchObject({ kind: "user", trust: "structured" });
+      expect(fleet.provenance).toMatchObject({ kind: "user", trust: "untrusted_text" });
       expect(fleet.data.ships[0]).toMatchObject({
         match: "found",
         resolved_as: "Drake Vulture",
