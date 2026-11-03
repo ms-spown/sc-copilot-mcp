@@ -117,8 +117,10 @@ What exists depends on what the player is doing:
 ### Present but not verified
 
 Oxygen, body temperature, intoxication level, radiation, PWR / COOL / MISL lights, hydrogen running low, an
-unbreathable atmosphere. They are returned under `unverified` or as events marked `unverified`. Do not reason
-from them.
+unbreathable atmosphere, the transformation state, the boost-related flight settings, the ship lights, gimbal lock.
+They are returned under `unverified` (in `sc_live_state` and in the dashboard's poll) or as events and conditions
+marked `unverified`, and the dashboard labels each one "non vérifié". Do not reason from them. The Coverage table
+below says, for every field of the stream, where it goes.
 
 ### Quirks the server handles for you
 
@@ -274,7 +276,7 @@ What becomes of every field of the stream. `poll.` is the answer of `sc_live_pol
 | Tool | Listed | Purpose |
 | --- | --- | --- |
 | `sc_live_status` | always | The state of the stream, why, and how to enable it |
-| `sc_live_state` | when `SC_TELEMETRY=on` | A snapshot with the age of the last frame and what is not available |
+| `sc_live_state` | when `SC_TELEMETRY=on` | A snapshot with the age of the last frame, the conditions of the moment and what is not available |
 | `sc_live_events` | when `SC_TELEMETRY=on` | Recent derived events, each marked `confirmed` or `unverified` |
 | `sc_live_dashboard` | when `SC_TELEMETRY=on` and the client can show Views | Opens the [live dashboard](#live-dashboard) in the conversation |
 | `sc_live_poll`, `sc_live_mark` | same | Used by the dashboard itself to refresh and to set session markers. Claude is told not to call them |
@@ -291,45 +293,101 @@ sending frames, and they are inferred, not reported by the game.
 
 ## Live dashboard
 
-An optional live view of the same stream, drawn inside the conversation: your ship, speed, hydrogen, health and
-the state of the stream at a glance, and, in full screen, instruments, warning lights, power flags, weapons by
-seat, countermeasures, vitals, recent events and a session timeline. It is an MCP App: a small page that this
-server provides and that the client renders next to the chat.
+An optional live view of the same stream, drawn inside the conversation. Compact: the ship, where it is, three dials
+(speed, hydrogen, health), the alerts and a one-line verdict ("all is well" or "watch this"). Full screen: a cockpit
+with the instruments on the left, the ship in the middle and the pilot on the right. It is an MCP App: a small page
+that this server provides and that the client renders next to the chat.
 
 - **Who shows it.** Claude Desktop is the host we tested (Microsoft Store build 4.4212.0, server declared in
   `claude_desktop_config.json`). **Claude Code and other text clients do not render it**: for them the three
   dashboard tools are not listed at all, so the model never sees them. The server lists them only when
   `SC_TELEMETRY=on` AND the client declared the MCP Apps extension at start. Other hosts that render MCP Apps
-  may work; we have not tried them.
+  may work; we have not tried them. The layout was iterated in a real browser against a fake host (360 to 2000 px,
+  light and dark); **it has not been seen inside Claude Desktop by us**.
 - **How to open it.** Switch the telemetry on (see above), restart Claude Desktop completely (quit it from the
-  tray, not only the window), then ask Claude to open the live dashboard. Claude calls `sc_live_dashboard`.
-  While it is open you can keep talking to Claude: it answers from `sc_live_state`, not from the page.
-- **Two modes.** Inline: a compact view with five data (ship, speed, hydrogen, health, balance), the state of the
-  stream and a band of recent alerts. Full screen (button in the page): the complete panel. The button asks the
-  host; if the host answers with another mode the page follows what it is told.
-- **Age and gaps.** Every value comes with the age of its frame, and everything turns grey when the stream is not
-  live. Nothing is invented: a missing field is shown as a dash, health 0 reads "down or dead", and one
-  collapsible line lists what the stream does not contain (cargo, position, shield level, hull, heat, ammo).
+  tray, not only the window), then ask Claude to open the live dashboard. Claude calls `sc_live_dashboard`, which
+  tells it not to open a second one while one is already open (`hint` in the result). While it is open you can
+  keep talking to Claude: it answers from `sc_live_state`, not from the page.
+- **Two modes.** Inline: a compact view. Full screen (button in the page): the cockpit. The button asks the host; if
+  the host answers with another mode the page follows what it is told.
+- **What the cockpit shows.** Instruments: a speed dial whose scale is deduced from the speeds seen and says so
+  (quantum travel is shown as "quantum mode" instead of flattening the scale), a G dial against the maximum the game
+  reports, altitude with the radar altitude, a vertical speed bar around zero, a compass only when the heading is
+  valid, and 60 second curves with their minimum and maximum. Energy: hydrogen with an estimated range, boost reserve
+  and output. The nine power flags as a diagram, the flight modes, the ten warning lights as an annunciator panel
+  (state in words, not only colour), weapons of your seat in one sentence plus a row each, countermeasures against
+  the highest count seen for this vehicle. Pilot: health, hunger and thirst dials, heart rate, gravity, outside
+  temperature, atmosphere, body position, role. One chronology of events and your own markers, with filters, a
+  session card, the route plan, and two foldable lines: the unverified values and what the stream does not contain.
+  Every datum can be pinned (a pin icon on hover or focus): it then appears in a bar under the header in both modes.
+- **A ship that is off.** When the powerplant is reported off, the page shows "Vaisseau éteint", dashes instead of
+  zeros, and adds nothing to the curves. Nothing is coloured red just because it is absent.
+- **Alerts of the moment (conditions).** `sc_live_poll` (and `sc_live_state`) carry a `conditions` array computed
+  from the current state, not from the history; the page shows it as coloured chips with the time they have lasted,
+  before the recent events: blue for information, amber for a warning, red for critical. A condition that is not
+  confirmed by the field test says "non vérifié".
+
+  | Condition | Level | When |
+  | --- | --- | --- |
+  | `shields_off` | info in quantum mode (`data.quantum`), otherwise warning | A shield power flag (generators or emitters) is off, the powerplant is on, the ship is not on the ground. Only for a ship that was seen with both on |
+  | `shields_down` | critical | The SHLD light is major |
+  | `powerplant_off` | critical | The powerplant flag is off. The other power conditions (engines, shields, weapons) are then not raised |
+  | `engines_off` | warning (info on the ground) | Powerplant on, engines flag off |
+  | `engines_damaged` | warning | THR light minor |
+  | `weapons_unpowered` | warning | WPN light major |
+  | `hostile_lock` | critical | RADR light major |
+  | `under_fire`, `proximity` | warning | HIT light, PROX light (not with the gear down) |
+  | `hydrogen_low` | warning, unverified | Below 15 percent |
+  | `boost_critical` | warning | The boost reports critical |
+  | `countermeasures_low`, `countermeasures_empty` | warning, critical | Same thresholds as the events (three bursts or fewer; none), for a kind that was seen with some |
+  | `health_low`, `down_or_dead` | warning, critical | Health under 30 percent; health 0 |
+  | `hunger_low`, `thirst_low` | info | Under 25 percent |
+  | `not_breathable` | critical, unverified | The atmosphere is reported as not breathable |
+  | `in_quantum`, `in_jump` | info | Quantum mode on; a jump in progress |
+
+  Measured on a real Aegis Harbinger (4.10.2): in quantum mode the SHLD light goes off and both shield power flags go
+  false, and everything comes back on arrival. Events `shields_powered_off` and `shields_powered_on` (confirmed,
+  debounced, silent at the baseline of a new vehicle) record it, the first with the quantum context. A ship that was
+  never seen with its shields on (a ship without shields, or a dashboard opened while already in quantum mode)
+  raises nothing for them: the trade-off is deliberate, to avoid a permanent false alarm.
+- **Age and gaps.** Every card shows the age of its frame, and everything turns grey when the stream is not live.
+  Nothing is invented: a missing field is shown as a dash, health 0 reads "down or dead", and one collapsible line
+  lists what the stream does not contain.
 - **Estimates are labelled.** Remaining hydrogen, hunger and thirst are straight-line estimates over the last
-  minutes, shown with their window. Pace (aUEC per hour) and flight time come from the balance change and from
-  take-off and landing events since the session marker. The balance change mixes purchases, rewards and fines, and
-  the game does not measure cargo: it is the only measure of a run.
+  minutes, shown with their window. The speed scale is deduced, not given by the game. Pace (aUEC per hour) appears
+  only while the balance is shown, from the balance change since the session marker.
 - **Route plan.** After `uex_get_trade_routes`, Claude may pass a `plan` (commodity, buy and sell terminals, SCU,
   expected profit, a short note) when it opens the dashboard. The page shows planned next to measured profit. The
   text is cleaned and capped (60 characters) and displayed as plain text.
 - **Balance privacy.** The balance is hidden in the page until you click "Afficher le solde". Only then does the
   page ask the server for it (`include_balance`). The balance is never put in the automatic summary that the
-  page may send to the model, nor in the fixed messages of the buttons, with one exception: the button "Route
-  avec mon solde et ce vaisseau" sends it in a message, says so in the text, and only when you press it.
-- **What the buttons do.** "Analyser ma situation", "Route avec mon solde et ce vaisseau" and "Bilan de
-  session" post a short fixed message in the conversation, as if you had typed it, asking Claude to use
-  `sc_live_state` and `sc_live_events`. Session markers (start, end, reset of the balance change) live in this
+  page may send to the model, nor in the fixed messages of the buttons, nor on the channel between dashboards (see
+  below), with one exception: the button "Route avec mon solde et ce vaisseau" sends it in a message, says so in the
+  text, and only when you press it.
+- **What the buttons do.** "Analyser ma situation", "Route avec mon solde et ce vaisseau" and "Bilan de session" post
+  a short fixed message in the conversation, as if you had typed it, asking Claude to use `sc_live_state` and
+  `sc_live_events`; a confirmation appears next to the buttons and clears itself. Session markers live in this
   server's memory. Nothing in the page sends anything to the game.
-- **Load.** The page polls about once a second while it is visible (never faster than twice a second), every 5
-  seconds when the stream is off or cut. It stops when the window is hidden or the View is scrolled out of view,
-  and gives up for good after 30 minutes away until you click "Reprendre". Claude Desktop keeps every dashboard it
-  opened in the conversation, so several can exist: the server answers all of them from one read, cached for half
-  a second.
+- **Several dashboards: the facts.** Each dashboard is a separate iframe with its own calls to `sc_live_poll`, once
+  a second while it is visible. Claude Desktop never unmounts the older ones. Server side nothing multiplies: one
+  answer is shared for half a second whatever the number of Views. But every View that was open and visible made its
+  own round trip to the host. Measured against the fake host, a minute of calls per second: 1, 3 and 5 dashboards
+  made 1.00, 3.00 and 5.00 calls per second before; they make 1.00 whatever the number now.
+- **Several dashboards: the fix.** Dashboards of one connector share an origin in Claude Desktop (documented by
+  Anthropic; not verified by us), so they announce themselves on a `BroadcastChannel` (no network: the content policy
+  of the page does not govern it). The most recent visible one is the leader and polls; the others stop calling the
+  server, show "Remplacé par un tableau de bord plus récent" with a "Reprendre ici" button, and keep showing the
+  leader's answer, shared about once a second. A hidden, scrolled-away or closed leader, or one silent for 6 seconds,
+  gives way to the next one. What comes over the channel is treated as untrusted: types, ranges and lengths are
+  checked, the answer is rebuilt field by field, the balance and the wallet events never leave a View, and only the
+  leader sends a summary to the model. Without `BroadcastChannel` the old behaviour applies and a dashboard away for
+  30 seconds retires. The model is also told not to open a second dashboard when one is open.
+- **Load.** The page polls about once a second while it is visible and leads (never faster than twice a second),
+  every 5 seconds when the stream is off or cut. It asks only for what it lacks: events newer than the last it holds,
+  the sections whose hash changed, and the list of what the stream lacks once. Measured on the made-up flight over
+  two minutes: 3810 bytes a second before, 2185 after. It stops when the window is hidden or scrolled out of view,
+  and retires after 30 minutes away until you click "Reprendre". Closing or hiding for good removes every timer,
+  listener and channel.
 - **No network, no package.** The page is one file inside this server: no CDN, no font, no request. It declares
   its own restrictive content policy and sets every text with `textContent`.
 
@@ -337,7 +395,9 @@ The dashboard shows what the stream shows and inherits every limit and risk of t
 approved by Cloud Imperium Games.
 
 A preview for people who work on the page: `npm run build`, then `node scripts/dashboard-preview.mjs`, then open
-the local address it prints (loopback, port 4173 by default). It plays a made-up flight against a fake host; no game and no Claude is involved.
+the local address it prints (loopback, port 4173 by default). It plays a made-up flight, including a full quantum
+jump, against a fake host; no game and no Claude is involved. Parameters: `t`, `theme`, `w`, `mode`, `scroll`,
+`forced`, `cut`, `plan`.
 
 ## Privacy
 

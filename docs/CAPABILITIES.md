@@ -193,8 +193,10 @@ What to know before you switch it on:
   the source as not configured. Other states are `waiting`, `game_without_telemetry`, `connected`, `live` and
   `incompatible`.
 - **A live dashboard, in Claude Desktop only.** `sc_live_dashboard` shows the stream as a small page in the
-  conversation, inline or in full screen, with the age of each value, what the stream lacks, a session timeline
-  and, if Claude passes a route plan, planned next to measured profit. Claude Code does not render it and never
+  conversation, inline (three dials, alerts, a verdict) or in full screen (a cockpit with dials, compass, power
+  diagram, warning lights, weapons, pilot vitals and one chronology), with the age of each value, the alerts of the
+  moment, what the stream lacks and, if Claude passes a route plan, planned next to measured profit. Several
+  dashboards share one stream of calls: only the most recent visible one polls. Claude Code does not render it and never
   lists its tools. The balance stays hidden in the page until you click. See
   [TELEMETRY.md](TELEMETRY.md#live-dashboard).
 - **Your balance is withheld by default.** Tool results become part of your conversation with Claude, which goes

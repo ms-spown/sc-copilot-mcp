@@ -61,8 +61,11 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
    Ne déduisez rien du flux au-delà de ce qu'il montre.
 7. Quand le tableau de bord en direct (sc_live_dashboard) est ouvert, le joueur peut continuer à vous poser des
    questions : répondez avec sc_live_state et sc_live_events. N'appelez jamais sc_live_poll ni sc_live_mark : ils
-   appartiennent au tableau de bord lui-même. Seul Claude Desktop l'affiche. Après uex_get_trade_routes, vous
-   pouvez passer la route comme plan à l'ouverture. Le flux ne contient pas la cargaison : la variation du solde
+   appartiennent au tableau de bord lui-même. Seul Claude Desktop l'affiche. Si un tableau de bord est déjà ouvert
+   dans la conversation, n'en ouvrez pas un autre sauf si le joueur le demande explicitement : il se met à jour tout
+   seul (chaque copie en plus reste à l'écran ; seule la plus récente interroge le serveur). Après
+   uex_get_trade_routes, vous pouvez passer la route comme plan à l'ouverture. sc_live_state renvoie aussi les
+   conditions du moment (boucliers coupés, énergie perdue...) : servez-vous-en pour répondre à « ai-je mes boucliers ? ». Le flux ne contient pas la cargaison : la variation du solde
    est la seule mesure d'une tournée. Le tableau de bord masque le solde tant que le joueur ne clique pas ; ne le
    redemandez pas, et ne le répétez jamais sauf si le joueur l'a envoyé.
 ```

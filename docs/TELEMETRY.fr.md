@@ -120,8 +120,10 @@ Ce qui existe dépend de ce que fait le joueur :
 ### Présent mais non vérifié
 
 Oxygène, température corporelle, niveau d'intoxication, radiation, voyants PWR / COOL / MISL, hydrogène bientôt
-épuisé, atmosphère irrespirable. Ils sont renvoyés sous `unverified` ou comme événements marqués `unverified`. Ne
-raisonnez pas à partir d'eux.
+épuisé, atmosphère irrespirable, état de transformation, réglages de vol liés au boost, phares du vaisseau,
+verrouillage des cardans. Ils sont renvoyés sous `unverified` (dans `sc_live_state` et dans le poll du tableau de
+bord) ou comme événements et conditions marqués `unverified`, et le tableau de bord étiquette chacun « non vérifié ».
+Ne raisonnez pas à partir d'eux. Le tableau de couverture plus bas dit, pour chaque champ du flux, ce qu'il devient.
 
 ### Particularités que le serveur gère pour vous
 
@@ -278,7 +280,7 @@ Ce que devient chaque champ du flux. `poll.` est la réponse de `sc_live_poll` (
 | Outil | Listé | Rôle |
 | --- | --- | --- |
 | `sc_live_status` | toujours | L'état du flux, pourquoi, et comment l'activer |
-| `sc_live_state` | quand `SC_TELEMETRY=on` | Un instantané avec l'âge de la dernière trame et ce qui n'est pas disponible |
+| `sc_live_state` | quand `SC_TELEMETRY=on` | Un instantané avec l'âge de la dernière trame, les conditions du moment et ce qui n'est pas disponible |
 | `sc_live_events` | quand `SC_TELEMETRY=on` | Les événements dérivés récents, chacun marqué `confirmed` ou `unverified` |
 | `sc_live_dashboard` | quand `SC_TELEMETRY=on` et que le client sait afficher des Views | Ouvre le [tableau de bord en direct](#tableau-de-bord-en-direct) dans la conversation |
 | `sc_live_poll`, `sc_live_mark` | idem | Utilisés par le tableau de bord lui-même pour se rafraîchir et poser des repères de session. Claude a pour consigne de ne pas les appeler |
@@ -293,51 +295,112 @@ tandis que le jeu envoyait des trames, et ils sont déduits, non rapportés par 
 
 ## Tableau de bord en direct
 
-Une vue en direct optionnelle du même flux, dessinée dans la conversation : votre vaisseau, la vitesse, l'hydrogène,
-la santé et l'état du flux en un coup d'œil, et, en plein écran, les instruments, les voyants d'alerte, les
-indicateurs d'alimentation, les armes par siège, les contre-mesures, les constantes vitales, les événements récents
-et une chronologie de session. C'est une MCP App : une petite page que ce serveur fournit et que le client affiche à
-côté du chat.
+Une vue en direct optionnelle du même flux, dessinée dans la conversation. Compacte : le vaisseau, où il se trouve,
+trois cadrans (vitesse, hydrogène, santé), les alertes et un verdict en une ligne (« Tout va bien » ou « À surveiller
+»). En plein écran : un cockpit, avec les instruments à gauche, le vaisseau au centre et le pilote à droite. C'est
+une MCP App : une petite page que ce serveur fournit et que le client affiche à côté du chat.
 
-- **Qui l'affiche.** Claude Desktop est l'hôte que nous avons testé (version Microsoft Store 4.4212.0, serveur déclaré
-  dans `claude_desktop_config.json`). **Claude Code et les autres clients en mode texte ne l'affichent pas** : pour
-  eux, les trois outils du tableau de bord ne sont pas listés du tout, donc le modèle ne les voit jamais. Le serveur
-  ne les liste que lorsque `SC_TELEMETRY=on` ET que le client a déclaré l'extension MCP Apps au démarrage. D'autres
-  hôtes qui affichent les MCP Apps peuvent fonctionner ; nous ne les avons pas essayés.
+- **Qui l'affiche.** Claude Desktop est l'hôte que nous avons testé (version Microsoft Store 4.4212.0, serveur
+  déclaré dans `claude_desktop_config.json`). **Claude Code et les autres clients en mode texte ne l'affichent pas** :
+  pour eux, les trois outils du tableau de bord ne sont pas listés du tout, donc le modèle ne les voit jamais. Le
+  serveur ne les liste que lorsque `SC_TELEMETRY=on` ET que le client a déclaré l'extension MCP Apps au démarrage.
+  D'autres hôtes qui affichent les MCP Apps peuvent fonctionner ; nous ne les avons pas essayés. La mise en page a été
+  itérée dans un vrai navigateur face à un hôte factice (360 à 2000 px, clair et sombre) ; **nous ne l'avons pas vue
+  dans Claude Desktop**.
 - **Comment l'ouvrir.** Activez la télémétrie (voir plus haut), redémarrez complètement Claude Desktop (quittez-le
   depuis la zone de notification, pas seulement la fenêtre), puis demandez à Claude d'ouvrir le tableau de bord en
-  direct. Claude appelle `sc_live_dashboard`. Tant qu'il est ouvert, vous pouvez continuer à parler à Claude : il
-  répond à partir de `sc_live_state`, pas à partir de la page.
-- **Deux modes.** En ligne : une vue compacte avec cinq données (vaisseau, vitesse, hydrogène, santé, solde), l'état
-  du flux et une bande des alertes récentes. En plein écran (bouton dans la page) : le panneau complet. Le bouton
-  interroge l'hôte ; si l'hôte répond avec un autre mode, la page suit ce qu'on lui dit.
-- **Âge et lacunes.** Chaque valeur est accompagnée de l'âge de sa trame, et tout passe en gris quand le flux n'est
-  pas en direct. Rien n'est inventé : un champ manquant s'affiche sous la forme d'un tiret, une santé à 0 se lit
-  « à terre ou mort », et une ligne repliable énumère ce que le flux ne contient pas (cargaison, position, niveau des
-  boucliers, coque, chaleur, munitions).
-- **Les estimations sont signalées.** L'hydrogène restant, la faim et la soif sont des estimations en ligne droite sur
-  les dernières minutes, affichées avec leur fenêtre. Le rythme (aUEC par heure) et le temps de vol viennent de la
-  variation du solde et des événements de décollage et d'atterrissage depuis le repère de session. La variation du
-  solde mêle achats, récompenses et amendes, et le jeu ne mesure pas la cargaison : c'est la seule mesure d'une
-  tournée.
-- **Plan de route.** Après `uex_get_trade_routes`, Claude peut passer un `plan` (marchandise, terminaux d'achat et de
-  vente, SCU, profit attendu, une courte note) à l'ouverture du tableau de bord. La page montre le profit prévu à
+  direct. Claude appelle `sc_live_dashboard`, dont le résultat lui dit de ne pas en ouvrir un second tant qu'un est
+  ouvert (`hint`). Tant qu'il est ouvert, vous pouvez continuer à parler à Claude : il répond à partir de
+  `sc_live_state`, pas à partir de la page.
+- **Deux modes.** En ligne : une vue compacte. En plein écran (bouton dans la page) : le cockpit. Le bouton interroge
+  l'hôte ; si l'hôte répond avec un autre mode, la page suit ce qu'on lui dit.
+- **Ce que montre le cockpit.** Instruments : un cadran de vitesse dont l'échelle est déduite des vitesses vues et le
+  dit (le voyage quantique s'affiche « mode quantique » au lieu d'écraser l'échelle), un cadran de force G face au
+  maximum que le jeu indique, l'altitude avec l'altitude radar, une barre de vitesse verticale autour de zéro, une
+  boussole seulement quand le cap est valide, et des courbes de 60 secondes avec leur minimum et leur maximum.
+  Énergie : l'hydrogène avec une autonomie estimée, la réserve et la sortie du boost. Les neuf indicateurs
+  d'alimentation en schéma, les modes de vol, les dix voyants en panneau d'annonciateurs (l'état en toutes lettres,
+  pas seulement en couleur), les armes de votre siège en une phrase puis une ligne chacune, les contre-mesures face au
+  plus haut niveau vu pour ce vaisseau. Pilote : cadrans de santé, faim et soif, rythme cardiaque, gravité,
+  température extérieure, atmosphère, position du corps, rôle. Une seule chronologie des événements et de vos repères,
+  avec des filtres, une carte de session, le plan de route, et deux lignes repliables : les valeurs non vérifiées et
+  ce que le flux ne contient pas. Chaque donnée peut être épinglée (icône d'épingle au survol ou au focus) : elle
+  apparaît alors dans une barre sous l'en-tête, dans les deux modes.
+- **Un vaisseau éteint.** Quand la centrale est signalée hors service, la page affiche « Vaisseau éteint », des
+  tirets à la place des zéros, et n'ajoute rien aux courbes. Rien n'est coloré en rouge simplement parce que c'est
+  absent.
+- **Alertes du moment (conditions).** `sc_live_poll` (et `sc_live_state`) portent un tableau `conditions` calculé à
+  partir de l'état courant, pas de l'historique ; la page l'affiche en puces colorées avec leur durée, avant les
+  événements récents : bleu pour l'information, ambre pour l'avertissement, rouge pour le critique. Une condition que
+  le test terrain n'a pas confirmée porte « non vérifié ».
+
+  | Condition | Niveau | Quand |
+  | --- | --- | --- |
+  | `shields_off` | info en mode quantique (`data.quantum`), sinon avertissement | Un indicateur d'alimentation de bouclier (générateurs ou émetteurs) est coupé, la centrale est allumée, le vaisseau n'est pas au sol. Seulement pour un vaisseau vu une fois avec les deux allumés |
+  | `shields_down` | critique | Le voyant SHLD est majeur |
+  | `powerplant_off` | critique | L'indicateur de centrale est coupé. Les autres conditions d'alimentation (moteurs, boucliers, armes) ne sont alors pas levées |
+  | `engines_off` | avertissement (info au sol) | Centrale allumée, moteurs coupés |
+  | `engines_damaged` | avertissement | Voyant THR mineur |
+  | `weapons_unpowered` | avertissement | Voyant WPN majeur |
+  | `hostile_lock` | critique | Voyant RADR majeur |
+  | `under_fire`, `proximity` | avertissement | Voyant HIT, voyant PROX (pas train sorti) |
+  | `hydrogen_low` | avertissement, non vérifié | Sous 15 pour cent |
+  | `boost_critical` | avertissement | Le boost signale critique |
+  | `countermeasures_low`, `countermeasures_empty` | avertissement, critique | Mêmes seuils que les événements (trois salves ou moins ; aucune), pour un type vu avec du stock |
+  | `health_low`, `down_or_dead` | avertissement, critique | Santé sous 30 pour cent ; santé 0 |
+  | `hunger_low`, `thirst_low` | info | Sous 25 pour cent |
+  | `not_breathable` | critique, non vérifié | L'atmosphère est signalée non respirable |
+  | `in_quantum`, `in_jump` | info | Mode quantique actif ; saut en cours |
+
+  Mesuré sur un vrai Aegis Harbinger (4.10.2) : en mode quantique le voyant SHLD s'éteint et les deux indicateurs
+  d'alimentation des boucliers passent à faux, et tout revient à l'arrivée. Les événements `shields_powered_off` et
+  `shields_powered_on` (confirmés, avec anti-rebond, silencieux à la référence d'un nouveau vaisseau) le consignent,
+  le premier avec le contexte quantique. Un vaisseau jamais vu avec ses boucliers allumés (un vaisseau sans boucliers,
+  ou un tableau de bord ouvert alors qu'on est déjà en mode quantique) ne lève rien à leur sujet : ce compromis est
+  voulu, pour éviter une fausse alerte permanente.
+- **Âge et lacunes.** Chaque carte indique l'âge de sa trame, et tout passe en gris quand le flux n'est pas en
+  direct. Rien n'est inventé : un champ manquant s'affiche sous la forme d'un tiret, une santé à 0 se lit « à terre ou
+  mort », et une ligne repliable énumère ce que le flux ne contient pas.
+- **Les estimations sont signalées.** L'hydrogène restant, la faim et la soif sont des estimations en ligne droite
+  sur les dernières minutes, affichées avec leur fenêtre. L'échelle de vitesse est déduite, pas donnée par le jeu. Le
+  rythme (aUEC par heure) n'apparaît que lorsque le solde est affiché, à partir de la variation depuis le repère de
+  session.
+- **Plan de route.** Après `uex_get_trade_routes`, Claude peut passer un `plan` (marchandise, terminaux d'achat et
+  de vente, SCU, profit attendu, une courte note) à l'ouverture du tableau de bord. La page montre le profit prévu à
   côté du profit mesuré. Le texte est nettoyé et plafonné (60 caractères) et affiché en texte brut.
 - **Confidentialité du solde.** Le solde est masqué dans la page tant que vous ne cliquez pas sur « Afficher le
   solde ». C'est seulement alors que la page le demande au serveur (`include_balance`). Le solde n'est jamais mis
-  dans le résumé automatique que la page peut envoyer au modèle, ni dans les messages fixes des boutons, avec une
-  exception : le bouton « Route avec mon solde et ce vaisseau » l'envoie dans un message, le dit dans le texte, et
-  seulement quand vous l'appuyez.
+  dans le résumé automatique que la page peut envoyer au modèle, ni dans les messages fixes des boutons, ni sur le
+  canal entre tableaux de bord (voir plus bas), avec une exception : le bouton « Route avec mon solde et ce vaisseau »
+  l'envoie dans un message, le dit dans le texte, et seulement quand vous l'appuyez.
 - **Ce que font les boutons.** « Analyser ma situation », « Route avec mon solde et ce vaisseau » et « Bilan de
   session » publient un court message fixe dans la conversation, comme si vous l'aviez tapé, demandant à Claude
-  d'utiliser `sc_live_state` et `sc_live_events`. Les repères de session (début, fin, remise à zéro de la variation
-  du solde) vivent dans la mémoire de ce serveur. Rien dans la page n'envoie quoi que ce soit au jeu.
-- **Charge.** La page interroge le serveur environ une fois par seconde tant qu'elle est visible (jamais plus de
-  deux fois par seconde), toutes les 5 secondes quand le flux est arrêté ou coupé. Elle s'arrête quand la fenêtre est
-  masquée ou que la View sort de l'écran, et abandonne définitivement après 30 minutes d'absence jusqu'à ce que vous
-  cliquiez sur « Reprendre ». Claude Desktop conserve chaque tableau de bord qu'il a ouvert dans la conversation, il
-  peut donc en exister plusieurs : le serveur les sert tous à partir d'une seule lecture, mise en cache pendant une
-  demi-seconde.
+  d'utiliser `sc_live_state` et `sc_live_events` ; une confirmation apparaît à côté des boutons et s'efface seule.
+  Les repères de session vivent dans la mémoire de ce serveur. Rien dans la page n'envoie quoi que ce soit au jeu.
+- **Plusieurs tableaux de bord : les faits.** Chaque tableau de bord est une iframe distincte qui fait ses propres
+  appels à `sc_live_poll`, une fois par seconde tant qu'elle est visible. Claude Desktop ne démonte jamais les plus
+  anciennes. Côté serveur rien ne se multiplie : une seule réponse est partagée pendant une demi-seconde quel que soit
+  le nombre de Views. Mais chaque View ouverte et visible faisait son propre aller-retour avec l'hôte. Mesuré face à
+  l'hôte factice, sur une minute, en appels par seconde : 1, 3 et 5 tableaux de bord faisaient 1,00, 3,00 et 5,00
+  appels par seconde avant ; ils en font 1,00 quel que soit leur nombre.
+- **Plusieurs tableaux de bord : la correction.** Les tableaux de bord d'un même connecteur partagent une origine
+  dans Claude Desktop (documenté par Anthropic ; non vérifié par nous), ils s'annoncent donc sur un
+  `BroadcastChannel` (pas de réseau : la politique de contenu de la page ne le régit pas). Le plus récent visible est
+  le leader et interroge ; les autres cessent d'appeler le serveur, affichent « Remplacé par un tableau de bord plus
+  récent » avec un bouton « Reprendre ici », et continuent d'afficher la réponse du leader, partagée environ une fois
+  par seconde. Un leader masqué, sorti de l'écran, fermé, ou silencieux depuis 6 secondes cède la place au suivant. Ce
+  qui arrive sur le canal est traité comme non fiable : types, bornes et longueurs sont vérifiés, la réponse est
+  reconstruite champ par champ, le solde et les événements de portefeuille ne quittent jamais une View, et seul le
+  leader envoie un résumé au modèle. Sans `BroadcastChannel`, l'ancien comportement s'applique et un tableau de bord
+  absent depuis 30 secondes se retire. Le modèle a aussi pour consigne de ne pas ouvrir un second tableau de bord
+  quand un est ouvert.
+- **Charge.** La page interroge le serveur environ une fois par seconde tant qu'elle est visible et leader (jamais
+  plus de deux fois par seconde), toutes les 5 secondes quand le flux est arrêté ou coupé. Elle ne demande que ce qui
+  lui manque : les événements plus récents que le dernier qu'elle détient, les sections dont l'empreinte a changé, et
+  une seule fois la liste de ce que le flux ne contient pas. Mesuré sur le vol fictif pendant deux minutes : 3810
+  octets par seconde avant, 2185 après. Elle s'arrête quand la fenêtre est masquée ou que la View sort de l'écran, et
+  se retire après 30 minutes d'absence jusqu'à ce que vous cliquiez sur « Reprendre ». La fermeture ou le masquage
+  définitif retire tous les minuteurs, écouteurs et le canal.
 - **Pas de réseau, pas de paquet.** La page est un seul fichier à l'intérieur de ce serveur : pas de CDN, pas de
   police, pas de requête. Elle déclare sa propre politique de contenu restrictive et définit chaque texte avec
   `textContent`.
@@ -346,8 +409,9 @@ Le tableau de bord montre ce que montre le flux et hérite de chaque limite et d
 ne prétendons pas qu'il soit approuvé par Cloud Imperium Games.
 
 Un aperçu pour les personnes qui travaillent sur la page : `npm run build`, puis `node scripts/dashboard-preview.mjs`,
-puis ouvrez l'adresse locale qu'il affiche (boucle locale, port 4173 par défaut). Il joue un vol fictif face à un hôte
-factice ; ni jeu ni Claude n'interviennent.
+puis ouvrez l'adresse locale qu'il affiche (boucle locale, port 4173 par défaut). Il joue un vol fictif, saut
+quantique complet compris, face à un hôte factice ; ni jeu ni Claude n'interviennent. Paramètres : `t`, `theme`,
+`w`, `mode`, `scroll`, `forced`, `cut`, `plan`.
 
 ## Confidentialité
 
