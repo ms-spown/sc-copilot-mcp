@@ -31,8 +31,16 @@ if ("error" in args) {
   process.exit(2);
 }
 
+// A failure in the middle (PowerShell timing out, a file that cannot be written) ends with a message, not a stack.
+// What was already done is recorded in the marker, so `disable` can still undo it.
+const runGuarded = (a, d) =>
+  runTelemetry(a, d).catch((error) => {
+    console.error(`Failed: ${error.message}\nRun "npm run telemetry -- status" to see where things stand.`);
+    process.exit(1);
+  });
+
 const win = process.platform === "win32";
-const result = await runTelemetry(args, {
+const result = await runGuarded(args, {
   platform: process.platform,
   store: win ? new WindowsUserEnvStore() : null,
   probe: probeLoopbackPort,
