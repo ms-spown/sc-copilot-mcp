@@ -488,7 +488,7 @@ Recent events derived from the live telemetry (took off, landed, quantum jump, l
 
 ### sc_live_dashboard
 
-Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance stays hidden until the player clicks). Call it when the player asks to see their ship or session live. Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Waiting or connected means no data yet (menus, loading): never say the game is not running or that something is wrong, no troubleshooting unless it shows a game launched without telemetry or an unknown format. On foot only character data exists; ship instruments need the player seated in a ship. Optional plan: after uex_get_trade_routes, pass the route so the View compares planned and measured profit.
+Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance stays hidden until the player clicks). Call it when the player asks to see their ship or session live. If a dashboard is already open in this conversation, do not open it again unless the player explicitly asks for a new one: it updates by itself, and each extra copy stays on screen (only the most recent one calls the server, the others show a banner). Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Waiting or connected means no data yet (menus, loading): never say the game is not running or that something is wrong, no troubleshooting unless it shows a game launched without telemetry or an unknown format. On foot only character data exists; ship instruments need the player seated in a ship. Optional plan: after uex_get_trade_routes, pass the route so the View compares planned and measured profit.
 
 *Source:* game telemetry (local, 127.0.0.1) · *Kind:* local_telemetry · *Trust:* structured · *Profiles:* local
 
@@ -505,6 +505,9 @@ For the dashboard View only, not for the model: current telemetry state, recent 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `include_balance` | boolean | no | Include the aUEC balance and its change. Default false. |
+| `include_static` | boolean | no | Include the list of what the stream never contains. The View asks once. |
+| `since_seq` | number | no | The newest event number the View holds: only newer events come back. |
+| `have` | object | no | Hashes (the `hash` of a previous answer) of the sections the View holds; a section with the same hash is left out and listed in `unchanged`. |
 
 ### sc_live_mark
 

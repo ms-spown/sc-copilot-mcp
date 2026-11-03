@@ -11,13 +11,23 @@ import { createFakeHost, type FakeHost } from "./fakeHost.js";
 import { Scenario } from "./scenario.js";
 
 export class FakeNode {
+  /** Every change made to any node (text, attribute, style, class, child): the cost of a render. */
+  static writes = 0;
   children: FakeNode[] = [];
   attrs: Record<string, string> = {};
-  className = "";
+  private cls = "";
+  get className(): string {
+    return this.cls;
+  }
+  set className(value: string) {
+    FakeNode.writes++;
+    this.cls = value;
+  }
   listeners: Record<string, ((event: unknown) => void)[]> = {};
   style = {
     props: {} as Record<string, string>,
     setProperty(name: string, value: string) {
+      FakeNode.writes++;
       this.props[name] = value;
     },
   };
@@ -31,6 +41,7 @@ export class FakeNode {
     return this.text + this.children.map((c) => c.textContent).join("");
   }
   set textContent(value: string) {
+    FakeNode.writes++;
     this.text = String(value);
     this.children = [];
   }
@@ -50,11 +61,13 @@ export class FakeNode {
     return this.children[0] ?? null;
   }
   appendChild(child: FakeNode): FakeNode {
+    FakeNode.writes++;
     this.children.push(child);
     child.parentNode = this;
     return child;
   }
   setAttribute(name: string, value: string): void {
+    FakeNode.writes++;
     this.attrs[name] = String(value);
   }
   getAttribute(name: string): string | null {
@@ -62,6 +75,9 @@ export class FakeNode {
   }
   addEventListener(type: string, fn: (event: unknown) => void): void {
     (this.listeners[type] ??= []).push(fn);
+  }
+  removeEventListener(type: string, fn: (event: unknown) => void): void {
+    this.listeners[type] = (this.listeners[type] ?? []).filter((l) => l !== fn);
   }
   click(): void {
     for (const fn of this.listeners["click"] ?? []) fn({ target: this });
@@ -89,6 +105,10 @@ export function visibleText(root: FakeNode): string {
     if (n.attrs["data-hidden"] === "1") return;
     // The style sheet hides the full-screen cards in the compact view.
     if (n.className === "full" && !fullscreen) return;
+    // ... and hides the compact view in full screen.
+    if (n.className.split(" ").includes("inline") && fullscreen) return;
+    // ... and the toast near the header, which only the compact view has room for.
+    if (n.className.split(" ").includes("toast-top") && fullscreen) return;
     if (n.children.length === 0) {
       if (n.textContent) parts.push(n.textContent);
       return;
@@ -118,6 +138,97 @@ export function findAll(root: FakeNode, predicate: (n: FakeNode) => boolean): Fa
 
 type TimerEntry = { id: number; at: number; fn: () => void; every?: number };
 
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+/** A virtual clock with its timers, shareable by several pages so that Views of one conversation see one time. */
+export class VirtualClock {
+  now: number;
+  timers: TimerEntry[] = [];
+  private nextTimer = 1;
+  constructor(epoch: number) {
+    this.now = epoch;
+  }
+  add(fn: () => void, ms: number, every?: number): number {
+    const id = this.nextTimer++;
+    this.timers.push({ id, at: this.now + ms, fn, ...(every ? { every } : {}) });
+    return id;
+  }
+  clear(id: number): void {
+    const i = this.timers.findIndex((t) => t.id === id);
+    if (i >= 0) this.timers.splice(i, 1);
+  }
+  async advance(ms: number): Promise<void> {
+    const target = this.now + ms;
+    for (;;) {
+      this.timers.sort((a, b) => a.at - b.at || a.id - b.id);
+      const next = this.timers[0];
+      if (!next || next.at > target) break;
+      this.now = Math.max(this.now, next.at);
+      if (next.every) next.at += next.every;
+      else this.timers.shift();
+      next.fn();
+      await flush();
+    }
+    this.now = target;
+    await flush();
+  }
+}
+
+class FakeChannel {
+  private listeners: ((event: { data: unknown }) => void)[] = [];
+  closed = false;
+  constructor(
+    readonly bus: FakeBus,
+    readonly name: string,
+  ) {
+    bus.channels.add(this);
+  }
+  postMessage(data: unknown): void {
+    if (this.closed) throw new Error("postMessage on a closed channel");
+    this.bus.log.push({ name: this.name, data });
+    this.bus.deliver(this.name, data, this);
+  }
+  addEventListener(type: string, fn: (event: { data: unknown }) => void): void {
+    if (type === "message") this.listeners.push(fn);
+  }
+  removeEventListener(type: string, fn: (event: { data: unknown }) => void): void {
+    this.listeners = this.listeners.filter((l) => l !== fn);
+  }
+  close(): void {
+    this.closed = true;
+    this.bus.channels.delete(this);
+  }
+  receive(data: unknown): void {
+    for (const fn of this.listeners) fn({ data });
+  }
+}
+
+/** A BroadcastChannel bus shared by the pages of one test: same name, other channels, asynchronous, cloned. */
+export class FakeBus {
+  channels = new Set<FakeChannel>();
+  /** Everything ever posted, as the pages posted it. */
+  log: { name: string; data: unknown }[] = [];
+  get open(): number {
+    return this.channels.size;
+  }
+  deliver(name: string, data: unknown, from: FakeChannel | null): void {
+    const copy = JSON.stringify(data);
+    for (const c of [...this.channels]) {
+      if (c === from || c.name !== name) continue;
+      queueMicrotask(() => {
+        if (!c.closed) c.receive(JSON.parse(copy));
+      });
+    }
+  }
+  /** A message from some other page of the same origin that is not one of ours. */
+  inject(name: string, data: unknown): void {
+    this.deliver(name, data, null);
+  }
+  create(name: string): FakeChannel {
+    return new FakeChannel(this, name);
+  }
+}
+
 export interface PageWorld {
   host: FakeHost;
   scenario: Scenario;
@@ -140,6 +251,11 @@ export interface PageWorld {
   setHidden: (hidden: boolean) => void;
   setIntersecting: (on: boolean) => void;
   pendingTimers: () => number;
+  /** Listeners and observers still registered by the View (window, document, observers). */
+  listenerCount: () => number;
+  bus: FakeBus | null;
+  /** The page is being hidden for good. */
+  firePageHide: () => void;
 }
 
 export interface WorldOptions {
@@ -148,6 +264,12 @@ export interface WorldOptions {
   scenario?: Scenario;
   /** Skip the automatic ui/initialize answer (never needed today). */
   start?: number;
+  /** Share a clock between several pages (Views of one conversation). */
+  clock?: VirtualClock;
+  /** The BroadcastChannel bus: omitted = a private one, null = the browser has no BroadcastChannel. */
+  bus?: FakeBus | null;
+  /** The host answers every poll in full (the behaviour before the delta answers), for measuring. */
+  legacyFullPolls?: boolean;
 }
 
 /**
@@ -166,18 +288,16 @@ export function extractElement(html: string, tag: string): string | null {
   return html.slice(openEnd + 1, close);
 }
 
-const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
-
 export async function startPage(options: WorldOptions = {}): Promise<PageWorld> {
   const scenario = options.scenario ?? new Scenario();
-  const clock = { now: scenario.epoch };
-  const timers: TimerEntry[] = [];
-  let nextTimer = 1;
+  const vclock = options.clock ?? new VirtualClock(scenario.epoch);
+  const clock = vclock;
+  const bus = options.bus === undefined ? new FakeBus() : options.bus;
   const posted: any[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
 
   const listeners: Record<string, ((event: unknown) => void)[]> = {};
   const docListeners: Record<string, (() => void)[]> = {};
-  const observers: { kind: string; cb: (entries: unknown[]) => void }[] = [];
+  const observers: { kind: string; cb: (entries: unknown[]) => void; live: boolean }[] = [];
 
   const parent = {
     postMessage(message: Record<string, unknown>) {
@@ -195,34 +315,51 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     addEventListener(type: string, fn: (event: unknown) => void) {
       (listeners[type] ??= []).push(fn);
     },
+    removeEventListener(type: string, fn: (event: unknown) => void) {
+      listeners[type] = (listeners[type] ?? []).filter((l) => l !== fn);
+    },
     setTimeout(fn: () => void, ms: number) {
-      const id = nextTimer++;
-      timers.push({ id, at: clock.now + ms, fn });
-      return id;
+      return vclock.add(fn, ms);
     },
     clearTimeout(id: number) {
-      const i = timers.findIndex((t) => t.id === id);
-      if (i >= 0) timers.splice(i, 1);
+      vclock.clear(id);
     },
     setInterval(fn: () => void, ms: number) {
-      const id = nextTimer++;
-      timers.push({ id, at: clock.now + ms, fn, every: ms });
-      return id;
+      return vclock.add(fn, ms, ms);
     },
     clearInterval(id: number) {
-      win.clearTimeout(id);
+      vclock.clear(id);
     },
+    ...(bus
+      ? {
+          BroadcastChannel: class {
+            constructor(name: string) {
+              return bus!.create(name);
+            }
+          },
+        }
+      : {}),
     IntersectionObserver: class {
+      private entry: (typeof observers)[number];
       constructor(cb: (entries: unknown[]) => void) {
-        observers.push({ kind: "intersection", cb });
+        this.entry = { kind: "intersection", cb, live: true };
+        observers.push(this.entry);
       }
       observe() {}
+      disconnect() {
+        this.entry.live = false;
+      }
     },
     ResizeObserver: class {
+      private entry: (typeof observers)[number];
       constructor(cb: (entries: unknown[]) => void) {
-        observers.push({ kind: "resize", cb });
+        this.entry = { kind: "resize", cb, live: true };
+        observers.push(this.entry);
       }
       observe() {}
+      disconnect() {
+        this.entry.live = false;
+      }
     },
   };
 
@@ -238,6 +375,9 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     addEventListener(type: string, fn: () => void) {
       (docListeners[type] ??= []).push(fn);
     },
+    removeEventListener(type: string, fn: () => void) {
+      docListeners[type] = (docListeners[type] ?? []).filter((l) => l !== fn);
+    },
     dispatch(type: string) {
       for (const fn of docListeners[type] ?? []) fn();
     },
@@ -247,6 +387,7 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     scenario,
     theme: options.theme,
     availableDisplayModes: options.modes,
+    legacyFullPolls: options.legacyFullPolls,
     deliver: (message) => fireMessage(message, parent),
   });
 
@@ -260,21 +401,7 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     }
   }
 
-  const advance = async (ms: number) => {
-    const target = clock.now + ms;
-    for (;;) {
-      timers.sort((a, b) => a.at - b.at || a.id - b.id);
-      const next = timers[0];
-      if (!next || next.at > target) break;
-      clock.now = Math.max(clock.now, next.at);
-      if (next.every) next.at += next.every;
-      else timers.shift();
-      next.fn();
-      await flush();
-    }
-    clock.now = target;
-    await flush();
-  };
+  const advance = (ms: number) => vclock.advance(ms);
 
   const html = dashboardHtml();
   const script = extractElement(html, "script");
@@ -301,10 +428,18 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
       doc.dispatch("visibilitychange");
     },
     setIntersecting(on) {
-      for (const o of observers.filter((x) => x.kind === "intersection")) {
+      for (const o of observers.filter((x) => x.kind === "intersection" && x.live)) {
         o.cb([{ isIntersecting: on }]);
       }
     },
-    pendingTimers: () => timers.length,
+    pendingTimers: () => vclock.timers.length,
+    firePageHide() {
+      for (const fn of [...(listeners["pagehide"] ?? [])]) fn({});
+    },
+    listenerCount: () =>
+      Object.values(listeners).reduce((n, l) => n + l.length, 0) +
+      Object.values(docListeners).reduce((n, l) => n + l.length, 0) +
+      observers.filter((o) => o.live).length,
+    bus,
   };
 }

@@ -17,6 +17,8 @@ import type {
 import {
   buildPoll,
   summarizeSession,
+  tailorPoll,
+  type PollRequest,
   type PollResult,
   type SessionMarker,
   type SessionState,
@@ -115,14 +117,14 @@ export function frameAt(t: number): Frame | null {
         life_support: true,
         gravity_generators: true,
         sensors: true,
-        shield_generators: true,
-        shield_emitters: !shieldsDown,
+        shield_generators: !quantum,
+        shield_emitters: !quantum,
       },
       annunciators: {
-        pwr: light("off"),
+        pwr: light("nominal"),
         wpn: light("minor_on"),
-        thr: light(jump ? "major_on" : "off"),
-        shld: light(shieldsDown ? "major_on" : "off"),
+        thr: light(t >= 50 && t < 55 ? "major_on" : "nominal"),
+        shld: light(shieldsDown ? "major_on" : quantum ? "off" : "nominal"),
         cool: light("off"),
         qdrv: light(quantum ? "nominal" : "off"),
         radr: light(lock ? "major_on" : "off"),
@@ -259,7 +261,10 @@ export class Scenario {
   }
 
   /** What sc_live_poll would answer at the current virtual time. */
-  poll(includeBalance: boolean): PollResult {
+  poll(
+    includeBalance: boolean,
+    request: Omit<PollRequest, "includeBalance"> = { includeStatic: true },
+  ): PollResult {
     const keep = (e: { type: string }) => includeBalance || e.type !== "uec_changed";
     const status = this.status();
     const snapshot = this.snapshot();
@@ -285,7 +290,10 @@ export class Scenario {
       includeBalance,
       nowMs: this.now,
     });
-    return this.forced === "off" ? { ...result, enabled: false } : result;
+    return tailorPoll(this.forced === "off" ? { ...result, enabled: false } : result, {
+      includeBalance,
+      ...request,
+    });
   }
 
   /** sc_live_mark. */

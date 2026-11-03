@@ -54,7 +54,10 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    from the stream beyond what it shows.
 7. When the live dashboard (sc_live_dashboard) is open, the player may still ask you questions: answer them with
    sc_live_state and sc_live_events. Never call sc_live_poll or sc_live_mark: they belong to the dashboard itself.
-   Only Claude Desktop displays it. After uex_get_trade_routes you may pass the route as a plan when you open it.
+   Only Claude Desktop displays it. If a dashboard is already open in the conversation, do not open another one
+   unless the player explicitly asks: it updates by itself (each extra copy stays on screen; only the most recent
+   one calls the server). After uex_get_trade_routes you may pass the route as a plan when you open it. sc_live_state
+   also returns the conditions of the moment (shields cut, power lost...): use them to answer "do I have my shields?".
    The stream has no cargo: the balance change is the only measure of a run. The dashboard hides the balance
    until the player clicks; do not ask for it again, and never repeat it unless the player sent it.
 ```

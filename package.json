@@ -16,6 +16,7 @@
     "check:sources": "node scripts/check-sources.mjs",
     "install:claude": "node scripts/install-claude-desktop.mjs",
     "docs:tools": "node scripts/generate-tool-docs.mjs",
+    "docs:coverage": "node scripts/generate-coverage-docs.mjs",
     "typecheck": "tsc --noEmit",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "test:coverage": "vitest run --coverage",

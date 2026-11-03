@@ -117,8 +117,10 @@ What exists depends on what the player is doing:
 ### Present but not verified
 
 Oxygen, body temperature, intoxication level, radiation, PWR / COOL / MISL lights, hydrogen running low, an
-unbreathable atmosphere. They are returned under `unverified` or as events marked `unverified`. Do not reason
-from them.
+unbreathable atmosphere, the transformation state, the boost-related flight settings, the ship lights, gimbal lock.
+They are returned under `unverified` (in `sc_live_state` and in the dashboard's poll) or as events and conditions
+marked `unverified`, and the dashboard labels each one "non vérifié". Do not reason from them. The Coverage table
+below says, for every field of the stream, where it goes.
 
 ### Quirks the server handles for you
 
@@ -129,12 +131,152 @@ from them.
 - Vehicle data arrives 6 to 9 seconds after you sit down.
 - The first frame after a seat change can carry stale settings.
 
+## Coverage
+
+What becomes of every field of the stream. `poll.` is the answer of `sc_live_poll` (what the dashboard receives), `state.` the state of `sc_live_state`. Values that are present but not verified sit under `unverified` in the poll and are labelled as such in the page. A test (`coverage.test.ts`) fails when a field of the schema has no line here, so a new field in a patch forces a decision.
+
+131 fields: 104 exposed by the server, 27 ignored on purpose; 93 shown by the dashboard (the others are exposed to the model only, or ignored).
+
+| Field | Server | Dashboard |
+| --- | --- | --- |
+| `Availability.enabled` | `poll.ship.flight_modes.coupled.enabled` | Flight modes line (`modes`) |
+| `Availability.active` | `poll.ship.flight_modes.coupled.active` | Flight modes line (`modes`) |
+| `Gauge.current` | `poll.pilot.health.current` | Health (`health`) |
+| `Gauge.max` | `poll.pilot.health.max` | Health (`health`) |
+| `VehicleDoorState.open_state` | `poll.unverified.ship.doors.open_state` | Unverified values card (`unverified`) |
+| `VehicleDoorState.lock_state` | `poll.unverified.ship.doors.lock_state` | Unverified values card (`unverified`) |
+| `VehicleFlightSettings.ifcs_coupled` | `poll.ship.flight_modes.coupled` | Flight modes line (`modes`) |
+| `VehicleFlightSettings.ifcs_esp` | `poll.ship.flight_modes.esp` | Flight modes line (`modes`) |
+| `VehicleFlightSettings.ifcs_gravity_compensation` | `poll.ship.flight_modes.gravity_compensation` | Flight modes line (`modes`) |
+| `VehicleFlightSettings.ifcs_g_safe` | `poll.ship.flight_modes.g_safe` | Flight modes line (`modes`) |
+| `VehicleFlightSettings.ifcs_cruise_mode` | `poll.ship.flight_modes.cruise_mode` | Flight modes line (`modes`) |
+| `VehicleFlightSettings.ifcs_spacebreak_enables_boost` | `poll.unverified.ship.flight_settings.spacebreak_enables_boost` | Unverified values card (`unverified`) |
+| `VehicleFlightSettings.ifcs_speed_limiter` | `poll.ship.flight_modes.speed_limiter` | Flight modes line (`modes`) |
+| `VehicleFlightSettings.ifcs_proximity_assist` | `poll.ship.flight_modes.proximity_assist` | ignored : Not in the list of verified flight modes: available to the model, not drawn. |
+| `VehicleFlightSettings.ifcs_proximity_assist_landing` | `poll.ship.flight_modes.proximity_assist_landing` | ignored : Not in the list of verified flight modes: available to the model, not drawn. |
+| `VehicleFlightSettings.ifcs_stability` | `poll.ship.flight_modes.stability` | ignored : Not in the list of verified flight modes: available to the model, not drawn. |
+| `VehicleFlightSettings.ifcs_core` | `poll.ship.flight_modes.core` | ignored : Not in the list of verified flight modes: available to the model, not drawn. |
+| `VehicleFlightSettings.advanced_hud_enabled_scm` | ignored : A display or aiming preference of the player, of no use on a dashboard; the first frame after a seat change can also carry stale settings. | - |
+| `VehicleFlightSettings.advanced_hud_enabled_nav` | ignored : A display or aiming preference of the player, of no use on a dashboard; the first frame after a seat change can also carry stale settings. | - |
+| `VehicleFlightSettings.advanced_hud_labels` | ignored : A display or aiming preference of the player, of no use on a dashboard; the first frame after a seat change can also carry stale settings. | - |
+| `VehicleFlightSettings.course_prediction` | ignored : A display or aiming preference of the player, of no use on a dashboard; the first frame after a seat change can also carry stale settings. | - |
+| `VehicleFlightSettings.ifcs_wind_compensation` | `poll.ship.flight_modes.wind_compensation` | ignored : Not in the list of verified flight modes: available to the model, not drawn. |
+| `VehicleFlightSettings.ifcs_g_safe_disabled_by_boost` | `poll.unverified.ship.flight_settings.g_safe_disabled_by_boost` | Unverified values card (`unverified`) |
+| `VehicleFlightSettings.ifcs_command_behaviour` | `poll.ship.flight_modes.command_behaviour` | ignored : Not in the list of verified flight modes: available to the model, not drawn. |
+| `VehicleFlightSettings.flight_light_amplification` | ignored : A display or aiming preference of the player, of no use on a dashboard; the first frame after a seat change can also carry stale settings. | - |
+| `VehicleFlightState.is_landed` | `poll.ship.landed` | Ship state banner (`mode`) |
+| `VehicleFlightState.gear` | `poll.ship.gear` | Landing gear and VTOL (`gear`) |
+| `VehicleFlightState.vtol` | `poll.ship.vtol` | Landing gear and VTOL (`gear`) |
+| `VehicleFlightState.transformation` | `poll.unverified.ship.transformation` | Unverified values card (`unverified`) |
+| `VehicleFlight.state` | `poll.ship.landed` | Ship state banner (`mode`) |
+| `VehicleFlight.settings` | `poll.ship.flight_modes` | Flight modes line (`modes`) |
+| `VehicleFlight.instruments` | `poll.ship.instruments` | Speed dial (`speed`) |
+| `VehicleFlightInstruments.speed` | `poll.ship.instruments.speed_ms` | Speed dial (`speed`) |
+| `VehicleFlightInstruments.hydrogen_fuel` | `poll.ship.instruments.hydrogen_fuel` | Hydrogen gauge and estimated range (`hydrogen`) |
+| `VehicleFlightInstruments.quantum_fuel` | `poll.unverified.ship.quantum_fuel` | Unverified values card (`unverified`) |
+| `VehicleFlightInstruments.g_meter` | `poll.ship.instruments.g` | G-force dial (`g`) |
+| `VehicleFlightInstruments.boost` | `poll.ship.instruments.boost` | Boost gauge (`boost`) |
+| `VehicleFlightInstruments.altitude` | `poll.ship.instruments.altitude_m` | Altitude and radar altitude (`altitude`) |
+| `VehicleFlightInstruments.radar_altitude` | `poll.ship.instruments.radar_altitude_m` | Altitude and radar altitude (`altitude`) |
+| `VehicleFlightInstruments.vertical_speed_indicator` | `poll.ship.instruments.vertical_speed_ms` | Vertical speed bar (`vspeed`) |
+| `VehicleFlightInstruments.atmospheric_density` | `poll.unverified.ship.atmospheric_density` | Atmospheric density (`atmosphere`) |
+| `VehicleFlightInstruments.heading` | `poll.ship.instruments.heading_deg` | Compass (`heading`) |
+| `VehicleThrusterBoost.engaged` | `poll.ship.instruments.boost.engaged` | Boost gauge (`boost`) |
+| `VehicleThrusterBoost.output` | `poll.ship.instruments.boost.output` | Boost gauge (`boost`) |
+| `VehicleThrusterBoost.reserves` | `poll.ship.instruments.boost.reserves` | Boost gauge (`boost`) |
+| `VehicleThrusterBoost.critical` | `poll.ship.instruments.boost.critical` | Boost gauge (`boost`) |
+| `VehiclePowerState.powerplants` | `poll.ship.power.powerplants` | Power diagram (`power`) |
+| `VehiclePowerState.engines` | `poll.ship.power.engines` | Power diagram (`power`) |
+| `VehiclePowerState.weapons` | `poll.ship.power.weapons` | Power diagram (`power`) |
+| `VehiclePowerState.coolers` | `poll.ship.power.coolers` | Power diagram (`power`) |
+| `VehiclePowerState.life_support` | `poll.ship.power.life_support` | Power diagram (`power`) |
+| `VehiclePowerState.gravity_generators` | `poll.ship.power.gravity_generators` | Power diagram (`power`) |
+| `VehiclePowerState.sensors` | `poll.ship.power.sensors` | Power diagram (`power`) |
+| `VehiclePowerState.shield_generators` | `poll.ship.power.shield_generators` | Power diagram (`power`) |
+| `VehiclePowerState.shield_emitters` | `poll.ship.power.shield_emitters` | Power diagram (`power`) |
+| `VehicleAnnunciator.pwr` | `poll.ship.warning_lights.pwr` | Warning light panel (`lights`) |
+| `VehicleAnnunciator.wpn` | `poll.ship.warning_lights.wpn` | Warning light panel (`lights`) |
+| `VehicleAnnunciator.thr` | `poll.ship.warning_lights.thr` | Warning light panel (`lights`) |
+| `VehicleAnnunciator.shld` | `poll.ship.warning_lights.shld` | Warning light panel (`lights`) |
+| `VehicleAnnunciator.cool` | `poll.ship.warning_lights.cool` | Warning light panel (`lights`) |
+| `VehicleAnnunciator.qdrv` | `poll.ship.warning_lights.qdrv` | Warning light panel (`lights`) |
+| `VehicleAnnunciator.radr` | `poll.ship.warning_lights.radr` | Warning light panel (`lights`) |
+| `VehicleAnnunciator.prox` | `poll.ship.warning_lights.prox` | Warning light panel (`lights`) |
+| `VehicleAnnunciator.hit` | `poll.ship.warning_lights.hit` | Warning light panel (`lights`) |
+| `VehicleAnnunciator.misl` | `poll.ship.warning_lights.misl` | Warning light panel (`lights`) |
+| `VehicleState.name` | `poll.ship.name` | Ship name and maker (`ship`) |
+| `VehicleState.class_name` | `poll.ship.class_name` | Ship name and maker (`ship`) |
+| `VehicleState.manufacturer` | `poll.unverified.ship.manufacturer` | ignored : The game never fills the maker: the server derives it from the class prefix (`ship.manufacturer_derived`) and the View shows that. |
+| `VehicleState.type` | `poll.ship.type` | ignored : Always the same value for the ships that send vehicle data (ground vehicles send none). |
+| `VehicleState.lights_enabled` | `poll.unverified.ship.lights_on` | Ship lights (`headlights`) |
+| `VehicleState.doors` | `poll.unverified.ship.doors` | Unverified values card (`unverified`) |
+| `VehicleState.annunciators` | `poll.ship.warning_lights` | Warning light panel (`lights`) |
+| `VehicleState.flight` | `poll.ship.instruments` | Speed dial (`speed`) |
+| `VehicleState.power` | `poll.ship.power` | Power diagram (`power`) |
+| `VehicleFrame.state` | `poll.ship` | Ship name and maker (`ship`) |
+| `WeaponsSettings.fallback_convergence_distance` | ignored : A display or aiming preference of the player, of no use on a dashboard; the first frame after a seat change can also carry stale settings. | - |
+| `WeaponsSettings.magnified_ui` | ignored : A display or aiming preference of the player, of no use on a dashboard; the first frame after a seat change can also carry stale settings. | - |
+| `WeaponsSettings.precision_lines` | ignored : A display or aiming preference of the player, of no use on a dashboard; the first frame after a seat change can also carry stale settings. | - |
+| `WeaponsSettings.staggered_fire` | ignored : A display or aiming preference of the player, of no use on a dashboard; the first frame after a seat change can also carry stale settings. | - |
+| `WeaponsSettings.use_lag_pips` | ignored : A display or aiming preference of the player, of no use on a dashboard; the first frame after a seat change can also carry stale settings. | - |
+| `WeaponsSettings.use_single_pips` | ignored : A display or aiming preference of the player, of no use on a dashboard; the first frame after a seat change can also carry stale settings. | - |
+| `WeaponsSettings.use_fading_pips` | ignored : A display or aiming preference of the player, of no use on a dashboard; the first frame after a seat change can also carry stale settings. | - |
+| `WeaponsSettings.gimbals_locked` | `poll.unverified.weapons.gimbals_locked` | Gimbals lock (`gimbals`) |
+| `WeaponState.name` | `poll.weapons.weapons[].name` | Weapons of the seat (`weapons`) |
+| `WeaponState.is_powered` | `poll.weapons.weapons[].powered` | Weapons of the seat (`weapons`) |
+| `WeaponState.ready_to_fire` | `poll.weapons.weapons[].ready` | Weapons of the seat (`weapons`) |
+| `WeaponState.contained_in_preset` | ignored : Weapon presets are not in the stream (field test): not exposed. | - |
+| `Countermeasures.type` | `poll.weapons.countermeasures` | Countermeasures (`cm`) |
+| `Countermeasures.amount` | `poll.weapons.countermeasures.decoy` | Countermeasures (`cm`) |
+| `WeaponsFrame.settings` | `poll.unverified.weapons.gimbals_locked` | Gimbals lock (`gimbals`) |
+| `WeaponsFrame.preset_index` | ignored : Weapon presets are not in the stream (field test): not exposed. | - |
+| `WeaponsFrame.preset_name` | ignored : Weapon presets are not in the stream (field test): not exposed. | - |
+| `WeaponsFrame.weapons` | `poll.weapons.weapons` | Weapons of the seat (`weapons`) |
+| `WeaponsFrame.countermeasures` | `poll.weapons.countermeasures` | Countermeasures (`cm`) |
+| `GameEvent.type` | `state.game_events[]` | ignored : The game sent no usable event in the field test; the names of the last frame stay in `sc_live_state` and nothing is built on them. |
+| `EventsFrame.events` | `state.game_events` | ignored : The game sent no usable event in the field test; the names of the last frame stay in `sc_live_state` and nothing is built on them. |
+| `AxisFeedback.resistance` | ignored : Force feedback for joysticks: not in the stream (field test) and of no use here. | - |
+| `AxisFeedback.damping` | ignored : Force feedback for joysticks: not in the stream (field test) and of no use here. | - |
+| `FeedbackAxes.x` | ignored : Force feedback for joysticks: not in the stream (field test) and of no use here. | - |
+| `FeedbackAxes.y` | ignored : Force feedback for joysticks: not in the stream (field test) and of no use here. | - |
+| `FeedbackAxes.z` | ignored : Force feedback for joysticks: not in the stream (field test) and of no use here. | - |
+| `ForceFeedbackFrame.angular` | ignored : Force feedback for joysticks: not in the stream (field test) and of no use here. | - |
+| `ForceFeedbackFrame.linear` | ignored : Force feedback for joysticks: not in the stream (field test) and of no use here. | - |
+| `ForceFeedbackFrame.gunfire` | ignored : Force feedback for joysticks: not in the stream (field test) and of no use here. | - |
+| `ForceFeedbackFrame.stick_shaker` | ignored : Force feedback for joysticks: not in the stream (field test) and of no use here. | - |
+| `ActorVitals.health` | `poll.pilot.health` | Health (`health`) |
+| `ActorVitals.oxygen` | `poll.unverified.pilot.oxygen` | Unverified values card (`unverified`) |
+| `ActorVitals.hunger` | `poll.pilot.hunger` | Hunger (`hunger`) |
+| `ActorVitals.thirst` | `poll.pilot.thirst` | Thirst (`thirst`) |
+| `ActorVitals.body_temperature` | `poll.unverified.pilot.body_temperature` | Unverified values card (`unverified`) |
+| `ActorVitals.heart_rate` | `poll.pilot.heart_rate_bpm` | Heart rate (`heart`) |
+| `ActorVitals.gravity` | `poll.pilot.gravity_g` | Gravity (`gravity`) |
+| `ActorVitals.pressure` | `poll.pilot.pressure` | Pressure (`pressure`) |
+| `ActorVitals.intoxication_level` | `poll.unverified.pilot.intoxication_level` | Unverified values card (`unverified`) |
+| `ActorEnvironment.external_temperature` | `poll.pilot.outside_temperature_c` | Outside temperature (`temperature`) |
+| `ActorEnvironment.ambient_radiation_rate` | `poll.unverified.pilot.ambient_radiation_rate` | Unverified values card (`unverified`) |
+| `ActorEnvironment.breathable_atmosphere` | `poll.pilot.breathable_atmosphere` | Atmosphere breathable (`air`) |
+| `ActorState.locomotion` | `poll.pilot.locomotion` | Body position (`locomotion`) |
+| `ActorState.crew_role` | `poll.pilot.crew_role` | Crew role and seat (`crew`) |
+| `ActorState.seat_name` | `poll.pilot.seat` | Crew role and seat (`crew`) |
+| `ActorState.uec_balance` | `poll.balance.uec` | Balance (hidden by default) (`balance`) |
+| `ActorFrame.vitals` | `poll.pilot` | Health (`health`) |
+| `ActorFrame.state` | `poll.pilot.locomotion` | Body position (`locomotion`) |
+| `ActorFrame.environment` | `poll.pilot.outside_temperature_c` | Outside temperature (`temperature`) |
+| `TurretFrame.light_amplification` | ignored : Turret seats only, never verified, of no use on a dashboard. | - |
+| `TelemetryStreamResponse.vehicle` | `poll.ship` | Ship name and maker (`ship`) |
+| `TelemetryStreamResponse.weapons` | `poll.weapons` | Weapons of the seat (`weapons`) |
+| `TelemetryStreamResponse.events` | `state.game_events` | ignored : The game sent no usable event in the field test; the names of the last frame stay in `sc_live_state` and nothing is built on them. |
+| `TelemetryStreamResponse.actor` | `poll.pilot` | Health (`health`) |
+| `TelemetryStreamResponse.force_feedback` | ignored : Force feedback for joysticks: not in the stream (field test) and of no use here. | - |
+| `TelemetryStreamResponse.turret` | ignored : Turret seats only, never verified, of no use on a dashboard. | - |
+
 ## What the tools do with it
 
 | Tool | Listed | Purpose |
 | --- | --- | --- |
 | `sc_live_status` | always | The state of the stream, why, and how to enable it |
-| `sc_live_state` | when `SC_TELEMETRY=on` | A snapshot with the age of the last frame and what is not available |
+| `sc_live_state` | when `SC_TELEMETRY=on` | A snapshot with the age of the last frame, the conditions of the moment and what is not available |
 | `sc_live_events` | when `SC_TELEMETRY=on` | Recent derived events, each marked `confirmed` or `unverified` |
 | `sc_live_dashboard` | when `SC_TELEMETRY=on` and the client can show Views | Opens the [live dashboard](#live-dashboard) in the conversation |
 | `sc_live_poll`, `sc_live_mark` | same | Used by the dashboard itself to refresh and to set session markers. Claude is told not to call them |
@@ -151,45 +293,101 @@ sending frames, and they are inferred, not reported by the game.
 
 ## Live dashboard
 
-An optional live view of the same stream, drawn inside the conversation: your ship, speed, hydrogen, health and
-the state of the stream at a glance, and, in full screen, instruments, warning lights, power flags, weapons by
-seat, countermeasures, vitals, recent events and a session timeline. It is an MCP App: a small page that this
-server provides and that the client renders next to the chat.
+An optional live view of the same stream, drawn inside the conversation. Compact: the ship, where it is, three dials
+(speed, hydrogen, health), the alerts and a one-line verdict ("all is well" or "watch this"). Full screen: a cockpit
+with the instruments on the left, the ship in the middle and the pilot on the right. It is an MCP App: a small page
+that this server provides and that the client renders next to the chat.
 
 - **Who shows it.** Claude Desktop is the host we tested (Microsoft Store build 4.4212.0, server declared in
   `claude_desktop_config.json`). **Claude Code and other text clients do not render it**: for them the three
   dashboard tools are not listed at all, so the model never sees them. The server lists them only when
   `SC_TELEMETRY=on` AND the client declared the MCP Apps extension at start. Other hosts that render MCP Apps
-  may work; we have not tried them.
+  may work; we have not tried them. The layout was iterated in a real browser against a fake host (360 to 2000 px,
+  light and dark); **it has not been seen inside Claude Desktop by us**.
 - **How to open it.** Switch the telemetry on (see above), restart Claude Desktop completely (quit it from the
-  tray, not only the window), then ask Claude to open the live dashboard. Claude calls `sc_live_dashboard`.
-  While it is open you can keep talking to Claude: it answers from `sc_live_state`, not from the page.
-- **Two modes.** Inline: a compact view with five data (ship, speed, hydrogen, health, balance), the state of the
-  stream and a band of recent alerts. Full screen (button in the page): the complete panel. The button asks the
-  host; if the host answers with another mode the page follows what it is told.
-- **Age and gaps.** Every value comes with the age of its frame, and everything turns grey when the stream is not
-  live. Nothing is invented: a missing field is shown as a dash, health 0 reads "down or dead", and one
-  collapsible line lists what the stream does not contain (cargo, position, shield level, hull, heat, ammo).
+  tray, not only the window), then ask Claude to open the live dashboard. Claude calls `sc_live_dashboard`, which
+  tells it not to open a second one while one is already open (`hint` in the result). While it is open you can
+  keep talking to Claude: it answers from `sc_live_state`, not from the page.
+- **Two modes.** Inline: a compact view. Full screen (button in the page): the cockpit. The button asks the host; if
+  the host answers with another mode the page follows what it is told.
+- **What the cockpit shows.** Instruments: a speed dial whose scale is deduced from the speeds seen and says so
+  (quantum travel is shown as "quantum mode" instead of flattening the scale), a G dial against the maximum the game
+  reports, altitude with the radar altitude, a vertical speed bar around zero, a compass only when the heading is
+  valid, and 60 second curves with their minimum and maximum. Energy: hydrogen with an estimated range, boost reserve
+  and output. The nine power flags as a diagram, the flight modes, the ten warning lights as an annunciator panel
+  (state in words, not only colour), weapons of your seat in one sentence plus a row each, countermeasures against
+  the highest count seen for this vehicle. Pilot: health, hunger and thirst dials, heart rate, gravity, outside
+  temperature, atmosphere, body position, role. One chronology of events and your own markers, with filters, a
+  session card, the route plan, and two foldable lines: the unverified values and what the stream does not contain.
+  Every datum can be pinned (a pin icon on hover or focus): it then appears in a bar under the header in both modes.
+- **A ship that is off.** When the powerplant is reported off, the page shows "Vaisseau éteint", dashes instead of
+  zeros, and adds nothing to the curves. Nothing is coloured red just because it is absent.
+- **Alerts of the moment (conditions).** `sc_live_poll` (and `sc_live_state`) carry a `conditions` array computed
+  from the current state, not from the history; the page shows it as coloured chips with the time they have lasted,
+  before the recent events: blue for information, amber for a warning, red for critical. A condition that is not
+  confirmed by the field test says "non vérifié".
+
+  | Condition | Level | When |
+  | --- | --- | --- |
+  | `shields_off` | info in quantum mode (`data.quantum`), otherwise warning | A shield power flag (generators or emitters) is off, the powerplant is on, the ship is not on the ground. Only for a ship that was seen with both on |
+  | `shields_down` | critical | The SHLD light is major |
+  | `powerplant_off` | critical | The powerplant flag is off. The other power conditions (engines, shields, weapons) are then not raised |
+  | `engines_off` | warning (info on the ground) | Powerplant on, engines flag off |
+  | `engines_damaged` | warning | THR light minor |
+  | `weapons_unpowered` | warning | WPN light major |
+  | `hostile_lock` | critical | RADR light major |
+  | `under_fire`, `proximity` | warning | HIT light, PROX light (not with the gear down) |
+  | `hydrogen_low` | warning, unverified | Below 15 percent |
+  | `boost_critical` | warning | The boost reports critical |
+  | `countermeasures_low`, `countermeasures_empty` | warning, critical | Same thresholds as the events (three bursts or fewer; none), for a kind that was seen with some |
+  | `health_low`, `down_or_dead` | warning, critical | Health under 30 percent; health 0 |
+  | `hunger_low`, `thirst_low` | info | Under 25 percent |
+  | `not_breathable` | critical, unverified | The atmosphere is reported as not breathable |
+  | `in_quantum`, `in_jump` | info | Quantum mode on; a jump in progress |
+
+  Measured on a real Aegis Harbinger (4.10.2): in quantum mode the SHLD light goes off and both shield power flags go
+  false, and everything comes back on arrival. Events `shields_powered_off` and `shields_powered_on` (confirmed,
+  debounced, silent at the baseline of a new vehicle) record it, the first with the quantum context. A ship that was
+  never seen with its shields on (a ship without shields, or a dashboard opened while already in quantum mode)
+  raises nothing for them: the trade-off is deliberate, to avoid a permanent false alarm.
+- **Age and gaps.** Every card shows the age of its frame, and everything turns grey when the stream is not live.
+  Nothing is invented: a missing field is shown as a dash, health 0 reads "down or dead", and one collapsible line
+  lists what the stream does not contain.
 - **Estimates are labelled.** Remaining hydrogen, hunger and thirst are straight-line estimates over the last
-  minutes, shown with their window. Pace (aUEC per hour) and flight time come from the balance change and from
-  take-off and landing events since the session marker. The balance change mixes purchases, rewards and fines, and
-  the game does not measure cargo: it is the only measure of a run.
+  minutes, shown with their window. The speed scale is deduced, not given by the game. Pace (aUEC per hour) appears
+  only while the balance is shown, from the balance change since the session marker.
 - **Route plan.** After `uex_get_trade_routes`, Claude may pass a `plan` (commodity, buy and sell terminals, SCU,
   expected profit, a short note) when it opens the dashboard. The page shows planned next to measured profit. The
   text is cleaned and capped (60 characters) and displayed as plain text.
 - **Balance privacy.** The balance is hidden in the page until you click "Afficher le solde". Only then does the
   page ask the server for it (`include_balance`). The balance is never put in the automatic summary that the
-  page may send to the model, nor in the fixed messages of the buttons, with one exception: the button "Route
-  avec mon solde et ce vaisseau" sends it in a message, says so in the text, and only when you press it.
-- **What the buttons do.** "Analyser ma situation", "Route avec mon solde et ce vaisseau" and "Bilan de
-  session" post a short fixed message in the conversation, as if you had typed it, asking Claude to use
-  `sc_live_state` and `sc_live_events`. Session markers (start, end, reset of the balance change) live in this
+  page may send to the model, nor in the fixed messages of the buttons, nor on the channel between dashboards (see
+  below), with one exception: the button "Route avec mon solde et ce vaisseau" sends it in a message, says so in the
+  text, and only when you press it.
+- **What the buttons do.** "Analyser ma situation", "Route avec mon solde et ce vaisseau" and "Bilan de session" post
+  a short fixed message in the conversation, as if you had typed it, asking Claude to use `sc_live_state` and
+  `sc_live_events`; a confirmation appears next to the buttons and clears itself. Session markers live in this
   server's memory. Nothing in the page sends anything to the game.
-- **Load.** The page polls about once a second while it is visible (never faster than twice a second), every 5
-  seconds when the stream is off or cut. It stops when the window is hidden or the View is scrolled out of view,
-  and gives up for good after 30 minutes away until you click "Reprendre". Claude Desktop keeps every dashboard it
-  opened in the conversation, so several can exist: the server answers all of them from one read, cached for half
-  a second.
+- **Several dashboards: the facts.** Each dashboard is a separate iframe with its own calls to `sc_live_poll`, once
+  a second while it is visible. Claude Desktop never unmounts the older ones. Server side nothing multiplies: one
+  answer is shared for half a second whatever the number of Views. But every View that was open and visible made its
+  own round trip to the host. Measured against the fake host, a minute of calls per second: 1, 3 and 5 dashboards
+  made 1.00, 3.00 and 5.00 calls per second before; they make 1.00 whatever the number now.
+- **Several dashboards: the fix.** Dashboards of one connector share an origin in Claude Desktop (documented by
+  Anthropic; not verified by us), so they announce themselves on a `BroadcastChannel` (no network: the content policy
+  of the page does not govern it). The most recent visible one is the leader and polls; the others stop calling the
+  server, show "Remplacé par un tableau de bord plus récent" with a "Reprendre ici" button, and keep showing the
+  leader's answer, shared about once a second. A hidden, scrolled-away or closed leader, or one silent for 6 seconds,
+  gives way to the next one. What comes over the channel is treated as untrusted: types, ranges and lengths are
+  checked, the answer is rebuilt field by field, the balance and the wallet events never leave a View, and only the
+  leader sends a summary to the model. Without `BroadcastChannel` the old behaviour applies and a dashboard away for
+  30 seconds retires. The model is also told not to open a second dashboard when one is open.
+- **Load.** The page polls about once a second while it is visible and leads (never faster than twice a second),
+  every 5 seconds when the stream is off or cut. It asks only for what it lacks: events newer than the last it holds,
+  the sections whose hash changed, and the list of what the stream lacks once. Measured on the made-up flight over
+  two minutes: 3810 bytes a second before, 2185 after. It stops when the window is hidden or scrolled out of view,
+  and retires after 30 minutes away until you click "Reprendre". Closing or hiding for good removes every timer,
+  listener and channel.
 - **No network, no package.** The page is one file inside this server: no CDN, no font, no request. It declares
   its own restrictive content policy and sets every text with `textContent`.
 
@@ -197,7 +395,9 @@ The dashboard shows what the stream shows and inherits every limit and risk of t
 approved by Cloud Imperium Games.
 
 A preview for people who work on the page: `npm run build`, then `node scripts/dashboard-preview.mjs`, then open
-the local address it prints (loopback, port 4173 by default). It plays a made-up flight against a fake host; no game and no Claude is involved.
+the local address it prints (loopback, port 4173 by default). It plays a made-up flight, including a full quantum
+jump, against a fake host; no game and no Claude is involved. Parameters: `t`, `theme`, `w`, `mode`, `scroll`,
+`forced`, `cut`, `plan`.
 
 ## Privacy
 

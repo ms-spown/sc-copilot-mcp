@@ -92,6 +92,8 @@ export interface Ship {
 }
 
 export interface Weapons {
+  /** Present in the stream but never verified: only values the game sent (see coverage.ts). */
+  unverified?: Record<string, boolean>;
   weapons: { name: string; instance_id?: string; powered: boolean; ready: boolean }[];
   gimbals_locked?: boolean;
   /** Only the types the frame lists. A type not listed is unknown, not zero. */
@@ -290,8 +292,17 @@ function readShip(vehicle: Decoded): Ship | null {
     const vtol = enm(flightState, "vtol");
     if (gear) ship.gear = gear;
     if (vtol) ship.vtol = vtol;
+    // Sent only by ships that transform; never seen in the field test.
+    const transformation = enm(flightState, "transformation");
+    if (transformation) ship.unverified["transformation"] = transformation;
   }
   if (settings) {
+    // The two flight settings that explain how boost interacts with the flight modes. The other booleans of the
+    // section (HUD labels, course prediction, light amplification...) are display preferences: see coverage.ts.
+    ship.unverified["flight_settings"] = {
+      spacebreak_enables_boost: bool(settings, "ifcs_spacebreak_enables_boost"),
+      g_safe_disabled_by_boost: bool(settings, "ifcs_g_safe_disabled_by_boost"),
+    };
     ship.flight_modes = {};
     for (const key of MODES) {
       const a = msg(settings, key);
@@ -341,6 +352,11 @@ function readShip(vehicle: Decoded): Ship | null {
     }
   }
   if (str(state, "manufacturer")) ship.unverified["manufacturer"] = gameId(state, "manufacturer");
+  // Not in the verified list of the field test: also listed here (the plain fields stay, for compatibility).
+  if (ship.lights_on) ship.unverified["lights_on"] = true;
+  if (ship.instruments && ship.instruments.atmospheric_density > 0) {
+    ship.unverified["atmospheric_density"] = ship.instruments.atmospheric_density;
+  }
   if (msg(state, "doors")) ship.unverified["doors"] = msg(state, "doors");
   return ship;
 }
@@ -359,7 +375,11 @@ function readWeapons(weapons: Decoded): Weapons {
     }),
     countermeasures: {},
   };
-  if (settings) out.gimbals_locked = bool(settings, "gimbals_locked");
+  if (settings) {
+    out.gimbals_locked = bool(settings, "gimbals_locked");
+    // Not in the verified list of the field test: mirrored under `unverified` when the game sends it.
+    if (out.gimbals_locked) out.unverified = { gimbals_locked: true };
+  }
   for (const cm of list(weapons, "countermeasures")) {
     const kind = enm(cm, "type");
     if (kind && kind !== "unspecified") out.countermeasures[kind] = num(cm, "amount");

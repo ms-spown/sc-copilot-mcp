@@ -204,9 +204,12 @@ d'atterrissage, alimentation, voyants, santé, faim, soif.
   carburant quantique. Une santé à 0 veut dire à terre ou mort. Le solde aUEC n'est pas transmis à Claude sans votre
   accord (`include_balance`).
 - **Un tableau de bord en direct (optionnel).** Avec la télémétrie activée, Claude Desktop peut afficher un tableau
-  de bord en direct dans la conversation (`sc_live_dashboard`) : vaisseau, vitesse, hydrogène, santé et état du flux
-  en vue compacte ; instruments, voyants, armes, événements et chronologie de session en plein écran. Chaque valeur
-  indique son âge, le solde aUEC reste masqué tant que vous ne cliquez pas, et rien n'est envoyé au jeu. Claude Code
+  de bord en direct dans la conversation (`sc_live_dashboard`) : le vaisseau, trois cadrans, les alertes du moment (boucliers
+  coupés en mode quantique, énergie perdue, verrouillage hostile...) et un verdict en une ligne en vue compacte ; un
+  cockpit avec cadrans, boussole, schéma d'alimentation, voyants, armes, constantes du pilote et une seule
+  chronologie en plein écran. Seul le tableau de bord le plus récent interroge les données ; les plus anciens le
+  suivent. Chaque valeur indique son âge, rien n'est inventé, le solde aUEC reste masqué tant que vous ne cliquez pas,
+  et rien n'est envoyé au jeu. Claude Code
   ne l'affiche pas. Voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#tableau-de-bord-en-direct).
 - **Lisez d'abord les risques.** C'est une fonction non documentée du jeu. À notre connaissance, CIG ne l'a ni
   autorisée ni interdite, les conditions de RSI s'appliquent à vous, et le risque est le vôtre. Tout est dans

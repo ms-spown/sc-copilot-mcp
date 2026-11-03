@@ -7,7 +7,7 @@
 // - The fake host plays the scenario of src/dashboard/testing/scenario.ts through the REAL normaliser and event
 //   handler, answers the ui/* requests as the measured host does, and shows what the View sends to the conversation.
 // URL parameters: t=<seconds into the story> theme=light|dark w=<px> mode=inline|fullscreen balance=1 session=1
-//                 forced=off|waiting|game_without_telemetry|incompatible cut=1 plan=1
+//                 forced=off|waiting|game_without_telemetry|incompatible cut=1 plan=1 scroll=<px>
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -36,12 +36,12 @@ const HARNESS = `<!doctype html>
 <div id="bar">
   <b>Aperçu</b>
   <label>thème <select id="theme"><option>dark</option><option>light</option></select></label>
-  <label>largeur <select id="w"><option>360</option><option selected>560</option><option>720</option></select></label>
+  <label>largeur <select id="w"><option>360</option><option selected>560</option><option>720</option><option>1280</option><option>2000</option></select></label>
   <label>état <select id="forced"><option value="">histoire</option><option>off</option><option>waiting</option><option>game_without_telemetry</option><option>incompatible</option></select></label>
   <button id="cut">couper le flux</button>
   <span id="clock"></span>
 </div>
-<div id="stage"><iframe id="frame" sandbox="allow-scripts" title="view"></iframe></div>
+<div id="stage"><iframe id="frame" sandbox="allow-scripts allow-same-origin" title="view"></iframe></div>
 <div id="log"></div>
 <script type="module">
 import { Scenario } from "/dist/dashboard/testing/scenario.js";
@@ -102,6 +102,7 @@ frame.addEventListener("load", () => {
     }
   }, 300);
 });
+if (q.get("scroll")) frame.addEventListener("load", () => setTimeout(() => frame.contentWindow.scrollTo(0, Number(q.get("scroll"))), 1500));
 frame.src = "/view.html";
 setInterval(() => { $("clock").textContent = "histoire : " + Math.round(scenario.t / 1000) + " s"; }, 500);
 </script>
