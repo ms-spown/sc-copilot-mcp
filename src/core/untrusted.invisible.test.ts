@@ -89,7 +89,7 @@ describe("Scenario: every invisible code point of the audit is removed", () => {
 
 describe("Scenario: readable text is left alone", () => {
   it("keeps tab, newline, carriage return, accents, CJK and ordinary punctuation", () => {
-    const text = "Cargo:\t12 SCU\r\nNaïve café - 日本語 - « quotes » - Ü";
+    const text = `Cargo:\t12 SCU\r\nNaïve café - ${cp(0x65e5, 0x672c, 0x8a9e)} - « quotes » - Ü`;
     expect(stripInvisible(text)).toBe(text);
   });
 
