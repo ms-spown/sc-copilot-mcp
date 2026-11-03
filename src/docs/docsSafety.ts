@@ -141,6 +141,25 @@ export const ALLOWED_NON_LATIN_FILES: readonly { file: string; reason: string }[
  */
 export const ALLOWED_HTML_MARKUP_FILES: readonly { file: string; reason: string }[] = [];
 
+/**
+ * The URI of the MCP App page this server serves (the `ui:` scheme is the one MCP Apps define for it). Only this
+ * exact prefix is accepted: it names a resource of this server and is never fetched from a network.
+ */
+export const ALLOWED_UI_RESOURCE_PREFIX = "ui:" + "//sc-copilot/";
+
+/**
+ * XML namespace names that look like URLs but are identifiers: they are never fetched. Exact (file, name) pairs,
+ * like the HTML comments above: any other file, or any other name, fails.
+ */
+export const ALLOWED_NAMESPACE_URIS: readonly { file: string; uri: string; reason: string }[] = [
+  {
+    file: "src/dashboard/viewApp.ts",
+    uri: "http:" + "//www.w3.org/2000/svg",
+    reason:
+      "The SVG namespace, passed to createElementNS to draw the gauges. An identifier, not a link.",
+  },
+];
+
 /** Binary files that are not scanned. Any other tracked file must be valid UTF-8 text. */
 const BINARY_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico"]);
 
@@ -693,6 +712,7 @@ function checkLinks(
   // Every absolute URL, linked or not (GitHub links bare URLs by itself).
   for (const m of file.text.matchAll(/https?:[\\/]+[^\s<>"'`)\]\\]*/gi)) {
     const url = m[0].replace(/[.,;:!?*]+$/, "").replace(/\\/g, "/");
+    if (ALLOWED_NAMESPACE_URIS.some((n) => n.file === file.path && n.uri === url)) continue;
     const problem = urlProblem(url, ctx);
     if (problem) report("link-host", m.index as number, problem);
   }
@@ -706,6 +726,9 @@ function checkLinks(
   // Any other scheme followed by two slashes (ftp, ws, file, ssh...).
   for (const m of file.text.matchAll(/(?<![\w+.-])([a-z][a-z0-9+.-]*):\/\//gi)) {
     const scheme = m[1].toLowerCase();
+    if (scheme === "ui" && file.text.startsWith(ALLOWED_UI_RESOURCE_PREFIX, m.index as number)) {
+      continue;
+    }
     if (scheme !== "https" && scheme !== "http" && !scheme.endsWith("+https")) {
       report(
         "link-scheme",
