@@ -1130,7 +1130,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
 
   function pollOnce(): Promise<void> {
     if (inFlight) return inFlight;
-    const args: any = showBalance ? { include_balance: true } : {};
+    const args: any = L.pollArguments(view, showBalance);
     lastPollAt = clock();
     const run = (async () => {
       try {
@@ -1458,7 +1458,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   // ---------------------------------------------------------------------------------------------
   // Incoming messages: only from the parent window
   // ---------------------------------------------------------------------------------------------
-  win.addEventListener("message", (e: any) => {
+  const onWindowMessage = (e: any) => {
     if (e.source !== win.parent) return;
     const m = e.data;
     if (!m || typeof m !== "object" || m.jsonrpc !== "2.0") return;
@@ -1475,10 +1475,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       if (m.method === "ping") {
         send({ id: m.id, result: {} });
       } else if (m.method === "ui/resource-teardown") {
-        tornDown = true;
-        stopTimers();
-        closeChannel();
         send({ id: m.id, result: {} });
+        dispose();
       } else {
         send({ id: m.id, error: { code: -32601, message: "Method not found" } });
       }
@@ -1496,21 +1494,49 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       resumeIfAllowed();
     }
     // tool-input and everything else: not used. The plan is read from the validated result only.
-  });
-
-  doc.addEventListener("visibilitychange", () => {
+  };
+  const onVisibility = () => {
     hidden = !!doc.hidden;
     updateAway();
-  });
+  };
+  const onPageHide = () => dispose();
+  win.addEventListener("message", onWindowMessage);
+  doc.addEventListener("visibilitychange", onVisibility);
+  win.addEventListener("pagehide", onPageHide);
+  const observers: any[] = [];
   if (typeof win.IntersectionObserver === "function") {
-    new win.IntersectionObserver((entries: any[]) => {
+    const io = new win.IntersectionObserver((entries: any[]) => {
       const last = entries[entries.length - 1];
       offscreen = !!last && !last.isIntersecting;
       updateAway();
-    }).observe(doc.body);
+    });
+    io.observe(doc.body);
+    observers.push(io);
   }
   if (typeof win.ResizeObserver === "function") {
-    new win.ResizeObserver(() => reportSize()).observe(doc.body);
+    const ro = new win.ResizeObserver(() => reportSize());
+    ro.observe(doc.body);
+    observers.push(ro);
+  }
+
+  /** The View is going away (the host tears it down, or the page is hidden for good): nothing stays registered. */
+  function dispose() {
+    tornDown = true;
+    stopTimers();
+    if (timer !== null) win.clearTimeout(timer);
+    timer = null;
+    closeChannel();
+    for (const o of observers) {
+      try {
+        o.disconnect();
+      } catch {
+        /* already gone */
+      }
+    }
+    observers.length = 0;
+    win.removeEventListener("message", onWindowMessage);
+    doc.removeEventListener("visibilitychange", onVisibility);
+    win.removeEventListener("pagehide", onPageHide);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1519,7 +1545,6 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   build();
   openChannel();
   announce("hello");
-  win.addEventListener("pagehide", () => closeChannel());
   renderModeUi();
   render();
   (async () => {

@@ -11,13 +11,23 @@ import { createFakeHost, type FakeHost } from "./fakeHost.js";
 import { Scenario } from "./scenario.js";
 
 export class FakeNode {
+  /** Every change made to any node (text, attribute, style, class, child): the cost of a render. */
+  static writes = 0;
   children: FakeNode[] = [];
   attrs: Record<string, string> = {};
-  className = "";
+  private cls = "";
+  get className(): string {
+    return this.cls;
+  }
+  set className(value: string) {
+    FakeNode.writes++;
+    this.cls = value;
+  }
   listeners: Record<string, ((event: unknown) => void)[]> = {};
   style = {
     props: {} as Record<string, string>,
     setProperty(name: string, value: string) {
+      FakeNode.writes++;
       this.props[name] = value;
     },
   };
@@ -31,6 +41,7 @@ export class FakeNode {
     return this.text + this.children.map((c) => c.textContent).join("");
   }
   set textContent(value: string) {
+    FakeNode.writes++;
     this.text = String(value);
     this.children = [];
   }
@@ -50,11 +61,13 @@ export class FakeNode {
     return this.children[0] ?? null;
   }
   appendChild(child: FakeNode): FakeNode {
+    FakeNode.writes++;
     this.children.push(child);
     child.parentNode = this;
     return child;
   }
   setAttribute(name: string, value: string): void {
+    FakeNode.writes++;
     this.attrs[name] = String(value);
   }
   getAttribute(name: string): string | null {
@@ -62,6 +75,9 @@ export class FakeNode {
   }
   addEventListener(type: string, fn: (event: unknown) => void): void {
     (this.listeners[type] ??= []).push(fn);
+  }
+  removeEventListener(type: string, fn: (event: unknown) => void): void {
+    this.listeners[type] = (this.listeners[type] ?? []).filter((l) => l !== fn);
   }
   click(): void {
     for (const fn of this.listeners["click"] ?? []) fn({ target: this });
@@ -231,7 +247,11 @@ export interface PageWorld {
   setHidden: (hidden: boolean) => void;
   setIntersecting: (on: boolean) => void;
   pendingTimers: () => number;
+  /** Listeners and observers still registered by the View (window, document, observers). */
+  listenerCount: () => number;
   bus: FakeBus | null;
+  /** The page is being hidden for good. */
+  firePageHide: () => void;
 }
 
 export interface WorldOptions {
@@ -244,6 +264,8 @@ export interface WorldOptions {
   clock?: VirtualClock;
   /** The BroadcastChannel bus: omitted = a private one, null = the browser has no BroadcastChannel. */
   bus?: FakeBus | null;
+  /** The host answers every poll in full (the behaviour before the delta answers), for measuring. */
+  legacyFullPolls?: boolean;
 }
 
 /**
@@ -271,7 +293,7 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
 
   const listeners: Record<string, ((event: unknown) => void)[]> = {};
   const docListeners: Record<string, (() => void)[]> = {};
-  const observers: { kind: string; cb: (entries: unknown[]) => void }[] = [];
+  const observers: { kind: string; cb: (entries: unknown[]) => void; live: boolean }[] = [];
 
   const parent = {
     postMessage(message: Record<string, unknown>) {
@@ -288,6 +310,9 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     parent,
     addEventListener(type: string, fn: (event: unknown) => void) {
       (listeners[type] ??= []).push(fn);
+    },
+    removeEventListener(type: string, fn: (event: unknown) => void) {
+      listeners[type] = (listeners[type] ?? []).filter((l) => l !== fn);
     },
     setTimeout(fn: () => void, ms: number) {
       return vclock.add(fn, ms);
@@ -311,16 +336,26 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
         }
       : {}),
     IntersectionObserver: class {
+      private entry: (typeof observers)[number];
       constructor(cb: (entries: unknown[]) => void) {
-        observers.push({ kind: "intersection", cb });
+        this.entry = { kind: "intersection", cb, live: true };
+        observers.push(this.entry);
       }
       observe() {}
+      disconnect() {
+        this.entry.live = false;
+      }
     },
     ResizeObserver: class {
+      private entry: (typeof observers)[number];
       constructor(cb: (entries: unknown[]) => void) {
-        observers.push({ kind: "resize", cb });
+        this.entry = { kind: "resize", cb, live: true };
+        observers.push(this.entry);
       }
       observe() {}
+      disconnect() {
+        this.entry.live = false;
+      }
     },
   };
 
@@ -336,6 +371,9 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     addEventListener(type: string, fn: () => void) {
       (docListeners[type] ??= []).push(fn);
     },
+    removeEventListener(type: string, fn: () => void) {
+      docListeners[type] = (docListeners[type] ?? []).filter((l) => l !== fn);
+    },
     dispatch(type: string) {
       for (const fn of docListeners[type] ?? []) fn();
     },
@@ -345,6 +383,7 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     scenario,
     theme: options.theme,
     availableDisplayModes: options.modes,
+    legacyFullPolls: options.legacyFullPolls,
     deliver: (message) => fireMessage(message, parent),
   });
 
@@ -385,11 +424,18 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
       doc.dispatch("visibilitychange");
     },
     setIntersecting(on) {
-      for (const o of observers.filter((x) => x.kind === "intersection")) {
+      for (const o of observers.filter((x) => x.kind === "intersection" && x.live)) {
         o.cb([{ isIntersecting: on }]);
       }
     },
     pendingTimers: () => vclock.timers.length,
+    firePageHide() {
+      for (const fn of [...(listeners["pagehide"] ?? [])]) fn({});
+    },
+    listenerCount: () =>
+      Object.values(listeners).reduce((n, l) => n + l.length, 0) +
+      Object.values(docListeners).reduce((n, l) => n + l.length, 0) +
+      observers.filter((o) => o.live).length,
     bus,
   };
 }

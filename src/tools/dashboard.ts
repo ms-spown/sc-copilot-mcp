@@ -4,6 +4,7 @@ import { dashboardHtml } from "../dashboard/page.js";
 import { parsePlan } from "../dashboard/plan.js";
 import { DashboardService } from "../dashboard/service.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
+import { NOT_IN_STREAM } from "../providers/telemetry/normalize.js";
 import type { ResourceDefinition, ToolDefinition, ToolResult } from "./types.js";
 
 /**
@@ -93,6 +94,7 @@ export function dashboardTools({ telemetry }: { telemetry?: Telemetry }): ToolDe
             view: "sc_live_dashboard",
             opened_at: new Date().toISOString(),
             hint: OPEN_HINT,
+            not_in_stream: NOT_IN_STREAM,
             ...(clean ? { plan: clean } : {}),
           },
         };
@@ -109,16 +111,51 @@ export function dashboardTools({ telemetry }: { telemetry?: Telemetry }): ToolDe
             type: "boolean",
             description: "Include the aUEC balance and its change. Default false.",
           },
+          include_static: {
+            type: "boolean",
+            description: "Include the list of what the stream never contains. The View asks once.",
+          },
+          since_seq: {
+            type: "number",
+            description: "The newest event number the View holds: only newer events come back.",
+          },
+          have: {
+            type: "object",
+            description:
+              "Hashes (the `hash` of a previous answer) of the sections the View holds; a section with the same hash is left out and listed in `unchanged`.",
+            properties: {
+              ship: { type: "string", maxLength: 16 },
+              pilot: { type: "string", maxLength: 16 },
+              weapons: { type: "string", maxLength: 16 },
+            },
+          },
         },
       },
       advertised: enabled,
       requiresUi: true,
       meta: APP_ONLY_META,
       handler: async (args: unknown): Promise<ToolResult> => {
-        const { include_balance } = z
-          .object({ include_balance: z.boolean().optional() })
+        const hash = z.string().regex(/^[0-9a-f]{1,16}$/);
+        const { include_balance, include_static, since_seq, have } = z
+          .object({
+            include_balance: z.boolean().optional(),
+            include_static: z.boolean().optional(),
+            since_seq: z.number().int().min(0).max(1e12).optional(),
+            have: z
+              .object({
+                ship: hash.optional(),
+                pilot: hash.optional(),
+                weapons: hash.optional(),
+              })
+              .optional(),
+          })
           .parse(args || {});
-        const result = await service.poll(include_balance === true && enabled());
+        const result = await service.poll({
+          includeBalance: include_balance === true && enabled(),
+          ...(include_static === true ? { includeStatic: true } : {}),
+          ...(since_seq !== undefined ? { sinceSeq: since_seq } : {}),
+          ...(have ? { have } : {}),
+        });
         return {
           // Fixed text on purpose: the data is in structuredContent, and no balance can leak into the text.
           content: [{ type: "text", text: `live dashboard poll: ${result.state}` }],

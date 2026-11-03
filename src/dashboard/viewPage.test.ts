@@ -116,15 +116,15 @@ describe("Feature: the View speaks the ui/* protocol with the host", () => {
     // Nothing but ui/initialize may precede the agreement with the host.
     expect(methods(w).indexOf("ui/notifications/size-changed")).toBeGreaterThan(1);
     const call = w.host.log.received.find((r) => r.method === "tools/call")!;
-    expect(call.params).toEqual({ name: "sc_live_poll", arguments: {} });
+    expect(call.params).toEqual({ name: "sc_live_poll", arguments: { include_static: true } });
   });
 
   it("Given a host, Then ping and ui/resource-teardown are answered with {}", async () => {
     const w = await startPage();
     expect(await w.host.request("ping")).toEqual({});
-    expect(await w.host.request("ui/resource-teardown")).toEqual({});
     // Anything else the host asks is answered with an error, never left hanging.
     expect(await w.host.request("something/else")).toMatchObject({ code: -32601 });
+    expect(await w.host.request("ui/resource-teardown")).toEqual({});
   });
 
   it("Given a message from a window that is not the parent, Then it is ignored", async () => {

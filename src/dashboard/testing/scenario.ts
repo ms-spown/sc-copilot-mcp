@@ -17,6 +17,8 @@ import type {
 import {
   buildPoll,
   summarizeSession,
+  tailorPoll,
+  type PollRequest,
   type PollResult,
   type SessionMarker,
   type SessionState,
@@ -259,7 +261,10 @@ export class Scenario {
   }
 
   /** What sc_live_poll would answer at the current virtual time. */
-  poll(includeBalance: boolean): PollResult {
+  poll(
+    includeBalance: boolean,
+    request: Omit<PollRequest, "includeBalance"> = { includeStatic: true },
+  ): PollResult {
     const keep = (e: { type: string }) => includeBalance || e.type !== "uec_changed";
     const status = this.status();
     const snapshot = this.snapshot();
@@ -285,7 +290,10 @@ export class Scenario {
       includeBalance,
       nowMs: this.now,
     });
-    return this.forced === "off" ? { ...result, enabled: false } : result;
+    return tailorPoll(this.forced === "off" ? { ...result, enabled: false } : result, {
+      includeBalance,
+      ...request,
+    });
   }
 
   /** sc_live_mark. */

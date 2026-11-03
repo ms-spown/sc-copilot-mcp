@@ -274,6 +274,15 @@ export function initialViewState(): any {
     lastSeq: 0,
     series: {},
     plan: null,
+    /** The hashes of the sections held, as the server sent them (the next poll says which ones it already has). */
+    hash: {},
+    /** What the stream never contains, once the server has said it. */
+    notInStream: null,
+    /** Highest value seen per countermeasure kind for this vehicle: the reference of the relative bar. */
+    peaks: {},
+    shipKey: "",
+    /** Deduced scales of the dials (never shrink during a session). */
+    scales: { speed: 0, vspeed: 0 },
   };
 }
 
@@ -309,16 +318,49 @@ export function pushSample(series: number[][] | undefined, t: number, v: number,
   const kept = base.filter((s) => t - (s[0] as number) <= windowMs);
   if (last && t - (last[0] as number) < cfg.sampleMinGapMs) return kept;
   kept.push([t, v]);
+  // The window already bounds it (about 2.5 samples a second at most); this is the hard ceiling.
+  if (kept.length > cfg.maxSamples) kept.splice(0, kept.length - cfg.maxSamples);
   return kept;
 }
 
 /** Folds a poll answer into the view state. Pure: returns a new state. */
-export function reducePoll(prev: any, poll: any, now: number): any {
+export function reducePoll(prev: any, incoming: any, now: number): any {
   const cfg = viewConfig();
-  if (!poll || typeof poll !== "object" || poll.v !== 1) {
+  if (!incoming || typeof incoming !== "object" || incoming.v !== 1) {
     return reducePollError(prev, "réponse de version inconnue", now);
   }
+  // Sections the server left out because this View already holds them unchanged: put them back.
+  const poll: any = Object.assign({}, incoming);
+  const names = ["ship", "pilot", "weapons"];
+  if (Array.isArray(incoming.unchanged)) {
+    for (const name of names) {
+      if (incoming.unchanged.indexOf(name) < 0) continue;
+      if (prev.poll && prev.poll[name]) poll[name] = prev.poll[name];
+      else {
+        // Cannot happen with a server that follows the hashes; if it does, ask for everything next time.
+        return reducePollError(Object.assign({}, prev, { hash: {} }), "section absente", now);
+      }
+    }
+  }
+  delete poll.unchanged;
+  const hash: any = {};
+  if (incoming.hash && typeof incoming.hash === "object") {
+    for (const name of names) {
+      const h = incoming.hash[name];
+      if (typeof h === "string" && /^[0-9a-f]{1,16}$/.test(h)) hash[name] = h;
+    }
+  }
+  let notInStream = prev.notInStream;
+  if (Array.isArray(incoming.not_in_stream)) {
+    notInStream = incoming.not_in_stream
+      .filter((x: any) => typeof x === "string")
+      .map((x: string) => x.slice(0, 40))
+      .slice(0, 40);
+  }
+  if (notInStream && !poll.not_in_stream) poll.not_in_stream = notInStream;
   const next: any = Object.assign({}, prev, {
+    hash,
+    notInStream,
     poll,
     receivedAt: now,
     link: "ok",
@@ -360,12 +402,71 @@ export function reducePoll(prev: any, poll: any, now: number): any {
     const values = seriesValues(poll);
     for (const key of seriesKeys) {
       if (typeof values[key] === "number") {
-        series[key] = pushSample(series[key], now, values[key], cfg.trendWindowMs);
+        const keep =
+          key === "hunger" || key === "thirst"
+            ? cfg.trendWindowMs
+            : key === "hydrogen"
+              ? 120000
+              : cfg.sparkKeepMs;
+        series[key] = pushSample(series[key], now, values[key], keep);
       }
     }
   }
   next.series = series;
+  // Per-vehicle references: the highest countermeasure count seen, and the dials' scales (speeds in quantum mode
+  // are left out: they would flatten every other reading).
+  const key = poll.ship && typeof poll.ship.name === "string" ? poll.ship.name : "";
+  const peaks: any = key && key === prev.shipKey ? Object.assign({}, prev.peaks) : {};
+  const cms = poll.weapons && poll.weapons.countermeasures;
+  if (cms && typeof cms === "object") {
+    for (const kind of Object.keys(cms)) {
+      if (typeof cms[kind] === "number") peaks[kind] = Math.max(peaks[kind] || 0, cms[kind]);
+    }
+  }
+  next.peaks = peaks;
+  next.shipKey = key || prev.shipKey;
+  const scales: any = Object.assign({ speed: 0, vspeed: 0 }, prev.scales);
+  const ins = poll.ship && poll.ship.instruments;
+  const quantum = !!(poll.derived && (poll.derived.in_quantum_mode || poll.derived.in_jump));
+  if (ins && poll.state === "live" && !quantum) {
+    if (typeof ins.speed_ms === "number") scales.speed = Math.max(scales.speed, ins.speed_ms);
+    if (typeof ins.vertical_speed_ms === "number") {
+      scales.vspeed = Math.max(scales.vspeed, Math.abs(ins.vertical_speed_ms));
+    }
+  }
+  next.scales = scales;
   return next;
+}
+
+/** What to ask the server for: what this View does not hold yet, so the answer carries only what changed. */
+export function pollArguments(view: any, showBalance: boolean): any {
+  const args: any = {};
+  if (showBalance) args.include_balance = true;
+  if (!Array.isArray(view.notInStream)) args.include_static = true;
+  if (view.lastSeq > 0) args.since_seq = view.lastSeq;
+  const have: any = {};
+  let any = false;
+  const hashes = view.hash || {};
+  for (const name of ["ship", "pilot", "weapons"]) {
+    if (view.poll && view.poll[name] && typeof hashes[name] === "string") {
+      have[name] = hashes[name];
+      any = true;
+    }
+  }
+  if (any) args.have = have;
+  return args;
+}
+
+/** A readable ceiling for a dial from the largest value seen: 1, 1.5, 2, 3, 5 or 7.5 times a power of ten, never below `min`. */
+export function niceScale(seen: number, min: number): number {
+  const target = Math.max(min, Number.isFinite(seen) ? seen * 1.1 : 0);
+  const steps = [1, 1.5, 2, 3, 5, 7.5];
+  let power = Math.pow(10, Math.floor(Math.log(target) / Math.LN10));
+  for (let guard = 0; guard < 40; guard++) {
+    for (const s of steps) if (s * power >= target) return s * power;
+    power *= 10;
+  }
+  return target;
 }
 
 export function reducePollError(prev: any, message: string, now: number): any {
@@ -1474,6 +1575,8 @@ export const VIEW_FUNCTIONS = [
   initialContextGate,
   contextDecision,
   safeStyleVariables,
+  pollArguments,
+  niceScale,
   makeViewId,
   electLeader,
   notePeer,

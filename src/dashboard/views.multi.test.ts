@@ -202,6 +202,7 @@ describe("Feature: the sanitiser rebuilds an answer without losing a field", () 
   const strip = (poll: any) => {
     const copy = JSON.parse(JSON.stringify(poll));
     delete copy.balance;
+    delete copy.hash;
     copy.events = copy.events.filter((e: any) => e.group !== "wallet");
     return copy;
   };
