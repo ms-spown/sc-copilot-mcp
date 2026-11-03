@@ -28,7 +28,7 @@ extract anything from the game ourselves, and this repository contains no extrac
 
 Nothing is enabled by installing or updating this server. You need both:
 
-1. **Server side**: `SC_TELEMETRY=on` in the `env` of the `sc-copilot` entry of your MCP configuration.
+1. **Server side**: `SC_TELEMETRY=on` (also accepted: `1`, `true`, `yes`; anything else, or nothing, means off) in the `env` of the `sc-copilot` entry of your MCP configuration.
 2. **Game side**: `GRPC_CLIENT_SERVER_ENABLED=true` in the environment of the RSI Launcher, then quit the launcher
    **completely** (also from the taskbar tray) and start it again, because the game inherits the variable from it.
 
