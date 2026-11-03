@@ -183,6 +183,50 @@
     }
   },
   {
+    "name": "sc_live_dashboard",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "plan": {
+          "type": "object",
+          "description": "Optional route plan to show next to the measured balance change. Cargo is not measured by the game: the balance change is the only measure.",
+          "properties": {
+            "commodity": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "buy_terminal": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "sell_terminal": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "scu": {
+              "type": "number",
+              "description": "Cargo size planned, in SCU."
+            },
+            "expected_profit_auec": {
+              "type": "number",
+              "description": "Planned profit, in aUEC."
+            },
+            "note": {
+              "type": "string",
+              "maxLength": 60
+            }
+          }
+        }
+      }
+    },
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://sc-copilot/live-dashboard.html"
+      },
+      "ui/resourceUri": "ui://sc-copilot/live-dashboard.html"
+    }
+  },
+  {
     "name": "sc_live_events",
     "inputSchema": {
       "type": "object",
@@ -207,6 +251,54 @@
           "type": "boolean",
           "description": "Include balance-change events (default false)."
         }
+      }
+    }
+  },
+  {
+    "name": "sc_live_mark",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "start",
+            "end",
+            "reset_delta"
+          ],
+          "description": "start or end a session, or restart the balance change from now."
+        }
+      },
+      "required": [
+        "action"
+      ]
+    },
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://sc-copilot/live-dashboard.html",
+        "visibility": [
+          "app"
+        ]
+      }
+    }
+  },
+  {
+    "name": "sc_live_poll",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "include_balance": {
+          "type": "boolean",
+          "description": "Include the aUEC balance and its change. Default false."
+        }
+      }
+    },
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://sc-copilot/live-dashboard.html",
+        "visibility": [
+          "app"
+        ]
       }
     }
   },

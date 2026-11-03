@@ -29,9 +29,10 @@ const registry = createRegistry(
   {},
 );
 
+// The surface of a client that renders MCP App Views: it includes the dashboard tools and their _meta.
 const now = registry
-  .list()
-  .map(({ name, inputSchema }) => ({ name, inputSchema }))
+  .list({ ui: true })
+  .map(({ name, inputSchema, _meta }) => ({ name, inputSchema, ...(_meta ? { _meta } : {}) }))
   .sort((a, b) => a.name.localeCompare(b.name));
 
 const file = path.join(root, "src", "tools", "tools-surface.golden.json");
@@ -41,11 +42,12 @@ try {
 } catch {
   // No previous file: everything counts as added.
 }
-const old = new Map(before.map((t) => [t.name, JSON.stringify(t.inputSchema)]));
+const surface = (t) => JSON.stringify([t.inputSchema, t._meta ?? null]);
+const old = new Map(before.map((t) => [t.name, surface(t)]));
 
 const added = now.filter((t) => !old.has(t.name)).map((t) => t.name);
 const removed = [...old.keys()].filter((n) => !now.some((t) => t.name === n));
-const changed = now.filter((t) => old.has(t.name) && old.get(t.name) !== JSON.stringify(t.inputSchema)).map((t) => t.name);
+const changed = now.filter((t) => old.has(t.name) && old.get(t.name) !== surface(t)).map((t) => t.name);
 
 fs.writeFileSync(file, `${JSON.stringify(now, null, 2)}\n`);
 console.log(`tools: ${now.length}`);

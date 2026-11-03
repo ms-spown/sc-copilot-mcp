@@ -201,6 +201,10 @@ export const CATALOG: Record<string, CatalogEntry> = {
   sc_live_status: { ...liveTelemetry, profiles: ["local"] },
   sc_live_state: { ...liveTelemetry, profiles: ["local"] },
   sc_live_events: { ...liveTelemetry, profiles: ["local"] },
+  // The dashboard View (MCP App): same stream, same trust. Listed only with telemetry on and a client that renders Views.
+  sc_live_dashboard: { ...liveTelemetry, profiles: ["local"] },
+  sc_live_poll: { ...liveTelemetry, profiles: ["local"] },
+  sc_live_mark: { ...liveTelemetry, profiles: ["local"] },
 
   sc_local_datasets: { ...local, profiles: ["local"] },
   sc_search_local: { ...local, profiles: ["local"] },

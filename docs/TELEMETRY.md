@@ -125,6 +125,8 @@ from them.
 | `sc_live_status` | always | The state of the stream, why, and how to enable it |
 | `sc_live_state` | when `SC_TELEMETRY=on` | A snapshot with the age of the last frame and what is not available |
 | `sc_live_events` | when `SC_TELEMETRY=on` | Recent derived events, each marked `confirmed` or `unverified` |
+| `sc_live_dashboard` | when `SC_TELEMETRY=on` and the client can show Views | Opens the [live dashboard](#live-dashboard) in the conversation |
+| `sc_live_poll`, `sc_live_mark` | same | Used by the dashboard itself to refresh and to set session markers. Claude is told not to call them |
 
 States: `off` (server switch not set), `waiting` (nothing answers on the port), `game_without_telemetry` (the game
 runs, `Game.log` has no registration line: restart the launcher), `connected` (port open, no frames yet), `live`,
@@ -133,6 +135,56 @@ runs, `Game.log` has no registration line: restart the launcher), `connected` (p
 The reader starts at the first request, reconnects with a growing delay, stops after five minutes without a request,
 and keeps everything in memory only. Events exist only for the time the server was running while the game was
 sending frames, and they are inferred, not reported by the game.
+
+## Live dashboard
+
+An optional live view of the same stream, drawn inside the conversation: your ship, speed, hydrogen, health and
+the state of the stream at a glance, and, in full screen, instruments, warning lights, power flags, weapons by
+seat, countermeasures, vitals, recent events and a session timeline. It is an MCP App: a small page that this
+server provides and that the client renders next to the chat.
+
+- **Who shows it.** Claude Desktop is the host we tested (Microsoft Store build 4.4212.0, server declared in
+  `claude_desktop_config.json`). **Claude Code and other text clients do not render it**: for them the three
+  dashboard tools are not listed at all, so the model never sees them. The server lists them only when
+  `SC_TELEMETRY=on` AND the client declared the MCP Apps extension at start. Other hosts that render MCP Apps
+  may work; we have not tried them.
+- **How to open it.** Switch the telemetry on (see above), restart Claude Desktop completely (quit it from the
+  tray, not only the window), then ask Claude to open the live dashboard. Claude calls `sc_live_dashboard`.
+  While it is open you can keep talking to Claude: it answers from `sc_live_state`, not from the page.
+- **Two modes.** Inline: a compact view with five data (ship, speed, hydrogen, health, balance), the state of the
+  stream and a band of recent alerts. Full screen (button in the page): the complete panel. The button asks the
+  host; if the host answers with another mode the page follows what it is told.
+- **Age and gaps.** Every value comes with the age of its frame, and everything turns grey when the stream is not
+  live. Nothing is invented: a missing field is shown as a dash, health 0 reads "down or dead", and one
+  collapsible line lists what the stream does not contain (cargo, position, shield level, hull, heat, ammo).
+- **Estimates are labelled.** Remaining hydrogen, hunger and thirst are straight-line estimates over the last
+  minutes, shown with their window. Pace (aUEC per hour) and flight time come from the balance change and from
+  take-off and landing events since the session marker. The balance change mixes purchases, rewards and fines, and
+  the game does not measure cargo: it is the only measure of a run.
+- **Route plan.** After `uex_get_trade_routes`, Claude may pass a `plan` (commodity, buy and sell terminals, SCU,
+  expected profit, a short note) when it opens the dashboard. The page shows planned next to measured profit. The
+  text is cleaned and capped (60 characters) and displayed as plain text.
+- **Balance privacy.** The balance is hidden in the page until you click "Afficher le solde". Only then does the
+  page ask the server for it (`include_balance`). The balance is never put in the automatic summary that the
+  page may send to the model, nor in the fixed messages of the buttons, with one exception: the button "Route
+  avec mon solde et ce vaisseau" sends it in a message, says so in the text, and only when you press it.
+- **What the buttons do.** "Analyser ma situation", "Route avec mon solde et ce vaisseau" and "Bilan de
+  session" post a short fixed message in the conversation, as if you had typed it, asking Claude to use
+  `sc_live_state` and `sc_live_events`. Session markers (start, end, reset of the balance change) live in this
+  server's memory. Nothing in the page sends anything to the game.
+- **Load.** The page polls about once a second while it is visible (never faster than twice a second), every 5
+  seconds when the stream is off or cut. It stops when the window is hidden or the View is scrolled out of view,
+  and gives up for good after 30 minutes away until you click "Reprendre". Claude Desktop keeps every dashboard it
+  opened in the conversation, so several can exist: the server answers all of them from one read, cached for half
+  a second.
+- **No network, no package.** The page is one file inside this server: no CDN, no font, no request. It declares
+  its own restrictive content policy and sets every text with `textContent`.
+
+The dashboard shows what the stream shows and inherits every limit and risk of this page. We do not claim it is
+approved by Cloud Imperium Games.
+
+A preview for people who work on the page: `npm run build`, then `node scripts/dashboard-preview.mjs`, then open
+the local address it prints (loopback, port 4173 by default). It plays a made-up flight against a fake host; no game and no Claude is involved.
 
 ## Privacy
 

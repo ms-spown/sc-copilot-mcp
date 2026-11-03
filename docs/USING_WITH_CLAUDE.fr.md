@@ -52,4 +52,10 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
    véhicule. Ne lisez pas le solde aUEC (include_balance) avant l'accord du joueur, et dites que ce chiffre vient
    de la télémétrie du jeu ; une variation depuis le démarrage du lecteur mêle achats, récompenses et amendes.
    Ne déduisez rien du flux au-delà de ce qu'il montre.
+7. Quand le tableau de bord en direct (sc_live_dashboard) est ouvert, le joueur peut continuer à vous poser des
+   questions : répondez avec sc_live_state et sc_live_events. N'appelez jamais sc_live_poll ni sc_live_mark : ils
+   appartiennent au tableau de bord lui-même. Seul Claude Desktop l'affiche. Après uex_get_trade_routes, vous
+   pouvez passer la route comme plan à l'ouverture. Le flux ne contient pas la cargaison : la variation du solde
+   est la seule mesure d'une tournée. Le tableau de bord masque le solde tant que le joueur ne clique pas ; ne le
+   redemandez pas, et ne le répétez jamais sauf si le joueur l'a envoyé.
 ```

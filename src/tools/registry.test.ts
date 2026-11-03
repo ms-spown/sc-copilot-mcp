@@ -69,13 +69,14 @@ beforeEach(() => {
 describe("tool surface (non-regression)", () => {
   const golden = JSON.parse(
     fs.readFileSync(new URL("./tools-surface.golden.json", import.meta.url), "utf8"),
-  ) as { name: string; inputSchema: unknown }[];
+  ) as { name: string; inputSchema: unknown; _meta?: unknown }[];
 
   it("keeps every tool name and input schema as frozen in the golden file", () => {
-    // Telemetry on (it never connects without a call): its optional tools are part of the frozen surface.
+    // Telemetry on (it never connects without a call) and a client that renders Views: the optional tools are
+    // part of the frozen surface, and so is the _meta of the tools that open or serve a View.
     const listed = registryWith({ telemetry: createTelemetry({ enabled: true }) })
-      .list()
-      .map(({ name, inputSchema }) => ({ name, inputSchema }))
+      .list({ ui: true })
+      .map(({ name, inputSchema, _meta }) => ({ name, inputSchema, ...(_meta ? { _meta } : {}) }))
       .sort((a, b) => a.name.localeCompare(b.name));
     expect(listed).toEqual(golden);
   });
@@ -95,9 +96,19 @@ describe("tool surface (non-regression)", () => {
   });
 
   it("never leaks handlers into the listing", () => {
-    for (const tool of registryWith().list()) {
-      expect(Object.keys(tool).sort()).toEqual(["description", "inputSchema", "name"]);
+    const withViews = registryWith({ telemetry: createTelemetry({ enabled: true }) }).list({
+      ui: true,
+    });
+    for (const tool of withViews) {
+      const keys = Object.keys(tool).sort();
+      // _meta (MCP Apps) is part of the listing, only on the tools that have one.
+      expect(keys.filter((k) => k !== "_meta")).toEqual(["description", "inputSchema", "name"]);
     }
+    expect(withViews.filter((t) => "_meta" in t).map((t) => t.name)).toEqual([
+      "sc_live_dashboard",
+      "sc_live_poll",
+      "sc_live_mark",
+    ]);
   });
 });
 
@@ -109,8 +120,9 @@ describe("scoping: SCMCP_TOOLS, SCMCP_PROFILES", () => {
       .sort();
 
   it("advertises everything by default, except the optional tools whose feature is off", () => {
-    // Live telemetry is off by default: sc_live_state and sc_live_events are not listed (sc_live_status is).
-    expect(names({})).toHaveLength(allTools(clientsWith()).length - 2);
+    // Live telemetry is off by default: sc_live_state, sc_live_events and the three dashboard tools are not
+    // listed (sc_live_status is).
+    expect(names({})).toHaveLength(allTools(clientsWith()).length - 5);
     expect(names({})).toContain("sc_live_status");
     expect(names({})).not.toContain("sc_live_state");
   });
