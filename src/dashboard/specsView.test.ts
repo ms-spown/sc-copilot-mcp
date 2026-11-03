@@ -153,14 +153,14 @@ describe("Feature: the speed gauge uses the limits of the ship's sheet", () => {
 });
 
 describe("Feature: the sheet line says where the figures come from and what is not known", () => {
-  it("Given a ready sheet, Then the line names the ship, says wiki, and lists only the reliable figures", () => {
+  it("Given a ready sheet, Then the card names the ship and lists only the reliable figures", () => {
     const info = specsInfo({ ...READY, cargo_scu: undefined });
-    expect(plain(info.line)).toContain("Fiche du vaisseau : Cutter (wiki)");
-    expect(plain(info.line)).toContain("SCM 210 m/s");
-    expect(plain(info.line)).toContain("max 1 100 m/s");
-    expect(plain(info.line)).toContain("boucliers 4 000 PV");
-    expect(plain(info.line)).toContain("coque 12 000 PV");
-    expect(info.line).not.toMatch(/cargaison/);
+    expect(info.line).toBe("Cutter");
+    expect(plain(info.rows[0][1])).toBe("210 m/s");
+    expect(plain(info.rows[1][1])).toBe("1 100 m/s");
+    expect(plain(info.rows[3][1])).toBe("4 000 PV");
+    expect(plain(info.rows[4][1])).toBe("12 000 PV");
+    expect(specsInfo({ status: "ready", name: "X" }).line).toBe("X · aucun chiffre fourni");
     expect(info.rows.map((r: string[]) => r[0])).toEqual([
       "Vitesse SCM",
       "Vitesse max",
@@ -199,6 +199,7 @@ describe("Feature: the sheet line says where the figures come from and what is n
     const info = specsInfo(SPECS_SAMPLES.ambiguous);
     expect(info.line).toContain("Cutter Alpha, Cutter Beta, Cutter Gamma");
     expect(info.line).toContain("aucune choisie");
+    expect(info.line).toContain("Cutter Alpha, Cutter Beta, Cutter Gamma");
     expect(info.rows).toEqual([]);
   });
 
@@ -270,8 +271,8 @@ describe("Feature: the dial of instrumentInfo is completed with the sheet", () =
     expect(out.peak).toBeNull();
     expect(out.fraction).toBeCloseTo(183 / 1100, 5);
     expect(plain(out.subShort)).toBe("87 % de la vitesse SCM · fiche (wiki)");
-    expect(plain(out.sub)).toContain(
-      "marques SCM 210 · max 1 100 m/s, d’après la fiche (wiki) : Cutter",
+    expect(plain(out.sub)).toBe(
+      "87 % de la vitesse SCM · marques SCM 210 · max 1 100 m/s, d’après la fiche (wiki)",
     );
     expect(out.sub).not.toContain("déduite");
   });

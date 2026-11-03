@@ -1108,6 +1108,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
         setText(R.specsRows[i].value, r[1]);
       }
     }
+    show(R.specsFacts, sheet.rows.length > 0);
     setText(R.specsLine, ship ? sheet.line : "");
     show(R.specsLine, !!(ship && sheet.line));
     setText(

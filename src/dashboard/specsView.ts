@@ -144,7 +144,7 @@ function specsText(v: unknown): string {
 
 /**
  * What to show about the sheet. { status, line, rows, note, candidates }:
- *   line  one sentence, "" when there is nothing to say outside the speed gauge;
+ *   line  the lead line of the card (the wiki's name for the ship; the candidates when ambiguous), "" otherwise;
  *   rows  [label, value] pairs for the card, only for a sheet that was found;
  *   note  what the sheet is and is not (always says that the hydrogen tank is not known).
  */
@@ -189,22 +189,15 @@ export function specsInfo(specs: any, ageMs?: any): any {
       .filter(Boolean)
       .join(" · ");
     out.rows.push(["Lecture", when || "date inconnue"]);
-    out.line =
-      "Fiche du vaisseau : " +
-      (name || "sans nom") +
-      " (wiki)" +
-      (short.length ? " · " + short.join(" · ") : " · aucun chiffre fourni") +
-      (when ? " · " + when : "");
+    // The card is titled "Fiche du vaisseau (wiki)": its first line is the name the wiki gives the ship.
+    out.line = (name || "sans nom") + (short.length ? "" : " · aucun chiffre fourni");
     out.note = kind + " " + hydrogen;
   } else if (specs.status === "ambiguous") {
     const list = Array.isArray(specs.candidates)
       ? specs.candidates.slice(0, 8).map((c: unknown) => specsText(c))
       : [];
     out.candidates = list;
-    out.line =
-      "Fiche du vaisseau : plusieurs fiches possibles (" +
-      list.join(", ") +
-      "), aucune choisie · échelle déduite";
+    out.line = "Plusieurs fiches possibles, aucune choisie : " + list.join(", ") + ".";
     out.note = kind + " " + hydrogen;
   } else {
     out.note = hydrogen;
@@ -252,9 +245,8 @@ export function speedWithSheet(speed: any, specs: any, speedMs: any, quantum: an
   out.marks = { scm: g.scmMark, max: g.maxMark };
   out.over = g.over;
   out.level = g.over === "none" ? "ok" : "info";
-  const name = specs && typeof specs.name === "string" ? specs.name.slice(0, 60) : "";
   out.subShort = g.sub + (g.sub ? " · " : "") + "fiche (wiki)";
-  out.sub = (g.sub ? g.sub + " · " : "") + g.scale + (name ? " : " + name : "");
+  out.sub = (g.sub ? g.sub + " · " : "") + g.scale;
   return out;
 }
 
