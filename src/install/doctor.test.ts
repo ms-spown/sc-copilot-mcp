@@ -148,6 +148,42 @@ describe("Feature: the installation doctor", () => {
     });
   });
 
+  describe("Scenario: live telemetry", () => {
+    const tele = (t: NonNullable<DoctorFacts["telemetry"]>) =>
+      diagnose({ ...healthy, telemetry: t }).filter((c) => c.id.startsWith("telemetry"));
+
+    it("Given both switches off, Then it is ok, the port is untested and nothing is a problem", () => {
+      const checks = tele({ serverSwitch: "absent", gameVar: "unset", port: "not_tested" });
+      expect(checks).toHaveLength(1);
+      expect(checks[0]).toMatchObject({ status: "ok" });
+      expect(checks[0].message).toMatch(/Port not tested/);
+    });
+    it("Given only the server side on, Then it warns and names the command", () => {
+      const [c] = tele({ serverSwitch: "on", gameVar: "unset", port: "closed" });
+      expect(c).toMatchObject({
+        status: "warn",
+        fix: expect.stringContaining("telemetry -- enable"),
+      });
+    });
+    it("Given only the game variable set, Then it warns that the server will not read the stream", () => {
+      const [c] = tele({ serverSwitch: "absent", gameVar: "true", port: "not_tested" });
+      expect(c.status).toBe("warn");
+      expect(c.message).toMatch(/server will not read/);
+    });
+    it("Given both on and the port closed, Then the launcher is to be restarted", () => {
+      const checks = tele({ serverSwitch: "on", gameVar: "true", port: "closed" });
+      const port = checks.find((c) => c.id === "telemetry-port");
+      expect(port).toMatchObject({ status: "warn", fix: expect.stringContaining("tray icon") });
+      expect(port?.message).toMatch(/launcher has to be restarted/);
+      expect(checks.find((c) => c.id === "telemetry-stream")?.message).toMatch(/not verified/);
+    });
+    it("Given both on and the port open, Then it is ok and the stream is not verified", () => {
+      const checks = tele({ serverSwitch: "on", gameVar: "true", port: "open" });
+      expect(checks.every((c) => c.status === "ok")).toBe(true);
+      expect(checks.find((c) => c.id === "telemetry-stream")?.message).toMatch(/not verified/);
+    });
+  });
+
   describe("Scenario: the fleet file is broken", () => {
     it("Then it warns and says the file is never overwritten while invalid", () => {
       expect(
