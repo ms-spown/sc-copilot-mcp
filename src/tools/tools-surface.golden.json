@@ -318,6 +318,10 @@
             "specs": {
               "type": "string",
               "maxLength": 16
+            },
+            "ledger": {
+              "type": "string",
+              "maxLength": 16
             }
           }
         }

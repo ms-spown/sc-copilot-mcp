@@ -45,7 +45,7 @@ Claude ── MCP (stdio) ──► src/server.ts ──► tools/registry.ts �
 | Game log | `providers/gamelog/` (`parser.ts` pure, `reader.ts` I/O, `context.ts` derived views) | Off by default; read-only |
 | Fleet | `providers/fleet/` (`store.ts`, `resolve.ts`) | Local JSON file |
 | Live telemetry | `providers/telemetry/` (`wire.ts` + `decode.ts` + `schema.ts` decode, `normalize.ts` flat state, `handler.ts` + `events.ts` debounced events, `reader.ts` HTTP/2 stream, `service.ts` lazy single reader, `index.ts` the only door) | Off unless `SC_TELEMETRY=on`; loopback only; memory only; see [TELEMETRY.md](TELEMETRY.md) |
-| Live dashboard | `dashboard/` (`poll.ts` the poll payload, `service.ts` shared cache and session markers, `plan.ts`, `specs.ts` the ship sheet lookup from the wiki (background, cached by class name), `viewLogic.ts` pure View logic, `specsView.ts` + `specsStyles.ts` the pure View logic and styles of the sheet gauges, `viewApp.ts` the View, `page.ts` the one HTML page, `testing/` fake host and scenario), tools in `tools/dashboard.ts` | An MCP App on top of the telemetry; see below |
+| Live dashboard | `dashboard/` (`poll.ts` the poll payload, `service.ts` shared cache and session markers, `plan.ts`, `ledger*.ts` the transport ledger, `specs.ts` the ship sheet lookup from the wiki (background, cached by class name), `viewLogic.ts` pure View logic, `specsView.ts` + `specsStyles.ts` the pure View logic and styles of the sheet gauges, `viewApp.ts` the View, `page.ts` the one HTML page, `testing/` fake host and scenario), tools in `tools/dashboard.ts` | An MCP App on top of the telemetry; see below |
 | Patch dumps | `providers/dumps/` | Legacy; history is thin |
 
 ## Optional features that are off by default
@@ -107,6 +107,22 @@ that only it may call (`visibility: ["app"]`): `sc_live_poll` (state, events, se
   whose `class_name` is the very class name, is accepted. The result is the optional `specs` field of the poll
   (`poll.ts`). The View side lives in `specsView.ts` (pure, serialised into the page after `viewLogic.ts` by
   `page.ts`) and `specsStyles.ts`, so the sheet gauges stay out of the files the rest of the View changes in.
+- **The transport ledger** is kept in modules of its own. `ledger.ts` is pure (log events and a balance history in, a
+  bounded payload out: contracts, steps, durations, and, only with `include_balance`, gains, totals, pace and
+  planned against measured). `ledgerService.ts` keeps the last result in memory and refreshes it from the game log at
+  most every 5 seconds: the file's modification date is looked at, and nothing is read unless it changed. The first
+  read is a full one; after that only the bytes added since the last position are parsed (with a 16 kB look-behind
+  so that two lines written together are never cut apart, and a key per event to ignore what the look-behind
+  re-reads). A shorter file, a different beginning (a new game session) or a UTF-16 log starts again with a full read.
+  The poll calls the synchronous `state()` and never waits for the file. `TelemetryService.balanceHistory()` (500
+  points at most, one per change, memory only, optional on the `Telemetry` interface) feeds it and is exposed by no
+  tool. The ledger is the fifth section of the delta protocol (`have.ledger`, `hash.ledger`, `unchanged`): its hash
+  is computed from the content built for that balance choice, so the shared cache (keyed by `include_balance`)
+  never mixes the two and a hash of a version with amounts is never sent to a View that did not ask for the balance.
+  The panel is `ledgerPanel.ts` (with `ledgerStyles.ts`), compiled into the page after `specsView.ts`; it writes
+  only the nodes that change. On the channel between Views the ledger travels without every balance-derived field
+  (`ledgerStripBalance` before sending, `ledgerChannelClean` on reception); `testing/ledgerScenario.ts` plays an
+  invented transport session for the tests and the preview (`transport=` parameter).
 - **Preview.** `scripts/dashboard-preview.mjs` serves the page and a fake host with a made-up flight (a full quantum
   jump included) on `127.0.0.1`. Its iframe carries `allow-same-origin` (the preview only) so that two Views can reach
   each other on the channel.

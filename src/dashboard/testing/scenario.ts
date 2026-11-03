@@ -25,6 +25,7 @@ import {
   type SessionState,
 } from "../poll.js";
 import { POLL_EVENT_COUNT } from "../constants.js";
+import type { LedgerPayload } from "../ledger.js";
 import type { ShipSpecs } from "../specs.js";
 
 type Frame = Record<string, unknown>;
@@ -179,6 +180,11 @@ export class Scenario {
   forced: ForcedState = null;
   /** The ship sheet the server would hold for the story's ship (specs.ts). null: none (an older server). */
   specs: ShipSpecs | null = null;
+  /**
+   * The transport ledger the server would hold (ledgerScenario.ts), built for the balance choice of the poll. Left
+   * unset, the answer has no ledger (an older server). It goes through the same hashes and `unchanged` as the sections.
+   */
+  ledger: ((includeBalance: boolean, nowMs: number) => LedgerPayload) | null = null;
   /** Stop delivering frames (the stream is cut) without ending the story. */
   cut = false;
   /** What Game.log says about the connection (connection.ts). null: the log is not available. */
@@ -296,6 +302,7 @@ export class Scenario {
       includeBalance,
       nowMs: this.now,
       ...(this.specs ? { specs: this.specs } : {}),
+      ...(this.ledger ? { ledger: this.ledger(includeBalance, this.now) } : {}),
       connection: this.connection,
     });
     return tailorPoll(this.forced === "off" ? { ...result, enabled: false } : result, {

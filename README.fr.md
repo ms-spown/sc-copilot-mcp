@@ -212,6 +212,10 @@ d'atterrissage, alimentation, voyants, santé, faim, soif.
   et rien n'est envoyé au jeu. Le cadran de vitesse utilise les limites du vaisseau prises sur le Star Citizen Wiki
   quand une seule fiche correspond au vaisseau (étiquetée « wiki »), et le dit quand il garde sa propre échelle. Claude
   Code ne l'affiche pas. Voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#tableau-de-bord-en-direct).
+- **Un carnet de transport (optionnel, il faut le journal de jeu).** Dans ce tableau de bord, les contrats de la
+  session avec leurs étapes de chargement et de livraison et, une fois le solde affiché, la variation brute du solde
+  sur chaque contrat terminé ; le journal de jeu ne contient ni quantité ni récompense. Voir
+  [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#carnet-de-transport).
 - **Lisez d'abord les risques.** C'est une fonction non documentée du jeu. À notre connaissance, CIG ne l'a ni
   autorisée ni interdite, les conditions de RSI s'appliquent à vous, et le risque est le vôtre. Tout est dans
   [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md).

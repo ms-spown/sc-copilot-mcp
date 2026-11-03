@@ -6,8 +6,9 @@
 // - No network access, no game, no Claude Desktop configuration, no file written. Stop with Ctrl+C.
 // - The fake host plays the scenario of src/dashboard/testing/scenario.ts through the REAL normaliser and event
 //   handler, answers the ui/* requests as the measured host does, and shows what the View sends to the conversation.
-// URL parameters: t=<seconds into the story> theme=light|dark w=<px> mode=inline|fullscreen balance=1 session=1
+// URL parameters: t=<seconds into the story> theme=light|dark w=<px> mode=inline|fullscreen balance=1 (presses the show-balance button) session=1
 //                 forced=off|waiting|game_without_telemetry|incompatible cut=1 plan=1 scroll=<px>
+//                 transport=story|off|loading|unreadable|empty|none   (the transport ledger; story by default, none = no field)
 //                 conn=disconnected|menu|closed|online  (the connection read from Game.log)
 //                 specs=ready|unknown|ambiguous|pending|error|none  (the ship sheet from the wiki; default ready; the figures
 //                 are synthetic, see src/dashboard/testing/specsFixtures.ts; the story's ship is always the same Cutter)
@@ -50,6 +51,7 @@ const HARNESS = `<!doctype html>
 <script type="module">
 import { Scenario } from "/dist/dashboard/testing/scenario.js";
 import { createFakeHost } from "/dist/dashboard/testing/fakeHost.js";
+import { transportLedger } from "/dist/dashboard/testing/ledgerScenario.js";
 import { specsSamples } from "/dist/dashboard/testing/specsFixtures.js";
 const q = new URLSearchParams(location.search);
 const seek = Number(q.get("t") ?? 0);
@@ -88,6 +90,13 @@ const deliver = (m) => {
 };
 host = createFakeHost({ scenario, theme: $("theme").value, deliver });
 window.__host = host; window.__scenario = scenario;
+// The transport ledger: invented log lines through the real parser and ledger code, with the balance of the story.
+// The scenario sends it through the real delta protocol (hash, unchanged) like the other sections.
+const transport = q.get("transport") ?? "story";
+if (transport !== "none") {
+  const plan = q.get("plan") ? { expected_profit_auec: 150000 } : undefined;
+  scenario.ledger = (include, nowMs) => transportLedger(nowMs, scenario.epoch, include, transport, plan);
+}
 $("specs").value = q.get("specs") ?? "ready";
 // The scenario holds the wiki sheet of its ship in the chosen state; the poll sends it through the real delta protocol.
 const paintSpecs = () => { scenario.specs = specsSamples(scenario.now)[$("specs").value] ?? null; };
@@ -122,6 +131,11 @@ frame.addEventListener("load", () => {
     }
   }, 300);
 });
+// balance=1: press "Afficher le solde" in the page, as the player would (the preview frame is same-origin).
+if (q.get("balance")) frame.addEventListener("load", () => setTimeout(() => {
+  const b = [...frame.contentDocument.querySelectorAll("button")].find((x) => x.textContent === "Afficher le solde");
+  if (b) b.click();
+}, 1200));
 if (q.get("scroll")) frame.addEventListener("load", () => setTimeout(() => frame.contentWindow.scrollTo(0, Number(q.get("scroll"))), 1500));
 frame.src = "/view.html";
 setInterval(() => { $("clock").textContent = "histoire : " + Math.round(scenario.t / 1000) + " s"; }, 500);

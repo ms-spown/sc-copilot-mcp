@@ -7,6 +7,22 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Transport ledger in the live dashboard** ("Carnet de transport"). Links the game log (contracts, pickup and
+  drop-off steps with place and goods) to the balance change the telemetry measured. A full-screen panel and, while a
+  contract runs, one line in the small view. It shows what the log gives (title, times, steps, duration) and never a
+  quantity or a reward, which the log does not carry. The gain of a completed contract is the balance after minus the
+  balance at acceptance, marked `mesure_brute` and `mixed_flows_possible`, unknown (never zero) when the telemetry did
+  not see the balance, with the pace over the session and, if Claude passed a route plan, planned against measured.
+  Everything derived from the balance is built only when the View asked for the balance. The poll answer gains an
+  optional `ledger` section of the delta protocol (`have.ledger`, `hash.ledger`, `unchanged`; the hash is computed from
+  the content built for that balance choice, so a hash never stands for an amount the View was not allowed to see; the
+  input schema of `sc_live_poll` gains `have.ledger`, golden and docs/TOOLS.md regenerated). On the channel between
+  Views the ledger travels without any balance-derived field. The log is looked at at most every 5 seconds and read
+  only when its modification date changed, then incrementally (only the bytes added, with a look-behind; a shorter
+  file, a new session or a UTF-16 log starts again with a full read), and the poll never waits for it. `TelemetryService` keeps a bounded in-memory
+  history of balance changes for it (no tool returns it). Without the game log the panel says so and points to
+  `sc_log_status`. Steps are ticked from the count of objective notices (an estimate) and the balance is read 10 s
+  after a contract ends (an assumption); neither has been measured with the real game.
 - **Connection state from `Game.log`.** The stream does not signal a disconnection (a player kicked for inactivity
   still saw a calm dashboard). A small state machine reads the game's own lines (joined a server, channel cut by the
   server with its code, back in the menu, quit) and reports `online`, `menu`, `disconnected` (30028 = inactivity) or

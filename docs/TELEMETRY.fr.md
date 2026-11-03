@@ -465,6 +465,52 @@ puis ouvrez l'adresse locale qu'il affiche (boucle locale, port 4173 par défaut
 quantique complet compris, face à un hôte factice ; ni jeu ni Claude n'interviennent. Paramètres : `t`, `theme`,
 `w`, `mode`, `scroll`, `forced`, `cut`, `plan`.
 
+### Carnet de transport
+
+Un panneau du tableau de bord en plein écran (« Carnet de transport ») qui relie le journal de jeu à la variation du
+solde mesurée par la télémétrie, pour montrer ce que rapporte réellement un transport. Dans la vue réduite, c'est une
+seule ligne tant qu'un contrat est en cours (« Contrat en cours : titre, étape 2/3 »).
+
+- **Il faut le journal de jeu.** Le journal est désactivé par défaut (`SC_INSTALL_DIR` ou `SC_GAME_LOG_PATH`). Sans lui,
+  le panneau le dit et renvoie vers `sc_log_status`, qui explique comment l'activer ; rien n'échoue.
+- **Ce qu'il sait.** Pour les contrats de la session de jeu en cours : le titre, un identifiant court de mission, la
+  date d'acceptation et de fin (terminé, abandonné ou échoué), et pour chaque étape de transport un chargement ou une
+  livraison avec son lieu et le nom de la marchandise, dans l'ordre où le jeu les a annoncées. La durée est la fin
+  moins l'acceptation. Les étapes sont cochées d'après le nombre de notices « Objective Complete » du contrat ; cela
+  suppose qu'elles arrivent dans l'ordre des étapes, et le journal ne dit pas quelle étape elles closent : les coches
+  sont donc une estimation.
+- **Ce qu'il ne sait pas.** La quantité (SCU) et la récompense : le journal de jeu ne contient ni l'une ni l'autre,
+  le panneau n'en montre donc aucune. Une étape sans quantité n'en montre pas. Les contrats acceptés lors d'une
+  session de jeu précédente ne sont pas dans le journal courant. Seule la fin d'un journal très long est lue, et le
+  panneau le dit.
+- **Le seul chiffre d'argent est mesuré.** Le gain d'un contrat terminé est le solde après le contrat moins le solde à
+  son acceptation, tous deux tirés de l'historique des changements de solde de la télémétrie (gardé en mémoire, 500
+  changements au plus, rien n'est écrit). Le solde est lu quelques secondes après la fin (10 s, une hypothèse non
+  mesurée avec le vrai jeu) pour compter une récompense versée juste après la notice ; d'ici là le gain est « en
+  attente ». Il mêle les achats, les récompenses et les amendes survenus entre-temps : il est donc marqué
+  `mesure_brute` avec `mixed_flows_possible: true`, et ce n'est pas un bénéfice net. Si la télémétrie ne tournait pas
+  ou avait une coupure à l'un des deux instants, le gain est inconnu (jamais zéro). Quand deux contrats se
+  chevauchent, chaque chiffre contient aussi la récompense de l'autre et le signale ; le total compte le
+  chevauchement une seule fois. Le rythme (aUEC par heure) demande au moins deux minutes de contrat. Le tableau de
+  bord doit être ouvert (la télémétrie ne lit que pendant qu'une View interroge) pour que l'historique existe.
+- **Prévu et réalisé.** Si Claude a passé un `plan` de route à l'ouverture du tableau de bord, le panneau place le
+  profit prévu à côté du gain du dernier contrat terminé. Il ne peut pas vérifier que ce contrat est la route prévue.
+- **Confidentialité du solde.** Tout ce qui dérive du solde (gain, total, rythme, prévu contre réalisé) est construit
+  par le serveur et dessiné par la page seulement après votre clic sur « Afficher le solde ». Sans lui, le carnet ne
+  montre que les étapes et les durées, et la réponse du serveur ne contient aucun de ces chiffres. Rien n'entre dans le
+  résumé automatique envoyé au modèle ni dans les messages fixes.
+- **Charge.** La date de modification du fichier du journal est consultée au plus toutes les 5 secondes, à partir d'une
+  interrogation, et rien n'est lu tant que cette date n'a pas changé. La première lecture prend la fin du journal
+  (comme les autres outils du journal) ; ensuite seuls les octets ajoutés par le jeu sont lus et analysés (avec un
+  court recul pour ne jamais couper deux lignes écrites ensemble). Un fichier plus court, un début différent (une
+  nouvelle session de jeu) ou un journal en UTF-16 recommence par une lecture complète. Les lectures sont asynchrones
+  et ne posent aucun verrou ; l'analyse est un travail synchrone proportionnel à ce qui a été lu. Une interrogation ne
+  l'attend jamais : elle porte le dernier résultat. Le carnet est une section de l'interrogation allégée comme la
+  fiche du vaisseau (empreinte, omis tant qu'il ne change pas), et les autres tableaux de bord de la conversation le
+  reçoivent par le canal entre Views sans aucun chiffre dérivé du solde.
+- **Texte venu du jeu.** Les titres de contrat, les lieux et les marchandises sont nettoyés (caractères invisibles et
+  de changement de direction retirés), plafonnés à 80 et 60 caractères, et affichés en texte brut uniquement.
+
 ## Confidentialité
 
 - Le flux est **non chiffré et lisible par n'importe quel programme de votre PC** tant qu'il est actif. Il est lié à

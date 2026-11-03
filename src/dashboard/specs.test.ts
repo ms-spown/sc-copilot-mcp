@@ -532,7 +532,7 @@ describe("Feature: the poll carries the sheet without ever waiting for it", () =
     expect(await service.poll({ includeBalance: false })).not.toHaveProperty("specs");
   });
 
-  it("Given the sc_live_poll tool, Then structuredContent.specs is there and the only new input is have.specs", async () => {
+  it("Given the sc_live_poll tool, Then structuredContent.specs is there and the only new input is have.specs (the ledger adds have.ledger)", async () => {
     const { client, get } = wikiClient(() => list([CUTTER]));
     const tools = dashboardTools({
       telemetry: fakeTelemetry({ enabled: true, className: "DRAK_Cutter" }),
@@ -542,7 +542,13 @@ describe("Feature: the poll carries the sheet without ever waiting for it", () =
     const props = (poll.inputSchema as { properties: Record<string, { properties?: object }> })
       .properties;
     expect(Object.keys(props)).toEqual(["include_balance", "include_static", "since_seq", "have"]);
-    expect(Object.keys(props["have"]!.properties!)).toEqual(["ship", "pilot", "weapons", "specs"]);
+    expect(Object.keys(props["have"]!.properties!)).toEqual([
+      "ship",
+      "pilot",
+      "weapons",
+      "specs",
+      "ledger",
+    ]);
     const answer = await poll.handler({});
     expect((answer.structuredContent as { specs: { status: string } }).specs.status).toBe(
       "pending",

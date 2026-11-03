@@ -414,6 +414,7 @@ describe("Feature: a View only receives what it does not hold yet", () => {
       pilot: expect.stringMatching(/^[0-9a-f]{14}$/),
       weapons: expect.stringMatching(/^[0-9a-f]{14}$/),
       specs: expect.stringMatching(/^[0-9a-f]{14}$/),
+      ledger: expect.stringMatching(/^[0-9a-f]{14}$/),
     });
     const second = (
       await call("sc_live_poll", {
@@ -422,6 +423,7 @@ describe("Feature: a View only receives what it does not hold yet", () => {
           ship: first["hash"].ship,
           pilot: first["hash"].pilot,
           weapons: first["hash"].weapons,
+          ledger: first["hash"].ledger,
         },
       })
     ).sc!;

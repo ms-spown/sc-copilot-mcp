@@ -84,6 +84,20 @@ export interface TelemetrySnapshot {
   uec_session?: { start: number; current: number; delta: number; since: string };
 }
 
+/**
+ * One value of the aUEC balance, kept in memory only: it held from `at` (the first frame that carried it) and a
+ * frame still carried it at `until`. A frame with the same balance moves `until`; only a change adds a point.
+ * Used by the transport ledger to measure a balance change between two instants. Never put in a tool answer.
+ */
+export interface BalancePoint {
+  at: number;
+  uec: number;
+  until: number;
+}
+
+/** At most this many balance changes are remembered (the oldest go first). */
+export const MAX_BALANCE_POINTS = 500;
+
 /** A local program on the port could send endless distinct field numbers: keep only the first few. */
 const MAX_NOTES = 64;
 const addBounded = (set: Set<string>, value: string) => {
@@ -110,6 +124,7 @@ export class TelemetryService {
   private unknown = new Set<string>();
   private anomalies = new Set<string>();
   private uecBaseline: { start: number; since: number } | null = null;
+  private balancePoints: BalancePoint[] = [];
   private hint: GameLogHint | null = null;
   private hintAt = 0;
   private readonly now: () => number;
@@ -251,6 +266,8 @@ export class TelemetryService {
         if (typeof balance === "number" && !this.uecBaseline) {
           this.uecBaseline = { start: balance, since: t };
         }
+        // A balance that arrives as a string (too large for a number) is not recorded: a gain then stays unknown.
+        if (typeof balance === "number") this.recordBalance(balance, t);
       }
       return true;
     } catch {
@@ -259,6 +276,24 @@ export class TelemetryService {
       this.badStreak++;
       return false;
     }
+  }
+
+  private recordBalance(uec: number, t: number): void {
+    const last = this.balancePoints[this.balancePoints.length - 1];
+    if (last && last.uec === uec) {
+      last.until = Math.max(last.until, t);
+      return;
+    }
+    this.balancePoints.push({ at: t, uec, until: t });
+    if (this.balancePoints.length > MAX_BALANCE_POINTS) this.balancePoints.shift();
+  }
+
+  /**
+   * The balance changes seen since the process started (copies, oldest first, at most MAX_BALANCE_POINTS). For the
+   * transport ledger only: no tool answer carries it. Does not start the reader.
+   */
+  balanceHistory(): BalancePoint[] {
+    return this.balancePoints.map((p) => ({ ...p }));
   }
 
   private async refreshHint(): Promise<void> {

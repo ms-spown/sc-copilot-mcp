@@ -448,6 +448,48 @@ the local address it prints (loopback, port 4173 by default). It plays a made-up
 jump, against a fake host; no game and no Claude is involved. Parameters: `t`, `theme`, `w`, `mode`, `scroll`,
 `forced`, `cut`, `plan`.
 
+### Transport ledger
+
+A panel of the full-screen dashboard ("Carnet de transport") that links the game log to the balance change the
+telemetry measured, to show what a hauling run actually earned. In the small view it is one line while a contract
+runs ("Contrat en cours : title, step 2/3").
+
+- **Needs the game log.** The log is off by default (`SC_INSTALL_DIR` or `SC_GAME_LOG_PATH`). Without it the panel
+  says so and points to `sc_log_status`, which explains how to enable it; nothing fails.
+- **What it knows.** For the contracts of the current game session: the title, a short mission id, when it was
+  accepted and when it ended (completed, abandoned or failed), and for each hauling step a pickup or a drop-off with
+  its place and the name of the goods, in the order the game announced them. Duration is the end minus the
+  acceptance. Steps are ticked from the number of "Objective Complete" notices of that contract; that assumes the
+  notices come in step order, and the log does not say which step they close, so the ticks are an estimate.
+- **What it does not know.** The quantity (SCU) and the reward: the game log carries neither, so the panel shows
+  neither. A step without a quantity shows none. Contracts accepted in an earlier game session are not in the
+  current log. Only the end of a very large log is read, and the panel says so.
+- **The only money figure is measured.** The gain of a completed contract is the balance after the contract minus
+  the balance at its acceptance, both taken from the telemetry's own history of balance changes (kept in memory,
+  500 changes at most, nothing written). The balance is read a few seconds after the end (10 s, an assumption that
+  has not been measured with the real game) so that a reward paid just after the notice is counted; until then the
+  gain is "pending". It mixes purchases, rewards and fines made in between, so it is marked `mesure_brute` with
+  `mixed_flows_possible: true`; it is not a net profit. If the telemetry was not running or had a gap at one of the
+  two instants, the gain is unknown (never zero). When two contracts overlap, each figure also holds the other's
+  reward and is flagged; the total counts the overlap once. The pace (aUEC per hour) needs at least two minutes of
+  contract time. The dashboard has to be open (the telemetry reads only while a View polls) for the history to exist.
+- **Planned and measured.** If Claude passed a route `plan` when it opened the dashboard, the panel puts the planned
+  profit next to the gain of the latest completed contract. It cannot check that the contract is the planned route.
+- **Balance privacy.** Everything derived from the balance (gain, total, pace, planned against measured) is built by
+  the server and drawn by the page only after you click "Afficher le solde". Without it the ledger shows steps and
+  durations only, and the server's answer holds no such figure. None of it goes into the automatic summary sent to
+  the model or into the fixed messages.
+- **Load.** The log file's modification date is looked at at most every 5 seconds, from a poll, and nothing is read
+  unless that date changed. The first read takes the end of the log (as the other log tools do); after that only the
+  bytes the game added are read and parsed (with a short look-behind so that two lines written together are never
+  cut apart). A shorter file, a different beginning (a new game session) or a UTF-16 log starts again with a full
+  read. Reads are asynchronous and take no lock; parsing is synchronous work proportional to what was read. A poll
+  never waits for it: it carries the last result. The ledger is a section of the lighter poll like the ship sheet
+  (hash, left out while unchanged), and the other dashboards of the conversation receive it over the channel
+  between Views without any figure derived from the balance.
+- **Text from the game.** Contract titles, places and goods are cleaned (invisible and direction-changing characters
+  removed), capped at 80 and 60 characters, and displayed as plain text only.
+
 ## Privacy
 
 - The stream is **unencrypted and readable by any program on your PC** while it is on. It is bound to loopback, so

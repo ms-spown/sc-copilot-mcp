@@ -2,7 +2,9 @@ import { z } from "zod";
 import { DASHBOARD_URI, PLAN_TEXT_MAX, UI_MIME_TYPE } from "../dashboard/constants.js";
 import { dashboardHtml } from "../dashboard/page.js";
 import { parsePlan } from "../dashboard/plan.js";
+import { ledgerLogFrom, LedgerService } from "../dashboard/ledgerService.js";
 import { DashboardService } from "../dashboard/service.js";
+import type { GameLog } from "../providers/gamelog/reader.js";
 import { ShipSpecsResolver } from "../dashboard/specs.js";
 import type { HttpClient } from "../core/http.js";
 import type { ConnectionTracker } from "../providers/gamelog/connection.js";
@@ -56,17 +58,22 @@ export function dashboardTools({
   telemetry,
   scwClient,
   connection,
+  gameLog,
 }: {
   telemetry?: Telemetry;
   scwClient?: HttpClient;
   connection?: ConnectionTracker;
+  gameLog?: GameLog;
 }): ToolDefinition[] {
+  // The game log only serves the transport ledger: read-only, opt-in, refreshed at most every 5 s in the background.
+  const ledger = gameLog ? new LedgerService(ledgerLogFrom(gameLog)) : undefined;
   // The wiki client only serves the ship sheet lookup (background, one search per ship, never while telemetry is off).
   const service = new DashboardService(
     telemetry,
     Date.now,
     scwClient ? new ShipSpecsResolver(scwClient) : undefined,
     connection,
+    ledger,
   );
   const enabled = () => telemetry?.enabled === true;
 
@@ -100,6 +107,8 @@ export function dashboardTools({
         if (!enabled()) return off();
         const { plan } = z.object({ plan: z.unknown().optional() }).parse(args || {});
         const clean = parsePlan(plan);
+        // Memory only: lets the transport ledger put the planned profit next to the measured one.
+        service.setPlan(clean);
         return {
           content: [
             {
@@ -145,6 +154,7 @@ export function dashboardTools({
               pilot: { type: "string", maxLength: 16 },
               weapons: { type: "string", maxLength: 16 },
               specs: { type: "string", maxLength: 16 },
+              ledger: { type: "string", maxLength: 16 },
             },
           },
         },
@@ -165,6 +175,7 @@ export function dashboardTools({
                 pilot: hash.optional(),
                 weapons: hash.optional(),
                 specs: hash.optional(),
+                ledger: hash.optional(),
               })
               .optional(),
           })

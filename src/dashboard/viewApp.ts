@@ -911,6 +911,10 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     add(R.colInstr, cCurves.root);
     add(R.wide, cSes.root, R.planCard.root, cEv.root, cAct.root, R.unverified, R.missing);
 
+    // Transport ledger (ledgerPanel.ts): a card in the pilot column, a compact line under the small view
+    R.ledger = L.ledgerPanel(doc, L);
+    add(R.colPilot, R.ledger.card);
+
     add(R.full, R.offNote, R.colInstr, R.colShip, R.colPilot, R.wide);
 
     // Stream state changes are announced here, out of sight: the header already shows them.
@@ -928,6 +932,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.alerts,
       R.pinbar,
       R.inline,
+      R.ledger.line,
       R.full,
       R.sr,
     );
@@ -1455,6 +1460,11 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     streamLive = !info.grey;
     renderContext(now);
     renderAlerts(now, conds, !info.grey);
+    R.ledger.render(view.poll && view.poll.ledger, {
+      showBalance,
+      fullscreen: displayMode === "fullscreen",
+      now,
+    });
     const I = L.instrumentInfo(view.poll, view);
     const sheetIns = view.poll && view.poll.ship && view.poll.ship.instruments;
     I.speed = L.speedWithSheet(
@@ -1652,7 +1662,11 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     if (channel === null || isFollower() || !view.poll) return;
     if (Object.keys(peers).length === 0 || clock() - lastShareAt < cfg.snapshotMinMs) return;
     lastShareAt = clock();
-    channelSend({ t: "snapshot", id: viewId, rank, poll: L.sharablePoll(view.poll) });
+    // The ledger goes without anything derived from the balance (gain, total, pace, planned against measured).
+    const shared = Object.assign({}, L.sharablePoll(view.poll), {
+      ledger: L.ledgerStripBalance(view.poll.ledger),
+    });
+    channelSend({ t: "snapshot", id: viewId, rank, poll: shared });
   }
 
   function reelect() {
@@ -1668,7 +1682,12 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       timer = null;
       showBalance = false;
       view = Object.assign({}, view, {
-        poll: view.poll ? Object.assign({}, view.poll, { balance: undefined }) : view.poll,
+        poll: view.poll
+          ? Object.assign({}, view.poll, {
+              balance: undefined,
+              ledger: L.ledgerStripBalance(view.poll.ledger),
+            })
+          : view.poll,
       });
       if (!hidden && !offscreen) startTicker();
       render();
@@ -1696,11 +1715,17 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     if (m.t === "hello" && !known && !hidden && !offscreen) announce("hello");
     if (m.t === "snapshot" && isFollower() && m.id === leaderId) {
       const sheet = L.specsClean(event.data && event.data.poll ? event.data.poll.specs : null);
-      view = L.reducePoll(
-        view,
-        sheet ? Object.assign({}, m.poll, { specs: sheet }) : m.poll,
-        clock(),
+      // Rebuilt and stripped of anything derived from the balance, whatever the sender claims.
+      const ledger = L.ledgerChannelClean(
+        event.data && event.data.poll ? event.data.poll.ledger : null,
       );
+      const shared = Object.assign(
+        {},
+        m.poll,
+        sheet ? { specs: sheet } : {},
+        ledger ? { ledger } : {},
+      );
+      view = L.reducePoll(view, shared, clock());
       render();
     }
   }
@@ -1799,7 +1824,12 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     if (!showBalance && view.poll) {
       // Hidden again: forget it here too. The next answers will not carry it.
       view = Object.assign({}, view, {
-        poll: Object.assign({}, view.poll, { balance: undefined }),
+        poll: Object.assign({}, view.poll, {
+          balance: undefined,
+          ledger: L.ledgerStripBalance(view.poll.ledger),
+        }),
+        // The hash held for the ledger stood for the version with amounts: forget it, the next answer brings the plain one.
+        hash: Object.assign({}, view.hash, { ledger: undefined }),
       });
     }
     render();

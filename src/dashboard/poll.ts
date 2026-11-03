@@ -3,6 +3,7 @@ import type { TelemetryEvent } from "../providers/telemetry/events.js";
 import type { Condition } from "../providers/telemetry/handler.js";
 import type { Pilot, Ship, Weapons } from "../providers/telemetry/normalize.js";
 import type { TelemetrySnapshot, TelemetryStatusReport } from "../providers/telemetry/service.js";
+import type { LedgerPayload } from "./ledger.js";
 import type { ShipSpecs } from "./specs.js";
 
 /**
@@ -46,8 +47,14 @@ export type PublicEvent = Pick<
   "seq" | "type" | "group" | "confidence" | "at" | "text" | "data"
 >;
 
-export type SectionName = "ship" | "pilot" | "weapons" | "specs";
-export const SECTION_NAMES: readonly SectionName[] = ["ship", "pilot", "weapons", "specs"];
+export type SectionName = "ship" | "pilot" | "weapons" | "specs" | "ledger";
+export const SECTION_NAMES: readonly SectionName[] = [
+  "ship",
+  "pilot",
+  "weapons",
+  "specs",
+  "ledger",
+];
 export type SectionHashes = Record<SectionName, string>;
 
 export interface PollResult {
@@ -68,6 +75,12 @@ export interface PollResult {
    * View from `fetched_at`), so once held it is left out of the answers (`unchanged`).
    */
   specs?: ShipSpecs;
+  /**
+   * The transport ledger (ledger.ts): a fifth section of the delta protocol. Contracts of the game session; the
+   * figures derived from the balance exist ONLY when the View asked for the balance, and its hash is computed from
+   * the very content sent, so a hash never stands for an amount the View was not allowed to see.
+   */
+  ledger?: LedgerPayload;
   derived: Record<string, boolean | string> | null;
   /**
    * What is true now (from the smoothed state, not from the history), most urgent first. Empty when nothing needs
@@ -233,6 +246,8 @@ export interface PollInput {
   nowMs: number;
   /** What the wiki says about the ship being flown (specs.ts). Never fetched here: the caller passes what it has. */
   specs?: ShipSpecs;
+  /** The transport ledger as built for THIS balance choice (ledger.ts). */
+  ledger?: LedgerPayload;
   /** The connection state read from Game.log (connection.ts), when the log is available. */
   connection?: ConnectionInfo | null;
 }
@@ -326,6 +341,7 @@ function buildAnswer(input: PollInput): PollResult {
     pilot,
     weapons: state?.weapons ? publicWeapons(state.weapons) : null,
     ...(input.specs && state?.ship ? { specs: input.specs } : {}),
+    ...(input.ledger ? { ledger: input.ledger } : {}),
     derived: state ? { ...state.derived } : null,
     conditions:
       snapshot &&
@@ -375,13 +391,17 @@ export function hashText(text: string): string {
 }
 
 export function hashSections(
-  answer: Pick<PollResult, "ship" | "pilot" | "weapons"> & { specs?: ShipSpecs },
+  answer: Pick<PollResult, "ship" | "pilot" | "weapons"> & {
+    specs?: ShipSpecs;
+    ledger?: LedgerPayload;
+  },
 ): SectionHashes {
   return {
     ship: hashText(JSON.stringify(answer.ship)),
     pilot: hashText(JSON.stringify(answer.pilot)),
     weapons: hashText(JSON.stringify(answer.weapons)),
     specs: hashText(JSON.stringify(answer.specs ?? null)),
+    ledger: hashText(JSON.stringify(answer.ledger ?? null)),
   };
 }
 

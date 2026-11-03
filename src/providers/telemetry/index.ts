@@ -1,5 +1,6 @@
 import type { TelemetryEvent } from "./events.js";
 import type {
+  BalancePoint,
   TelemetryServiceOptions,
   TelemetrySnapshot,
   TelemetryStatusReport,
@@ -25,6 +26,11 @@ export interface Telemetry {
     keep?: (event: TelemetryEvent) => boolean,
   ): Promise<{ events: TelemetryEvent[]; last_seq: number }>;
   resetUecDelta(): Promise<void>;
+  /**
+   * The balance changes seen so far, in memory, for the transport ledger only (no tool answer carries them).
+   * Optional: a source without it simply has no history. Does not start the reader.
+   */
+  balanceHistory?(): Promise<BalancePoint[]>;
   stop(): Promise<void>;
 }
 
@@ -54,6 +60,7 @@ export function createTelemetry(config: TelemetryConfig): Telemetry {
       snapshot: async () => null,
       events: async () => ({ events: [], last_seq: 0 }),
       resetUecDelta: async () => undefined,
+      balanceHistory: async () => [],
       stop: async () => undefined,
     };
   }
@@ -68,6 +75,7 @@ export function createTelemetry(config: TelemetryConfig): Telemetry {
     snapshot: async () => (await load()).snapshot(),
     events: async (afterSeq, limit, keep) => (await load()).recentEvents(afterSeq, limit, keep),
     resetUecDelta: async () => (await load()).resetUecDelta(),
+    balanceHistory: async () => (await load()).balanceHistory(),
     // Nothing was loaded, nothing to stop: do not import the reader just to close it.
     stop: async () => {
       if (service) await (await service).stop();

@@ -199,6 +199,11 @@ What to know before you switch it on:
   dashboards share one stream of calls: only the most recent visible one polls. Claude Code does not render it and never
   lists its tools. The balance stays hidden in the page until you click. The speed dial is drawn against the ship's own limits (SCM and maximum speed from its Star Citizen Wiki page, found in the background, one search per ship, only when exactly one sheet fits) and says so when it keeps a scale deduced from the speeds seen; the hydrogen tank capacity is not known, so the hydrogen endurance stays an estimate. See
   [TELEMETRY.md](TELEMETRY.md#live-dashboard).
+- **A transport ledger in that dashboard.** With the game log enabled (`SC_INSTALL_DIR` or `SC_GAME_LOG_PATH`), a
+  panel lists the contracts of the current game session (title, accepted and ended times, pickup and drop-off steps
+  with place and goods) and, only after you click to show the balance, the balance change measured over each
+  completed contract. The game log has no quantity (SCU) and no reward, so the ledger shows neither; the gain is a
+  raw measure that mixes purchases, rewards and fines. See [TELEMETRY.md](TELEMETRY.md#transport-ledger).
 - **Your balance is withheld by default.** Tool results become part of your conversation with Claude, which goes
   to Anthropic. The aUEC balance (and balance-change events) is returned only when `include_balance` is true,
   and Claude is told to ask you first. Everything else in a snapshot is returned as soon as you call the tool.

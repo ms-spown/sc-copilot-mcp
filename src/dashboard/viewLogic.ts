@@ -402,7 +402,7 @@ export function reducePoll(prev: any, incoming: any, now: number): any {
   }
   // Sections the server left out because this View already holds them unchanged: put them back.
   const poll: any = Object.assign({}, incoming);
-  const names = ["ship", "pilot", "weapons", "specs"];
+  const names = ["ship", "pilot", "weapons", "specs", "ledger"];
   if (Array.isArray(incoming.unchanged)) {
     for (const name of names) {
       if (incoming.unchanged.indexOf(name) < 0) continue;
@@ -525,7 +525,7 @@ export function pollArguments(view: any, showBalance: boolean): any {
   const have: any = {};
   let any = false;
   const hashes = view.hash || {};
-  for (const name of ["ship", "pilot", "weapons", "specs"]) {
+  for (const name of ["ship", "pilot", "weapons", "specs", "ledger"]) {
     if (view.poll && view.poll[name] && typeof hashes[name] === "string") {
       have[name] = hashes[name];
       any = true;
