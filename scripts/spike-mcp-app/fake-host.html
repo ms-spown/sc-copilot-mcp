@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Fake MCP Apps host (spike)</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 16px; background: #f5f4ed; color: #141413; }
+  iframe { width: 520px; height: 220px; border: 1px dashed #999; background: transparent; }
+  pre { font-size: 12px; max-height: 260px; overflow: auto; background: #fff; padding: 8px; }
+</style>
+</head>
+<body>
+<h3>Fake host: plays the host side of ui/* for view.html</h3>
+<p>It only checks that the hand-written View speaks the protocol as we understand it. It proves nothing about Claude.</p>
+<iframe id="v" sandbox="allow-scripts" src="view.html"></iframe>
+<pre id="out"></pre>
+<script>
+"use strict";
+// Host side. window.__reports collects what the View reported via the spike_report tool.
+window.__reports = [];
+window.__calls = [];
+let counter = 0;
+const frame = document.getElementById("v");
+const out = document.getElementById("out");
+const say = (s) => { out.textContent += s + "\n"; };
+const reply = (id, result) => frame.contentWindow.postMessage({ jsonrpc: "2.0", id, result }, "*");
+const notify = (method, params) => frame.contentWindow.postMessage({ jsonrpc: "2.0", method, params }, "*");
+let initialized = false;
+
+window.addEventListener("message", (e) => {
+  if (e.source !== frame.contentWindow) return;
+  const m = e.data;
+  if (!m || m.jsonrpc !== "2.0") return;
+  window.__calls.push(m.method || "response");
+  if (m.method === "ui/initialize") {
+    reply(m.id, {
+      protocolVersion: "2026-01-26",
+      hostInfo: { name: "fake-host", version: "0" },
+      hostCapabilities: { serverTools: {}, message: {}, updateModelContext: {} },
+      hostContext: {
+        theme: "light",
+        displayMode: "inline",
+        availableDisplayModes: ["inline", "fullscreen"],
+        platform: "web",
+        styles: { variables: { "--color-text-primary": "#141413", "--font-sans": "system-ui, sans-serif" } },
+      },
+    });
+  } else if (m.method === "ui/notifications/initialized") {
+    initialized = true;
+    notify("ui/notifications/tool-result", { content: [{ type: "text", text: "opened" }], structuredContent: { counter } });
+  } else if (m.method === "tools/call") {
+    if (!initialized) { reply(m.id, {}); return; }
+    const name = m.params.name;
+    if (name === "spike_poll") { counter += 1; reply(m.id, { content: [{ type: "text", text: "c" }], structuredContent: { counter } }); }
+    else if (name === "spike_report") { window.__reports.push(m.params.arguments.note); reply(m.id, { content: [{ type: "text", text: "ok" }], structuredContent: { ok: true } }); }
+    else reply(m.id, { isError: true, content: [{ type: "text", text: "unknown" }] });
+  } else if (m.method === "ui/message" || m.method === "ui/update-model-context") {
+    say(m.method + " received: " + JSON.stringify(m.params).slice(0, 100));
+    reply(m.id, {});
+  } else if (m.method === "ui/request-display-mode") {
+    const ok = m.params.mode === "inline" || m.params.mode === "fullscreen";
+    reply(m.id, { mode: ok ? m.params.mode : "inline" });
+  } else if (m.method === "ui/notifications/size-changed") {
+    frame.style.height = Math.min(Math.max(m.params.height + 10, 60), 600) + "px";
+  }
+});
+// Host-initiated requests the View must answer.
+window.__ping = () => new Promise((resolve) => {
+  const id = 9001;
+  const onMsg = (e) => { if (e.data && e.data.id === id) { removeEventListener("message", onMsg); resolve(e.data); } };
+  addEventListener("message", onMsg);
+  frame.contentWindow.postMessage({ jsonrpc: "2.0", id, method: "ping" }, "*");
+});
+window.__teardown = () => new Promise((resolve) => {
+  const id = 9002;
+  const onMsg = (e) => { if (e.data && e.data.id === id) { removeEventListener("message", onMsg); resolve(e.data); } };
+  addEventListener("message", onMsg);
+  frame.contentWindow.postMessage({ jsonrpc: "2.0", id, method: "ui/resource-teardown", params: {} }, "*");
+});
+window.__counter = () => counter;
+</script>
+</body>
+</html>

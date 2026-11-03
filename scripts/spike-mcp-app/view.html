@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Spike view</title>
+<style>
+  html, body { margin: 0; background: transparent; }
+  body {
+    padding: 12px; box-sizing: border-box;
+    color: var(--color-text-primary, light-dark(#141413, #faf9f5));
+    font-family: var(--font-sans, system-ui, sans-serif); font-size: 14px;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+  .big { font-size: 28px; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--color-text-secondary, light-dark(#5e5d59, #c2c0b6)); }
+  button {
+    font: inherit; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+    color: var(--color-text-primary, light-dark(#141413, #faf9f5));
+    background: var(--color-background-secondary, light-dark(#f5f4ed, #1f1e1d));
+    border: 1px solid var(--color-border-primary, light-dark(#d1cfc5, #4a4946));
+  }
+  pre { margin: 6px 0 0; white-space: pre-wrap; max-height: 140px; overflow: auto; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="row"><span class="big" id="counter">-</span><span class="muted" id="state">connecting...</span></div>
+<div class="row muted" id="info"></div>
+<div class="row">
+  <button id="b-msg">ui/message</button>
+  <button id="b-ctx">update-model-context</button>
+  <button id="b-full">fullscreen</button>
+  <button id="b-pip">pip</button>
+  <button id="b-inline">inline</button>
+</div>
+<pre id="log"></pre>
+<script>
+"use strict";
+// Hand-written MCP Apps View (no package, no network). Everything shown is set with textContent.
+let nextId = 1;
+const pending = new Map();
+let ctx = {};
+let timer = null;
+let ticks = 0;
+let hostCaps = null;
+const $ = (id) => document.getElementById(id);
+const lines = [];
+const note = (s) => { lines.push(new Date().toISOString().slice(11, 19) + " " + s); if (lines.length > 12) lines.shift(); $("log").textContent = lines.join("\n"); };
+const send = (m) => parent.postMessage(Object.assign({ jsonrpc: "2.0" }, m), "*");
+const request = (method, params) => new Promise((resolve, reject) => {
+  const id = nextId++;
+  const t = setTimeout(() => { pending.delete(id); reject(new Error("timeout " + method)); }, 8000);
+  pending.set(id, { resolve: (v) => { clearTimeout(t); resolve(v); }, reject: (e) => { clearTimeout(t); reject(e); } });
+  send({ id, method, params });
+});
+const report = (obj) => request("tools/call", { name: "spike_report", arguments: { note: obj } }).catch(() => undefined);
+
+addEventListener("message", (e) => {
+  if (e.source !== parent) return;
+  const m = e.data;
+  if (!m || m.jsonrpc !== "2.0") return;
+  if (m.method === undefined) {
+    const p = pending.get(m.id);
+    if (p) { pending.delete(m.id); m.error ? p.reject(new Error(m.error.message || "error")) : p.resolve(m.result); }
+    return;
+  }
+  if (m.id !== undefined) { // a request from the host: ping, teardown...
+    if (m.method === "ui/resource-teardown") { stop(); report({ what: "teardown_received" }); }
+    if (m.method === "ping") report({ what: "ping_received" });
+    send({ id: m.id, result: {} });
+    return;
+  }
+  if (m.method === "ui/notifications/host-context-changed") {
+    ctx = Object.assign({}, ctx, m.params || {});
+    applyTheme();
+    report({ what: "host_context_changed", keys: Object.keys(m.params || {}), displayMode: ctx.displayMode, theme: ctx.theme });
+  } else if (m.method === "ui/notifications/tool-result") {
+    report({ what: "tool_result_received", has_structured: !!(m.params && m.params.structuredContent) });
+    start();
+  } else if (m.method === "ui/notifications/tool-input") {
+    report({ what: "tool_input_received" });
+  } else {
+    report({ what: "other_notification", method: m.method });
+  }
+});
+
+function applyTheme() {
+  const r = document.documentElement;
+  if (ctx.theme) { r.dataset.theme = ctx.theme; r.style.colorScheme = ctx.theme; }
+  const vars = (ctx.styles && ctx.styles.variables) || {};
+  for (const k of Object.keys(vars)) if (vars[k] !== undefined) r.style.setProperty(k, vars[k]);
+}
+
+async function poll() {
+  try {
+    const r = await request("tools/call", { name: "spike_poll", arguments: {} });
+    ticks += 1;
+    const sc = r && r.structuredContent;
+    $("counter").textContent = sc ? String(sc.counter) : "?";
+    $("state").textContent = "polling, " + ticks + " ticks";
+  } catch (err) {
+    $("state").textContent = "poll failed: " + err.message;
+    report({ what: "poll_failed", error: String(err.message) });
+  }
+}
+function start() { if (timer || document.hidden) return; poll(); timer = setInterval(poll, 1000); report({ what: "polling_started" }); }
+function stop() { if (!timer) return; clearInterval(timer); timer = null; report({ what: "polling_stopped", ticks }); }
+document.addEventListener("visibilitychange", () => { report({ what: "visibilitychange", hidden: document.hidden }); document.hidden ? stop() : start(); });
+if ("IntersectionObserver" in window) {
+  new IntersectionObserver((es) => report({ what: "intersection", visible: es[es.length - 1].isIntersecting })).observe(document.body);
+}
+new ResizeObserver(() => send({ method: "ui/notifications/size-changed", params: { width: document.body.scrollWidth, height: document.body.scrollHeight } })).observe(document.body);
+
+async function act(label, fn) {
+  try { const r = await fn(); note(label + " ok " + JSON.stringify(r || {}).slice(0, 80)); report({ what: label, ok: true, result: r || null }); }
+  catch (err) { note(label + " failed: " + err.message); report({ what: label, ok: false, error: String(err.message) }); }
+}
+$("b-msg").onclick = () => act("ui/message", () => request("ui/message", { role: "user", content: [{ type: "text", text: "SPIKE TEST: this message was sent by the spike view. Reply with the single word 'received'." }] }));
+$("b-ctx").onclick = () => act("ui/update-model-context", () => request("ui/update-model-context", { content: [{ type: "text", text: "SPIKE: the view's counter is " + $("counter").textContent }] }));
+const mode = (m) => () => act("display_mode_" + m, () => request("ui/request-display-mode", { mode: m }));
+$("b-full").onclick = mode("fullscreen");
+$("b-pip").onclick = mode("pip");
+$("b-inline").onclick = mode("inline");
+
+(async () => {
+  try {
+    const r = await request("ui/initialize", {
+      appInfo: { name: "sc-spike-view", version: "0.0.1" },
+      appCapabilities: { availableDisplayModes: ["inline", "fullscreen", "pip"] },
+      protocolVersion: "2026-01-26",
+    });
+    ctx = r.hostContext || {};
+    hostCaps = r.hostCapabilities || null;
+    applyTheme();
+    send({ method: "ui/notifications/initialized" });
+    $("info").textContent = "host: " + ((r.hostInfo && (r.hostInfo.name + " " + r.hostInfo.version)) || "?") + " | modes: " + JSON.stringify(ctx.availableDisplayModes || []) + " | mode: " + (ctx.displayMode || "?");
+    report({
+      what: "initialized",
+      hostInfo: r.hostInfo || null,
+      protocolVersion: r.protocolVersion || null,
+      hostCapabilityKeys: hostCaps ? Object.keys(hostCaps) : null,
+      hostCapabilities: hostCaps,
+      contextKeys: Object.keys(ctx),
+      displayMode: ctx.displayMode || null,
+      availableDisplayModes: ctx.availableDisplayModes || null,
+      theme: ctx.theme || null,
+      platform: ctx.platform || null,
+      styleVariableCount: ctx.styles && ctx.styles.variables ? Object.keys(ctx.styles.variables).length : 0,
+      userAgent: navigator.userAgent.slice(0, 120),
+    });
+    start(); // the host may not send tool-result before we have polled; start anyway
+  } catch (err) {
+    $("state").textContent = "initialize failed: " + err.message;
+  }
+})();
+</script>
+</body>
+</html>
