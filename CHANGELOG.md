@@ -20,6 +20,11 @@ versions follow [Semantic Versioning](https://semver.org/).
   `docs/TROUBLESHOOTING.md` (English and French) tell the model not to say the game is off and to offer no
   troubleshooting unless the state is `game_without_telemetry` or `incompatible`, and explain that on foot only
   character data exists while ship data needs the player seated in a ship.
+- `jump_finished` came about 9 seconds after the end of a quantum jump on a real ship: the quantum-drive light went
+  off at the end, but the event waited for the 8 s rule that exists for ships whose thrust light drops to nominal in
+  the middle of a jump. The jump now ends when the drive light goes off; a ship that never reports it keeps the slow
+  rule, and a thrust light still "major" right after the end does not start a second jump. Measured on a real Aegis
+  Harbinger with 4.10.2.
 
 ## [2.1.0] - 2026-11-03
 

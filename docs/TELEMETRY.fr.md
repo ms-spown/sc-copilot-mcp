@@ -91,7 +91,7 @@ testé.
 | Hydrogène, boost | le boost est engagé / puissance / réserves / critique |
 | Train d'atterrissage, VTOL | rentré, en sortie, sorti, en rentrée |
 | Modes de vol | couplé, ESP, anti-G, limiteur de vitesse, croisière, compensation de gravité, chacun activé et actif |
-| Quantique | le voyant QDRV indique que le mode quantique est actif ; un saut est déduit du voyant moteur, de G nul et de l'absence d'atterrissage |
+| Quantique | le voyant QDRV indique que le mode quantique est actif ; un saut est déduit du voyant moteur, de G nul et de l'absence d'atterrissage, et il se termine quand le voyant du moteur quantique s'éteint (mesuré sur un vrai vaisseau ; un vaisseau qui ne rapporte jamais ce voyant retombe sur une règle plus lente) |
 | Alimentation | neuf indicateurs marche/arrêt (générateurs, moteurs, armes, refroidisseurs, support de vie, gravité, capteurs, générateurs de bouclier et émetteurs). Aucune quantité |
 | Voyants d'alerte | THR, SHLD, PROX, HIT, RADR, QDRV sont compris ; pour WPN, seul « pas d'alimentation » est utilisé. Un voyant RADR signale un verrouillage hostile |
 | Armes par siège | nom, alimentée, prête à tirer |
