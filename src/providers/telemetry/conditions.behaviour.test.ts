@@ -164,6 +164,30 @@ describe("Feature: the shields are powered off", () => {
     expect(seen.at(-1)!.conditions.map((c) => c.id)).toContain("shields_off");
   });
 
+  it("Given shields cut and then the ship landing or the powerplant going off, Then 'powered on' is never reported (the flags did not come back)", () => {
+    const land = world();
+    land.feed(0, land.ship(flying));
+    land.hold(100, 1500, land.ship(flying));
+    land.hold(1600, 3500, land.ship({ ...flying, power: SHIELDS_OFF }));
+    expect(land.types()).toEqual(["shields_powered_off"]);
+    land.hold(3600, 6000, land.ship({ ...flying, power: SHIELDS_OFF, landed: true }));
+    expect(land.types()).toEqual(["shields_powered_off", "landed"]);
+
+    const plant = world();
+    plant.feed(0, plant.ship(flying));
+    plant.hold(100, 1500, plant.ship(flying));
+    plant.hold(1600, 3500, plant.ship({ ...flying, power: SHIELDS_OFF }));
+    plant.hold(
+      3600,
+      6000,
+      plant.ship({ ...flying, power: { ...SHIELDS_OFF, powerplants: false } }),
+    );
+    expect(plant.types()).not.toContain("shields_powered_on");
+    // And once the flags really are back, it is reported.
+    plant.hold(6100, 8000, plant.ship(flying));
+    expect(plant.types()).toContain("shields_powered_on");
+  });
+
   it("Given a blip shorter than the hold, Then there is no event and no condition", () => {
     const { feed, ship, hold, types } = world();
     feed(0, ship(flying));

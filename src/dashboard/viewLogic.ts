@@ -1504,7 +1504,7 @@ export function cleanPoll(raw: any): any {
   out.unverified = {};
   const unverified = obj(p.unverified);
   if (unverified) {
-    for (const side of ["ship", "pilot"]) {
+    for (const side of ["ship", "pilot", "weapons"]) {
       const m = scalarMap(unverified[side], 12, 1);
       if (m && Object.keys(m).length > 0) out.unverified[side] = m;
     }
@@ -1966,6 +1966,9 @@ export function unverifiedItems(poll: any): any[] {
     intoxication_level: "Niveau d’intoxication",
     ambient_radiation_rate: "Rayonnement ambiant",
     quantum_fuel: "Carburant quantique",
+    lights_on: "Phares allumés",
+    atmospheric_density: "Densité atmosphérique",
+    gimbals_locked: "Cardans verrouillés",
     manufacturer: "Constructeur (champ du jeu)",
     transformation: "Transformation",
     flight_settings: "Réglages de vol",
@@ -1985,7 +1988,7 @@ export function unverifiedItems(poll: any): any[] {
     if (typeof v === "string") return v.replace(/_/g, " ").slice(0, 40);
     return "";
   };
-  for (const side of ["pilot", "ship"]) {
+  for (const side of ["pilot", "ship", "weapons"]) {
     const m = u[side];
     if (!m || typeof m !== "object") continue;
     for (const key of Object.keys(m)) {

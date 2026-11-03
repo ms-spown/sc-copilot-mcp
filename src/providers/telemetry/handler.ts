@@ -196,8 +196,6 @@ function signals(ship: Ship, shieldsSeenOn: boolean): Record<HoldName, boolean |
     // reports false for ever and must not raise an alarm.
     shields_off: power
       ? shieldsSeenOn &&
-        power["powerplants"] === true &&
-        ship.landed !== true &&
         (power["shield_generators"] === false || power["shield_emitters"] === false)
       : undefined,
     // WPN MAJOR only (no power): MINOR also stays on while landed with the guns firing normally.
@@ -255,6 +253,8 @@ export class TelemetryHandler {
   private cm = new Map<string, { count: number; burst: number; peak: number }>();
   /** This vehicle was seen with both shield flags on at least once (see `signals`). */
   private shieldsSeenOn = false;
+  /** A "shields powered off" event was reported and no "powered on" has followed. */
+  private shieldsAnnounced = false;
   private conditionSince = new Map<string, number>();
   private uec: number | null = null;
   private uecPending: { before: number; last: number } | null = null;
@@ -610,12 +610,16 @@ export class TelemetryHandler {
       if (name === "engines_off" && !this.holds.powerplant.value) continue;
       const [on, off] = HOLD_EVENTS[name];
       const type = changed ? on : off;
-      if (type) {
-        this.events.add(
-          type,
-          t,
-          name === "shields_off" && changed ? { quantum: this.quantumNow(ship) ? 1 : 0 } : {},
-        );
+      if (name === "shields_off") {
+        // The flags alone drive the hold. "Powered off" is announced by the step after the loop (the plant must be
+        // on and the ship in the air); "powered on" only follows an announced "off", and only the flags coming back
+        // make it: landing or losing the plant is neither.
+        if (changed === false && this.shieldsAnnounced) {
+          this.shieldsAnnounced = false;
+          this.events.add("shields_powered_on", t);
+        }
+      } else if (type) {
+        this.events.add(type, t);
       }
       if (name === "quantum" && changed === false && this.holds.jump.value) {
         // Measured on a real Harbinger (4.10.2): the quantum-drive light went off the moment the jump ended, 9 s
@@ -625,6 +629,15 @@ export class TelemetryHandler {
         this.jumpEndedByDrive = true;
         this.events.add("jump_finished", t); // after quantum_mode_off, in the order the game showed them
       }
+    }
+    if (
+      this.holds.shields_off.value &&
+      !this.shieldsAnnounced &&
+      ship.power?.["powerplants"] === true &&
+      ship.landed !== true
+    ) {
+      this.shieldsAnnounced = true;
+      this.events.add("shields_powered_off", t, { quantum: this.quantumNow(ship) ? 1 : 0 });
     }
     this.deploymentEvents(ship, t);
     const hydrogen = ship.instruments?.hydrogen_fuel;
@@ -641,6 +654,7 @@ export class TelemetryHandler {
   private baseline(ship: Ship): void {
     this.holds = shipHolds();
     this.shieldsSeenOn = shieldsPowered(ship);
+    this.shieldsAnnounced = false;
     this.conditionSince.clear();
     const now = signals(ship, this.shieldsSeenOn);
     for (const name of Object.keys(this.holds) as HoldName[]) {

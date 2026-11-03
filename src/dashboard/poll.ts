@@ -70,7 +70,11 @@ export interface PollResult {
    * Present in the stream but never verified live (field test): the View labels each one "non vérifié". Only values
    * the game really sent (a default value of a field that is never filled is left out).
    */
-  unverified: { ship?: Record<string, unknown>; pilot?: Record<string, unknown> };
+  unverified: {
+    ship?: Record<string, unknown>;
+    pilot?: Record<string, unknown>;
+    weapons?: Record<string, unknown>;
+  };
   not_available: string[];
   events: PublicEvent[];
   last_seq: number;
@@ -233,11 +237,21 @@ function publicShip(ship: Ship): PublicShip {
   return rest;
 }
 
+/** The weapons without the `unverified` part (it travels under the answer's own `unverified`). */
+function publicWeapons(weapons: Weapons): Weapons {
+  const { unverified, ...rest } = weapons;
+  void unverified;
+  return rest;
+}
+
 /** The unverified values the stream carried, without the defaults of fields the game never fills. */
 function publicUnverified(state: TelemetrySnapshot["state"] | null): PollResult["unverified"] {
   const out: PollResult["unverified"] = {};
   if (state?.ship && Object.keys(state.ship.unverified).length > 0)
     out.ship = { ...state.ship.unverified };
+  if (state?.weapons?.unverified && Object.keys(state.weapons.unverified).length > 0) {
+    out.weapons = { ...state.weapons.unverified };
+  }
   if (state?.pilot) {
     const pilot: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(state.pilot.unverified)) {
@@ -292,7 +306,7 @@ function buildAnswer(input: PollInput): PollResult {
     received_at: snapshot ? snapshot.received_at : null,
     ship: state?.ship ? publicShip(state.ship) : null,
     pilot,
-    weapons: state?.weapons ?? null,
+    weapons: state?.weapons ? publicWeapons(state.weapons) : null,
     derived: state ? { ...state.derived } : null,
     conditions:
       snapshot && state && status.state === "live" && snapshot.frame_age_ms <= LIVE_CONDITIONS_MS

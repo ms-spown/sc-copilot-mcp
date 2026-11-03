@@ -239,7 +239,8 @@ h2, h3 { margin: 0; }
 .fact-label { flex: 1 1 auto; color: var(--sc-text2); font-size: var(--fs-s); }
 .fact-value { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; min-width: 6ch; overflow-wrap: anywhere; }
 .fact[data-level="ok"] .fact-value { color: var(--sc-ok); }
-.fact .pin { top: 50%; right: auto; left: -2px; transform: translateY(-50%); display: none; }
+.fact .pin { position: static; width: 22px; height: 22px; flex: none; }
+.fact:focus-within .pin { opacity: 1; }
 .plan-line { margin: 0 0 2px; font-weight: 600; overflow-wrap: anywhere; }
 .plan-note { margin: 0 0 var(--sp-2); color: var(--sc-text2); overflow-wrap: anywhere; }
 

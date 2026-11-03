@@ -183,7 +183,7 @@ Ce que devient chaque champ du flux. `poll.` est la réponse de `sc_live_poll` (
 | `VehicleFlightInstruments.altitude` | `poll.ship.instruments.altitude_m` | Altitude et altitude radar (`altitude`) |
 | `VehicleFlightInstruments.radar_altitude` | `poll.ship.instruments.radar_altitude_m` | Altitude et altitude radar (`altitude`) |
 | `VehicleFlightInstruments.vertical_speed_indicator` | `poll.ship.instruments.vertical_speed_ms` | Barre de vitesse verticale (`vspeed`) |
-| `VehicleFlightInstruments.atmospheric_density` | `poll.ship.instruments.atmospheric_density` | Densité atmosphérique (`atmosphere`) |
+| `VehicleFlightInstruments.atmospheric_density` | `poll.unverified.ship.atmospheric_density` | Densité atmosphérique (`atmosphere`) |
 | `VehicleFlightInstruments.heading` | `poll.ship.instruments.heading_deg` | Boussole (`heading`) |
 | `VehicleThrusterBoost.engaged` | `poll.ship.instruments.boost.engaged` | Jauge de boost (`boost`) |
 | `VehicleThrusterBoost.output` | `poll.ship.instruments.boost.output` | Jauge de boost (`boost`) |
@@ -212,7 +212,7 @@ Ce que devient chaque champ du flux. `poll.` est la réponse de `sc_live_poll` (
 | `VehicleState.class_name` | `poll.ship.class_name` | Nom et constructeur du vaisseau (`ship`) |
 | `VehicleState.manufacturer` | `poll.unverified.ship.manufacturer` | ignoré : Le jeu ne remplit jamais le constructeur : le serveur le déduit du préfixe de classe (`ship.manufacturer_derived`) et la vue montre celui-là. |
 | `VehicleState.type` | `poll.ship.type` | ignoré : Toujours la même valeur pour les vaisseaux qui envoient des données de véhicule (les véhicules terrestres n'en envoient pas). |
-| `VehicleState.lights_enabled` | `poll.ship.lights_on` | Phares du vaisseau (`headlights`) |
+| `VehicleState.lights_enabled` | `poll.unverified.ship.lights_on` | Phares du vaisseau (`headlights`) |
 | `VehicleState.doors` | `poll.unverified.ship.doors` | Carte des valeurs non vérifiées (`unverified`) |
 | `VehicleState.annunciators` | `poll.ship.warning_lights` | Panneau des voyants (`lights`) |
 | `VehicleState.flight` | `poll.ship.instruments` | Cadran de vitesse (`speed`) |
@@ -225,14 +225,14 @@ Ce que devient chaque champ du flux. `poll.` est la réponse de `sc_live_poll` (
 | `WeaponsSettings.use_lag_pips` | ignoré : Une préférence d'affichage ou de visée du joueur, sans utilité sur un tableau de bord ; la première trame après un changement de siège peut aussi porter des réglages périmés. | - |
 | `WeaponsSettings.use_single_pips` | ignoré : Une préférence d'affichage ou de visée du joueur, sans utilité sur un tableau de bord ; la première trame après un changement de siège peut aussi porter des réglages périmés. | - |
 | `WeaponsSettings.use_fading_pips` | ignoré : Une préférence d'affichage ou de visée du joueur, sans utilité sur un tableau de bord ; la première trame après un changement de siège peut aussi porter des réglages périmés. | - |
-| `WeaponsSettings.gimbals_locked` | `poll.weapons.gimbals_locked` | Verrouillage des cardans (`gimbals`) |
+| `WeaponsSettings.gimbals_locked` | `poll.unverified.weapons.gimbals_locked` | Verrouillage des cardans (`gimbals`) |
 | `WeaponState.name` | `poll.weapons.weapons[].name` | Armes du poste (`weapons`) |
 | `WeaponState.is_powered` | `poll.weapons.weapons[].powered` | Armes du poste (`weapons`) |
 | `WeaponState.ready_to_fire` | `poll.weapons.weapons[].ready` | Armes du poste (`weapons`) |
 | `WeaponState.contained_in_preset` | ignoré : Les présélections d'armes ne sont pas dans le flux (test terrain) : non exposées. | - |
 | `Countermeasures.type` | `poll.weapons.countermeasures` | Contre-mesures (`cm`) |
 | `Countermeasures.amount` | `poll.weapons.countermeasures.decoy` | Contre-mesures (`cm`) |
-| `WeaponsFrame.settings` | `poll.weapons.gimbals_locked` | Verrouillage des cardans (`gimbals`) |
+| `WeaponsFrame.settings` | `poll.unverified.weapons.gimbals_locked` | Verrouillage des cardans (`gimbals`) |
 | `WeaponsFrame.preset_index` | ignoré : Les présélections d'armes ne sont pas dans le flux (test terrain) : non exposées. | - |
 | `WeaponsFrame.preset_name` | ignoré : Les présélections d'armes ne sont pas dans le flux (test terrain) : non exposées. | - |
 | `WeaponsFrame.weapons` | `poll.weapons.weapons` | Armes du poste (`weapons`) |

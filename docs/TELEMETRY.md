@@ -179,7 +179,7 @@ What becomes of every field of the stream. `poll.` is the answer of `sc_live_pol
 | `VehicleFlightInstruments.altitude` | `poll.ship.instruments.altitude_m` | Altitude and radar altitude (`altitude`) |
 | `VehicleFlightInstruments.radar_altitude` | `poll.ship.instruments.radar_altitude_m` | Altitude and radar altitude (`altitude`) |
 | `VehicleFlightInstruments.vertical_speed_indicator` | `poll.ship.instruments.vertical_speed_ms` | Vertical speed bar (`vspeed`) |
-| `VehicleFlightInstruments.atmospheric_density` | `poll.ship.instruments.atmospheric_density` | Atmospheric density (`atmosphere`) |
+| `VehicleFlightInstruments.atmospheric_density` | `poll.unverified.ship.atmospheric_density` | Atmospheric density (`atmosphere`) |
 | `VehicleFlightInstruments.heading` | `poll.ship.instruments.heading_deg` | Compass (`heading`) |
 | `VehicleThrusterBoost.engaged` | `poll.ship.instruments.boost.engaged` | Boost gauge (`boost`) |
 | `VehicleThrusterBoost.output` | `poll.ship.instruments.boost.output` | Boost gauge (`boost`) |
@@ -208,7 +208,7 @@ What becomes of every field of the stream. `poll.` is the answer of `sc_live_pol
 | `VehicleState.class_name` | `poll.ship.class_name` | Ship name and maker (`ship`) |
 | `VehicleState.manufacturer` | `poll.unverified.ship.manufacturer` | ignored : The game never fills the maker: the server derives it from the class prefix (`ship.manufacturer_derived`) and the View shows that. |
 | `VehicleState.type` | `poll.ship.type` | ignored : Always the same value for the ships that send vehicle data (ground vehicles send none). |
-| `VehicleState.lights_enabled` | `poll.ship.lights_on` | Ship lights (`headlights`) |
+| `VehicleState.lights_enabled` | `poll.unverified.ship.lights_on` | Ship lights (`headlights`) |
 | `VehicleState.doors` | `poll.unverified.ship.doors` | Unverified values card (`unverified`) |
 | `VehicleState.annunciators` | `poll.ship.warning_lights` | Warning light panel (`lights`) |
 | `VehicleState.flight` | `poll.ship.instruments` | Speed dial (`speed`) |
@@ -221,14 +221,14 @@ What becomes of every field of the stream. `poll.` is the answer of `sc_live_pol
 | `WeaponsSettings.use_lag_pips` | ignored : A display or aiming preference of the player, of no use on a dashboard; the first frame after a seat change can also carry stale settings. | - |
 | `WeaponsSettings.use_single_pips` | ignored : A display or aiming preference of the player, of no use on a dashboard; the first frame after a seat change can also carry stale settings. | - |
 | `WeaponsSettings.use_fading_pips` | ignored : A display or aiming preference of the player, of no use on a dashboard; the first frame after a seat change can also carry stale settings. | - |
-| `WeaponsSettings.gimbals_locked` | `poll.weapons.gimbals_locked` | Gimbals lock (`gimbals`) |
+| `WeaponsSettings.gimbals_locked` | `poll.unverified.weapons.gimbals_locked` | Gimbals lock (`gimbals`) |
 | `WeaponState.name` | `poll.weapons.weapons[].name` | Weapons of the seat (`weapons`) |
 | `WeaponState.is_powered` | `poll.weapons.weapons[].powered` | Weapons of the seat (`weapons`) |
 | `WeaponState.ready_to_fire` | `poll.weapons.weapons[].ready` | Weapons of the seat (`weapons`) |
 | `WeaponState.contained_in_preset` | ignored : Weapon presets are not in the stream (field test): not exposed. | - |
 | `Countermeasures.type` | `poll.weapons.countermeasures` | Countermeasures (`cm`) |
 | `Countermeasures.amount` | `poll.weapons.countermeasures.decoy` | Countermeasures (`cm`) |
-| `WeaponsFrame.settings` | `poll.weapons.gimbals_locked` | Gimbals lock (`gimbals`) |
+| `WeaponsFrame.settings` | `poll.unverified.weapons.gimbals_locked` | Gimbals lock (`gimbals`) |
 | `WeaponsFrame.preset_index` | ignored : Weapon presets are not in the stream (field test): not exposed. | - |
 | `WeaponsFrame.preset_name` | ignored : Weapon presets are not in the stream (field test): not exposed. | - |
 | `WeaponsFrame.weapons` | `poll.weapons.weapons` | Weapons of the seat (`weapons`) |

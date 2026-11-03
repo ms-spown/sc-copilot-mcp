@@ -31,8 +31,11 @@ describe("Feature: the poll answer carries the conditions of the moment", () => 
     const p = s.poll(false);
     // The scenario sends no oxygen, intoxication or radiation: nothing is invented for the pilot.
     expect(p.unverified.pilot).toBeUndefined();
+    // The ship lights, the atmospheric density and the boost flight settings are not in the verified list.
     expect(p.unverified.ship).toEqual({
       flight_settings: { spacebreak_enables_boost: false, g_safe_disabled_by_boost: false },
+      lights_on: true,
+      atmospheric_density: 0.8,
     });
     expect(p.pilot).not.toHaveProperty("unverified");
     expect(p.ship).not.toHaveProperty("unverified");
