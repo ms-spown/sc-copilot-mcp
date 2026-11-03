@@ -11,7 +11,7 @@ describe("collectStatus", () => {
   it("reports each source's version and age", async () => {
     const out = await collectStatus([ok("uex", "4.10.2")], NOW);
     expect(out.live_versions).toEqual([{ source: "uex", version: "4.10.2" }]);
-    expect(out.sources[0]).toMatchObject({ id: "uex", status: "ok", data_age: "2m" });
+    expect(out.sources[0]).toMatchObject({ id: "uex", status: "ok", cache_age: "2m" });
     expect(out.warnings).toEqual([]);
   });
 

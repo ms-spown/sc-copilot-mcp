@@ -30,10 +30,23 @@ export interface FetchRecord {
   staleReason?: string;
 }
 
+/** The real dates of the data a tool returned, when the source gives them. */
+export interface DataDates {
+  /** Epoch ms of the stalest datum returned. */
+  oldest: number;
+  /** Epoch ms of the freshest datum returned. */
+  newest: number;
+  /** Where the dates come from, in words. */
+  basis: string[];
+}
+
 export interface ProvenanceContext {
   fetches: FetchRecord[];
   channel?: Channel;
   gameVersion?: string | null;
+  dataDates?: DataDates;
+  /** Why the age of the data is not known, when a tool knows. */
+  dataAgeUnknown?: string;
   notes: string[];
 }
 
@@ -58,6 +71,27 @@ export function setGameVersion(version: string | null): void {
   if (ctx) ctx.gameVersion = version;
 }
 
+/**
+ * Say how old the DATA is (not the retrieval): the stalest and freshest dates the source gave for
+ * what is returned. Several calls in one answer merge to the widest range.
+ */
+export function setDataDates(oldest: number, newest: number, basis: string): void {
+  const ctx = store.getStore();
+  if (!ctx || !Number.isFinite(oldest) || !Number.isFinite(newest)) return;
+  const prev = ctx.dataDates;
+  ctx.dataDates = {
+    oldest: prev ? Math.min(prev.oldest, oldest) : oldest,
+    newest: prev ? Math.max(prev.newest, newest) : newest,
+    basis: prev && !prev.basis.includes(basis) ? [...prev.basis, basis] : (prev?.basis ?? [basis]),
+  };
+}
+
+/** Say why the age of the data cannot be given (the source dates nothing the tool returned). */
+export function setDataAgeUnknown(reason: string): void {
+  const ctx = store.getStore();
+  if (ctx) ctx.dataAgeUnknown = reason;
+}
+
 export function addNote(note: string): void {
   store.getStore()?.notes.push(note);
 }
@@ -76,7 +110,14 @@ export interface Provenance {
   channel: Channel;
   game_version: string | null;
   fetched_at: string;
-  data_age: string;
+  /** How long ago this server got the data (network, memory or disk cache). NOT how old the data is. */
+  cache_age: string;
+  /** How old the DATA itself is, from dates the source gives; null when it gives none. */
+  data_age: string | null;
+  /** The date of the stalest datum returned (ISO), when known. */
+  data_date?: string;
+  /** What data_age is based on, or why it is null. */
+  data_age_note: string;
   kind: Kind;
   trust: Trust;
   stale?: true;
@@ -84,9 +125,16 @@ export interface Provenance {
   notes?: string[];
 }
 
+export const DATA_AGE_UNKNOWN_DEFAULT =
+  "the source does not date what this tool returns; cache_age only says when this server fetched it";
+
 /**
- * The oldest fetch sets fetched_at and data_age: an answer is as old as its stalest input.
- * With no fetch at all (a local read) the data is read now.
+ * The oldest fetch sets fetched_at and cache_age: an answer was retrieved as long ago as its
+ * stalest input. With no fetch at all (a local read) it is read now.
+ *
+ * data_age is a different thing: the age of the data itself, taken from dates the source gives
+ * (UEX row modification dates, the SCMDB channel's generation date). It is null, with the reason
+ * in data_age_note, when the source gives none: a retrieval time is never passed off as it.
  */
 export function buildProvenance(
   meta: ToolMeta,
@@ -101,10 +149,20 @@ export function buildProvenance(
     channel: ctx.channel ?? meta.channel,
     game_version: ctx.gameVersion !== undefined ? ctx.gameVersion : gameVersion,
     fetched_at: new Date(oldest).toISOString(),
-    data_age: humanizeAge(now - oldest),
+    cache_age: humanizeAge(now - oldest),
+    data_age: null,
+    data_age_note: ctx.dataAgeUnknown ?? DATA_AGE_UNKNOWN_DEFAULT,
     kind: meta.kind,
     trust: meta.trust,
   };
+  if (ctx.dataDates) {
+    const { oldest: from, newest: to, basis } = ctx.dataDates;
+    provenance.data_age = humanizeAge(now - from);
+    provenance.data_date = new Date(from).toISOString();
+    provenance.data_age_note =
+      `${basis.join("; ")}; this is the oldest date` +
+      (to > from ? ` (the freshest is ${humanizeAge(now - to)} old)` : "");
+  }
   if (stale) {
     provenance.stale = true;
     provenance.stale_reason = stale.staleReason ?? "the live request failed";

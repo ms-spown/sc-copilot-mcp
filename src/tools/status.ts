@@ -69,7 +69,7 @@ export async function collectStatus(probes: StatusProbe[], now: number = Date.no
   const sources = settled.map(({ fetchedAt, ...rest }) => ({
     ...rest,
     ...(fetchedAt !== undefined
-      ? { fetched_at: new Date(fetchedAt).toISOString(), data_age: humanizeAge(now - fetchedAt) }
+      ? { fetched_at: new Date(fetchedAt).toISOString(), cache_age: humanizeAge(now - fetchedAt) }
       : {}),
   }));
 

@@ -19,12 +19,13 @@ cached data, so you will see it right away. Public endpoints answer without a to
 ## An answer says `stale: true`
 
 The live request failed (network down, UEX or the wiki having a bad moment) and the last good copy was served.
-`stale_reason` says why and `data_age` how old it is. Try again later; `sc_data_status` shows which source is down.
+`stale_reason` says why and `cache_age` how old the copy is. Try again later; `sc_data_status` shows which source is down.
 
 ## Prices or missions look wrong
 
-Prices are crowdsourced. Check `provenance.data_age`, and in route results `reports_origin` / `reports_destination`
-(0 means UEX's own estimate). Mission rewards are datamined values and can differ in game. Sources also sync at
+Prices are crowdsourced. Check `provenance.data_age` (the real age of the rows; `cache_age` is only the fetch) and each row's `updated_at`, and in
+route results `is_estimate` / `reports_origin` / `reports_destination` (0 means UEX's own estimate; `min_reports`
+drops them). Price rows from an older game version are left out and counted (`excluded_older_version`). Mission rewards are datamined values and can differ in game. Sources also sync at
 different times after a patch: `sc_data_status` lists the builds each one is on.
 
 ## PTU data is missing

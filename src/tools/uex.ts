@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { fetchWithCache } from "../core/cache.js";
-import { formatOutput, formatOutputRaw } from "../core/format.js";
+import { formatOutput, formatOutputRaw, optimizeData } from "../core/format.js";
 import { resolveShip } from "../providers/fleet/resolve.js";
+import { reportRowDates, rowUpdatedAt, splitByVersion } from "../providers/uex/freshness.js";
 import type { HttpClient } from "../core/http.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
@@ -29,7 +30,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
     {
       name: "uex_get_commodity_prices",
       description:
-        "Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced: check provenance.data_age). Optionally narrow by star system, planet or terminal with exact names. Use for 'where do I sell X' and 'what does X cost at Y'.",
+        "Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced). Two lists: buy_locations (cheapest first) and sell_locations (best first), each cut to `limit` rows (default 15) with totals; `side` keeps one. Rows from an older game version than LIVE are left out and counted (excluded_older_version) unless include_older_versions. Each row has updated_at; provenance.data_age is the age of the oldest row shown. Optionally narrow by star system, planet or terminal with exact names. Use for 'where do I sell X' and 'what does X cost at Y'.",
       inputSchema: {
         type: "object",
         properties: {
@@ -49,16 +50,42 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             type: "string",
             description: "Optional: Filter by terminal name.",
           },
+          side: {
+            type: "string",
+            enum: ["buy", "sell", "both"],
+            description:
+              "buy = where the player can BUY it (cheapest first), sell = where the player can SELL it (best price first), both = two lists (default).",
+          },
+          limit: {
+            type: "number",
+            description: "Rows per list (default 15, max 50). The total count is always given.",
+          },
+          include_older_versions: {
+            type: "boolean",
+            description:
+              "Also return rows from an older game version than LIVE (default false: they are left out and counted).",
+          },
         },
         required: ["commodity_name"],
       },
       handler: async (args: unknown): Promise<ToolResult> => {
-        const { commodity_name, star_system_name, planet_name, terminal_name } = z
+        const {
+          commodity_name,
+          star_system_name,
+          planet_name,
+          terminal_name,
+          side,
+          limit,
+          include_older_versions,
+        } = z
           .object({
             commodity_name: z.string(),
             star_system_name: z.string().optional(),
             planet_name: z.string().optional(),
             terminal_name: z.string().optional(),
+            side: z.enum(["buy", "sell", "both"]).optional(),
+            limit: z.number().optional(),
+            include_older_versions: z.boolean().optional(),
           })
           .parse(args);
         const response = await fetchWithCache(uexClient, "/commodities_prices", {
@@ -89,9 +116,93 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             );
           }
         }
+        if (!Array.isArray(data)) {
+          return { content: [{ type: "text", text: formatOutput(data) }] };
+        }
+
+        // LIVE's version decides what is "old". Asking again is free (same cache as the
+        // provenance lookup); if UEX cannot say, the newest version found in the rows stands in.
+        let live: unknown;
+        try {
+          const versions = await fetchWithCache(uexClient, "/game_versions", undefined, {
+            record: false,
+          });
+          live = versions.data?.data?.live;
+        } catch {
+          live = null;
+        }
+        const located = data as Record<string, unknown>[];
+        const split = splitByVersion(located, live);
+        const considered = include_older_versions ? located : split.kept;
+        const olderVersions: Record<string, number> = {};
+        for (const r of split.older) {
+          const v = String(r.game_version);
+          olderVersions[v] = (olderVersions[v] ?? 0) + 1;
+        }
+
+        const cap = Math.min(Math.max(Math.floor(limit ?? 15), 1), 50);
+        const amount = (r: Record<string, unknown>, field: string) =>
+          typeof r[field] === "number" && Number.isFinite(r[field]) ? (r[field] as number) : 0;
+        const view = (r: Record<string, unknown>) => ({
+          ...(optimizeData(r) as Record<string, unknown>),
+          updated_at: rowUpdatedAt(r),
+        });
+        const ranked = (field: "price_buy" | "price_sell", cheapestFirst: boolean) => {
+          const all = considered
+            .filter((r) => amount(r, field) > 0)
+            .sort((a, b) =>
+              cheapestFirst
+                ? amount(a, field) - amount(b, field)
+                : amount(b, field) - amount(a, field),
+            );
+          const rows = all.slice(0, cap);
+          return {
+            total: all.length,
+            shown: rows.length,
+            sorted_by: `${field}, ${cheapestFirst ? "cheapest first" : "highest first"}`,
+            rows,
+          };
+        };
+        const want = side ?? "both";
+        const buy = want === "sell" ? null : ranked("price_buy", true);
+        const sell = want === "buy" ? null : ranked("price_sell", false);
+
+        const shownRows = [...(buy?.rows ?? []), ...(sell?.rows ?? [])];
+        reportRowDates([...new Set(shownRows)], "price rows");
 
         return {
-          content: [{ type: "text", text: formatOutput(data) }],
+          content: [
+            {
+              type: "text",
+              // Not formatOutput: a count of 0 (nothing excluded) is information here.
+              text: formatOutputRaw({
+                commodity: commodity_name,
+                rows_from_uex: located.length,
+                game_version_reference: split.reference
+                  ? {
+                      version: split.reference,
+                      source:
+                        split.referenceSource === "uex_live"
+                          ? "UEX LIVE version"
+                          : "newest version found in the rows (UEX did not give LIVE)",
+                    }
+                  : null,
+                excluded_older_version: {
+                  count: include_older_versions ? 0 : split.older.length,
+                  versions: include_older_versions ? {} : olderVersions,
+                  ...(split.older.length > 0
+                    ? {
+                        note: include_older_versions
+                          ? `${split.older.length} rows from an older version are INCLUDED (include_older_versions); read each row's game_version.`
+                          : `${split.older.length} rows from an older game version were left out; set include_older_versions to see them.`,
+                      }
+                    : {}),
+                },
+                ...(buy ? { buy_locations: { ...buy, rows: buy.rows.map(view) } } : {}),
+                ...(sell ? { sell_locations: { ...sell, rows: sell.rows.map(view) } } : {}),
+              }),
+            },
+          ],
         };
       },
     },
@@ -171,7 +282,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
     {
       name: "uex_get_trade_routes",
       description:
-        "Best trade routes (buy here, sell there) from UEX, sorted by profit. UEX requires an ORIGIN: give at least one of commodity_name, origin_terminal_name or origin_planet_name, otherwise the call fails. Size the answer to the ship with ship_name (for example one from sc_fleet_get: its cargo capacity is used) or cargo_capacity in SCU, and to the budget with investment (aUEC). Profit is computed for the cargo that fits (profit_for_cargo), not UEX's figure for the route's maximum volume. Each route shows how many player reports back its prices (reports_origin, reports_destination; 0 means UEX's own estimate). Crowdsourced prices: check provenance.data_age and sanity-check a route before flying it.",
+        "Best trade routes (buy here, sell there) from UEX, sorted by profit. UEX requires an ORIGIN: give at least one of commodity_name, origin_terminal_name or origin_planet_name, otherwise the call fails. Size it to a ship with ship_name (e.g. from sc_fleet_get) or cargo_capacity in SCU, and to the budget with investment (aUEC). Profit is computed for the cargo that fits (profit_for_cargo), not UEX's figure for the route's maximum volume. Each route shows its player reports (reports_origin, reports_destination) and is_estimate: true when an end has 0 reports, i.e. a UEX estimate no player saw (estimated_sides says which). Reported routes come first, estimates after, each by profit; min_reports drops routes with fewer reports at either end (default 0). Crowdsourced: data_age is null when UEX dates no route; sanity-check a route before flying it.",
       inputSchema: {
         type: "object",
         properties: {
@@ -206,6 +317,11 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             type: "number",
             description: "Routes to return, best profit first (default 10, max 50).",
           },
+          min_reports: {
+            type: "number",
+            description:
+              "Drop routes that have fewer than this many player reports at the origin OR at the destination (default 0: keep UEX estimates, but rank them after reported routes). 1 = only routes both ends of which a player has reported.",
+          },
         },
       },
       handler: async (args: unknown): Promise<ToolResult> => {
@@ -217,6 +333,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
           cargo_capacity: requestedScu,
           ship_name,
           limit,
+          min_reports,
         } = z
           .object({
             commodity_name: z.string().optional(),
@@ -226,6 +343,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             cargo_capacity: z.number().optional(),
             ship_name: z.string().optional(),
             limit: z.number().optional(),
+            min_reports: z.number().min(0).optional(),
           })
           .parse(args || {});
 
@@ -320,10 +438,34 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             cost: units === null ? null : buy * units,
           };
         });
-        sized.sort((x, y) => (y.total ?? y.perScu) - (x.total ?? x.perScu));
-        const routes = sized
-          .slice(0, Math.min(Math.max(limit ?? 10, 1), 50))
-          .map(({ r, perScu, units, total, cost }) => ({
+        // A price nobody reported is UEX's estimate. A count that is missing is not read as 0.
+        const estimatedSides = (r: Record<string, unknown>) =>
+          (
+            [
+              ["origin", r.price_origin_users_rows],
+              ["destination", r.price_destination_users_rows],
+            ] as const
+          ).flatMap(([side, count]) => (count === 0 ? [side] : []));
+        const enough = (r: Record<string, unknown>) =>
+          !min_reports ||
+          (num(r.price_origin_users_rows) >= min_reports &&
+            num(r.price_destination_users_rows) >= min_reports);
+        const kept = sized.filter(({ r }) => enough(r));
+        // Routes both ends of which a player reported come first; estimates follow. Within a
+        // group, the best profit first. Otherwise an invented price tops the list.
+        kept.sort(
+          (x, y) =>
+            Number(estimatedSides(x.r).length > 0) - Number(estimatedSides(y.r).length > 0) ||
+            (y.total ?? y.perScu) - (x.total ?? x.perScu),
+        );
+        const shownRows = kept.slice(0, Math.min(Math.max(limit ?? 10, 1), 50));
+        reportRowDates(
+          shownRows.map(({ r }) => r),
+          "route rows",
+        );
+        const routes = shownRows.map(({ r, perScu, units, total, cost }) => {
+          const estimated = estimatedSides(r);
+          return {
             commodity: r.commodity_name,
             origin: {
               terminal: r.origin_terminal_name,
@@ -350,7 +492,11 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             destination_status: r.status_destination,
             game_version_origin: r.game_version_origin,
             game_version_destination: r.game_version_destination,
-          }));
+            is_estimate: estimated.length > 0,
+            estimated_sides: estimated,
+            updated_at: rowUpdatedAt(r),
+          };
+        });
 
         return {
           content: [
@@ -361,11 +507,16 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
                 ...(ship ? { ship } : {}),
                 cargo_scu_used: cargo_capacity ?? null,
                 total_routes: rows.length,
+                excluded_below_min_reports: rows.length - kept.length,
+                min_reports: min_reports ?? 0,
+                estimates_among_all_routes: sized.filter(({ r }) => estimatedSides(r).length > 0)
+                  .length,
                 shown: routes.length,
                 sorted_by:
-                  cargo_capacity !== undefined || investment !== undefined
+                  (cargo_capacity !== undefined || investment !== undefined
                     ? "profit_for_cargo, descending"
-                    : "profit_per_scu, descending (no cargo size given)",
+                    : "profit_per_scu, descending (no cargo size given)") +
+                  "; routes with a UEX estimate (is_estimate) after those reported at both ends",
                 routes,
               }),
             },
@@ -552,7 +703,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
         );
         const vehicle = exact ?? matches[0];
 
-        const filterSystem = (rows: unknown) => {
+        const filterSystem = (rows: unknown): Record<string, unknown>[] => {
           if (!Array.isArray(rows)) return [];
           if (!star_system_name) return rows;
           return rows.filter(
@@ -567,13 +718,18 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
         });
         const purchases = filterSystem(purchaseResponse.data.data);
 
-        let rentals: unknown[] = [];
+        let rentals: Record<string, unknown>[] = [];
         if (include_rentals !== false) {
           const rentalResponse = await fetchWithCache(uexClient, "/vehicles_rentals_prices", {
             params: { id_vehicle: vehicle.id },
           });
           rentals = filterSystem(rentalResponse.data.data);
         }
+
+        reportRowDates([...purchases, ...rentals], "ship price rows");
+        // formatOutput strips the raw date fields, so the date is restated as updated_at.
+        const dated = (rows: Record<string, unknown>[]) =>
+          rows.map((r) => ({ ...r, updated_at: rowUpdatedAt(r) }));
 
         return {
           content: [
@@ -587,8 +743,8 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
                   matches.length > 1
                     ? matches.filter((m) => m.id !== vehicle.id).map((m) => m.name_full ?? m.name)
                     : undefined,
-                purchase_locations: purchases,
-                rental_locations: rentals,
+                purchase_locations: dated(purchases),
+                rental_locations: dated(rentals),
               }),
             },
           ],

@@ -24,7 +24,8 @@ Every answer says where it came from. Tool results are `{ provenance, data }`:
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `source`, `kind`          | Which source, and whether it is `datamined`, `crowdsourced`, `editorial`, `local_log`, `user` or `computed`                        |
 | `channel`, `game_version` | `live`, `ptu` or `unknown` (never guessed), and the build when the source gives one                                                |
-| `fetched_at`, `data_age`  | When the data was fetched, and how old it is                                                                                       |
+| `fetched_at`, `cache_age` | When this server fetched the data, and how long ago (a cache hit keeps the original time)                                          |
+| `data_age`, `data_date`   | How old the DATA is, from dates the source gives (UEX row dates, SCMDB channel date); `null` when none, `data_age_note` says why  |
 | `trust`                   | `untrusted_text` for text written by players or website editors: cleaned, shortened, and to be read as data, never as instructions |
 | `stale`, `stale_reason`   | Present only when the live request failed and the last good copy was served                                                        |
 
@@ -153,7 +154,7 @@ counted. CIG does not guarantee the format; `npm run check:sources` shows if the
 
 ## Limits you should know
 
-- **Crowdsourced prices can be wrong.** Read `data_age`, and sanity-check a route before flying 696 SCU.
+- **Crowdsourced prices can be wrong.** Read `data_age` (null means UEX gave no date) and the per-row `updated_at`, and sanity-check a route before flying 696 SCU.
 - **Patch history is thin.** The patch-dump repository now holds two unlabelled builds, so `sc_diff_versions`
   has little to compare. `scmdb_changes` is the working answer for "what changed".
 - **PTU is labelled, never mixed in.** SCMDB has PTU data; UEX and the wiki do not.
