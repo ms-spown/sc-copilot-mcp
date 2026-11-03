@@ -21,7 +21,11 @@ versions follow [Semantic Versioning](https://semver.org/).
   (six real GUIDs resolved; three agree with the log's own hauling-contract names), otherwise "unknown commodity".
   The parser is a pure module (`src/providers/gamelog/trade.ts`: `parseCommerceLine`, `parseCommerceText`,
   `buildTradeJournal`); `parseLog` keeps its commerce lines in a new `commerce` array, so the events of the log tools
-  and their frozen schema are unchanged. Verified on the author's logs (March 2025 to November 2026): 183 item
+  and their frozen schema are unchanged (note: `stats.recognized` now also counts these commerce and location lines,
+  which were `ignored` before; the stats schema is the same). A cargo error line that follows several same-side
+  requests within 3 s cannot be attributed to one: those lines are `ambiguous`, listed as unconfirmed and not counted.
+  The answer is bounded to fit the 40 000-character output limit (rows, then runs, are cut, with a `truncated` note
+  and counts). Verified on the author's logs (March 2025 to November 2026): 183 item
   requests all paired with a response, 79 cargo requests, 12 cargo errors each within 2 s of its request. The 4.10 cargo
   sale format rests on two lines of one session (3 November 2026); the earlier research note that found no sale after
   March 2025 predates them.

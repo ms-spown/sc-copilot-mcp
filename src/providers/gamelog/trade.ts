@@ -65,7 +65,8 @@ export function bracketField(text: string, name: string): string | null {
 const TAG =
   /<(?:([A-Za-z]+)::)?(SendShopBuyRequest|SendStandardItemBuyRequest|SendShopSellRequest|SendCommodityBuyRequest|SendCommoditySellRequest|RmShopFlowResponse|RmToken_CommodityTransactionResponse|RequestLocationInventory)>/;
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TOKEN = /^[A-Za-z0-9_]{1,80}$/;
+// A location token is a place name; a run of 5+ digits would be an entity id, so it is refused.
+const TOKEN = /^(?!.*\d{5})[A-Za-z0-9_]{1,80}$/;
 const WORD = /^[A-Za-z0-9_.-]{1,120}$/;
 
 const num = (s: string | null): number | null => {
@@ -211,7 +212,12 @@ export function categorize(itemClass: string): Category {
   return "other";
 }
 
-export type Confidence = "confirmed" | "inferred" | "unknown";
+/**
+ * confirmed = the game said so; inferred = deduced from the absence of an error; unknown = no
+ * outcome yet; ambiguous = an error line followed several same-side requests and cannot be
+ * attributed to one of them.
+ */
+export type Confidence = "confirmed" | "inferred" | "unknown" | "ambiguous";
 export type Status = "completed" | "failed" | "unconfirmed";
 
 export interface Transaction {
@@ -226,6 +232,7 @@ export interface Transaction {
   basis:
     | "game_response"
     | "error_line"
+    | "error_line_ambiguous"
     | "no_error_within_3s"
     | "zero_amount"
     | "no_response"
@@ -299,7 +306,8 @@ export interface SessionJournal {
       sell_lines: number;
       autoload_lines: number;
     };
-    excluded: { failed: number; unconfirmed: number; other_currency: number };
+    /** `unconfirmed` includes the `ambiguous` ones. */
+    excluded: { failed: number; unconfirmed: number; ambiguous: number; other_currency: number };
   };
 }
 
@@ -309,7 +317,10 @@ const EPS = 1e-6;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const ms = (t: string) => Date.parse(t);
 
-/** Sort order helper: log order is chronological, but equal times keep their order. */
+/**
+ * Records (in log order) to a session journal. Quadratic in the cargo lines of one commodity
+ * (measured: 0.06 s for 10 000, 0.7 s for 20 000, 3.3 s for 40 000; the whole real corpus holds 79).
+ */
 export function buildTradeJournal(
   records: TradeRecord[],
   /** The last timestamp of the text: a cargo request within 3 s of it has not had time to fail. */
@@ -422,20 +433,29 @@ export function buildTradeJournal(
       }
       case "cargo_error": {
         const side = r.type === "Selling" ? "sell" : r.type === "Buying" ? "buy" : null;
-        // The latest request of that side that is still inside the window.
-        let idx = -1;
-        for (let i = pendingCargo.length - 1; i >= 0; i--) {
-          if (side === null || pendingCargo[i].side === side) {
-            idx = i;
-            break;
+        // Every same-side request still inside the 3 s window could be the one that failed.
+        const candidates = pendingCargo.filter((p) => side === null || p.side === side);
+        if (!candidates.length) break;
+        // A zero-amount sale always fails: when exactly one candidate is one, the error is its.
+        const zero = candidates.filter((p) => p.tx.reason === "zero_amount");
+        const sole = zero.length === 1 ? zero[0] : candidates.length === 1 ? candidates[0] : null;
+        if (sole) {
+          sole.tx.status = "failed";
+          sole.tx.reason = r.result;
+          sole.tx.confidence = "confirmed";
+          sole.tx.basis = "error_line";
+        } else {
+          // Several candidates: the error cannot be attributed with certainty, so none of them is
+          // counted (a real failure and a success may both be among them).
+          for (const p of candidates) {
+            if (p.tx.status === "failed") continue;
+            p.tx.status = "unconfirmed";
+            p.tx.reason = `ambiguous: ${r.result} followed ${candidates.length} requests`;
+            p.tx.confidence = "ambiguous";
+            p.tx.basis = "error_line_ambiguous";
           }
         }
-        if (idx < 0) break;
-        const [p] = pendingCargo.splice(idx, 1);
-        p.tx.status = "failed";
-        p.tx.reason = r.result;
-        p.tx.confidence = "confirmed";
-        p.tx.basis = "error_line";
+        for (const p of sole ? [sole] : candidates) pendingCargo.splice(pendingCargo.indexOf(p), 1);
         break;
       }
     }
@@ -456,7 +476,7 @@ function summarize(tx: Transaction[]): SessionJournal {
       sell_lines: 0,
       autoload_lines: 0,
     },
-    excluded: { failed: 0, unconfirmed: 0, other_currency: 0 },
+    excluded: { failed: 0, unconfirmed: 0, ambiguous: 0, other_currency: 0 },
   };
   const cats = new Map<Category, { auec: number; lines: number; quantity: number }>();
 
@@ -467,6 +487,7 @@ function summarize(tx: Transaction[]): SessionJournal {
     }
     if (t.status === "unconfirmed") {
       totals.excluded.unconfirmed += 1;
+      if (t.confidence === "ambiguous") totals.excluded.ambiguous += 1;
       continue;
     }
     if (t.kind === "item") {

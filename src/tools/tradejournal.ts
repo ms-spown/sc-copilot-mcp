@@ -23,6 +23,8 @@ import type { ToolDefinition, ToolResult } from "./types.js";
 const MAX_FILES = 10;
 const MAX_ROWS_TOTAL = 120;
 const MAX_RUNS_PER_SESSION = 30;
+/** The `sessions` part of the answer, pretty-printed: leaves room for the rest under the 40 000-character limit. */
+const MAX_SESSIONS_CHARS = 32_000;
 const UNKNOWN = "unknown commodity";
 
 const ok = (value: unknown): ToolResult => ({
@@ -97,16 +99,50 @@ export function tradeJournalTools({
         if (wantNames && resolved.stale)
           addNote("Commodity names come from an old copy of the wiki list (the wiki was down).");
 
-        let budget = MAX_ROWS_TOTAL;
-        const sessions = journals.map(({ s, current, j }) => {
-          const take = Math.max(0, Math.min(perSession, budget));
-          budget -= take;
-          return view(s, current, j, take, nameOf);
-        });
+        const build = (rowsCap: number, runsCap: number) => {
+          let budget = MAX_ROWS_TOTAL;
+          return journals.map(({ s, current, j }) => {
+            const take = Math.max(0, Math.min(rowsCap, budget));
+            budget -= Math.min(take, j.transactions.length);
+            return view(s, current, j, take, runsCap, nameOf);
+          });
+        };
+        // The answer must stay under the output limit (formatOutputRaw would otherwise cut the
+        // `sessions` array to nothing): lower the rows, then the runs, until it fits.
+        let rowsCap = perSession;
+        let runsCap = MAX_RUNS_PER_SESSION;
+        let sessions = build(rowsCap, runsCap);
+        while (
+          JSON.stringify(sessions, null, 2).length > MAX_SESSIONS_CHARS &&
+          (rowsCap > 0 || runsCap > 0)
+        ) {
+          if (rowsCap > 4) rowsCap = Math.floor(rowsCap / 2);
+          else if (runsCap > 2) runsCap = Math.floor(runsCap / 2);
+          else if (rowsCap > 0) rowsCap = 0;
+          else runsCap = 0;
+          sessions = build(rowsCap, runsCap);
+        }
+        const count = (
+          key:
+            "transactions_shown" | "transactions_total" | "cargo_runs_shown" | "cargo_runs_total",
+        ) => sessions.reduce((n, x) => n + x[key], 0);
+        const reduced = rowsCap < perSession || runsCap < MAX_RUNS_PER_SESSION;
+        const truncated =
+          reduced &&
+          (count("transactions_shown") < count("transactions_total") ||
+            count("cargo_runs_shown") < count("cargo_runs_total"))
+            ? {
+                reason: `The answer was cut to fit ${MAX_SESSIONS_CHARS} characters. The most recent rows are kept; totals and spending cover every session.`,
+                transactions: `${count("transactions_shown")} of ${count("transactions_total")} shown`,
+                cargo_runs: `${count("cargo_runs_shown")} of ${count("cargo_runs_total")} shown`,
+                hint: "Ask for fewer sessions, or a smaller max_transactions, to see the rest.",
+              }
+            : null;
 
         return ok({
           log_files_scanned: list.length,
           sessions_with_trades: sessions.length,
+          ...(truncated ? { truncated } : {}),
           sessions,
           commodity_names: {
             source: wantNames
@@ -122,6 +158,7 @@ export function tradeJournalTools({
             "Cargo success is inferred (no error line within 3 s); the game logs only failures. Item purchases and sales carry the game's own response.",
             "ShopUI lines state no currency (shown as 'not stated (assumed aUEC)'); the small-kiosk flow states it.",
             "The autoload fee, fuel, insurance and rewards are not in the log. auto_loading only says the service was used.",
+            "An error line that followed several cargo requests within 3 s cannot be attributed: those lines are 'ambiguous', listed as unconfirmed and not counted.",
             "Category is inferred from the item class name. location_hint is the last location token logged before the line, not a terminal.",
           ],
         });
@@ -135,13 +172,14 @@ function view(
   current: boolean,
   j: SessionJournal,
   take: number,
+  runsCap: number,
   nameOf: (resource: string) => string,
 ) {
   const shown: Row[] = (take > 0 ? j.transactions.slice(-take) : []).map((t) => {
     const { resource, ...rest } = t;
     return resource ? { ...rest, commodity_name: nameOf(resource) } : rest;
   });
-  const runs = j.cargo_runs.slice(-MAX_RUNS_PER_SESSION).map((r: CargoRun) => {
+  const runs = (runsCap > 0 ? j.cargo_runs.slice(-runsCap) : []).map((r: CargoRun) => {
     const { resource, ...rest } = r;
     return { ...rest, commodity_name: nameOf(resource) };
   });
@@ -160,6 +198,7 @@ function view(
     totals: j.totals,
     spending_by_category: j.spending_by_category,
     cargo_runs: runs,
+    cargo_runs_shown: runs.length,
     cargo_runs_total: j.cargo_runs.length,
     transactions_total: j.transactions.length,
     transactions_shown: shown.length,

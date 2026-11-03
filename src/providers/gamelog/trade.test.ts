@@ -133,6 +133,10 @@ describe("Feature: reading the commerce lines of Game.log", () => {
       const text = JSON.stringify(all);
       for (const secret of [PILOT, ACCOUNT, SHOP_ID, KIOSK_ID]) expect(text).not.toContain(secret);
     });
+    it("Given a location token with a long number in it, When parsed, Then it is dropped (it could be an id)", () => {
+      expect(records(location("20:00:00.000", "RR_P2_L4_12345678"))).toEqual([]);
+      expect(records(location("20:00:00.000", "Stanton4_NewBabbage_01"))).toHaveLength(1);
+    });
     it("Given a location line whose token is not a plain identifier, When parsed, Then it is dropped", () => {
       expect(records(location("20:00:00.000", "bad token</x>"))).toEqual([]);
     });
@@ -250,6 +254,46 @@ describe("Feature: the cargo run of a trader", () => {
       expect(j.totals.cargo).toMatchObject({ bought_auec: 1000, sold_auec: 0, buy_lines: 1 });
       expect(j.cargo_runs[0]).toMatchObject({ state: "open", unsold_scu: 10, paired_scu: 0 });
       expect(j.cargo_runs[0].gross_margin_per_scu_auec).toBeNull();
+    });
+  });
+
+  describe("Scenario: one error line after two purchases within 3 s", () => {
+    it("Then neither is attributed: both are ambiguous, unconfirmed and not counted", () => {
+      const j = journal([
+        cargoBuy("20:00:00.000", 1000, 1000),
+        cargoBuy("20:00:01.000", 2000, 1000),
+        cargoError("20:00:02.000", "TransactionCostMismatch", "Buying"),
+      ]);
+      expect(j.transactions.map((t) => [t.status, t.confidence, t.basis])).toEqual([
+        ["unconfirmed", "ambiguous", "error_line_ambiguous"],
+        ["unconfirmed", "ambiguous", "error_line_ambiguous"],
+      ]);
+      expect(j.transactions[0].reason).toMatch(/ambiguous/);
+      expect(j.totals.cargo.bought_auec).toBe(0);
+      expect(j.totals.excluded).toMatchObject({ unconfirmed: 2, ambiguous: 2, failed: 0 });
+      expect(j.cargo_runs).toEqual([]);
+    });
+    it("Given a buy and a sale close together, Then the error of one side is not blamed on the other", () => {
+      const j = journal([
+        cargoBuy("20:00:00.000", 1000, 1000),
+        cargoSell("20:00:01.000", 900, 10),
+        cargoError("20:00:02.000", "TransactionCostMismatch", "Buying"),
+      ]);
+      expect(j.transactions.map((t) => [t.side, t.status, t.confidence])).toEqual([
+        ["buy", "failed", "confirmed"],
+        ["sell", "completed", "inferred"],
+      ]);
+    });
+    it("Given a zero-amount sale next to a normal one, Then the error is the zero-amount sale's", () => {
+      const j = journal([
+        cargoSell("20:00:00.000", 900, 10),
+        cargoSell("20:00:01.000", 0, 10),
+        cargoError("20:00:02.000", "InvalidQuantityError", "Selling"),
+      ]);
+      expect(j.transactions.map((t) => [t.status, t.reason ?? null])).toEqual([
+        ["completed", null],
+        ["failed", "InvalidQuantityError"],
+      ]);
     });
   });
 

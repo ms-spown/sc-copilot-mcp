@@ -85,6 +85,26 @@ function world(lines: string[] | null, scw?: (url: string) => unknown) {
 }
 const body = (r: { content: { text: string }[] }) => JSON.parse(r.content[0].text);
 
+/** n round trips (2 cargo lines each) and m shop purchases, one line every 10 s from `start`. */
+function busySession(start: number, trips: number, purchases: number): string[] {
+  const out: string[] = [];
+  let at = start;
+  const hms = () => {
+    at += 10;
+    return new Date(at * 1000).toISOString().slice(11, 23);
+  };
+  for (let i = 0; i < trips; i++) {
+    out.push(buy(hms(), 1000 + i, 1000));
+    out.push(sell(hms(), 1500 + i, 10));
+  }
+  for (let i = 0; i < purchases; i++) {
+    out.push(gear.replace(/<[^>]+>/, `<2026-11-03T${hms()}Z>`));
+    out.push(gearOk.replace(/<[^>]+>/, `<2026-11-03T${hms()}Z>`));
+  }
+  return out;
+}
+const T0 = Date.parse("2026-11-03T00:00:00Z") / 1000;
+
 describe("Feature: sc_trade_journal", () => {
   describe("Scenario: a session with a cargo run and a gear purchase", () => {
     it("Given the log, When I ask, Then the run is paired, named, and labelled gross and estimated", async () => {
@@ -179,6 +199,81 @@ describe("Feature: sc_trade_journal", () => {
       const s = body(await registry.call("sc_trade_journal", {})).data.sessions[0];
       expect(s.cargo_runs[0].commodity_name).toBe("Waste");
       expect(get).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("Scenario: a very busy log must never come back as 'too large'", () => {
+    const wiki = () => wikiPage([{ uuid: WASTE, name: "Waste" }]);
+    const fits = (out: { data: Record<string, unknown> }) => {
+      expect(out.data.error).toBeUndefined();
+      expect(JSON.stringify(out.data, null, 2).length).toBeLessThan(40_000);
+    };
+
+    it("Given 130 cargo lines, 40 shop lines and max_transactions 120, Then the answer is cut to fit and says how much", async () => {
+      const { registry } = world(busySession(T0, 65, 40), wiki);
+      const out = body(await registry.call("sc_trade_journal", { max_transactions: 120 }));
+      fits(out);
+      const s = out.data.sessions[0];
+      expect(s.transactions_total).toBe(170);
+      expect(s.transactions_shown).toBeLessThan(120);
+      expect(s.transactions_shown).toBeGreaterThan(0);
+      expect(s.cargo_runs_total).toBe(65);
+      expect(out.data.truncated.transactions).toMatch(/of 170 shown/);
+      expect(out.data.truncated.cargo_runs).toMatch(/of 65 shown/);
+      // Totals still cover the whole session.
+      expect(s.totals.cargo.buy_lines).toBe(65);
+    });
+
+    it("Given the same log and resolve_names false, Then it fits too", async () => {
+      const { registry } = world(busySession(T0, 65, 40), wiki);
+      fits(
+        body(
+          await registry.call("sc_trade_journal", { max_transactions: 120, resolve_names: false }),
+        ),
+      );
+    });
+
+    it("Given 3 sessions with many lines, Then the whole answer fits and every session is listed", async () => {
+      const { registry } = world(busySession(T0, 40, 20), wiki);
+      fs.mkdirSync(path.join(dir, "logbackups"));
+      for (const [i, name] of ["a.log", "b.log"].entries()) {
+        const f = path.join(dir, "logbackups", name);
+        fs.writeFileSync(f, [...HEADER, ...busySession(T0 + (i + 1) * 100_000, 40, 20)].join("\n"));
+        const old = new Date(Date.now() - (i + 1) * 3_600_000);
+        fs.utimesSync(f, old, old);
+      }
+      const out = body(
+        await registry.call("sc_trade_journal", { sessions: 5, max_transactions: 120 }),
+      );
+      fits(out);
+      expect(out.data.sessions).toHaveLength(3);
+      expect(
+        out.data.sessions.reduce(
+          (n: number, x: { transactions_shown: number }) => n + x.transactions_shown,
+          0,
+        ),
+      ).toBeLessThanOrEqual(120);
+    });
+
+    it("Given three small sessions, Then each one lists its own rows (the row budget counts rows shown)", async () => {
+      const { registry } = world(TRIP, wiki);
+      fs.mkdirSync(path.join(dir, "logbackups"));
+      for (const [i, name] of ["a.log", "b.log"].entries()) {
+        const f = path.join(dir, "logbackups", name);
+        fs.writeFileSync(f, [...HEADER, ...TRIP].join("\n"));
+        const old = new Date(Date.now() - (i + 1) * 3_600_000);
+        fs.utimesSync(f, old, old);
+      }
+      const out = body(await registry.call("sc_trade_journal", { sessions: 5 }));
+      expect(
+        out.data.sessions.map((x: { transactions_shown: number }) => x.transactions_shown),
+      ).toEqual([5, 5, 5]);
+    });
+
+    it("Given a small log, Then nothing is cut and there is no truncation note", async () => {
+      const { registry } = world(TRIP, wiki);
+      const out = body(await registry.call("sc_trade_journal", {}));
+      expect(out.data.truncated).toBeUndefined();
     });
   });
 
