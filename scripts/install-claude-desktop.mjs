@@ -74,6 +74,8 @@ if (raw !== null) {
   console.log(`\nBackup written: ${backup}`);
 }
 const tmp = `${configPath}.${process.pid}.tmp`;
-fs.writeFileSync(tmp, `${JSON.stringify(plan.merged, null, 2)}\n`);
+// The original text with only this entry changed: BOM, line endings, indentation and number spellings
+// of the user's other servers stay as they were (re-printing the parsed file would not keep them).
+fs.writeFileSync(tmp, plan.text);
 fs.renameSync(tmp, configPath);
 console.log("Config updated. Restart Claude Desktop to load the server.");

@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { shortPath } from "../../core/paths.js";
 import { decodeLog, parseLog, type ParsedLog } from "./parser.js";
 
 /**
@@ -37,11 +38,8 @@ export function suggestedInstallDirs(env: NodeJS.ProcessEnv = process.env): stri
   return ["LIVE", "PTU"].map((c) => path.join(base, "Roberts Space Industries", "StarCitizen", c));
 }
 
-/** The last three path parts: enough to recognise the file, without the user's folder names. */
-export function shortPath(file: string): string {
-  const parts = file.split(/[\\/]+/).filter(Boolean);
-  return `…/${parts.slice(-3).join("/")}`;
-}
+// Kept here for the callers that already import it from the log reader.
+export { shortPath };
 
 export class GameLogError extends Error {}
 

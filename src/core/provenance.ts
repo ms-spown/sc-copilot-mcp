@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { cleanLabel } from "./untrusted.js";
 
 /**
  * Where an answer came from and how fresh it is.
@@ -73,9 +74,10 @@ export function setChannel(channel: Channel): void {
   if (ctx) ctx.channel = channel;
 }
 
+/** A game version is a label from a source that is often third-party: cleaned and bounded where it enters. */
 export function setGameVersion(version: string | null): void {
   const ctx = store.getStore();
-  if (ctx) ctx.gameVersion = version;
+  if (ctx) ctx.gameVersion = cleanLabel(version);
 }
 
 /**
@@ -154,7 +156,8 @@ export function buildProvenance(
   const provenance: Provenance = {
     source: meta.source,
     channel: ctx.channel ?? meta.channel,
-    game_version: ctx.gameVersion !== undefined ? ctx.gameVersion : gameVersion,
+    // The provenance block is read as structured data: the version is cleaned even when a resolver gave it.
+    game_version: cleanLabel(ctx.gameVersion !== undefined ? ctx.gameVersion : gameVersion),
     fetched_at: new Date(oldest).toISOString(),
     cache_age: humanizeAge(now - oldest),
     data_age: null,

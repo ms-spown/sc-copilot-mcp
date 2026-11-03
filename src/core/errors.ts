@@ -1,9 +1,12 @@
 import axios from "axios";
 import type { ToolResult } from "../tools/types.js";
-import { cleanString } from "./untrusted.js";
+import { cleanString, remoteText } from "./untrusted.js";
 
-/** Longest piece of a remote error body shown back. It is third-party text: bounded and cleaned. */
-const MAX_REMOTE_DETAILS = 500;
+/**
+ * Longest error message of our own (plus the fenced third-party pieces it quotes, which are
+ * bounded on their own). A last bound on what an error can carry back to the model.
+ */
+const MAX_ERROR_MESSAGE = 2000;
 
 /** A readable reason for a failed HTTP call, instead of axios's bare "status code 401". */
 export function describeHttpError(error: unknown): string | undefined {
@@ -47,8 +50,13 @@ export function toErrorResult(error: unknown): ToolResult {
       typeof error.response.data === "string"
         ? error.response.data
         : JSON.stringify(error.response.data);
-    details = cleanString(body, MAX_REMOTE_DETAILS);
+    // Third-party text: cleaned, cut at 300 characters and fenced like any untrusted text.
+    details = remoteText(body, "remote server response");
   }
+
+  // Whatever an error message quotes, no invisible character gets through (the message of an
+  // Error can carry text from anywhere); the pieces known to be remote are fenced where they enter.
+  errorMessage = cleanString(errorMessage, MAX_ERROR_MESSAGE);
 
   return {
     isError: true,

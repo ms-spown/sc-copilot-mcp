@@ -24,6 +24,8 @@ import {
   snapshotFields,
   snapshotPath,
 } from "../providers/wiki/snapshots.js";
+import { shortPath } from "../core/paths.js";
+import { cleanLabel } from "../core/untrusted.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
 /** Tools backed by the Star Citizen Wiki API, plus the local snapshots taken from it. */
@@ -412,8 +414,8 @@ export function wikiTools({ scwClient }: { scwClient: HttpClient }): ToolDefinit
           throw new Error(`No ${dataset} returned by the API — nothing to snapshot.`);
         }
 
-        const gameVersion =
-          (all[0].version as string) || (all[0].game_version as string) || "unknown";
+        // The wiki's version string is third-party text: cleaned and bounded where it enters.
+        const gameVersion = cleanLabel(all[0].version ?? all[0].game_version) ?? "unknown";
         const resolvedLabel = label || gameVersion;
 
         const entries: Record<string, Record<string, unknown>> = {};
@@ -443,7 +445,7 @@ export function wikiTools({ scwClient }: { scwClient: HttpClient }): ToolDefinit
             {
               type: "text",
               text: formatOutput({
-                saved: snapshotPath(dataset, resolvedLabel),
+                saved: shortPath(snapshotPath(dataset, resolvedLabel)),
                 dataset,
                 label: resolvedLabel,
                 game_version: gameVersion,
@@ -471,7 +473,7 @@ export function wikiTools({ scwClient }: { scwClient: HttpClient }): ToolDefinit
               {
                 type: "text",
                 text: formatOutput({
-                  snapshot_dir: SNAPSHOT_DIR,
+                  snapshot_dir: shortPath(SNAPSHOT_DIR),
                   snapshots: [],
                   note: "No snapshots saved yet. Use scw_snapshot_save to capture one.",
                 }),
@@ -484,11 +486,12 @@ export function wikiTools({ scwClient }: { scwClient: HttpClient }): ToolDefinit
         for (const file of files.filter((f) => f.endsWith(".json"))) {
           try {
             const raw = JSON.parse(await fs.readFile(path.join(SNAPSHOT_DIR, file), "utf-8"));
+            // A snapshot file is a local file whose labels came from the wiki: cleaned on the way out.
             snapshots.push({
-              dataset: raw.dataset,
-              label: raw.label,
-              game_version: raw.game_version,
-              captured_at: raw.captured_at,
+              dataset: cleanLabel(raw.dataset),
+              label: cleanLabel(raw.label),
+              game_version: cleanLabel(raw.game_version),
+              captured_at: cleanLabel(raw.captured_at),
               entry_count: Object.keys(raw.entries || {}).length,
             });
           } catch {
@@ -498,7 +501,10 @@ export function wikiTools({ scwClient }: { scwClient: HttpClient }): ToolDefinit
 
         return {
           content: [
-            { type: "text", text: formatOutput({ snapshot_dir: SNAPSHOT_DIR, snapshots }) },
+            {
+              type: "text",
+              text: formatOutput({ snapshot_dir: shortPath(SNAPSHOT_DIR), snapshots }),
+            },
           ],
         };
       },

@@ -37,7 +37,21 @@ export function snapshotFields(entry: Record<string, unknown>): Record<string, u
 }
 
 export async function loadSnapshot(dataset: string, label: string) {
-  const raw = await fs.readFile(snapshotPath(dataset, label), "utf-8");
+  let raw: string;
+  try {
+    raw = await fs.readFile(snapshotPath(dataset, label), "utf-8");
+  } catch (error) {
+    // The system's message names the whole path, user name included: say what is missing instead.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error(
+        `No ${dataset} snapshot labelled "${label}". Use scw_snapshot_list to see what is saved.`,
+        { cause: error },
+      );
+    }
+    throw new Error(`The ${dataset} snapshot labelled "${label}" cannot be read.`, {
+      cause: error,
+    });
+  }
   return JSON.parse(raw) as {
     dataset: string;
     label: string;

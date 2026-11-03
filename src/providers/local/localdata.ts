@@ -9,6 +9,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { shortPath } from "../../core/paths.js";
 
 export const GAME_DATA_DIR = process.env.SCMCP_GAME_DATA_DIR;
 
@@ -50,7 +51,9 @@ export async function listDatasets(): Promise<{
   try {
     files = (await fs.readdir(dir)).filter((f) => f.startsWith("game-") && f.endsWith(".json"));
   } catch {
-    throw new Error(`SCMCP_GAME_DATA_DIR is set to "${dir}" but that directory cannot be read.`);
+    throw new Error(
+      `SCMCP_GAME_DATA_DIR is set to "${shortPath(dir)}" but that directory cannot be read.`,
+    );
   }
 
   const datasets: DatasetSummary[] = [];
@@ -81,7 +84,7 @@ export async function listDatasets(): Promise<{
     datasets.push({ dataset: file.replace(/\.json$/, ""), collections });
   }
 
-  return { directory: dir, build_version: buildVersion, datasets };
+  return { directory: shortPath(dir), build_version: buildVersion, datasets };
 }
 
 /** Entries of a collection, normalised to [key, value] pairs for arrays and objects. */
@@ -120,12 +123,15 @@ export async function collectLabels(
 
   let files: string[];
   if (dataset) {
-    files = [dataset.endsWith(".json") ? dataset : `${dataset}.json`];
+    // Same check as the other readers: a name, never a path.
+    files = [path.basename(resolveDataset(dir, dataset))];
   } else {
     try {
       files = (await fs.readdir(dir)).filter((f) => f.startsWith("game-") && f.endsWith(".json"));
     } catch {
-      throw new Error(`SCMCP_GAME_DATA_DIR is set to "${dir}" but that directory cannot be read.`);
+      throw new Error(
+        `SCMCP_GAME_DATA_DIR is set to "${shortPath(dir)}" but that directory cannot be read.`,
+      );
     }
   }
 
@@ -151,13 +157,17 @@ export async function collectLabels(
         if (/^\d+$/.test(label) || label.length < 3) continue;
         labels.add(label);
         if (labels.size >= limit) {
-          return { directory: dir, datasets_scanned: scanned, labels: [...labels].sort() };
+          return {
+            directory: shortPath(dir),
+            datasets_scanned: scanned,
+            labels: [...labels].sort(),
+          };
         }
       }
     }
   }
 
-  return { directory: dir, datasets_scanned: scanned, labels: [...labels].sort() };
+  return { directory: shortPath(dir), datasets_scanned: scanned, labels: [...labels].sort() };
 }
 
 export interface SearchHit {
