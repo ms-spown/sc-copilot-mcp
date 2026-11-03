@@ -20,10 +20,16 @@ const ago = (ms: number) => Math.floor((NOW - ms) / 1000); // UEX dates are Unix
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
+// The real shape: date_added is when UEX created the row (long ago), date_modified when a price
+// was last reported, price_*_users_rows how many players reported it (0 = UEX's estimate).
+const CREATED = 1703551048; // 2023-12
 const row = (name: string, extra: Record<string, unknown>) => ({
+  date_added: CREATED,
   commodity_name: "Recycled Material Composite",
   star_system_name: "Stanton",
   terminal_name: name,
+  price_buy_users_rows: 3,
+  price_sell_users_rows: 3,
   ...extra,
 });
 const PRICES = [
@@ -121,13 +127,60 @@ describe("Feature: UEX prices say which patch they are from and how old they are
       expect(data.excluded_older_version.versions).toEqual({ "4.9.0": 1 });
     });
 
-    it("Given UEX cannot say which version is LIVE, Then the newest version in the rows is the reference and it says so", async () => {
-      const registry = world({ "/commodities_prices": { data: PRICES } }); // no /game_versions
+    it("Given UEX cannot say which version is LIVE, Then nothing is excluded and the answer says so", async () => {
+      const registry = world({
+        "/commodities_prices": {
+          data: [
+            row("Live row", { price_buy: 100, game_version: "4.10.2" }),
+            row("Ptu row", { price_buy: 90, game_version: "4.10.3" }),
+          ],
+        },
+      }); // no /game_versions
       const { data } = body(
         await registry.call("uex_get_commodity_prices", { commodity_name: "RMC" }),
       );
-      expect(data.excluded_older_version.count).toBe(2);
-      expect(data.game_version_reference.source).toMatch(/newest version found in the rows/);
+      expect(data.excluded_older_version.count).toBe(0);
+      expect(names(data.buy_locations.rows)).toEqual(["Ptu row", "Live row"]);
+      expect(data.game_version_reference).toMatchObject({
+        version: null,
+        versions_in_rows: { "4.10.2": 1, "4.10.3": 1 },
+      });
+      expect(data.game_version_reference.source).toMatch(/no row was excluded/);
+    });
+
+    it("Given a PTU row newer than LIVE, Then it is kept but counted apart, never silently mixed in", async () => {
+      const registry = world({
+        ...live,
+        "/commodities_prices": {
+          data: [
+            row("Live row", { price_buy: 100, game_version: "4.10.2" }),
+            row("Ptu row", { price_buy: 90, game_version: "4.10.3" }),
+          ],
+        },
+      });
+      const { data } = body(
+        await registry.call("uex_get_commodity_prices", { commodity_name: "RMC" }),
+      );
+      expect(names(data.buy_locations.rows)).toEqual(["Ptu row", "Live row"]);
+      expect(data.newer_than_live).toMatchObject({ count: 1, versions: { "4.10.3": 1 } });
+      expect(data.excluded_older_version.count).toBe(0);
+    });
+
+    it("Given a short version '4.10' against LIVE 4.10.2, Then it is not known to be old and is kept", async () => {
+      const registry = world({
+        ...live,
+        "/commodities_prices": {
+          data: [
+            row("Short", { price_buy: 1, game_version: "4.10" }),
+            row("Older", { price_buy: 2, game_version: "4.9" }),
+          ],
+        },
+      });
+      const { data } = body(
+        await registry.call("uex_get_commodity_prices", { commodity_name: "RMC" }),
+      );
+      expect(names(data.buy_locations.rows)).toEqual(["Short"]);
+      expect(data.excluded_older_version.versions).toEqual({ "4.9": 1 });
     });
 
     it("Given a row with no version, Then it is kept: it cannot be shown to be old", async () => {
@@ -164,6 +217,7 @@ describe("Feature: UEX prices say which patch they are from and how old they are
     it("Given rows with no date at all, Then data_age is null with the reason, never the fetch age", async () => {
       const registry = world({
         ...live,
+        // date_added is set (the row's creation, 2023) but there is no date_modified
         "/commodities_prices": { data: [row("Undated", { price_buy: 5, game_version: "4.10.2" })] },
       });
       const { provenance } = body(
@@ -171,7 +225,7 @@ describe("Feature: UEX prices say which patch they are from and how old they are
       );
       expect(provenance.data_age).toBeNull();
       expect(provenance).not.toHaveProperty("data_date");
-      expect(provenance.data_age_note).toMatch(/no modification date/);
+      expect(provenance.data_age_note).toMatch(/no price date \(date_modified\)/);
       expect(provenance.cache_age).toBe("0s");
     });
 
@@ -292,6 +346,7 @@ describe("Feature: trade routes built on estimates do not top the list", () => {
     price_origin: 100,
     price_destination: 100 + perScu,
     scu_reachable: 1000,
+    date_added: ago(8 * 60_000), // UEX recalculated the route 8 minutes ago; no date_modified
     price_origin_users_rows: o,
     price_destination_users_rows: d,
     ...extra,
@@ -299,7 +354,7 @@ describe("Feature: trade routes built on estimates do not top the list", () => {
   const ROUTES = [
     route("Invented", 900, 0, 0),
     route("Half", 500, 2, 0),
-    route("Reported", 100, 5, 3, { date_modified: ago(5 * HOUR) }),
+    route("Reported", 100, 5, 3),
   ];
   const routesWorld = () =>
     world({
@@ -359,28 +414,44 @@ describe("Feature: trade routes built on estimates do not top the list", () => {
     expect(bad.isError).toBe(true);
   });
 
-  it("Given a route row with a modification date, Then it shows updated_at and drives data_age", async () => {
+  it("Given real routes (date_added = recalculation time, no date_modified), Then data_age is null, not '8m', and says why", async () => {
     const { data, provenance } = body(
-      await routesWorld().call("uex_get_trade_routes", {
-        commodity_name: "Laranite",
-        limit: 1,
-      }),
-    );
-    expect(data.routes[0].updated_at).toBe(new Date(NOW - 5 * HOUR).toISOString());
-    expect(provenance.data_age).toBe("5h");
-  });
-
-  it("Given routes with no date, Then data_age is null with the reason", async () => {
-    const registry = world({
-      "/commodities": { data: [{ id: 79, name: "Laranite" }] },
-      "/commodities_routes": { data: [route("Only", 10, 1, 1)] },
-    });
-    const { provenance, data } = body(
-      await registry.call("uex_get_trade_routes", { commodity_name: "Laranite" }),
+      await routesWorld().call("uex_get_trade_routes", { commodity_name: "Laranite" }),
     );
     expect(provenance.data_age).toBeNull();
-    expect(provenance.data_age_note).toMatch(/no modification date/);
-    expect(data.routes[0].updated_at).toBeNull();
+    expect(provenance).not.toHaveProperty("data_date");
+    expect(provenance.data_age_note).toMatch(/no price date \(date_modified\)/);
+    expect(provenance.data_age_note).toMatch(/recalculated/);
+    expect(data.routes[0]).not.toHaveProperty("updated_at");
+  });
+});
+
+describe("Feature: terminals that only carry a UEX estimate do not top the price lists", () => {
+  it("Given an estimated 7200 sell price and a reported 900, Then the reported row is first and the estimate is flagged", async () => {
+    const registry = world({
+      ...live,
+      "/commodities_prices": {
+        data: [
+          row("Estimate", { price_sell: 7200, price_sell_users_rows: 0, game_version: "4.10.2" }),
+          row("Reported", {
+            price_sell: 900,
+            price_sell_users_rows: 4,
+            game_version: "4.10.2",
+            date_modified: ago(HOUR),
+          }),
+        ],
+      },
+    });
+    const { data } = body(
+      await registry.call("uex_get_commodity_prices", { commodity_name: "RMC", side: "sell" }),
+    );
+    expect(names(data.sell_locations.rows)).toEqual(["Reported", "Estimate"]);
+    expect(data.sell_locations.rows.map((r: { is_estimate: boolean }) => r.is_estimate)).toEqual([
+      false,
+      true,
+    ]);
+    expect(data.sell_locations.estimates).toBe(1);
+    expect(data.sell_locations.sorted_by).toMatch(/before UEX estimates/);
   });
 });
 

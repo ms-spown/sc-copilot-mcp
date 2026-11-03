@@ -12,9 +12,12 @@ versions follow [Semantic Versioning](https://semver.org/).
   meaning (age of the fetch or cache) is the new `provenance.cache_age`, also used by `sc_data_status`.
 - `uex_get_commodity_prices` answers `buy_locations` and `sell_locations` (cheapest / best first, `limit` default 15,
   max 50, with totals; `side` keeps one), leaves out rows of an older game version than LIVE and counts them
-  (`excluded_older_version`, `include_older_versions` to keep them), and adds `updated_at` to each row.
+  (`excluded_older_version`, `include_older_versions` to keep them), and adds `updated_at` to each row. Rows of a
+  version newer than LIVE are kept and counted (`newer_than_live`); without a known LIVE version nothing is excluded.
+  Rows reported by players come before UEX estimates (`is_estimate`, `estimates` count per list).
 - `uex_get_trade_routes` ranks routes with a UEX estimate (`is_estimate`, 0 reports at an end) after reported ones;
-  new `min_reports` drops them. Routes and ship prices carry `updated_at` when UEX dates them.
+  new `min_reports` drops them. UEX dates no route price (its `date_added` is the recalculation time), so route
+  answers have `data_age: null`. Only `date_modified` is read as a date; ship price rows carry `updated_at`.
 
 ## [2.0.0] - 2026-11-03
 

@@ -82,7 +82,7 @@ No parameters.
 
 ### uex_get_commodity_prices
 
-Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced). Two lists: buy_locations (cheapest first) and sell_locations (best first), each cut to `limit` rows (default 15) with totals; `side` keeps one. Rows from an older game version than LIVE are left out and counted (excluded_older_version) unless include_older_versions. Each row has updated_at; provenance.data_age is the age of the oldest row shown. Optionally narrow by star system, planet or terminal with exact names. Use for 'where do I sell X' and 'what does X cost at Y'.
+Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced). Two lists: buy_locations (cheapest first) and sell_locations (best first), each cut to `limit` rows (default 15) with totals; `side` keeps one. Rows older than UEX's LIVE version are left out and counted (excluded_older_version) unless include_older_versions; newer (PTU) rows are kept and counted. Rows reported by players come before UEX estimates (is_estimate). Each row has updated_at. Optionally narrow by star system, planet or terminal with exact names. Use for 'where do I sell X' and 'what does X cost at Y'.
 
 *Source:* uex · *Kind:* crowdsourced · *Trust:* structured · *Profiles:* core, trade
 

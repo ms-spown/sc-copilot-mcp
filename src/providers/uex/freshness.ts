@@ -3,14 +3,14 @@ import { setDataAgeUnknown, setDataDates } from "../../core/provenance.js";
 /**
  * How old UEX's rows really are, and which game version they belong to.
  *
- * UEX rows carry `date_modified` (and `date_added`): when a player last reported the price.
- * That is the age of the data; the age of our HTTP fetch says nothing about it. Both fields are
- * read when present and never invented: a row without them has no date.
+ * Price rows carry `date_modified`: when a player last reported the price. That is the age of
+ * the data; the age of our HTTP fetch says nothing about it. ONLY date_modified is read.
+ * `date_added` is not a price date: on a price row it is when the row was created (years ago),
+ * on a route it is when UEX recomputed the route (minutes ago) while the prices under it may be
+ * weeks old. A row without date_modified has no date.
  */
 
 type Row = Record<string, unknown>;
-
-const DATE_FIELDS = ["date_modified", "date_added"] as const;
 
 /** A UEX date as epoch ms: UEX sends Unix seconds; ISO strings and milliseconds are tolerated. */
 export function parseUexDate(value: unknown): number | null {
@@ -26,13 +26,9 @@ export function parseUexDate(value: unknown): number | null {
   return null;
 }
 
-/** When a row was last modified (epoch ms), or null when UEX gave no date for it. */
+/** When a row's price was last reported (epoch ms), or null when UEX gave no date_modified. */
 export function rowTimestamp(row: Row): number | null {
-  for (const field of DATE_FIELDS) {
-    const t = parseUexDate(row[field]);
-    if (t !== null) return t;
-  }
-  return null;
+  return parseUexDate(row.date_modified);
 }
 
 /** The row's modification time as an ISO string, for the answer. */
@@ -46,13 +42,13 @@ export function rowUpdatedAt(row: Row): string | null {
  * With no dated row the age stays unknown, with the reason, instead of falling back to the
  * fetch time.
  */
-export function reportRowDates(rows: Row[], what: string): void {
+export function reportRowDates(rows: Row[], what: string, why?: string): void {
   const times = rows.map(rowTimestamp).filter((t): t is number => t !== null);
   if (times.length === 0) {
     setDataAgeUnknown(
       rows.length === 0
         ? `no ${what} returned, so there is nothing to date`
-        : `UEX gave no modification date on the ${what} returned; cache_age only says when this server fetched them`,
+        : `UEX gave no price date (date_modified) on the ${what} returned${why ? `: ${why}` : ""}; cache_age only says when this server fetched them`,
     );
     return;
   }
@@ -72,55 +68,53 @@ export function versionParts(version: unknown): number[] | null {
   return m ? m[1].split(".").map(Number) : null;
 }
 
-/** Negative when a < b, 0 when equal, positive when a > b. */
+/**
+ * Negative when a < b, positive when a > b, 0 when equal OR when they agree on every segment
+ * both have: "4.10" against "4.10.2" is not known to differ, so neither is older.
+ */
 export function compareVersions(a: number[], b: number[]): number {
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    const d = (a[i] ?? 0) - (b[i] ?? 0);
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    const d = a[i] - b[i];
     if (d !== 0) return d;
   }
   return 0;
 }
 
 export interface VersionSplit {
+  /** Rows to answer with: everything except the rows of a version older than LIVE. */
   kept: Row[];
-  /** Rows of a version older than the reference. */
+  /** Rows of a version older than LIVE. */
   older: Row[];
-  /** Version the rows were compared with, as written by UEX or by the row that set it. */
+  /** Rows of a version newer than LIVE (a PTU build): kept, but reported. */
+  newer: Row[];
+  /** UEX's LIVE version, or null when UEX did not give a usable one: then nothing is excluded. */
   reference: string | null;
-  referenceSource: "uex_live" | "newest_row" | null;
+  /** Every version found in the rows, with its row count. */
+  versions: Record<string, number>;
 }
 
 /**
- * Separate the rows of an older game version from the current ones. The reference is UEX's
- * LIVE version when known, else the newest version found in the rows. Rows with no version
- * are kept: they cannot be shown to be old.
+ * Separate the rows of an older game version from the current ones, against UEX's LIVE version.
+ * Without a known LIVE version nothing can be called old (the newest row may be a PTU row), so
+ * nothing is excluded. Rows with no version, or a version too short to tell, are kept.
  */
 export function splitByVersion(rows: Row[], live: unknown): VersionSplit {
-  let reference: string | null = null;
-  let referenceSource: VersionSplit["referenceSource"] = null;
-  if (versionParts(live)) {
-    reference = String(live);
-    referenceSource = "uex_live";
-  } else {
-    let best: { parts: number[]; text: string } | null = null;
-    for (const r of rows) {
-      const parts = versionParts(r.game_version);
-      if (parts && (!best || compareVersions(parts, best.parts) > 0)) {
-        best = { parts, text: String(r.game_version) };
-      }
-    }
-    if (best) {
-      reference = best.text;
-      referenceSource = "newest_row";
-    }
-  }
-  const refParts = versionParts(reference);
-  if (!refParts) return { kept: rows, older: [], reference, referenceSource };
+  const liveParts = versionParts(live);
+  const versions: Record<string, number> = {};
   const kept: Row[] = [];
   const older: Row[] = [];
+  const newer: Row[] = [];
   for (const r of rows) {
+    if (typeof r.game_version === "string" && r.game_version) {
+      versions[r.game_version] = (versions[r.game_version] ?? 0) + 1;
+    }
     const parts = versionParts(r.game_version);
-    (parts && compareVersions(parts, refParts) < 0 ? older : kept).push(r);
+    const d = liveParts && parts ? compareVersions(parts, liveParts) : 0;
+    if (d < 0) older.push(r);
+    else {
+      kept.push(r);
+      if (d > 0) newer.push(r);
+    }
   }
-  return { kept, older, reference, referenceSource };
+  return { kept, older, newer, reference: liveParts ? String(live) : null, versions };
 }

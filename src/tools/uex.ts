@@ -30,7 +30,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
     {
       name: "uex_get_commodity_prices",
       description:
-        "Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced). Two lists: buy_locations (cheapest first) and sell_locations (best first), each cut to `limit` rows (default 15) with totals; `side` keeps one. Rows from an older game version than LIVE are left out and counted (excluded_older_version) unless include_older_versions. Each row has updated_at; provenance.data_age is the age of the oldest row shown. Optionally narrow by star system, planet or terminal with exact names. Use for 'where do I sell X' and 'what does X cost at Y'.",
+        "Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced). Two lists: buy_locations (cheapest first) and sell_locations (best first), each cut to `limit` rows (default 15) with totals; `side` keeps one. Rows older than UEX's LIVE version are left out and counted (excluded_older_version) unless include_older_versions; newer (PTU) rows are kept and counted. Rows reported by players come before UEX estimates (is_estimate). Each row has updated_at. Optionally narrow by star system, planet or terminal with exact names. Use for 'where do I sell X' and 'what does X cost at Y'.",
       inputSchema: {
         type: "object",
         properties: {
@@ -121,7 +121,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
         }
 
         // LIVE's version decides what is "old". Asking again is free (same cache as the
-        // provenance lookup); if UEX cannot say, the newest version found in the rows stands in.
+        // provenance lookup). If UEX cannot say, nothing is excluded: the newest row could be PTU.
         let live: unknown;
         try {
           const versions = await fetchWithCache(uexClient, "/game_versions", undefined, {
@@ -134,27 +134,42 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
         const located = data as Record<string, unknown>[];
         const split = splitByVersion(located, live);
         const considered = include_older_versions ? located : split.kept;
-        const olderVersions: Record<string, number> = {};
-        for (const r of split.older) {
-          const v = String(r.game_version);
-          olderVersions[v] = (olderVersions[v] ?? 0) + 1;
-        }
+        const countVersions = (list: Record<string, unknown>[]) => {
+          const out: Record<string, number> = {};
+          for (const r of list)
+            out[String(r.game_version)] = (out[String(r.game_version)] ?? 0) + 1;
+          return out;
+        };
+        const olderVersions = countVersions(split.older);
+        const newerVersions = countVersions(split.newer);
 
         const cap = Math.min(Math.max(Math.floor(limit ?? 15), 1), 50);
         const amount = (r: Record<string, unknown>, field: string) =>
           typeof r[field] === "number" && Number.isFinite(r[field]) ? (r[field] as number) : 0;
-        const view = (r: Record<string, unknown>) => ({
+        // A price nobody reported is UEX's estimate. A missing count is not read as 0.
+        const reportsField = {
+          price_buy: "price_buy_users_rows",
+          price_sell: "price_sell_users_rows",
+        };
+        const isEstimate = (r: Record<string, unknown>, field: "price_buy" | "price_sell") =>
+          r[reportsField[field]] === 0;
+        const view = (r: Record<string, unknown>, field: "price_buy" | "price_sell") => ({
           ...(optimizeData(r) as Record<string, unknown>),
+          is_estimate: isEstimate(r, field),
           updated_at: rowUpdatedAt(r),
         });
+        // Rows a player reported come before estimates; within each group, the best price.
         const ranked = (field: "price_buy" | "price_sell", cheapestFirst: boolean) => ({
-          sorted_by: `${field}, ${cheapestFirst ? "cheapest first" : "highest first"}`,
+          field,
+          sorted_by: `${field}, ${cheapestFirst ? "cheapest first" : "highest first"}; rows reported by players before UEX estimates (is_estimate)`,
           all: considered
             .filter((r) => amount(r, field) > 0)
-            .sort((a, b) =>
-              cheapestFirst
-                ? amount(a, field) - amount(b, field)
-                : amount(b, field) - amount(a, field),
+            .sort(
+              (a, b) =>
+                Number(isEstimate(a, field)) - Number(isEstimate(b, field)) ||
+                (cheapestFirst
+                  ? amount(a, field) - amount(b, field)
+                  : amount(b, field) - amount(a, field)),
             ),
         });
         const want = side ?? "both";
@@ -164,7 +179,13 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
         const render = (n: number) => {
           const list = (l: NonNullable<typeof buy>) => {
             const rows = l.all.slice(0, n);
-            return { total: l.all.length, shown: rows.length, sorted_by: l.sorted_by, rows };
+            return {
+              total: l.all.length,
+              estimates: l.all.filter((r) => isEstimate(r, l.field)).length,
+              shown: rows.length,
+              sorted_by: l.sorted_by,
+              rows,
+            };
           };
           const b = buy ? list(buy) : null;
           const sl = sell ? list(sell) : null;
@@ -181,14 +202,22 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
               commodity: commodity_name,
               rows_from_uex: located.length,
               game_version_reference: split.reference
-                ? {
-                    version: split.reference,
+                ? { version: split.reference, source: "UEX LIVE version" }
+                : {
+                    version: null,
                     source:
-                      split.referenceSource === "uex_live"
-                        ? "UEX LIVE version"
-                        : "newest version found in the rows (UEX did not give LIVE)",
+                      "UEX did not give its LIVE version, so no row was excluded as old; read each row's game_version",
+                    versions_in_rows: split.versions,
+                  },
+              ...(split.newer.length > 0
+                ? {
+                    newer_than_live: {
+                      count: split.newer.length,
+                      versions: newerVersions,
+                      note: `${split.newer.length} rows are from a version newer than LIVE (a PTU build?). They are kept: read each row's game_version.`,
+                    },
                   }
-                : null,
+                : {}),
               excluded_older_version: {
                 count: include_older_versions ? 0 : split.older.length,
                 versions: include_older_versions ? {} : olderVersions,
@@ -203,8 +232,12 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
               ...(n < cap
                 ? { note: `Lists cut to ${n} rows each (asked ${cap}) to fit the output size.` }
                 : {}),
-              ...(b ? { buy_locations: { ...b, rows: b.rows.map(view) } } : {}),
-              ...(sl ? { sell_locations: { ...sl, rows: sl.rows.map(view) } } : {}),
+              ...(b
+                ? { buy_locations: { ...b, rows: b.rows.map((r) => view(r, "price_buy")) } }
+                : {}),
+              ...(sl
+                ? { sell_locations: { ...sl, rows: sl.rows.map((r) => view(r, "price_sell")) } }
+                : {}),
             },
           };
         };
@@ -478,6 +511,7 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
         reportRowDates(
           shownRows.map(({ r }) => r),
           "route rows",
+          "UEX computes routes itself: their date_added is when the route was recalculated, not when the prices under it were reported",
         );
         const routes = shownRows.map(({ r, perScu, units, total, cost }) => {
           const estimated = estimatedSides(r);
@@ -510,7 +544,6 @@ export function uexTools({ uexClient }: { uexClient: HttpClient }): ToolDefiniti
             game_version_destination: r.game_version_destination,
             is_estimate: estimated.length > 0,
             estimated_sides: estimated,
-            updated_at: rowUpdatedAt(r),
           };
         });
 
