@@ -38,12 +38,12 @@
 | [`scw_snapshot_save`](#scw_snapshot_save) | data | star-citizen.wiki + local snapshots | datamined | untrusted_text | Save a snapshot of current ship or item data, keyed by game version, for later patch-to-patch comparison. |
 | [`scw_snapshot_list`](#scw_snapshot_list) | data | local snapshots | datamined | structured | List all saved data snapshots available for patch comparison. |
 | [`scw_snapshot_diff`](#scw_snapshot_diff) | data | star-citizen.wiki + local snapshots | datamined | untrusted_text | Compare two saved snapshots to see what changed between patches (added, removed, and changed stats). |
-| [`sct_search`](#sct_search) | core | starcitizen.tools | editorial | untrusted_text | Search Star Citizen Tools (starcitizen.tools, a community wiki) for a topic; returns up to 10 page titles. |
+| [`sct_search`](#sct_search) | core | starcitizen.tools | editorial | untrusted_text | Search Star Citizen Tools (starcitizen.tools, a community wiki) for a topic; returns up to 10 results, each with a page title, a short excerpt and the page URL. |
 | [`sct_get_article`](#sct_get_article) | core | starcitizen.tools | editorial | untrusted_text | Plain text of one starcitizen.tools article by exact title (for example 'Wikelo'), cut to 20,000 characters. |
 | [`sc_patch_notes`](#sc_patch_notes) | core, data | starcitizen.tools | editorial | untrusted_text | Patch notes of a Star Citizen update (newest by default, or a version such as '4.10.2' or '4.10'), from the community wiki starcitizen.tools, which transcribes them. |
-| [`scmdb_search_missions`](#scmdb_search_missions) | core, data | scmdb | datamined | structured | Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. |
-| [`scmdb_search_crafting`](#scmdb_search_crafting) | data | scmdb | datamined | structured | Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. |
-| [`scmdb_search_mining`](#scmdb_search_mining) | data | scmdb | datamined | structured | Mining reference from datamined values (SCMDB): per ore, instability, resistance, optimal charge window, scan signatures and rarity, plus where it appears (for a specific ore); and mining lasers, modules and gadgets with their modifiers. |
+| [`scmdb_search_missions`](#scmdb_search_missions) | core, data | scmdb | datamined | untrusted_text | Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. |
+| [`scmdb_search_crafting`](#scmdb_search_crafting) | data | scmdb | datamined | untrusted_text | Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. |
+| [`scmdb_search_mining`](#scmdb_search_mining) | data | scmdb | datamined | untrusted_text | Mining reference from datamined values (SCMDB): per ore, instability, resistance, optimal charge window, scan signatures and rarity, plus where it appears (for a specific ore); and mining lasers, modules and gadgets with their modifiers. |
 | [`scmdb_changes`](#scmdb_changes) | core, data | scmdb | datamined | untrusted_text | What changed in the last game data update according to SCMDB: counts and examples of missions, blueprints, items and resources added, removed or changed between the two newest builds, plus recent notes from the data maintainer. |
 | [`sc_log_status`](#sc_log_status) | local | Game.log (local) | local_log | structured | Is the local Game.log readable, and what does it say about the running game: game version, build, LIVE or PTU, whether the game is running or quit cleanly, and how many lines were recognised. |
 | [`sc_log_recent_events`](#sc_log_recent_events) | local | Game.log (local) | local_log | untrusted_text | Recent things the game wrote in Game.log, oldest first: session start and quit, login, jurisdiction and zone changes (armistice, monitored space, private property), contracts accepted or completed, new and completed objectives, shop purchases (shop, item, price), insurance claims, hangar requests. |
@@ -52,7 +52,7 @@
 | [`sc_live_status`](#sc_live_status) | local | game telemetry (local, 127.0.0.1) | local_telemetry | structured | State of the optional live telemetry from the running game: off, waiting, game_without_telemetry, connected, live or incompatible, the cause in one sentence, the age of the last frame, and, when it is off or not working, exactly how to enable it. |
 | [`sc_live_state`](#sc_live_state) | local | game telemetry (local, 127.0.0.1) | local_telemetry | structured | Snapshot of the running game from its local telemetry, only when the user enabled it: ship (name, speed, vertical speed, altitude and heading when inside a planet's frame, hydrogen, boost, g-force, landing gear, flight modes, nine power flags, warning lights), weapons per seat and countermeasure counts, and the pilot (locomotion, health, hunger, thirst, heart rate, atmosphere). |
 | [`sc_live_events`](#sc_live_events) | local | game telemetry (local, 127.0.0.1) | local_telemetry | structured | Recent events derived from the live telemetry (took off, landed, quantum jump, lock-on, hits taken, shields down, power lost, health low or 0, respawn, countermeasures, hunger), newest last, from an in-memory ring that starts when the reader starts. |
-| [`sc_fleet_get`](#sc_fleet_get) | core, local | fleet file (local) + uex + star-citizen.wiki | user | structured | The player's own ships, from a local file, each with its public stats (manufacturer, role, size, crew, cargo SCU, health, shields, speed) from UEX and the Star Citizen Wiki. |
+| [`sc_fleet_get`](#sc_fleet_get) | core, local | fleet file (local) + uex + star-citizen.wiki | user | untrusted_text | The player's own ships, from a local file, each with its public stats (manufacturer, role, size, crew, cargo SCU, health, shields, speed) from UEX and the Star Citizen Wiki. |
 | [`sc_fleet_upsert`](#sc_fleet_upsert) | local | fleet file (local) | user | structured | Add a ship to the player's local fleet file, or change the note of one already there (same name and origin). |
 | [`sc_fleet_remove`](#sc_fleet_remove) | local | fleet file (local) | user | structured | Remove a ship from the player's local fleet file, by name. |
 | [`sc_local_datasets`](#sc_local_datasets) | local | local-files | datamined | structured | List the game-*.json datasets found in the folder the user configured (SCMCP_GAME_DATA_DIR), with their collections and the build they say they come from. |
@@ -321,7 +321,7 @@ Compare two saved snapshots to see what changed between patches (added, removed,
 
 ### sct_search
 
-Search Star Citizen Tools (starcitizen.tools, a community wiki) for a topic; returns up to 10 page titles. Use it for lore, guides and mechanics, then read a page with sct_get_article. Content is community-written.
+Search Star Citizen Tools (starcitizen.tools, a community wiki) for a topic; returns up to 10 results, each with a page title, a short excerpt and the page URL. Use it for lore, guides and mechanics, then read a page with sct_get_article. Content is community-written.
 
 *Source:* starcitizen.tools · *Kind:* editorial · *Trust:* untrusted_text · *Profiles:* core
 
@@ -353,13 +353,13 @@ Patch notes of a Star Citizen update (newest by default, or a version such as '4
 
 ### scmdb_search_missions
 
-Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. Combine free text with filters; results are sorted by reward and capped at 30. Use for 'which missions pay most in Pyro', 'what gives the Corbel armor blueprint', 'Wikelo missions'. Rewards are datamined values, not what players see after modifiers.
+Find missions and contracts in the datamined mission list (SCMDB): reward in aUEC, contractor, type, where they run, minimum reputation, illegality, and which crafting blueprints they can reward. Combine free text with filters; results are sorted by reward and capped at 30. Use for 'which missions pay most in Pyro', 'what gives the Corbel armor blueprint', 'Wikelo missions'. Rewards are datamined values, not what players see after modifiers. time_to_complete is passed through as the data gives it, and its unit is not stated by the source (do not assume seconds or minutes). Mission titles and descriptions are third-party text. A misspelled query or text filter (mission_type, faction, location, reward_blueprint) still finds the closest missions, and a filter that matches nothing says so in 'note'.
 
-*Source:* scmdb · *Kind:* datamined · *Trust:* structured · *Profiles:* core, data
+*Source:* scmdb · *Kind:* datamined · *Trust:* untrusted_text · *Profiles:* core, data
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `query` | string | no | Words that must all appear in title, contractor, type, place or blueprint reward (e.g. 'wikelo', 'bounty pyro'). |
+| `query` | string | no | Words that must all appear in title, contractor, type, place or blueprint reward (e.g. 'wikelo', 'bounty pyro'). Case, accents and punctuation do not matter; with no exact match, close spellings are tried. |
 | `mission_type` | string | no | Part of the mission type (e.g. 'Hauling', 'Bounty Hunter', 'Salvage', 'Delivery'). |
 | `category` | `career` \| `story` \| `event` | no | Mission category. |
 | `faction` | string | no | Part of the contractor name (e.g. 'Headhunters'). |
@@ -372,13 +372,13 @@ Find missions and contracts in the datamined mission list (SCMDB): reward in aUE
 
 ### scmdb_search_crafting
 
-Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. Filter by words, product type (weapons, armour, shield, cooler, quantumdrive, mininglaser...) or a resource it uses. Use for 'what do I need to craft X' and 'what can I make with Quantanium'.
+Find crafting blueprints in the datamined crafting list (SCMDB): what each product is, its recipe (resources and items per slot, minimum quality), craft time, and which missions can reward the blueprint. Filter by words, product type (weapons, armour, shield, cooler, quantumdrive, mininglaser...) or a resource it uses. Use for 'what do I need to craft X' and 'what can I make with Quantainium'. A misspelled query, type or uses_resource still finds the closest blueprints, and a filter that matches nothing says so in 'note'.
 
-*Source:* scmdb · *Kind:* datamined · *Trust:* structured · *Profiles:* data
+*Source:* scmdb · *Kind:* datamined · *Trust:* untrusted_text · *Profiles:* data
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `query` | string | no | Words that must all appear in the product name, type or manufacturer. |
+| `query` | string | no | Words that must all appear in the product name, type or manufacturer. Case, accents and punctuation do not matter; with no exact match, close spellings are tried. |
 | `type` | string | no | Product type or gear class, e.g. 'weapons', 'armour', 'shield', 'mininglaser'. |
 | `uses_resource` | string | no | Only blueprints whose recipe uses this resource or item (e.g. 'Titanium'). |
 | `include_sources` | boolean | no | Also list the missions that can reward each blueprint (default true; false is faster on the first call). |
@@ -387,13 +387,13 @@ Find crafting blueprints in the datamined crafting list (SCMDB): what each produ
 
 ### scmdb_search_mining
 
-Mining reference from datamined values (SCMDB): per ore, instability, resistance, optimal charge window, scan signatures and rarity, plus where it appears (for a specific ore); and mining lasers, modules and gadgets with their modifiers. Use for 'where do I find Quantanium', 'which laser handles unstable rock', 'what signature is Hadanite'. Ranking is by datamined weights, not live spawn rates.
+Mining reference from datamined values (SCMDB): per ore, instability, resistance, optimal charge window, scan signatures and rarity, plus where it appears (for a specific ore); and mining lasers, modules and gadgets with their modifiers. Use for 'where do I find Quantainium' (the game spells it that way; 'quantanium' also works), 'which laser handles unstable rock', 'what signature is Hadanite'. A misspelled name still finds the closest ores, lasers or modules, and an unknown name returns the ore names that exist. Ranking is by datamined weights, not live spawn rates.
 
-*Source:* scmdb · *Kind:* datamined · *Trust:* structured · *Profiles:* data
+*Source:* scmdb · *Kind:* datamined · *Trust:* untrusted_text · *Profiles:* data
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `query` | string | no | Words that must all appear in the ore, laser or module name (e.g. 'quantanium', 'helix'). |
+| `query` | string | no | Words that must all appear in the ore, laser or module name (e.g. 'quantainium', 'helix'). Case, accents and punctuation do not matter; with no exact match, close spellings are tried. |
 | `scope` | `ores` \| `equipment` \| `all` | no | What to search (default all). |
 | `limit` | number | no | Rows per section (default 8, max 30). |
 | `channel` | `live` \| `ptu` | no | Game channel: 'live' (default) or 'ptu' (test build, may be absent). The build used is in provenance. |
@@ -485,9 +485,9 @@ Recent events derived from the live telemetry (took off, landed, quantum jump, l
 
 ### sc_fleet_get
 
-The player's own ships, from a local file, each with its public stats (manufacturer, role, size, crew, cargo SCU, health, shields, speed) from UEX and the Star Citizen Wiki. Origin is 'pledge' (bought with real money) or 'in_game'. A name that fits several ships comes back with the candidates instead of a guess. Use it before suggesting ships, cargo plans or loadouts, so the advice fits what the player owns. Holds no price and no account data.
+The player's own ships, from a local file, each with its public stats (manufacturer, role, size, crew, cargo SCU, health, shields, speed) from UEX and the Star Citizen Wiki. When UEX and the wiki disagree on a field (crew, cargo), both values are shown side by side with their source and conflict is true. A speed or crew of 0 is reported as not provided. Origin is 'pledge' (bought with real money) or 'in_game'. A name that fits several ships comes back with the candidates instead of a guess. Use it before suggesting ships, cargo plans or loadouts, so the advice fits what the player owns. Holds no price and no account data.
 
-*Source:* fleet file (local) + uex + star-citizen.wiki · *Kind:* user · *Trust:* structured · *Profiles:* core, local
+*Source:* fleet file (local) + uex + star-citizen.wiki · *Kind:* user · *Trust:* untrusted_text · *Profiles:* core, local
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |

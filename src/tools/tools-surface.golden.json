@@ -444,7 +444,7 @@
       "properties": {
         "query": {
           "type": "string",
-          "description": "Words that must all appear in the product name, type or manufacturer."
+          "description": "Words that must all appear in the product name, type or manufacturer. Case, accents and punctuation do not matter; with no exact match, close spellings are tried."
         },
         "type": {
           "type": "string",
@@ -480,7 +480,7 @@
       "properties": {
         "query": {
           "type": "string",
-          "description": "Words that must all appear in the ore, laser or module name (e.g. 'quantanium', 'helix')."
+          "description": "Words that must all appear in the ore, laser or module name (e.g. 'quantainium', 'helix'). Case, accents and punctuation do not matter; with no exact match, close spellings are tried."
         },
         "scope": {
           "type": "string",
@@ -513,7 +513,7 @@
       "properties": {
         "query": {
           "type": "string",
-          "description": "Words that must all appear in title, contractor, type, place or blueprint reward (e.g. 'wikelo', 'bounty pyro')."
+          "description": "Words that must all appear in title, contractor, type, place or blueprint reward (e.g. 'wikelo', 'bounty pyro'). Case, accents and punctuation do not matter; with no exact match, close spellings are tried."
         },
         "mission_type": {
           "type": "string",

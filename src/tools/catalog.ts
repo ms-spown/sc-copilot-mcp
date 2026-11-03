@@ -33,10 +33,14 @@ const dumps = {
   trust: "structured",
   channel: "unknown",
 } as const;
+// SCMDB is a community-maintained repository: every string it returns (titles, descriptions,
+// names, the maintainer's notes) is third-party text, so all its tools are untrusted_text. A
+// test (scmdb.behaviour.test.ts) fails if a string from the data reaches a tool declared
+// "structured".
 const scmdb = {
   source: "scmdb",
   kind: "datamined",
-  trust: "structured",
+  trust: "untrusted_text",
   channel: "live",
 } as const;
 const local = {
@@ -96,11 +100,14 @@ export const CATALOG: Record<string, CatalogEntry> = {
   sct_search: { ...sct, profiles: ["core"] },
   sct_get_article: { ...sct, maxText: 20_000, profiles: ["core"] },
 
-  scmdb_search_missions: { ...scmdb, profiles: ["core", "data"] },
-  // The maintainer's own notes come with it, hence untrusted text.
-  scmdb_changes: { ...scmdb, trust: "untrusted_text", profiles: ["core", "data"] },
-  scmdb_search_crafting: { ...scmdb, profiles: ["data"] },
-  scmdb_search_mining: { ...scmdb, profiles: ["data"] },
+  // Mission descriptions are cut at 300 characters by the query; titles and names are short.
+  scmdb_search_missions: { ...scmdb, maxText: 400, profiles: ["core", "data"] },
+  // The maintainer's own notes come with it (cut at 500 characters by the query).
+  scmdb_changes: { ...scmdb, maxText: 600, profiles: ["core", "data"] },
+  // Recipe lines, blueprint names and the titles of the missions that reward them.
+  scmdb_search_crafting: { ...scmdb, maxText: 300, profiles: ["data"] },
+  // Ore names and the equipment entries as the data gives them (not projected).
+  scmdb_search_mining: { ...scmdb, maxText: 300, profiles: ["data"] },
 
   sc_list_builds: { ...dumps, profiles: ["data"] },
   sc_diff_versions: { ...dumps, profiles: ["data"] },
@@ -116,7 +123,9 @@ export const CATALOG: Record<string, CatalogEntry> = {
   sc_fleet_get: {
     source: "fleet file (local) + uex + star-citizen.wiki",
     kind: "user",
-    trust: "structured",
+    // The wiki's role, career and error text come back with the player's own notes (up to 500 chars).
+    trust: "untrusted_text",
+    maxText: 500,
     channel: "unknown",
     profiles: ["core", "local"],
   },
