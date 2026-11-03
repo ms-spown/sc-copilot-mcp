@@ -47,6 +47,45 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
   countermeasure_bursts: 3,
 };
 
+export type ConditionLevel = "info" | "warning" | "critical";
+
+/**
+ * Something that is true NOW (from the smoothed state, not from the event history). The View translates the id.
+ * `since` is when this server first saw it continuously (epoch ms, this PC's clock).
+ */
+export interface Condition {
+  id: string;
+  level: ConditionLevel;
+  confidence: "confirmed" | "unverified";
+  since: number;
+  data?: Record<string, string | number | boolean>;
+}
+
+const LEVEL_ORDER: Record<ConditionLevel, number> = { critical: 0, warning: 1, info: 2 };
+/** Display order inside a level (most urgent first). */
+const CONDITION_ORDER = [
+  "powerplant_off",
+  "down_or_dead",
+  "shields_down",
+  "hostile_lock",
+  "under_fire",
+  "proximity",
+  "not_breathable",
+  "shields_off",
+  "engines_off",
+  "engines_damaged",
+  "weapons_unpowered",
+  "hydrogen_low",
+  "boost_critical",
+  "countermeasures_empty",
+  "countermeasures_low",
+  "health_low",
+  "hunger_low",
+  "thirst_low",
+  "in_jump",
+  "in_quantum",
+];
+
 /** The latest smoothed state: a normalised frame plus what only the history can tell. */
 export interface TelemetryState extends Omit<NormalizedFrame, "derived"> {
   derived: NormalizedFrame["derived"] & {
@@ -56,6 +95,8 @@ export interface TelemetryState extends Omit<NormalizedFrame, "derived"> {
     ground_vehicle?: string;
   };
   countermeasure_burst: Record<string, number>;
+  /** What is true now, most urgent first. Empty when nothing needs attention (or when there is no data). */
+  conditions: Condition[];
 }
 
 /** A boolean that only counts as changed after holding the new value for a while. */
@@ -105,6 +146,7 @@ type HoldName =
   | "engines_off"
   | "engines_damaged"
   | "shields_down"
+  | "shields_off"
   | "weapons_major"
   | "boost_critical"
   | "landed"
@@ -119,6 +161,7 @@ const shipHolds = (): Record<HoldName, Hold> => ({
   engines_off: new Hold(1000),
   engines_damaged: new Hold(1000),
   shields_down: new Hold(1500, 3000),
+  shields_off: new Hold(1000, 1000),
   weapons_major: new Hold(1000),
   boost_critical: new Hold(300),
   landed: new Hold(1000, 1000),
@@ -135,7 +178,11 @@ const HIT_STATES = new Set(["major_flashing", "major_on", "minor_flashing", "min
 const light = (ship: Ship, name: string): string => ship.warning_lights?.[name] ?? "unspecified";
 
 /** The signals the holds track, or undefined for a signal this frame does not carry (so it cannot "change"). */
-function signals(ship: Ship): Record<HoldName, boolean | undefined> {
+/** Both shield power flags are on. */
+const shieldsPowered = (ship: Ship): boolean =>
+  ship.power?.["shield_generators"] === true && ship.power?.["shield_emitters"] === true;
+
+function signals(ship: Ship, shieldsSeenOn: boolean): Record<HoldName, boolean | undefined> {
   const power = ship.power;
   const hasLights = ship.warning_lights !== undefined;
   const weightless = Math.abs(ship.instruments?.g?.current ?? 1) < 0.05;
@@ -144,6 +191,15 @@ function signals(ship: Ship): Record<HoldName, boolean | undefined> {
     engines_off: power ? power["powerplants"] === true && power["engines"] === false : undefined,
     engines_damaged: hasLights ? light(ship, "thr") === "minor_on" : undefined,
     shields_down: hasLights ? light(ship, "shld") === "major_on" : undefined,
+    // The power flags of the shield generators and emitters (either one false = the shields do not protect), with the
+    // plant on and the ship not on the ground. Only for a ship that was seen with both on: a ship without shields
+    // reports false for ever and must not raise an alarm.
+    shields_off: power
+      ? shieldsSeenOn &&
+        power["powerplants"] === true &&
+        ship.landed !== true &&
+        (power["shield_generators"] === false || power["shield_emitters"] === false)
+      : undefined,
     // WPN MAJOR only (no power): MINOR also stays on while landed with the guns firing normally.
     weapons_major: hasLights ? light(ship, "wpn") === "major_on" : undefined,
     boost_critical: ship.instruments ? ship.instruments.boost.critical : undefined,
@@ -166,6 +222,7 @@ const HOLD_EVENTS: Record<HoldName, [EventType, EventType | null]> = {
   engines_off: ["engines_offline", null],
   engines_damaged: ["engines_damaged", null],
   shields_down: ["shields_down", "shields_restored"],
+  shields_off: ["shields_powered_off", "shields_powered_on"],
   weapons_major: ["weapons_unavailable", null],
   boost_critical: ["boost_depleted", null],
   landed: ["landed", "took_off"],
@@ -195,7 +252,10 @@ export class TelemetryHandler {
   private gear: string | undefined;
   /** True from the moment the quantum drive ended a jump until the thrust signal has gone false once. */
   private jumpEndedByDrive = false;
-  private cm = new Map<string, { count: number; burst: number }>();
+  private cm = new Map<string, { count: number; burst: number; peak: number }>();
+  /** This vehicle was seen with both shield flags on at least once (see `signals`). */
+  private shieldsSeenOn = false;
+  private conditionSince = new Map<string, number>();
   private uec: number | null = null;
   private uecPending: { before: number; last: number } | null = null;
   private last: {
@@ -265,7 +325,104 @@ export class TelemetryHandler {
       broken: frame.broken,
       derived,
       countermeasure_burst: Object.fromEntries([...this.cm].map(([k, v]) => [k, v.burst])),
+      conditions: this.conditions(ship, fresh(this.last.pilot), fresh(this.last.weapons), t),
     };
+  }
+
+  /** Quantum mode right now, with the drive light's one second of hold so a flag that lags it does not flash. */
+  private quantumNow(ship: Ship | null): boolean {
+    return (
+      ship?.warning_lights?.["qdrv"] === "nominal" ||
+      this.holds.quantum.value ||
+      this.holds.jump.value
+    );
+  }
+
+  /** The conditions that hold now, with the time since each began. Computed from the smoothed state, per frame. */
+  private conditions(
+    ship: Ship | null,
+    pilot: Pilot | null,
+    weapons: Weapons | null,
+    t: number,
+  ): Condition[] {
+    const list: Omit<Condition, "since">[] = [];
+    const add = (
+      id: string,
+      level: ConditionLevel,
+      data?: Condition["data"],
+      confidence: Condition["confidence"] = "confirmed",
+    ) => list.push({ id, level, confidence, ...(data ? { data } : {}) });
+    const th = this.thresholds;
+    if (ship) {
+      const h = this.holds;
+      const landed = ship.landed === true;
+      const plantOff = ship.power !== undefined && !h.powerplant.value;
+      if (plantOff) add("powerplant_off", "critical");
+      if (!plantOff) {
+        // With the plant off the other power conditions are consequences of it: one alert is enough.
+        if (h.engines_off.value) add("engines_off", landed ? "info" : "warning");
+        if (h.shields_down.value) add("shields_down", "critical");
+        // The hold only delays the start; the end is immediate (a flag back on is not a lingering alarm).
+        if (h.shields_off.value && !shieldsPowered(ship) && !landed) {
+          const quantum = this.quantumNow(ship);
+          add("shields_off", quantum ? "info" : "warning", { quantum });
+        }
+        if (h.weapons_major.value) add("weapons_unpowered", "warning");
+      }
+      if (h.engines_damaged.value) add("engines_damaged", "warning");
+      if (h.lock.value) add("hostile_lock", "critical");
+      if (h.hit.value) add("under_fire", "warning");
+      if (h.prox.value) add("proximity", "warning");
+      const hydrogen = ship.instruments?.hydrogen_fuel;
+      if (hydrogen !== undefined && hydrogen > 0 && hydrogen < th.hydrogen_low) {
+        // The event for the same fact is "unverified": the field never came close to empty in the field test.
+        add("hydrogen_low", "warning", { percent: Math.round(hydrogen * 100) }, "unverified");
+      }
+      if (h.boost_critical.value) add("boost_critical", "warning");
+      if (weapons) {
+        for (const [kind, c] of this.cm) {
+          if (c.peak <= 0) continue; // never seen with any: this ship may not carry that kind
+          if (c.count === 0) add("countermeasures_empty", "critical", { kind });
+          else if (c.burst > 0 && c.count <= c.burst * th.countermeasure_bursts) {
+            add("countermeasures_low", "warning", { kind, count: c.count });
+          }
+        }
+      }
+      if (this.quantumNow(ship)) add("in_quantum", "info");
+      if (h.jump.value) add("in_jump", "info");
+    }
+    if (pilot) {
+      const health = pilot.health?.percent;
+      if (this.dead) add("down_or_dead", "critical");
+      else if (health !== undefined && health > 0 && health < th.health_low) {
+        add("health_low", "warning", { percent: Math.round(health * 100) });
+      }
+      const hunger = pilot.hunger?.percent;
+      if (hunger !== undefined && hunger < th.hunger_low) {
+        add("hunger_low", "info", { percent: Math.round(hunger * 100) });
+      }
+      const thirst = pilot.thirst?.percent;
+      if (thirst !== undefined && thirst < th.thirst_low) {
+        add("thirst_low", "info", { percent: Math.round(thirst * 100) });
+      }
+      if (this.breathlessHold.value) add("not_breathable", "critical", undefined, "unverified");
+    }
+    const keyOf = (c: Omit<Condition, "since">) =>
+      typeof c.data?.["kind"] === "string" ? `${c.id}:${c.data["kind"]}` : c.id;
+    const since = new Map<string, number>();
+    const out: Condition[] = list.map((c) => {
+      const key = keyOf(c);
+      const started = this.conditionSince.get(key) ?? t;
+      since.set(key, started);
+      return { ...c, since: started };
+    });
+    this.conditionSince = since;
+    const rank = (id: string) => {
+      const i = CONDITION_ORDER.indexOf(id);
+      return i < 0 ? CONDITION_ORDER.length : i;
+    };
+    out.sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level] || rank(a.id) - rank(b.id));
+    return out;
   }
 
   // --- pilot ----------------------------------------------------------------------------------------------
@@ -436,7 +593,8 @@ export class TelemetryHandler {
       this.baseline(ship);
       return;
     }
-    const now = signals(ship);
+    this.shieldsSeenOn ||= shieldsPowered(ship);
+    const now = signals(ship, this.shieldsSeenOn);
     for (const name of Object.keys(this.holds) as HoldName[]) {
       let raw = now[name];
       if (raw === undefined) continue;
@@ -452,7 +610,13 @@ export class TelemetryHandler {
       if (name === "engines_off" && !this.holds.powerplant.value) continue;
       const [on, off] = HOLD_EVENTS[name];
       const type = changed ? on : off;
-      if (type) this.events.add(type, t);
+      if (type) {
+        this.events.add(
+          type,
+          t,
+          name === "shields_off" && changed ? { quantum: this.quantumNow(ship) ? 1 : 0 } : {},
+        );
+      }
       if (name === "quantum" && changed === false && this.holds.jump.value) {
         // Measured on a real Harbinger (4.10.2): the quantum-drive light went off the moment the jump ended, 9 s
         // before the 8 s "thrust went nominal in the middle of a jump" delay would have said so. When the drive
@@ -476,7 +640,9 @@ export class TelemetryHandler {
   /** A new vehicle: take its current values silently, so getting in is not a burst of events. */
   private baseline(ship: Ship): void {
     this.holds = shipHolds();
-    const now = signals(ship);
+    this.shieldsSeenOn = shieldsPowered(ship);
+    this.conditionSince.clear();
+    const now = signals(ship, this.shieldsSeenOn);
     for (const name of Object.keys(this.holds) as HoldName[]) {
       const raw = now[name];
       if (raw !== undefined) this.holds[name].reset(raw);
@@ -506,7 +672,9 @@ export class TelemetryHandler {
       const known = this.cm.get(kind);
       if (!known) {
         // The schema has two kinds; a program inventing more must not make this map (copied on every frame) grow.
-        if (this.cm.size < MAX_COUNTERMEASURE_KINDS) this.cm.set(kind, { count, burst: 0 });
+        if (this.cm.size < MAX_COUNTERMEASURE_KINDS) {
+          this.cm.set(kind, { count, burst: 0, peak: count });
+        }
         continue;
       }
       const previous = known.count;
@@ -521,6 +689,7 @@ export class TelemetryHandler {
         }
       }
       known.count = count;
+      known.peak = Math.max(known.peak, count);
     }
   }
 }

@@ -520,6 +520,51 @@ describe("Feature: nothing is invented, and what the stream lacks is said", () =
   });
 });
 
+describe("Feature: state alerts (conditions) come before the recent events", () => {
+  it("Given a real-shaped quantum jump, Then the shields chip says 'Boucliers coupés · mode quantique' and goes away on arrival", async () => {
+    const w = await startPage();
+    await w.advance(53 * SECOND); // quantum mode since 48 s, flags off for more than the 1 s hold
+    let text = visibleText(w.root);
+    expect(text).toContain("Boucliers coupés · mode quantique");
+    expect(text).toMatch(/depuis \d/);
+    expect(text).toContain("Mode quantique");
+    expect(text).not.toContain("Aucune alerte récente");
+    const chips = w.root.children.find((c) => c.className === "alerts")!;
+    const first = chips.children.filter((c) => c.className.startsWith("alert condition"));
+    expect(
+      first.some((c) => c.attrs["data-tone"] === "info" && c.attrs["data-hidden"] !== "1"),
+    ).toBe(true);
+    await w.advance(9 * SECOND); // arrival at 60 s
+    text = visibleText(w.root);
+    expect(text).not.toContain("Boucliers coupés · mode quantique");
+  });
+
+  it("Given shields cut outside quantum mode, Then the chip is a warning 'Boucliers coupés'", async () => {
+    const w = await live();
+    w.host.overrides.poll = (base) => ({
+      ...base,
+      conditions: [
+        {
+          id: "shields_off",
+          level: "warning",
+          confidence: "confirmed",
+          since: base.at - 8000,
+          data: { quantum: false },
+        },
+      ],
+    });
+    await w.advance(2 * SECOND);
+    const chips = w.root.children.find((c) => c.className === "alerts")!;
+    const shown = chips.children.filter(
+      (c) => c.className.startsWith("alert condition") && c.attrs["data-hidden"] !== "1",
+    );
+    expect(shown).toHaveLength(1);
+    expect(shown[0]!.attrs["data-tone"]).toBe("warn");
+    expect(shown[0]!.textContent).toContain("Boucliers coupés");
+    expect(shown[0]!.textContent).not.toContain("quantique");
+  });
+});
+
 describe("Feature: session, pace and the route plan", () => {
   it("Given a plan in the tool result, Then it is shown as text, expected next to measured, and the cargo is not claimed", async () => {
     const w = await live();

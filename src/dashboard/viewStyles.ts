@@ -68,6 +68,7 @@ code { font-family: var(--sc-mono); }
 .alert { display: inline-flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--sc-border); }
 .alert[data-tone="bad"] { color: var(--sc-bad); border-color: currentColor; }
 .alert[data-tone="warn"] { color: var(--sc-warn); border-color: currentColor; }
+.alert[data-tone="info"] { color: var(--sc-info); border-color: currentColor; }
 .alert[data-verified="0"] { border-style: dashed; }
 .alert-label { font-weight: 600; }
 .alert-meta { color: var(--sc-text2); font-size: 11.5px; font-variant-numeric: tabular-nums; }

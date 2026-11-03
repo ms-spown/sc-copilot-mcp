@@ -1,4 +1,5 @@
 import type { TelemetryEvent } from "../providers/telemetry/events.js";
+import type { Condition } from "../providers/telemetry/handler.js";
 import type { Pilot, Ship, Weapons } from "../providers/telemetry/normalize.js";
 import type { TelemetrySnapshot, TelemetryStatusReport } from "../providers/telemetry/service.js";
 
@@ -56,6 +57,11 @@ export interface PollResult {
   pilot: Omit<Pilot, "uec_balance" | "unverified" | "parts_missing"> | null;
   weapons: Weapons | null;
   derived: Record<string, boolean | string> | null;
+  /**
+   * What is true now (from the smoothed state, not from the history), most urgent first. Empty when nothing needs
+   * attention AND when the stream is not live: a stale state is never presented as current.
+   */
+  conditions: Condition[];
   not_available: string[];
   events: PublicEvent[];
   last_seq: number;
@@ -92,6 +98,7 @@ export function offPoll(nowMs: number, session: SessionState = EMPTY_SESSION): P
     pilot: null,
     weapons: null,
     derived: null,
+    conditions: [],
     not_available: [],
     events: [],
     last_seq: 0,
@@ -178,6 +185,9 @@ export function boundPoll(result: PollResult, maxChars: number = MAX_POLL_CHARS)
   return notes.length ? { ...out, truncated: notes.join("; ") } : out;
 }
 
+/** Conditions are only offered while the last frame is at most this old (the stream's own "live" window). */
+const LIVE_CONDITIONS_MS = 5000;
+
 export interface PollInput {
   status: TelemetryStatusReport;
   snapshot: TelemetrySnapshot | null;
@@ -244,6 +254,10 @@ export function buildPoll(input: PollInput): PollResult {
     pilot,
     weapons: state?.weapons ?? null,
     derived: state ? { ...state.derived } : null,
+    conditions:
+      snapshot && state && status.state === "live" && snapshot.frame_age_ms <= LIVE_CONDITIONS_MS
+        ? state.conditions
+        : [],
     not_available: unavailable,
     events: input.events.map(publicEvent),
     last_seq: input.lastSeq,

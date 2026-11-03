@@ -32,6 +32,18 @@ export const EVENT_SPECS = {
   engines_damaged: { group: "ship", confidence: "confirmed", text: "The engines report damage." },
   shields_down: { group: "ship", confidence: "confirmed", text: "The shields are down." },
   shields_restored: { group: "ship", confidence: "confirmed", text: "The shields are back up." },
+  // Measured on a real Aegis Harbinger (4.10.2): in quantum mode the power flags of the shield generators and
+  // emitters go false while the SHLD light goes off, and everything comes back on arrival.
+  shields_powered_off: {
+    group: "ship",
+    confidence: "confirmed",
+    text: "The shields were powered off{quantum_suffix}.",
+  },
+  shields_powered_on: {
+    group: "ship",
+    confidence: "confirmed",
+    text: "The shields are powered on again.",
+  },
   weapons_unavailable: {
     group: "ship",
     confidence: "confirmed",
@@ -173,7 +185,14 @@ export function makeEvent(
     group: spec.group,
     confidence: spec.confidence,
     at: new Date(nowMs).toISOString(),
-    text: spec.text.replace(/\{(\w+)\}/g, (_, key: string) => String(data[key] ?? "unknown")),
+    text: spec.text.replace(/\{(\w+)\}/g, (_, key: string) =>
+      // `data.quantum` (1 or 0) says whether quantum mode was on: the sentence names the context only when it was.
+      key === "quantum_suffix"
+        ? data["quantum"] === 1
+          ? " (quantum mode)"
+          : ""
+        : String(data[key] ?? "unknown"),
+    ),
     data,
   };
 }

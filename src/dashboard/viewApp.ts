@@ -211,7 +211,17 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.alerts = el("div", "alerts");
     R.alertsEmpty = el("span", "alerts-empty", "Aucune alerte récente");
     R.alertList = [];
+    R.condList = [];
     add(R.alerts, R.alertsEmpty);
+    // The conditions that hold now come first, then the recent events (which also cover what has just ended).
+    for (let i = 0; i < 8; i++) {
+      const c = el("span", "alert condition");
+      c.label = el("span", "alert-label", "");
+      c.meta = el("span", "alert-meta", "");
+      add(c, c.label, c.meta);
+      R.condList.push(c);
+      add(R.alerts, c);
+    }
     for (let i = 0; i < 3; i++) {
       const a = el("span", "alert");
       a.label = el("span", "alert-label", "");
@@ -665,8 +675,29 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   }
 
   function renderAlerts(now: number) {
-    const list = L.activeAlerts(L.visibleEvents(view, showBalance), now, 3);
-    show(R.alertsEmpty, list.length === 0);
+    const conds = L.conditionItems(view.poll, now, view.receivedAt, R.condList.length);
+    for (let i = 0; i < R.condList.length; i++) {
+      const slot = R.condList[i];
+      const c = conds[i];
+      show(slot, !!c);
+      if (c) {
+        setAttr(slot, "data-tone", c.tone);
+        setAttr(slot, "data-verified", c.verified ? "1" : "0");
+        setText(slot.label, c.label);
+        setText(
+          slot.meta,
+          (c.verified ? "" : "non vérifié · ") +
+            (c.ageMs === null ? "" : "depuis " + L.formatAge(c.ageMs)),
+        );
+      }
+    }
+    const list = L.activeAlerts(
+      L.visibleEvents(view, showBalance),
+      now,
+      3,
+      L.coveredAlertKeys(view.poll),
+    );
+    show(R.alertsEmpty, list.length === 0 && conds.length === 0);
     for (let i = 0; i < R.alertList.length; i++) {
       const slot = R.alertList[i];
       const a = list[i];

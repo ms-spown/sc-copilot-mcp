@@ -574,6 +574,8 @@ export function eventLabel(ev: any): string {
     engines_damaged: "Moteurs endommagés",
     shields_down: "Boucliers tombés",
     shields_restored: "Boucliers rétablis",
+    shields_powered_off: "Boucliers coupés{quantum_suffix}",
+    shields_powered_on: "Boucliers réalimentés",
     weapons_unavailable: "Armes sans énergie",
     boost_depleted: "Réserve de boost critique",
     hydrogen_low: "Hydrogène bas ({percent}\u00a0%)",
@@ -608,6 +610,7 @@ export function eventLabel(ev: any): string {
   const data = (ev && ev.data) || {};
   return template.replace(/\{(\w+)\}/g, (_m: string, key: string) => {
     const v = data[key];
+    if (key === "quantum_suffix") return data.quantum === 1 ? " · mode quantique" : "";
     if (key === "vehicle") return isSafeId(v) ? String(v).replace(/_/g, " ") : "?";
     if (key === "kind") return typeof v === "string" ? countermeasureLabel(v).toLowerCase() : "?";
     if (key === "count" || key === "percent") return typeof v === "number" ? fmtNum(v) : "?";
@@ -619,8 +622,9 @@ export function eventLabel(ev: any): string {
  * Alerts to show in the band: recent, important events, newest first, at most `limit`. A "restored" event clears
  * its alert. Confirmed events come first; unverified ones are kept but flagged (`verified: false`).
  */
-export function activeAlerts(events: any[], now: number, limit: number): any[] {
+export function activeAlerts(events: any[], now: number, limit: number, covered?: string[]): any[] {
   const cfg = viewConfig();
+  const skip: string[] = covered || [];
   const important: any = {
     shields_down: ["bad", "shields"],
     locked_on: ["bad", "lock"],
@@ -651,6 +655,7 @@ export function activeAlerts(events: any[], now: number, limit: number): any[] {
     if (imp) byKey[imp[1]] = { event: e, tone: imp[0] };
   }
   const out = Object.keys(byKey)
+    .filter((k) => skip.indexOf(k) < 0)
     .map((k) => byKey[k])
     .filter((a: any) => now - Date.parse(a.event.at) <= cfg.alertWindowMs)
     .map((a: any) => ({
@@ -665,6 +670,86 @@ export function activeAlerts(events: any[], now: number, limit: number): any[] {
   return out.slice(0, limit);
 }
 
+/**
+ * The conditions that hold now, as chips: tone (info, warn, bad), a French label, and how long they have lasted
+ * (the server's `since` against the answer's own clock, so the View and the server never need the same clock).
+ * Ids the View does not know still get a chip with a neutral label: nothing the server flags is hidden.
+ */
+export function conditionItems(poll: any, now: number, receivedAt: number, limit: number): any[] {
+  const list = poll && Array.isArray(poll.conditions) ? poll.conditions : [];
+  const tones: any = { info: "info", warning: "warn", critical: "bad" };
+  const out: any[] = [];
+  for (const c of list) {
+    if (!c || typeof c.id !== "string" || !tones[c.level]) continue;
+    const data = c.data && typeof c.data === "object" ? c.data : {};
+    const pct = typeof data.percent === "number" ? fmtNum(data.percent) + "\u00a0%" : "?";
+    const kind = typeof data.kind === "string" ? countermeasureLabel(data.kind) : "Contre-mesures";
+    const quantum = data.quantum === true;
+    const labels: any = {
+      powerplant_off: "Centrale hors service",
+      engines_off: "Moteurs coupés",
+      engines_damaged: "Moteurs endommagés",
+      shields_off: quantum ? "Boucliers coupés · mode quantique" : "Boucliers coupés",
+      shields_down: "Boucliers tombés",
+      weapons_unpowered: "Armes sans énergie",
+      hostile_lock: "Verrouillage hostile",
+      under_fire: "Touché",
+      proximity: "Proximité : risque de collision",
+      hydrogen_low: "Hydrogène bas (" + pct + ")",
+      boost_critical: "Réserve de boost critique",
+      countermeasures_low:
+        kind + " bas" + (typeof data.count === "number" ? " (" + fmtNum(data.count) + ")" : ""),
+      countermeasures_empty: kind + " épuisé",
+      health_low: "Santé basse (" + pct + ")",
+      down_or_dead: "À terre ou mort",
+      hunger_low: "Faim (" + pct + ")",
+      thirst_low: "Soif (" + pct + ")",
+      not_breathable: "Air non respirable",
+      in_quantum: "Mode quantique",
+      in_jump: "Saut quantique en cours",
+    };
+    const label = typeof labels[c.id] === "string" ? labels[c.id] : "Condition inconnue";
+    let ageMs: number | null = null;
+    if (typeof c.since === "number" && typeof poll.at === "number") {
+      ageMs = Math.max(0, poll.at - c.since + Math.max(0, now - receivedAt));
+    }
+    out.push({
+      key: c.id + (typeof data.kind === "string" && isSafeId(data.kind) ? ":" + data.kind : ""),
+      id: c.id,
+      tone: tones[c.level],
+      verified: c.confidence !== "unverified",
+      label,
+      ageMs,
+    });
+  }
+  return out.slice(0, limit);
+}
+
+/** Alert keys of activeAlerts that an active condition already says (the event band does not repeat them). */
+export function coveredAlertKeys(poll: any): string[] {
+  const map: any = {
+    shields_down: "shields",
+    hostile_lock: "lock",
+    countermeasures_low: "cm",
+    countermeasures_empty: "cm",
+    engines_damaged: "engines",
+    health_low: "health",
+    down_or_dead: "health",
+    powerplant_off: "power",
+    boost_critical: "boost",
+    under_fire: "fire",
+    proximity: "prox",
+    hydrogen_low: "hydrogen",
+    not_breathable: "air",
+  };
+  const out: string[] = [];
+  const list = poll && Array.isArray(poll.conditions) ? poll.conditions : [];
+  for (const c of list) {
+    if (c && typeof c.id === "string" && map[c.id]) out.push(map[c.id]);
+  }
+  return out;
+}
+
 export function timelineItems(events: any[], markers: any[], limit: number): any[] {
   const kept = [
     "took_off",
@@ -674,6 +759,8 @@ export function timelineItems(events: any[], markers: any[], limit: number): any
     "vehicle_changed",
     "under_fire",
     "shields_down",
+    "shields_powered_off",
+    "shields_powered_on",
     "player_down",
     "respawned",
     "locked_on",
@@ -1006,6 +1093,8 @@ export const VIEW_FUNCTIONS = [
   countermeasureLabel,
   eventLabel,
   activeAlerts,
+  conditionItems,
+  coveredAlertKeys,
   timelineItems,
   trendEstimate,
   estimateText,
