@@ -107,6 +107,19 @@ at startup instead of listing nothing. Scoping is for speed, not security: an un
 When to use which is in [docs/USING_WITH_CLAUDE.md](docs/USING_WITH_CLAUDE.md); each tool's description says
 what it returns and its limits.
 
+## Prompts
+
+The server also offers ready-made prompts (in Claude Desktop they appear as templates you can pick), each chaining
+the right tools in the right order and telling Claude to state how fresh the data is:
+
+| Prompt | What it does |
+| --- | --- |
+| `haul_plan` | Best 3 trade routes for one of your ships, with the risks (few reports, old data, too-good profit, illegal cargo) |
+| `patch_briefing` | What the newest update changed and what it means for you and your fleet |
+| `session_debrief` | What you did in your last session, from your game log, and what to do next |
+| `mining_prep` | An ore's stats and locations, the right laser and modules, where to sell it |
+| `mission_hunt` | Missions by place, faction, reward or blueprint, and which of your ships fits |
+
 ## Configuration
 
 | Variable                                                         | Purpose                                                                                                                                                         |
