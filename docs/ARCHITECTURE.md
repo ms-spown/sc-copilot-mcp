@@ -45,7 +45,7 @@ Claude ── MCP (stdio) ──► src/server.ts ──► tools/registry.ts �
 | Game log | `providers/gamelog/` (`parser.ts` pure, `reader.ts` I/O, `context.ts` derived views) | Off by default; read-only |
 | Fleet | `providers/fleet/` (`store.ts`, `resolve.ts`) | Local JSON file |
 | Live telemetry | `providers/telemetry/` (`wire.ts` + `decode.ts` + `schema.ts` decode, `normalize.ts` flat state, `handler.ts` + `events.ts` debounced events, `reader.ts` HTTP/2 stream, `service.ts` lazy single reader, `index.ts` the only door) | Off unless `SC_TELEMETRY=on`; loopback only; memory only; see [TELEMETRY.md](TELEMETRY.md) |
-| Live dashboard | `dashboard/` (`poll.ts` the poll payload, `service.ts` shared cache and session markers, `plan.ts`, `viewLogic.ts` pure View logic, `viewApp.ts` the View, `page.ts` the one HTML page, `testing/` fake host and scenario), tools in `tools/dashboard.ts` | An MCP App on top of the telemetry; see below |
+| Live dashboard | `dashboard/` (`poll.ts` the poll payload, `service.ts` shared cache and session markers, `plan.ts`, `specs.ts` the ship sheet lookup from the wiki (background, cached by class name), `viewLogic.ts` pure View logic, `specsView.ts` + `specsStyles.ts` the pure View logic and styles of the sheet gauges, `viewApp.ts` the View, `page.ts` the one HTML page, `testing/` fake host and scenario), tools in `tools/dashboard.ts` | An MCP App on top of the telemetry; see below |
 | Patch dumps | `providers/dumps/` | Legacy; history is thin |
 
 ## Optional features that are off by default
@@ -98,6 +98,15 @@ that only it may call (`visibility: ["app"]`): `sc_live_poll` (state, events, se
   (`npm run docs:coverage`). The state of the moment (`conditions`) is computed in `handler.ts` from the smoothed
   state, with its own debouncing.
 - **The balance** exists only in the `balance` part of a poll, on request; it never enters `ui/update-model-context`.
+- **The ship sheet.** `specs.ts` holds a `ShipSpecsResolver` that `DashboardService` consults for the class name of the
+  flown ship. `current()` is synchronous and answers from memory; the first sight of a ship starts one wiki search in
+  the background through the guarded client (`scwClient`, a host already on the allowlist) and `fetchWithCache`
+  (`record: false`), never in the poll's hot path and never while telemetry is off. States: `pending`, `ready`,
+  `unknown`, `ambiguous`, `error` (retried at most every 5 minutes); at most 32 ships are remembered. The class name
+  becomes words (`shipNameToWords`, pure) and goes through `resolveShip`; only a single candidate, or the one row
+  whose `class_name` is the very class name, is accepted. The result is the optional `specs` field of the poll
+  (`poll.ts`). The View side lives in `specsView.ts` (pure, serialised into the page after `viewLogic.ts` by
+  `page.ts`) and `specsStyles.ts`, so the sheet gauges stay out of the files the rest of the View changes in.
 - **Preview.** `scripts/dashboard-preview.mjs` serves the page and a fake host with a made-up flight (a full quantum
   jump included) on `127.0.0.1`. Its iframe carries `allow-same-origin` (the preview only) so that two Views can reach
   each other on the channel.

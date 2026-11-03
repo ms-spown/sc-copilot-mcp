@@ -11,6 +11,7 @@ import {
   type SessionMarker,
   type SessionState,
 } from "./poll.js";
+import type { ShipSpecsResolver } from "./specs.js";
 
 /**
  * The server side of the live dashboard: one poll answer shared by every View, and the session markers.
@@ -44,6 +45,8 @@ export class DashboardService {
   constructor(
     private readonly telemetry: Telemetry | undefined,
     private readonly now: () => number = Date.now,
+    /** Looks up the wiki sheet of the flown ship in the background (specs.ts). Absent: no `specs` in the answer. */
+    private readonly specs?: ShipSpecsResolver,
   ) {}
 
   get enabled(): boolean {
@@ -89,9 +92,13 @@ export class DashboardService {
       );
       sessionEvents = all.events;
     }
+    // Only reached with telemetry on (the off answer returned above). Answers from memory: it never waits for the wiki.
+    const className = snapshot?.state.ship?.class_name;
+    const specs = className ? this.specs?.current(className, nowMs) : undefined;
     const answer = buildPoll({
       status,
       snapshot,
+      ...(specs ? { specs } : {}),
       events: recent.events,
       lastSeq: recent.last_seq,
       sessionEvents,

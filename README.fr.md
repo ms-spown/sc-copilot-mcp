@@ -209,8 +209,9 @@ d'atterrissage, alimentation, voyants, santé, faim, soif.
   cockpit avec cadrans, boussole, schéma d'alimentation, voyants, armes, constantes du pilote et une seule
   chronologie en plein écran. Seul le tableau de bord le plus récent interroge les données ; les plus anciens le
   suivent. Chaque valeur indique son âge, rien n'est inventé, le solde aUEC reste masqué tant que vous ne cliquez pas,
-  et rien n'est envoyé au jeu. Claude Code
-  ne l'affiche pas. Voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#tableau-de-bord-en-direct).
+  et rien n'est envoyé au jeu. Le cadran de vitesse utilise les limites du vaisseau prises sur le Star Citizen Wiki
+  quand une seule fiche correspond au vaisseau (étiquetée « wiki »), et le dit quand il garde sa propre échelle. Claude
+  Code ne l'affiche pas. Voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#tableau-de-bord-en-direct).
 - **Lisez d'abord les risques.** C'est une fonction non documentée du jeu. À notre connaissance, CIG ne l'a ni
   autorisée ni interdite, les conditions de RSI s'appliquent à vous, et le risque est le vôtre. Tout est dans
   [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md).

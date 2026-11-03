@@ -314,6 +314,10 @@
             "weapons": {
               "type": "string",
               "maxLength": 16
+            },
+            "specs": {
+              "type": "string",
+              "maxLength": 16
             }
           }
         }

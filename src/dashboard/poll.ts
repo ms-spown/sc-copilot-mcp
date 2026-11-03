@@ -2,6 +2,7 @@ import type { TelemetryEvent } from "../providers/telemetry/events.js";
 import type { Condition } from "../providers/telemetry/handler.js";
 import type { Pilot, Ship, Weapons } from "../providers/telemetry/normalize.js";
 import type { TelemetrySnapshot, TelemetryStatusReport } from "../providers/telemetry/service.js";
+import type { ShipSpecs } from "./specs.js";
 
 /**
  * What the View receives from sc_live_poll (as `structuredContent`, which the host does not add to the model's
@@ -44,8 +45,8 @@ export type PublicEvent = Pick<
   "seq" | "type" | "group" | "confidence" | "at" | "text" | "data"
 >;
 
-export type SectionName = "ship" | "pilot" | "weapons";
-export const SECTION_NAMES: readonly SectionName[] = ["ship", "pilot", "weapons"];
+export type SectionName = "ship" | "pilot" | "weapons" | "specs";
+export const SECTION_NAMES: readonly SectionName[] = ["ship", "pilot", "weapons", "specs"];
 export type SectionHashes = Record<SectionName, string>;
 
 export interface PollResult {
@@ -60,6 +61,12 @@ export interface PollResult {
   ship: PublicShip | null;
   pilot: Omit<Pilot, "uec_balance" | "unverified" | "parts_missing"> | null;
   weapons: Weapons | null;
+  /**
+   * The wiki sheet of the flown ship (specs.ts): a fourth section of the delta protocol. Present only while a ship is
+   * flown; third-party figures, bounded. It does not change from one poll to the next (its age is worked out by the
+   * View from `fetched_at`), so once held it is left out of the answers (`unchanged`).
+   */
+  specs?: ShipSpecs;
   derived: Record<string, boolean | string> | null;
   /**
    * What is true now (from the smoothed state, not from the history), most urgent first. Empty when nothing needs
@@ -217,6 +224,8 @@ export interface PollInput {
   session: SessionState;
   includeBalance: boolean;
   nowMs: number;
+  /** What the wiki says about the ship being flown (specs.ts). Never fetched here: the caller passes what it has. */
+  specs?: ShipSpecs;
 }
 
 const publicEvent = (e: TelemetryEvent): PublicEvent => ({
@@ -307,6 +316,7 @@ function buildAnswer(input: PollInput): PollResult {
     ship: state?.ship ? publicShip(state.ship) : null,
     pilot,
     weapons: state?.weapons ? publicWeapons(state.weapons) : null,
+    ...(input.specs && state?.ship ? { specs: input.specs } : {}),
     derived: state ? { ...state.derived } : null,
     conditions:
       snapshot && state && status.state === "live" && snapshot.frame_age_ms <= LIVE_CONDITIONS_MS
@@ -341,11 +351,14 @@ export function hashText(text: string): string {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, "0");
 }
 
-export function hashSections(answer: Pick<PollResult, SectionName>): SectionHashes {
+export function hashSections(
+  answer: Pick<PollResult, "ship" | "pilot" | "weapons"> & { specs?: ShipSpecs },
+): SectionHashes {
   return {
     ship: hashText(JSON.stringify(answer.ship)),
     pilot: hashText(JSON.stringify(answer.pilot)),
     weapons: hashText(JSON.stringify(answer.weapons)),
+    specs: hashText(JSON.stringify(answer.specs ?? null)),
   };
 }
 
@@ -377,7 +390,8 @@ export function tailorPoll(full: PollResult, request: PollRequest): PollResult {
   const hashes = full.hash;
   for (const name of SECTION_NAMES) {
     const have = request.have?.[name];
-    if (hashes && full[name] !== null && typeof have === "string" && have === hashes[name]) {
+    const held = full[name] !== null && full[name] !== undefined;
+    if (hashes && held && typeof have === "string" && have === hashes[name]) {
       unchanged.push(name);
       delete (out as unknown as Record<string, unknown>)[name];
     }

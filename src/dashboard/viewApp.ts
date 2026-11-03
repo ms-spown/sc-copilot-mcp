@@ -180,6 +180,14 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     d.fill = arcPath(40, "arc-fill");
     d.peak = arcPath(40, "arc-peak");
     add(d.svg, d.fill, d.peak);
+    if (key === "speed") {
+      // Marks of the ship's sheet (specsView.ts): SCM speed and top speed, drawn on the arc like the peak.
+      d.markScm = arcPath(40, "arc-mark");
+      d.markScm.setAttribute("data-kind", "scm");
+      d.markMax = arcPath(40, "arc-mark");
+      d.markMax.setAttribute("data-kind", "max");
+      add(d.svg, d.markScm, d.markMax);
+    }
     d.body = el("div", "dial-body");
     d.value = el("div", "dial-value", "—");
     d.label = el("div", "dial-label", label);
@@ -203,6 +211,15 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     );
     setAttr(d.root, "data-level", info.level || "none");
     setAttr(d.root, "data-known", info.known === false ? "0" : "1");
+    if (d.markScm) {
+      const marks = info.marks || null;
+      const at = (m: any, v: any): string =>
+        typeof v === "number" ? "0 " + Math.max(0, v * 100 - 0.6) + " 1.2 200" : "0 0 0 200";
+      setAttr(d.markScm, "stroke-dasharray", at(d.markScm, marks ? marks.scm : null));
+      setAttr(d.markMax, "stroke-dasharray", at(d.markMax, marks ? marks.max : null));
+      setAttr(d.root, "data-over", info.over || "none");
+      setAttr(d.root, "data-sheet", marks ? "1" : "0");
+    }
   }
 
   // --- a horizontal gauge with threshold zones -----------------------------------------------------------------
@@ -542,6 +559,23 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.density = widget("atmosphere", el("div", "meter-sub", ""));
     add(cIns.body, R.dialsRow, R.altRow, R.compassWrap, R.density, R.insNote);
     add(R.colInstr, cIns.root);
+
+    // The sheet of the ship, from the wiki (specsView.ts): what does not fit on a dial
+    const cSpecs = card("Fiche du vaisseau (wiki)");
+    // Its age is the sheet's own (a row below), not the frame's: the card is left out of the ticking ages.
+    R.cards.pop();
+    R.specsRows = [];
+    R.specsFacts = el("div", "facts");
+    for (let i = 0; i < 6; i++) {
+      const r = fact("");
+      R.specsRows.push(r);
+      add(R.specsFacts, r.root);
+    }
+    add(cSpecs.body, R.specsFacts);
+    R.specsLine = el("p", "note", "");
+    R.specsNote = el("p", "note", "");
+    add(cSpecs.body, R.specsLine, R.specsNote);
+    add(R.colInstr, cSpecs.root);
 
     // Centre: the ship
     R.colShip = el("div", "col col-ship");
@@ -1025,7 +1059,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   }
 
   function renderInline(I: any, V: any, now: number) {
-    setDial(R.iSpeed, I.speed);
+    setDial(R.iSpeed, Object.assign({}, I.speed, { sub: I.speed.subShort || I.speed.sub }));
     setDial(R.iHydrogen, {
       text: I.hydrogen.text.replace("\u00a0%", ""),
       unit: I.hydrogen.known ? "%" : "",
@@ -1063,6 +1097,30 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const ins = ship && ship.instruments;
     const mode = L.modeInfo(p);
     show(R.offNote, I.off);
+
+    // The sheet of the ship
+    const sheet = L.specsInfo(ship && p ? p.specs : null, L.specsAgeMs(p, view.receivedAt, now));
+    for (let i = 0; i < R.specsRows.length; i++) {
+      const r = sheet.rows[i];
+      show(R.specsRows[i].root, !!r);
+      if (r) {
+        setText(R.specsRows[i].label, r[0]);
+        setText(R.specsRows[i].value, r[1]);
+      }
+    }
+    show(R.specsFacts, sheet.rows.length > 0);
+    setText(R.specsLine, ship ? sheet.line : "");
+    show(R.specsLine, !!(ship && sheet.line));
+    setText(
+      R.specsNote,
+      !ship
+        ? "Pas de vaisseau : pas de fiche."
+        : sheet.status === "none"
+          ? "Pas de fiche du vaisseau pour l\u2019instant. " + sheet.note
+          : sheet.status === "ready" || sheet.status === "ambiguous"
+            ? sheet.note
+            : L.specsScaleReason(p.specs) + ". " + sheet.note,
+    );
 
     // Instruments
     setDial(R.xSpeed, I.speed);
@@ -1397,6 +1455,13 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     renderContext(now);
     renderAlerts(now, conds);
     const I = L.instrumentInfo(view.poll, view);
+    const sheetIns = view.poll && view.poll.ship && view.poll.ship.instruments;
+    I.speed = L.speedWithSheet(
+      I.speed,
+      view.poll && view.poll.specs,
+      sheetIns ? sheetIns.speed_ms : null,
+      I.quantum,
+    );
     const V = L.vitalsInfo(view.poll);
     setAttr(root, "data-ship", I.off ? "off" : "on");
     renderPins(I, now);
@@ -1629,7 +1694,12 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     // A View that has just appeared does not know the others yet: say hello back once.
     if (m.t === "hello" && !known && !hidden && !offscreen) announce("hello");
     if (m.t === "snapshot" && isFollower() && m.id === leaderId) {
-      view = L.reducePoll(view, m.poll, clock());
+      const sheet = L.specsClean(event.data && event.data.poll ? event.data.poll.specs : null);
+      view = L.reducePoll(
+        view,
+        sheet ? Object.assign({}, m.poll, { specs: sheet }) : m.poll,
+        clock(),
+      );
       render();
     }
   }

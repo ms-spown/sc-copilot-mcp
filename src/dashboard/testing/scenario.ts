@@ -24,6 +24,7 @@ import {
   type SessionState,
 } from "../poll.js";
 import { POLL_EVENT_COUNT } from "../constants.js";
+import type { ShipSpecs } from "../specs.js";
 
 type Frame = Record<string, unknown>;
 
@@ -175,6 +176,8 @@ export class Scenario {
   };
   /** Force a stream state to preview it. null: follow the story. */
   forced: ForcedState = null;
+  /** The ship sheet the server would hold for the story's ship (specs.ts). null: none (an older server). */
+  specs: ShipSpecs | null = null;
   /** Stop delivering frames (the stream is cut) without ending the story. */
   cut = false;
   /** Virtual time in milliseconds from the start of the story. */
@@ -289,6 +292,7 @@ export class Scenario {
       session: this.session,
       includeBalance,
       nowMs: this.now,
+      ...(this.specs ? { specs: this.specs } : {}),
     });
     return tailorPoll(this.forced === "off" ? { ...result, enabled: false } : result, {
       includeBalance,

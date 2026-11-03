@@ -405,6 +405,44 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   police, pas de requête. Elle déclare sa propre politique de contenu restrictive et définit chaque texte avec
   `textContent`.
 
+### Jauges d'après la fiche du vaisseau
+
+Le cadran de vitesse peut être dessiné d'après les vraies limites du vaisseau plutôt que d'après ce qui a été vu
+jusqu'ici. Ces limites ne viennent pas du jeu : elles viennent de la page du vaisseau sur le Star Citizen Wiki,
+écrite par la communauté et étiquetée « wiki » partout où elle s'affiche.
+
+- **Comment le vaisseau est trouvé.** Le flux donne un nom de classe comme `AEGS_Vanguard_Harbinger`. Le serveur le
+  transforme en mots (le fabricant est dérivé du préfixe : Aegis ; le vaisseau est « Vanguard Harbinger ») et
+  interroge le wiki, en arrière-plan et une fois par vaisseau et par session, pour les vaisseaux dont le nom
+  contient le plus long de ces mots. Si exactement une ligne porte ce nom de classe (`class_name`), c'est le
+  vaisseau. Sinon les mots passent par la même correspondance par mots que `sc_fleet_get` et seul un candidat
+  unique est accepté. Avec plusieurs candidats rien n'est choisi (`ambiguous`, avec leurs noms) ; sans candidat le
+  vaisseau est `unknown`. Un wiki qui ne répond pas donne `error` et il est réinterrogé au plus toutes les cinq
+  minutes. Le poll n'attend jamais le wiki : les premières réponses disent `pending`.
+- **Ce qui est lu.** Vitesse en mode de croisière standard (SCM) et vitesse maximale, cargaison en SCU, points de
+  bouclier et de coque. Une valeur 0 dans la fiche veut dire « non fournie » et n'est jamais utilisée comme limite.
+  La fiche arrive avec son âge (quand ce serveur l'a lue), la date de dernière modification par le wiki et la
+  version du jeu dont elle porte la marque, quand le wiki les donne. Les chiffres voyagent dans `sc_live_poll` sous
+  `specs`, une quatrième section du poll allégé à côté du vaisseau, du pilote et des armes : elle est envoyée une
+  fois, puis omise (`unchanged`) tant que son hash (`have.specs`) est celui que la View détient.
+- **Ce que le cadran en fait.** L'arc du cadran de vitesse va de 0 à la vitesse maximale de la fiche, avec une marque
+  à la vitesse SCM et une au maximum, et la valeur est donnée en part de la vitesse SCM (« 87 % de la vitesse SCM »).
+  Sa ligne d'échelle indique « d'après la fiche (wiki) » à la place de l'échelle déduite. Au-dessus de la vitesse
+  SCM, il le dit ; au-delà du maximum de la fiche, et pendant un saut quantique, la vitesse sort du cadre et la View
+  le dit au lieu de couper l'arc en silence. La carte « Fiche du vaisseau (wiki) » de la vue complète liste chaque
+  chiffre avec son âge.
+- **Ce qui n'est pas connu.** La capacité du réservoir d'hydrogène n'est pas confirmée dans les données du wiki que
+  ce projet lit : elle n'est donc ni affichée ni déduite, et l'autonomie en hydrogène reste l'estimation étiquetée
+  par la pente. Le flux n'a pas non plus de niveau de bouclier ni d'état de coque : les points de bouclier et de
+  coque de la fiche ne sont qu'une référence, pas une jauge.
+- **Quand l'échelle reste observée.** Si la fiche est en attente, inconnue, ambiguë, indisponible, ou ne donne pas
+  de vitesse, le cadran garde l'échelle déduite des vitesses vues et une ligne dit pourquoi (« échelle déduite :
+  fiche du vaisseau introuvable »). Un vaisseau modifié, une variante ou un correctif peuvent différer du wiki :
+  regardez l'âge et la date avant de vous fier à un chiffre.
+- **Texte de tiers.** Les noms et versions venant du wiki sont nettoyés et plafonnés sur le serveur, et affichés en
+  texte brut. Aucun nouvel hôte n'est contacté : le wiki figure déjà dans la liste des hôtes que ce serveur peut
+  joindre.
+
 Le tableau de bord montre ce que montre le flux et hérite de chaque limite et de chaque risque de cette page. Nous
 ne prétendons pas qu'il soit approuvé par Cloud Imperium Games.
 

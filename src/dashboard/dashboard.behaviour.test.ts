@@ -413,6 +413,7 @@ describe("Feature: a View only receives what it does not hold yet", () => {
       ship: expect.stringMatching(/^[0-9a-f]{14}$/),
       pilot: expect.stringMatching(/^[0-9a-f]{14}$/),
       weapons: expect.stringMatching(/^[0-9a-f]{14}$/),
+      specs: expect.stringMatching(/^[0-9a-f]{14}$/),
     });
     const second = (
       await call("sc_live_poll", {
