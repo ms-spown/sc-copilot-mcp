@@ -176,7 +176,12 @@ describe("Feature: sc_trade_journal", () => {
         const result = await registry.call("sc_trade_journal", { ...mode.args });
         const text = result.content[0].text;
         expect(text).not.toMatch(AMOUNT_KEYS);
-        for (const amount of AMOUNTS) expect(text, String(amount)).not.toContain(String(amount));
+        // A whole figure, not a part of a longer number or a decimal fraction: the milliseconds of a clock time
+        // ("...:46.900Z") must not count as the amount 900.
+        for (const amount of AMOUNTS) {
+          const whole = new RegExp(`(?<![0-9.])${String(amount).replace(/\./g, "\\.")}(?![0-9])`);
+          expect(text, String(amount)).not.toMatch(whole);
+        }
         const out = JSON.parse(text);
         expect(out.data.money_note).toMatch(/Montants masqués/);
         // the player's hidden choice says what it ignores; a call that only passed false says its own, shorter note
