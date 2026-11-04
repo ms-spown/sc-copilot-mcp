@@ -351,14 +351,14 @@ describe("Feature: a report is gone from the page, not just hidden, whenever the
 
   it("Given the menu is closed, Then the text is not left in the DOM", async () => {
     const w = await withReport();
-    findButton(w.root, "Fermer").click();
+    findButton(w.root, "Sessions ▴").click();
     await w.advance(100);
     gone(w);
   });
 
   it("Given the balance is hidden again with the menu closed, Then it is gone and does not come back when the menu opens", async () => {
     const w = await withReport();
-    findButton(w.root, "Fermer").click();
+    findButton(w.root, "Sessions ▴").click();
     await w.advance(100);
     findAll(
       w.root,

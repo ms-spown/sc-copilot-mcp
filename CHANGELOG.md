@@ -6,6 +6,32 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed (sessions: no phantom session, and a session can be started at any time)
+- **Real feedback after #84:** "I now have no button to create a new session. By default it opens the session created
+  automatically at 16:00. If I want a timed session and restart it now, I can't." Cause: the dashboard still made an empty
+  "Session N" when it opened, and in that "waiting" state the card offered nothing.
+- **Opening the dashboard never makes a session.** With no session the card says "Aucune session en cours" and offers a
+  primary **Démarrer une session** (no question, nothing to close). A session left empty by an older server (the 16:03
+  ghost) is **deleted on the first look**, not archived; a session that holds something is never dropped.
+- **Starting a session is possible in every state.** None: "Démarrer une session". In progress: "Nouvelle session" (asks first,
+  closes the current one into the history). Ended: "Nouvelle session" (primary). A session you started that the game has not
+  filled yet is a **chronometer**: "en cours" with the elapsed time from your click, even with the game closed, with
+  **Redémarrer le chrono** (start put at now, no question) and **Terminer la session** (deletes it, nothing to archive). The
+  game starting later does not reset it; a gap never closes it.
+- **The game starts a session by itself** when it is launched and connected and there is none in progress (none, the last one
+  ended, or quiet for over 3 hours); a session you started is kept; a session you ended stays ended (#84's guarantees hold).
+- **One button for the list:** "Sessions ▾/▴" opens and closes it (the separate "Fermer" is gone, and the label flips at once);
+  the list shows the **3 latest** sessions, "Toutes les sessions (N)" shows all of them in the same panel, and back.
+- **Tools** (names and input schemas unchanged): `sc_session_new` starts at any time and answers `started`, `restarted` and
+  `closed_session`; `sc_session_end` on a session that holds nothing deletes it (`ok: true`, `ended: false`, `reason:
+  "discarded"`; the `empty` reason of #84 is gone); the other reasons are `ended`, `already_ended`, `none`.
+- **File format:** still version 2, no new `end_reason`; one optional field `started_by` (`player` or `game`). An older server
+  that rewrites the file drops it (as it does `ship_losses`), and would then read a chronometer of yours as a leftover.
+- A manual end or a new session never ends a session before its last sighting; the poll no longer closes a chronometer.
+- Tests: reducer state matrix (none, chronometer, ghost of the older file, in progress, ended x open dashboard, start,
+  restart, end, game start, restart of the server, 30 hours later), manager tests with the game closed, page tests through
+  a stateful fake server (amounts matched as whole figures, hidden and shown), the tool answers in every balance mode.
+
 ### Fixed (sessions: the "Terminer" and "Nouvelle session" buttons did nothing visible)
 - **Reproduced, with the game closed:** opening the dashboard made an empty "Session 1 · en cours" with dashes. "Terminer la
   session" (hidden in the "Sessions" menu) turned into "Confirmer la fin" and, once confirmed, did nothing: the server dropped

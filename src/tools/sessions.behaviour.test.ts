@@ -344,34 +344,37 @@ describe("Feature: new and end write only the server's own file", () => {
     expect(doc.sessions.map((s: { number: number }) => s.number)).toEqual([1, 2]);
   });
 
-  it("Given the game closed and an empty session, Then 'end' and 'new' say plainly that nothing changed, in fields the dashboard reads", async () => {
+  it("Given the game closed, Then 'new' starts a timed session at any time, 'new' again restarts it, and 'end' deletes it: each answer says which, in fields the dashboard reads", async () => {
     const t = rig(true, undefined, undefined, false);
-    // The dashboard opened: an empty session waits for the game.
-    const bar = await t.manager.bar(false);
-    expect(bar.current?.empty).toBe(true);
-    const e = await t.call("sc_session_end");
-    expect(e.data.data.ok).toBe(false);
-    expect(e.data.data.reason).toBe("empty");
-    expect(e.data.data.message).toMatch(/Nothing ended.*empty.*waits for the game.*stays open/);
-    expect(e.data.data.session.number).toBe(1);
+    // The structured copy is what the View reads (not the text): a lost `false` or code would change what the card says.
+    const sc = (x: { r: { structuredContent?: unknown } }) =>
+      (x.r.structuredContent ?? {}) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    // Nothing exists until the player asks: the dashboard opening makes no session.
+    expect((await t.manager.bar(false)).current).toBeNull();
+    const none = await t.call("sc_session_end");
+    expect(sc(none).ok).toBe(false);
+    expect(sc(none).reason).toBe("none");
     const n = await t.call("sc_session_new");
-    expect(n.data.data.ok).toBe(true);
-    expect(n.data.data.started).toBe(false);
-    expect(n.data.data.message).toMatch(/Nothing started.*empty.*already is the next session/);
-    expect(n.data.data.message).not.toMatch(/was closed/);
-    expect(n.data.data.session.number).toBe(1);
-    // The View reads `structuredContent` (cleaned by the tool), not the text: a `false` or a code lost there would make the
-    // card say "Session démarrée." after a click that changed nothing.
-    const sc = (x: typeof e) => (x.r.structuredContent ?? {}) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-    expect(sc(e).ok).toBe(false);
-    expect(sc(e).reason).toBe("empty");
-    expect(sc(e).session.empty).toBe(true);
-    expect(sc(n).ok).toBe(true);
-    expect(sc(n).started).toBe(false);
-    expect(sc(n).closed_session).toBeNull();
+    expect(n.data.data.message).toMatch(/Session 1 started/);
+    expect(sc(n)).toMatchObject({
+      ok: true,
+      started: true,
+      restarted: false,
+      closed_session: null,
+    });
     expect(sc(n).session.empty).toBe(true);
+    t.clock.t += 10 * MIN;
+    const again = await t.call("sc_session_new");
+    expect(again.data.data.message).toMatch(/timer restarted from now/);
+    expect(sc(again)).toMatchObject({ ok: true, started: true, restarted: true });
+    expect(sc(again).session.number).toBe(1);
+    const e = await t.call("sc_session_end");
+    expect(e.data.data.message).toMatch(/held nothing.*deleted, nothing is archived/);
+    expect(sc(e)).toMatchObject({ ok: true, ended: false, reason: "discarded" });
+    expect(sc(e).session.number).toBe(1);
+    expect(fs.existsSync(path.join(dir, "sessions.json"))).toBe(true);
     const doc = JSON.parse(fs.readFileSync(path.join(dir, "sessions.json"), "utf8"));
-    expect(doc.sessions.map((s: { number: number }) => s.number)).toEqual([1]);
+    expect(doc.sessions).toEqual([]);
   });
 
   it.each([...HIDDEN_MODES, ...SHOWN_MODES])(

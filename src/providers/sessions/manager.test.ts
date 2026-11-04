@@ -525,18 +525,20 @@ describe("Feature: 'Nouvelle session' and 'Terminer' from the View or a tool", (
   });
 });
 
-describe("Feature: opening the dashboard attaches to the last session, or starts a new one after a long break", () => {
-  it("Given a session from 1 hour ago, Then it is attached; from 5 hours ago, Then a fresh one is made", async () => {
+describe("Feature: opening the dashboard attaches to the last session and never makes one", () => {
+  it("Given a session from 1 hour ago, Then it is attached; from 5 hours ago, Then it is closed as a gap and NO session is made", async () => {
     const r = rig();
     r.log.running = true;
     await playMinutes(r, 3, () => 50);
+    r.log.running = false;
     r.clock.t += HOUR;
     expect((await r.manager.bar(false)).current?.number).toBe(1);
     r.clock.t += 5 * HOUR;
     const bar = await r.manager.bar(false);
-    expect(bar.current?.number).toBe(2);
-    expect(bar.current?.trips).toBe(0);
-    expect((await stored(r)).map((s) => s.number)).toEqual([1, 2]);
+    expect(bar.current?.number).toBe(1);
+    expect(bar.current?.status).toBe("ended");
+    expect(bar.current?.end_reason).toBe("gap");
+    expect((await stored(r)).map((s) => s.number)).toEqual([1]);
   });
 
   it("Given the dashboard polled every second, Then the file is not written at every poll", async () => {
@@ -592,31 +594,127 @@ describe("Feature: the balance does not leave without the player's choice", () =
 });
 
 describe("Feature: session management with the game closed (every click has a durable result)", () => {
-  it("Given the dashboard opened with the game closed, Then the session waits for the game and has nothing to end", async () => {
+  it("Given the dashboard opened with the game closed and no session, Then there is NO session (nothing is made, nothing is written)", async () => {
     const r = rig();
-    const bar = await r.manager.bar(false);
-    expect(bar.current?.number).toBe(1);
-    expect(bar.current?.empty).toBe(true);
+    for (let i = 0; i < 3; i++) {
+      r.clock.t += HOUR;
+      const bar = await r.manager.bar(false);
+      expect(bar.current).toBeNull();
+      expect(bar.status).toBe("ok");
+    }
+    expect(fs.existsSync(file)).toBe(false);
+    // Ending with none says so and changes nothing.
     const ended = await r.manager.endSession();
-    expect(ended.ended).toBe(false);
-    expect(ended.reason).toBe("empty");
-    // Nothing changed, nothing was dropped: the same session is still there with the same number.
-    const again = await r.manager.bar(false);
-    expect(again.current?.id).toBe(bar.current?.id);
-    expect(again.current?.status).toBe("open");
-    expect((await stored(r)).map((s) => s.number)).toEqual([1]);
+    expect([ended.ended, ended.discarded, ended.reason]).toEqual([false, false, "none"]);
   });
 
-  it("Given an empty session, When 'Nouvelle session' is asked, Then nothing is started and the answer says so", async () => {
+  it("Given no session, When the player starts one with the game closed, Then a timed session exists from the click, and it stays through polls and 30 hours", async () => {
     const r = rig();
-    const first = await r.manager.bar(false);
-    const writes = r.store.writes;
     const made = await r.manager.newSession();
-    expect(made.started).toBe(false);
+    expect([made.started, made.restarted, made.closedPrevious]).toEqual([true, false, null]);
     expect(made.summary.number).toBe(1);
-    expect(made.summary.id).toBe(first.current?.id);
-    expect(r.store.writes).toBe(writes);
+    for (const wait of [MIN, HOUR, 30 * HOUR]) {
+      r.clock.t += wait;
+      const bar = await r.manager.bar(false);
+      expect(bar.current?.id).toBe(made.summary.id);
+      expect(bar.current?.status).toBe("open");
+      expect(bar.current?.empty).toBe(true);
+      expect(bar.current?.started_at).toBe(made.summary.started_at);
+    }
+    expect((await stored(r)).map((s) => `${s.number}:${s.started_by}`)).toEqual(["1:player"]);
+  });
+
+  it("Given the player's timer that holds nothing, Then 'Redémarrer' puts its start at now (same session) and 'Terminer' deletes it", async () => {
+    const r = rig();
+    const first = await r.manager.newSession();
+    r.clock.t += 20 * MIN;
+    const again = await r.manager.newSession("evening");
+    expect([again.started, again.restarted]).toEqual([true, true]);
+    expect(again.summary.id).toBe(first.summary.id);
+    expect(again.summary.started_at).toBe(new Date(r.clock.t).toISOString());
+    expect((await stored(r))[0].note).toBe("evening");
+    const ended = await r.manager.endSession();
+    expect([ended.ended, ended.discarded, ended.reason]).toEqual([false, true, "discarded"]);
+    expect(await stored(r)).toEqual([]);
+    expect((await r.manager.bar(false)).current).toBeNull();
+    // The number is given back: the next one is session 1 again.
+    expect((await r.manager.newSession()).summary.number).toBe(1);
+  });
+
+  it("Given the player's timer, When the game is launched later, Then the timer keeps the click's start and the session fills", async () => {
+    const r = rig();
+    const made = await r.manager.newSession();
+    r.log.running = true;
+    await playMinutes(r, 3, () => 4000);
+    const cur = (await r.manager.bar(true)).current;
+    expect(cur?.id).toBe(made.summary.id);
+    expect(cur?.started_at).toBe(made.summary.started_at);
+    expect(cur?.empty).toBe(false);
     expect((await stored(r)).map((s) => s.number)).toEqual([1]);
+    expect(cur?.interruptions).toBe(0);
+  });
+
+  it("Given no session, When the game is launched and connected, Then one starts by itself, marked as the game's", async () => {
+    const r = rig();
+    r.log.running = true;
+    await playMinutes(r, 2, () => 800);
+    expect((await stored(r)).map((s) => `${s.number}:${s.started_by}`)).toEqual(["1:game"]);
+  });
+
+  it("Given an older server's ghost in the file (empty, nobody asked for it), Then it is deleted on the first look, by the poll, a tool or the watcher, and nothing else is touched", async () => {
+    const ghost = (n: number, ended: boolean) => ({
+      id: `s_ghost_${n}`,
+      number: n,
+      started_at: new Date(T0).toISOString(),
+      ended_at: ended ? new Date(T0 + MIN).toISOString() : null,
+      end_reason: ended ? "manual" : null,
+      last_activity_at: new Date(T0).toISOString(),
+      updated_at: new Date(T0).toISOString(),
+      trips: ended
+        ? [
+            {
+              key: "abcdef000001",
+              kind: "hauling",
+              source: "contract_ledger",
+              ended_at: new Date(T0 + 30_000).toISOString(),
+              label: "kept",
+            },
+          ]
+        : [],
+      start_balance: ended ? 100 : null,
+      active_ms: ended ? 30_000 : 0,
+    });
+    const write = () => {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(
+        file,
+        JSON.stringify({
+          version: 2,
+          revision: 4,
+          saved_at: null,
+          next_number: 3,
+          dropped_sessions: 0,
+          sessions: [ghost(1, true), ghost(2, false)],
+        }),
+      );
+    };
+    for (const look of ["bar", "list", "session", "tick"] as const) {
+      write();
+      const r = rig();
+      r.clock.t = T0 + 5 * MIN;
+      if (look === "bar") expect((await r.manager.bar(false)).current?.number).toBe(1);
+      if (look === "list")
+        expect((await r.manager.list(10, false)).sessions.map((s) => s.number)).toEqual([1]);
+      if (look === "session")
+        expect((await r.manager.session(undefined, false))?.session?.number).toBe(1);
+      if (look === "tick") await r.manager.tick();
+      expect(
+        (await stored(r)).map((s) => s.number),
+        look,
+      ).toEqual([1]);
+      expect((await stored(r))[0].trips, look).toHaveLength(1);
+      expect((await new SessionStore(file).read()).next_number, look).toBe(2);
+    }
   });
 
   it("Given a manual end, Then the ended session stays on the bar for any length of time, with the dashboard polled again", async () => {

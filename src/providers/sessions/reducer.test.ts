@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   endCurrent,
-  ensureCurrent,
   HEARTBEAT_MS,
   isEmpty,
+  isLeftover,
   latest,
-  needsEnsure,
+  needsTidy,
   observe,
   startNew,
+  tidy,
   type Observation,
   type ReduceConfig,
 } from "./reducer.js";
+import { session as makeSession } from "./fixtures.testing.js";
 import { emptyState, type TripInput } from "./types.js";
 
 /** Feature: the life of a session (start, resume, end) is decided by pure functions over the file's state. */
@@ -136,42 +138,6 @@ describe("Feature: the last session is resumed unless there was a long break", (
     observe(s, obs({ now: T0 + 6 * HOUR + 1, balance: 1 }), cfg);
     expect(s.sessions).toHaveLength(2);
   });
-
-  it("Given the dashboard is opened after a long break with an empty session, Then it is renewed, not piled up", () => {
-    const s = emptyState();
-    ensureCurrent(s, T0, cfg);
-    expect(isEmpty(latest(s)!)).toBe(true);
-    const r = ensureCurrent(s, T0 + 10 * HOUR, cfg);
-    expect(r.action).toBe("renewed");
-    expect(s.sessions).toHaveLength(1);
-    expect(latest(s)!.started_at).toBe(new Date(T0 + 10 * HOUR).toISOString());
-  });
-
-  it("Given the dashboard is opened (empty session) and the game is launched 10 minutes later, Then the wait is not an interruption and the balance is a start, not a late one", () => {
-    const s = emptyState();
-    ensureCurrent(s, T0, cfg);
-    const r = observe(s, obs({ now: T0 + 10 * MIN, balance: 4000, freshStart: true }), cfg);
-    expect(r.action).toBe("started");
-    const cur = latest(s)!;
-    expect(cur.interruptions).toEqual([]);
-    expect(cur.started_at).toBe(new Date(T0 + 10 * MIN).toISOString());
-    expect(cur.start_balance_quality).toBe("game_start");
-    // Same without a fresh start: first seen, never late.
-    const t = emptyState();
-    startNew(t, T0, cfg, null);
-    observe(t, obs({ now: T0 + 25 * MIN, balance: 9 }), cfg);
-    expect(latest(t)!.interruptions).toEqual([]);
-    expect(latest(t)!.start_balance_quality).toBe("first_seen");
-  });
-
-  it("Given the dashboard is opened soon after a session, Then it attaches to it; after a long break it makes a new one", () => {
-    const s = emptyState();
-    observe(s, obs({ now: T0, balance: 1 }), cfg);
-    expect(ensureCurrent(s, T0 + HOUR, cfg).action).toBe("kept");
-    expect(ensureCurrent(s, T0 + 4 * HOUR, cfg).action).toBe("created");
-    expect(s.sessions).toHaveLength(2);
-    expect(s.sessions[0].end_reason).toBe("gap");
-  });
 });
 
 describe("Feature: active time counts only what was seen", () => {
@@ -280,14 +246,34 @@ describe("Feature: the player can end a session and start another", () => {
   });
 });
 
-/** The five states a player can find the card in, built by the same functions the server uses. */
+/** The states a player can find the card in, built by the same functions the server uses (plus the legacy file). */
 const STATES = {
+  /** No session at all. */
   none: () => emptyState(),
-  waiting: () => {
+  /** A chronometer the player started: empty, timed from the click, the game never seen. */
+  timing: () => {
     const s = emptyState();
-    ensureCurrent(s, T0, cfg);
+    startNew(s, T0, cfg, null);
     return s;
   },
+  /** An empty session an older server made when the dashboard opened (no `started_by`): the 16:03 ghost. */
+  ghost: () => {
+    const s = emptyState();
+    s.sessions.push(
+      makeSession(1, {
+        start_balance: null,
+        start_balance_at: null,
+        start_balance_quality: null,
+        last_balance: null,
+        last_balance_at: null,
+        started_at: new Date(T0).toISOString(),
+        last_activity_at: new Date(T0).toISOString(),
+      }),
+    );
+    s.next_number = 2;
+    return s;
+  },
+  /** Started by the game (seen running), with a trip and a balance. */
   active: () => {
     const s = emptyState();
     observe(s, obs({ now: T0, balance: 1000, freshStart: true, trips: [trip(1, T0 + MIN)] }), cfg);
@@ -303,102 +289,177 @@ const STATES = {
 const summary = (s: ReturnType<typeof emptyState>) =>
   s.sessions.map((x) => `${x.number}:${x.ended_at === null ? "open" : (x.end_reason ?? "ended")}`);
 
-describe("Feature: the state machine of the session card (every state x every action)", () => {
-  it("Given no session, Then ending says there is none, and starting makes session 1 from the click", () => {
+describe("Feature: opening the dashboard never makes a session", () => {
+  it("Given no session, When the dashboard is polled at any time, Then nothing is made", () => {
     const s = STATES.none();
-    const e = endCurrent(s, T0);
-    expect([e.ended, e.reason, e.changed]).toEqual([false, "none", false]);
-    const n = startNew(s, T0, cfg, null);
-    expect(n.action).toBe("created");
-    expect(summary(s)).toEqual(["1:open"]);
-    expect(isEmpty(latest(s)!)).toBe(true);
+    for (const wait of [0, MIN, 4 * HOUR, 100 * HOUR]) {
+      expect(needsTidy(s, T0 + wait, cfg)).toBe(false);
+      expect(tidy(s, T0 + wait, cfg).changed).toBe(false);
+    }
+    expect(s.sessions).toEqual([]);
   });
 
-  it("Given an empty session waiting for the game, Then ending changes nothing and says it is empty", () => {
-    const s = STATES.waiting();
-    const before = JSON.stringify(s);
-    const e = endCurrent(s, T0 + MIN, "a note");
-    expect([e.ended, e.reason, e.changed]).toEqual([false, "empty", false]);
-    expect(JSON.stringify(s)).toBe(before);
-    // Repeated clicks do not loop either: same session, same number, same ids.
-    endCurrent(s, T0 + 2 * MIN);
-    expect(summary(s)).toEqual(["1:open"]);
+  it("Given the ghost of an older server (empty, nobody asked for it), Then it is deleted, its number given back, and nothing is archived", () => {
+    const s = STATES.ghost();
+    expect(isLeftover(latest(s)!)).toBe(true);
+    expect(needsTidy(s, T0 + MIN, cfg)).toBe(true);
+    const r = tidy(s, T0 + MIN, cfg);
+    expect([r.changed, r.action]).toEqual([true, "discarded"]);
+    expect(s.sessions).toEqual([]);
+    expect(s.next_number).toBe(1);
+    expect(tidy(s, T0 + 2 * MIN, cfg).changed).toBe(false);
   });
 
-  it("Given an empty session waiting for the game, Then 'Nouvelle session' changes nothing (same number), or adopts a note in place", () => {
-    const s = STATES.waiting();
+  it("Given the ghost, When the game is seen (or any look), Then it is deleted first and the game starts a real session of its own", () => {
+    const s = STATES.ghost();
+    const r = observe(s, obs({ now: T0 + 10 * MIN, balance: 4000, freshStart: true }), cfg);
+    expect(r.action).toBe("created");
+    expect(summary(s)).toEqual(["1:open"]);
+    expect(latest(s)!.started_by).toBe("game");
+    expect(latest(s)!.started_at).toBe(new Date(T0 + 10 * MIN).toISOString());
+    const t = STATES.ghost();
+    expect(observe(t, obs({ now: T0 + MIN, running: false }), cfg).action).toBe("discarded");
+    expect(t.sessions).toEqual([]);
+  });
+
+  it("Given sessions that hold something, Then no look ever drops them, whatever the wait", () => {
+    const s = STATES.active();
+    const before = JSON.stringify(s.sessions[0].trips);
+    tidy(s, T0 + 50 * HOUR, cfg); // closed as a gap, kept
+    expect(summary(s)).toEqual(["1:gap"]);
+    expect(JSON.stringify(s.sessions[0].trips)).toBe(before);
+    const g = STATES.ended();
+    expect(tidy(g, T0 + 500 * HOUR, cfg).changed).toBe(false);
+    expect(summary(g)).toEqual(["1:manual"]);
+    // A session the game started with nothing in it yet (a first look, before the first heartbeat) is not a ghost.
+    const fresh = emptyState();
+    observe(fresh, obs({ now: T0, balance: null }), cfg);
+    expect(isEmpty(latest(fresh)!)).toBe(false);
+    expect(needsTidy(fresh, T0 + 5_000, cfg)).toBe(false);
+  });
+});
+
+describe("Feature: the player starts a session at ANY time", () => {
+  it("Given no session, Then 'Démarrer' makes a timed session from the click, even with the game closed", () => {
+    const s = STATES.none();
+    const r = startNew(s, T0, cfg, null);
+    expect([r.changed, r.action]).toEqual([true, "created"]);
+    const cur = latest(s)!;
+    expect([cur.number, cur.started_by, cur.started_at]).toEqual([
+      1,
+      "player",
+      new Date(T0).toISOString(),
+    ]);
+    expect(isEmpty(cur)).toBe(true);
+    expect(isLeftover(cur)).toBe(false);
+  });
+
+  it("Given a chronometer that holds nothing, Then 'Redémarrer le chrono' puts its start at now: same session, same number, nothing closed", () => {
+    const s = STATES.timing();
     const id = latest(s)!.id;
-    const before = JSON.stringify(s);
-    const n = startNew(s, T0 + MIN, cfg, null);
-    expect([n.action, n.changed]).toEqual(["kept", false]);
-    expect(JSON.stringify(s)).toBe(before);
-    const withNote = startNew(s, T0 + 2 * MIN, cfg, null, "  for the evening ");
-    expect(withNote.action).toBe("renewed");
+    const r = startNew(s, T0 + 7 * MIN, cfg, null, " for the evening ");
+    expect([r.changed, r.action]).toEqual([true, "restarted"]);
     expect(latest(s)!.id).toBe(id);
+    expect(latest(s)!.started_at).toBe(new Date(T0 + 7 * MIN).toISOString());
     expect(latest(s)!.note).toBe("for the evening");
     expect(summary(s)).toEqual(["1:open"]);
   });
 
-  it("Given an empty session, When the dashboard is polled at any time, Then it is kept, or renewed after the gap (never piled up)", () => {
-    const s = STATES.waiting();
-    expect(ensureCurrent(s, T0 + MIN, cfg).action).toBe("kept");
-    expect(ensureCurrent(s, T0 + 10 * HOUR, cfg).action).toBe("renewed");
-    expect(summary(s)).toEqual(["1:open"]);
+  it("Given a session in progress, Then 'Nouvelle session' closes it into the history and starts a timed one; an ended session is not closed twice", () => {
+    const a = STATES.active();
+    startNew(a, T0 + 5 * MIN, cfg, 1300);
+    expect(summary(a)).toEqual(["1:new_session", "2:open"]);
+    expect(latest(a)!.started_by).toBe("player");
+    expect(latest(a)!.start_balance).toBe(1300);
+    const e = STATES.ended();
+    const endedAt = latest(e)!.ended_at;
+    startNew(e, T0 + 30 * MIN, cfg, null);
+    expect(summary(e)).toEqual(["1:manual", "2:open"]);
+    expect(e.sessions[0].ended_at).toBe(endedAt);
   });
 
-  it("Given an empty session, When the game is seen, Then it becomes the session in progress", () => {
-    const s = STATES.waiting();
-    const r = observe(s, obs({ now: T0 + 10 * MIN, balance: 7, freshStart: true }), cfg);
+  it("Given a ghost, Then 'Démarrer' replaces it by a session of the player's, number 1 again", () => {
+    const s = STATES.ghost();
+    startNew(s, T0 + MIN, cfg, null);
+    expect(summary(s)).toEqual(["1:open"]);
+    expect(latest(s)!.started_by).toBe("player");
+  });
+
+  it("Given a chronometer, When the game starts later, Then the timer is NOT reset, the wait is no interruption, and the balance is adopted", () => {
+    const s = STATES.timing();
+    const r = observe(s, obs({ now: T0 + 40 * MIN, balance: 9000, freshStart: true }), cfg);
     expect(r.action).toBe("started");
-    expect(isEmpty(latest(s)!)).toBe(false);
+    const cur = latest(s)!;
+    expect(cur.started_at).toBe(new Date(T0).toISOString());
+    expect(cur.interruptions).toEqual([]);
+    expect(cur.start_balance).toBe(9000);
+    expect(cur.start_balance_quality).toBe("game_start");
+    expect(cur.started_by).toBe("player");
     expect(summary(s)).toEqual(["1:open"]);
+    // A chronometer the game never filled is not closed by any gap either: only the player ends it.
+    const t = STATES.timing();
+    expect(tidy(t, T0 + 30 * HOUR, cfg).changed).toBe(false);
+    expect(needsTidy(t, T0 + 30 * HOUR, cfg)).toBe(false);
+    observe(t, obs({ now: T0 + 30 * HOUR, balance: 5, freshStart: true }), cfg);
+    expect(t.sessions[0].started_at).toBe(new Date(T0).toISOString());
+    expect(summary(t)).toEqual(["1:open"]);
+  });
+});
+
+describe("Feature: ending", () => {
+  it("Given no session, Then ending says there is none", () => {
+    const s = STATES.none();
+    const e = endCurrent(s, T0);
+    expect([e.ended, e.reason, e.changed]).toEqual([false, "none", false]);
   });
 
-  it("Given a session in progress, Then ending closes it by hand and starting closes it for the new one", () => {
+  it("Given a chronometer that holds nothing, Then 'Terminer' deletes it (nothing to archive) and gives the number back", () => {
+    const s = STATES.timing();
+    const e = endCurrent(s, T0 + MIN);
+    expect([e.ended, e.reason, e.changed]).toEqual([false, "discarded", true]);
+    expect(s.sessions).toEqual([]);
+    expect(s.next_number).toBe(1);
+    // Deleting twice is not an error: there is simply none.
+    expect(endCurrent(s, T0 + 2 * MIN).reason).toBe("none");
+  });
+
+  it("Given a session in progress, Then ending closes it by hand and keeps it", () => {
     const a = STATES.active();
     const e = endCurrent(a, T0 + 5 * MIN);
     expect([e.ended, e.reason, e.changed]).toEqual([true, "ended", true]);
     expect(summary(a)).toEqual(["1:manual"]);
-    const b = STATES.active();
-    startNew(b, T0 + 5 * MIN, cfg, 1300);
-    expect(summary(b)).toEqual(["1:new_session", "2:open"]);
-    expect(latest(b)!.start_balance).toBe(1300);
   });
 
-  it("Given a session in progress quiet for longer than the gap, Then the poll closes it as a gap and a fresh one waits", () => {
-    const s = STATES.active();
-    expect(needsEnsure(s, T0 + 5 * HOUR, cfg)).toBe(true);
-    ensureCurrent(s, T0 + 5 * HOUR, cfg);
-    expect(summary(s)).toEqual(["1:gap", "2:open"]);
-    expect(isEmpty(latest(s)!)).toBe(true);
-  });
-
-  it("Given an ended session, When the dashboard is polled, Then it stays ended however long the wait (no session is made behind the player's back)", () => {
-    const s = STATES.ended();
-    const before = JSON.stringify(s);
-    for (const wait of [MIN, HOUR, 4 * HOUR, 100 * HOUR]) {
-      expect(needsEnsure(s, T0 + wait, cfg)).toBe(false);
-      const r = ensureCurrent(s, T0 + wait, cfg);
-      expect([r.action, r.changed]).toEqual(["kept", false]);
-    }
-    expect(JSON.stringify(s)).toBe(before);
-  });
-
-  it("Given an ended session, When ending again, Then it says it was already ended and changes nothing", () => {
+  it("Given an ended session, Then ending again says it was already ended and changes nothing", () => {
     const s = STATES.ended();
     const e = endCurrent(s, T0 + 10 * MIN);
     expect([e.ended, e.reason, e.changed]).toEqual([false, "already_ended", false]);
     expect(summary(s)).toEqual(["1:manual"]);
   });
 
-  it("Given an ended session, When 'Nouvelle session' is pressed, Then a new one starts and nothing is closed twice", () => {
-    const s = STATES.ended();
-    const endedAt = latest(s)!.ended_at;
-    const n = startNew(s, T0 + 30 * MIN, cfg, null);
-    expect(n.action).toBe("created");
-    expect(summary(s)).toEqual(["1:manual", "2:open"]);
-    expect(s.sessions[0].ended_at).toBe(endedAt);
-    expect(isEmpty(latest(s)!)).toBe(true);
+  it("Given a session in progress quiet for longer than the gap, Then the look closes it as a gap and makes NO session", () => {
+    const s = STATES.active();
+    expect(needsTidy(s, T0 + 5 * HOUR, cfg)).toBe(true);
+    const r = tidy(s, T0 + 5 * HOUR, cfg);
+    expect(r.action).toBe("closed");
+    expect(summary(s)).toEqual(["1:gap"]);
+  });
+});
+
+describe("Feature: the game starts a session by itself, and an ended one stays ended", () => {
+  it("Given no session, When the game is launched and connected, Then one starts with the game's balance, marked as the game's", () => {
+    const s = STATES.none();
+    observe(s, obs({ now: T0, balance: 500, freshStart: true }), cfg);
+    expect(summary(s)).toEqual(["1:open"]);
+    expect(latest(s)!.started_by).toBe("game");
+    expect(latest(s)!.start_balance_quality).toBe("game_start");
+  });
+
+  it("Given a session ended by gap, When the game is seen, Then a new one starts by itself", () => {
+    const s = STATES.active();
+    tidy(s, T0 + 5 * HOUR, cfg);
+    observe(s, obs({ now: T0 + 5 * HOUR + MIN, balance: 7 }), cfg);
+    expect(summary(s)).toEqual(["1:gap", "2:open"]);
   });
 
   it("Given an ended session and the game still running, Then looks hold (nothing recorded) even when the balance reappears after a restart", () => {
@@ -416,7 +477,6 @@ describe("Feature: the state machine of the session card (every state x every ac
       );
       expect(r.action).toBe("held");
     }
-    // Same with the game stopped.
     expect(observe(s, obs({ now: T0 + HOUR, running: false }), cfg).action).toBe("held");
     expect(summary(s)).toEqual(["1:manual"]);
   });
@@ -447,6 +507,21 @@ describe("Feature: the state machine of the session card (every state x every ac
     expect(summary(unknownLog)).toEqual(["1:manual", "2:open"]);
   });
 
+  it("Given a chronometer the player started, When the game is launched, Then the player's session is kept (no second one)", () => {
+    const s = STATES.timing();
+    observe(
+      s,
+      obs({
+        now: T0 + 3 * MIN,
+        balance: 1,
+        freshStart: true,
+        connection: { state: "online", since: new Date(T0 + 2 * MIN).toISOString() },
+      }),
+      cfg,
+    );
+    expect(summary(s)).toEqual(["1:open"]);
+  });
+
   it("Given a game that closes cleanly, Then the open session says so and resumes when the game is back", () => {
     const s = STATES.active();
     const quit = new Date(T0 + 5 * MIN).toISOString();
@@ -460,6 +535,17 @@ describe("Feature: the state machine of the session card (every state x every ac
     observe(s, obs({ now: T0 + 40 * MIN, balance: 1300 }), cfg);
     expect(summary(s)).toEqual(["1:open"]);
     expect(latest(s)!.interruptions[0].kind).toBe("game_closed");
+  });
+
+  it("Given every state, Then a look 30 hours later and a repeated look change nothing more than the first one did", () => {
+    for (const [name, make] of Object.entries(STATES)) {
+      const s = make();
+      tidy(s, T0 + 30 * HOUR, cfg);
+      const once = JSON.stringify(s);
+      const again = tidy(s, T0 + 30 * HOUR + MIN, cfg);
+      expect(again.changed, name).toBe(false);
+      expect(JSON.stringify(s), name).toBe(once);
+    }
   });
 });
 

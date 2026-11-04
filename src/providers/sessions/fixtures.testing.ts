@@ -28,6 +28,7 @@ export function session(n: number, over: Partial<Session> = {}): Session {
     last_commodity: null,
     last_context_at: null,
     note: "",
+    started_by: null,
     price_refusals: 0,
     price_refusal_last_at: null,
     ship_losses: [],

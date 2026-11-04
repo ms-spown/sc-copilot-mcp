@@ -20,18 +20,24 @@ import {
  * agree, and every function is safe to apply twice: it only adds what is not there yet.
  *
  * When a session starts, resumes and ends:
- *  - It STARTS when the game is seen running and there is no session, or the last one has been quiet for longer than
- *    `gapMs` (default 3 hours), or the player pressed "Nouvelle session" (`startNew`), or the dashboard was opened after
- *    such a break (`ensureCurrent`: the empty session waits for the game).
+ *  - It STARTS when the player presses "Démarrer une session" / "Nouvelle session" at ANY time (`startNew`: a timed session
+ *    that exists from the click, even before the game is seen), or by itself when the game is seen running and there is no
+ *    session in progress (none, the last one ended, or quiet for longer than `gapMs`, default 3 hours). Opening the
+ *    dashboard never starts one (`tidy` only closes and discards).
  *  - It RESUMES when the game is seen again within `gapMs` of the last sighting, whether the game was closed cleanly or
  *    not (crash, reboot, server not running). The break is written in `interruptions`: `game_closed` if the game wrote
  *    its quit line, `unclean` if there was no end marker. Nothing is invented about what happened during it.
  *  - It ENDS when the player ends it (`endCurrent`: it is then not resumed; the next play period starts a new one once
  *    the game is seen starting afresh), when a new one starts, or when the gap is exceeded (closed at its last sighting).
  *
- * An EMPTY open session (the game was never seen during it) waits for the game: it has nothing to end (`endCurrent` changes
- * nothing) and "Nouvelle session" does not restart it (`startNew` keeps it). A session ended by hand stays the last one,
- * however long ago (`ensureCurrent` never replaces it); only `startNew` or a new play period seen by `observe` does.
+ * An EMPTY open session holds nothing (no trip, no balance, no played time, and the game was never seen during it):
+ *  - one the PLAYER started (`started_by: "player"`) is a chronometer: it runs from the click, "Redémarrer le chrono"
+ *    (`startNew`) puts the start at now, "Terminer" (`endCurrent`) discards it (nothing to archive), and the game starting
+ *    does NOT reset its start; it is never discarded or closed automatically;
+ *  - any other one (a file written by an older server, an auto-created leftover) is discarded by `tidy` and `observe`:
+ *    deleted, not archived, its number given back. Non-empty sessions are never dropped.
+ * A session ended by hand stays the last one, however long ago (`tidy` never replaces it); only `startNew` or a new play
+ * period seen by `observe` starts the next.
  *
  * `active_ms` counts only the time the game was seen running, in steps of at most ACTIVE_CAP_MS: a gap adds nothing.
  */
@@ -44,9 +50,12 @@ export const ACTIVE_CAP_MS = 60_000;
 export const RESUME_GAP_MS = 90_000;
 /** A start balance adopted later than this after the session began is marked `late`. */
 export const LATE_BALANCE_MS = 5 * 60_000;
-/** A session is "empty" when the game was never seen during it. */
+/** A session is "empty" when the game was never seen during it (one the game started holds at least that). */
 export const isEmpty = (s: Session): boolean =>
-  s.trips.length === 0 && s.start_balance === null && s.active_ms === 0;
+  s.trips.length === 0 && s.start_balance === null && s.active_ms === 0 && s.started_by !== "game";
+/** An open empty session nobody asked for (an older server's leftover): `tidy` and `observe` discard it. */
+export const isLeftover = (s: Session): boolean =>
+  s.ended_at === null && isEmpty(s) && s.started_by !== "player";
 
 export interface Observation {
   now: number;
@@ -88,6 +97,7 @@ function create(
   cfg: ReduceConfig,
   balance: number | null,
   quality: Session["start_balance_quality"],
+  startedBy: "player" | "game" = "game",
 ): Session {
   const stamp = iso(now);
   const session: Session = {
@@ -113,6 +123,7 @@ function create(
     last_commodity: null,
     last_context_at: null,
     note: "",
+    started_by: startedBy,
     price_refusals: 0,
     price_refusal_last_at: null,
     ship_losses: [],
@@ -388,6 +399,16 @@ export function observe(state: StoreState, obs: Observation, cfg: ReduceConfig):
   let action = "none";
   let cur = latest(state);
 
+  if (cur && isLeftover(cur)) {
+    // An empty session nobody asked for (an older server made it when the dashboard opened): it holds nothing, so it is
+    // deleted, not archived; the number is given back.
+    state.sessions.pop();
+    state.next_number = cur.number;
+    cur = latest(state);
+    changed = true;
+    action = "discarded";
+  }
+
   if (obs.running) {
     if (!cur) {
       cur = create(state, now, cfg, obs.balance, obs.freshStart ? "game_start" : "first_seen");
@@ -401,9 +422,10 @@ export function observe(state: StoreState, obs: Observation, cfg: ReduceConfig):
         action = "created";
       } else {
         // The player ended this session and nothing shows a new play period yet: do not reopen or record.
-        return { changed: false, current: cur, action: "held" };
+        return { changed, current: cur, action: changed ? action : "held" };
       }
-    } else if (now - quietSince(cur) > cfg.gapMs) {
+    } else if (now - quietSince(cur) > cfg.gapMs && !isEmpty(cur)) {
+      // (A chronometer the player started is not closed by a gap: only the player ends it.)
       retire(state, cur, ms(cur.last_activity_at), "gap");
       cur = create(state, now, cfg, obs.balance, obs.freshStart ? "game_start" : "first_seen");
       changed = true;
@@ -421,9 +443,8 @@ export function observe(state: StoreState, obs: Observation, cfg: ReduceConfig):
     }
     if (action !== "created") {
       if (isEmpty(session) && dt >= RESUME_GAP_MS) {
-        // An empty session (made when the dashboard was opened, or by "Nouvelle session", before the game started)
-        // begins now: the wait before the game came is not an interruption, and the balance is a start, not a late one.
-        session.started_at = iso(now);
+        // A chronometer the player started (empty: the game was never seen) sees the game for the first time: the wait is
+        // not an interruption, and its start stays the player's click (the game starting never resets the timer).
         session.last_activity_at = iso(now);
         changed = true;
         action = "started";
@@ -466,7 +487,7 @@ export function observe(state: StoreState, obs: Observation, cfg: ReduceConfig):
       }
     }
   } else if (cur && cur.ended_at !== null) {
-    return { changed: false, current: cur, action: "held" };
+    return { changed, current: cur, action: changed ? action : "held" };
   }
 
   if (!cur || cur.ended_at !== null) return { changed, current: cur, action };
@@ -522,34 +543,31 @@ export function observe(state: StoreState, obs: Observation, cfg: ReduceConfig):
 // ---------------------------------------------------------------------------------------------
 
 /**
- * The dashboard (or a tool that attaches) was opened: keep the last session unless it has been quiet for longer than
- * the gap, in which case a fresh, empty one is made (an empty stale one is simply renewed). NEVER creates when the last
- * session is ended, however long ago: the player ended it by hand (or a new one replaced it), and the bar shows it with
- * its "Nouvelle session" button until the player starts one or the game shows a new play period (`observe`).
+ * The dashboard (or a tool that attaches) was opened: this NEVER starts a session. It keeps the last one, except that it
+ * discards an empty one nobody asked for (an older server's leftover: deleted, not archived) and closes, at its last sighting,
+ * an open session that has been quiet for longer than the gap (reason "gap"; the next play period starts the next one by
+ * itself). A session ended by hand stays the last one however long ago, and a chronometer the player started is left alone.
  */
-export function ensureCurrent(state: StoreState, now: number, cfg: ReduceConfig): ReduceResult {
+export function tidy(state: StoreState, now: number, cfg: ReduceConfig): ReduceResult {
   const cur = latest(state);
-  if (!cur) {
-    const made = create(state, now, cfg, null, null);
-    return { changed: true, current: made, action: "created" };
+  if (!cur || cur.ended_at !== null) return { changed: false, current: cur, action: "kept" };
+  if (isLeftover(cur)) {
+    state.sessions.pop();
+    state.next_number = cur.number;
+    return { changed: true, current: latest(state), action: "discarded" };
   }
-  if (cur.ended_at !== null) return { changed: false, current: cur, action: "kept" };
-  if (now - quietSince(cur) <= cfg.gapMs) return { changed: false, current: cur, action: "kept" };
-  if (isEmpty(cur) && cur.ended_at === null) {
-    cur.started_at = iso(now);
-    cur.last_activity_at = iso(now);
-    cur.updated_at = iso(now);
-    return { changed: true, current: cur, action: "renewed" };
-  }
+  if (isEmpty(cur) || now - quietSince(cur) <= cfg.gapMs)
+    return { changed: false, current: cur, action: "kept" };
   retire(state, cur, ms(cur.last_activity_at), "gap");
-  const made = create(state, now, cfg, null, null);
-  return { changed: true, current: made, action: "created" };
+  return { changed: true, current: cur, action: "closed" };
 }
 
 /**
- * "Nouvelle session": closes the open one and starts another. An EMPTY open session (the game was never seen during it)
- * is already the next one: it is kept as it is (action "kept"), so that the click never "restarts" the same session under
- * the same number with nothing to show for it. A note or a balance given with the click is adopted in place (action "renewed").
+ * "Démarrer une session" / "Nouvelle session" / "Redémarrer le chrono", at ANY time. A session that holds something is closed
+ * (reason "new_session", kept in the history) and a new one starts, timed from the click even if the game is not running yet
+ * (`started_by: "player"`). When the last session is a chronometer of the player's own that still holds nothing, there is
+ * nothing to close: its start is put at now (action "restarted", same session and number). An empty one nobody asked for is
+ * discarded first. A note or a balance given with the click is adopted.
  */
 export function startNew(
   state: StoreState,
@@ -560,8 +578,7 @@ export function startNew(
 ): ReduceResult {
   const cur = latest(state);
   if (cur && cur.ended_at === null) {
-    if (isEmpty(cur)) {
-      if (balance === null && !note) return { changed: false, current: cur, action: "kept" };
+    if (isEmpty(cur) && cur.started_by === "player") {
       const stamp = iso(now);
       cur.started_at = stamp;
       cur.last_activity_at = stamp;
@@ -574,22 +591,27 @@ export function startNew(
         cur.last_balance_at = stamp;
       }
       if (note) cur.note = cleanText(NOTE_MAX).parse(note);
-      return { changed: true, current: cur, action: "renewed" };
+      return { changed: true, current: cur, action: "restarted" };
     }
-    retire(state, cur, closeAt(cur, now), "new_session");
+    if (isEmpty(cur)) {
+      state.sessions.pop();
+      state.next_number = cur.number;
+    } else {
+      retire(state, cur, closeAt(cur, now), "new_session");
+    }
   }
-  const made = create(state, now, cfg, balance, "new_session");
+  const made = create(state, now, cfg, balance, "new_session", "player");
   if (note) made.note = cleanText(NOTE_MAX).parse(note);
   return { changed: true, current: made, action: "created" };
 }
 
-/** Why `endCurrent` did, or did not, end a session. */
-export type EndReason = "ended" | "none" | "already_ended" | "empty";
+/** Why `endCurrent` did what it did. "discarded": the session held nothing, so it was deleted (nothing to archive). */
+export type EndReason = "ended" | "none" | "already_ended" | "discarded";
 
 /**
- * "Terminer": ends the open session. Nothing is ended (and nothing changes) when there is no session, when the last one is
- * already ended, or when it is EMPTY (the game was never seen during it: it has nothing to close, and dropping it would only
- * let the dashboard make the same one again). `reason` says which.
+ * "Terminer": ends the open session by hand and keeps it in the history. When the session holds nothing (a chronometer
+ * the player started and the game never filled) there is nothing to keep: it is DELETED, its number given back
+ * (`reason: "discarded"`, `ended: false`). Nothing changes when there is no session or the last one is already ended.
  */
 export function endCurrent(
   state: StoreState,
@@ -600,8 +622,11 @@ export function endCurrent(
   if (!cur) return { changed: false, current: cur, action: "none", ended: false, reason: "none" };
   if (cur.ended_at !== null)
     return { changed: false, current: cur, action: "none", ended: false, reason: "already_ended" };
-  if (isEmpty(cur))
-    return { changed: false, current: cur, action: "none", ended: false, reason: "empty" };
+  if (isEmpty(cur)) {
+    state.sessions.pop();
+    state.next_number = cur.number;
+    return { changed: true, current: cur, action: "discarded", ended: false, reason: "discarded" };
+  }
   retire(state, cur, closeAt(cur, now), "manual");
   if (note) cur.note = cleanText(NOTE_MAX).parse(note);
   return { changed: true, current: cur, action: "ended", ended: true, reason: "ended" };
@@ -618,10 +643,11 @@ export function setNote(state: StoreState, id: string, note: string, now: number
 
 export type { Trip };
 
-/** True when `ensureCurrent` would change something (no clone needed to know). */
-export function needsEnsure(state: StoreState, now: number, cfg: ReduceConfig): boolean {
+/** True when `tidy` would change something (no clone needed to know). */
+export function needsTidy(state: StoreState, now: number, cfg: ReduceConfig): boolean {
   const cur = latest(state);
-  return !cur || (cur.ended_at === null && now - quietSince(cur) > cfg.gapMs);
+  if (!cur || cur.ended_at !== null) return false;
+  return isLeftover(cur) || (!isEmpty(cur) && now - quietSince(cur) > cfg.gapMs);
 }
 
 /**

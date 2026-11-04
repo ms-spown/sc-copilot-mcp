@@ -185,7 +185,7 @@ describe("Feature: what the bar says first", () => {
     expect(info("stale", true).chip).toBe("inactive");
     expect(info("ended", true).chip).toMatch(/^terminée (à \d\d:\d\d|hier \d\d:\d\d)$/);
     expect(info("ended", true).canEnd).toBe(false);
-    expect(info("waiting", true).chip).toBe("en attente du jeu");
+    expect(info("timing", true).chip).toBe("en cours");
     expect(info("readonly", true).notes.join(" ")).toContain(
       "vient d’une version plus récente de ce serveur",
     );

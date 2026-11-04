@@ -19,6 +19,8 @@
 export function sessionConfig() {
   return {
     maxRows: 30,
+    // The list shows this many sessions (the current one included) until "Toutes les sessions" is pressed.
+    latestRows: 3,
     maxTrips: 10,
     maxInterruptions: 5,
     maxRoutes: 3,
@@ -195,13 +197,14 @@ export function sessionWhen(iso: any, now: number): string {
 }
 
 /**
- * Where the card stands, in one word: "none" (no session), "waiting" (an empty session: the game was never seen during it),
- * "active" (in progress), "idle" (open but quiet for longer than the gap), "ended" (closed: by hand, by a new session or by a gap).
+ * Where the card stands, in one word: "none" (no session), "timing" (a session the player started that holds nothing yet: the
+ * game was never seen during it, its chronometer runs from the click), "active" (in progress), "idle" (open but quiet for
+ * longer than the gap), "ended" (closed: by hand, by a new session or by a gap).
  */
 export function sessionPhase(cur: any, stale: boolean): string {
   if (!cur) return "none";
   if (cur.status === "ended") return "ended";
-  if (cur.empty) return "waiting";
+  if (cur.empty) return "timing";
   return stale ? "idle" : "active";
 }
 
@@ -209,7 +212,7 @@ export function sessionStateLabel(cur: any, stale: boolean): string {
   const phase = sessionPhase(cur, stale);
   if (phase === "none") return "";
   if (phase === "ended") return "terminée";
-  if (phase === "waiting") return "en attente du jeu";
+  if (phase === "timing") return "en cours";
   return phase === "idle" ? "inactive" : "en cours";
 }
 
@@ -297,15 +300,16 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
       phase: "none",
       id: "",
       number: 0,
-      title: "Aucune session",
-      line: "Aucune session",
+      title: "Aucune session en cours",
+      line: "Aucune session en cours",
       chip: "",
-      sub: "Elle démarre toute seule quand le jeu est détecté, ou avec « Démarrer une session ».",
-      hint: "",
+      sub: "",
+      hint: "Une session démarre toute seule quand le jeu est lancé et connecté, ou tout de suite avec « Démarrer une session » (le chrono part de ton clic, même jeu fermé).",
       kpis: [],
       notes: notice ? [notice] : [],
       canEnd: false,
       canNew: true,
+      closes: false,
       newLabel: "Démarrer une session",
       newPrimary: true,
       endAsk: "",
@@ -318,8 +322,12 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
   const hasMoney = !!money && typeof money === "object";
   const sub: string[] = [];
   const when = sessionWhen(cur.started_at, now);
-  if (phase === "waiting") {
-    if (when) sub.push("créée " + when);
+  // A session the player started and the game has not filled yet: a chronometer that runs from the click.
+  const started = Date.parse(cur.started_at);
+  const elapsed = Number.isFinite(started) && now > started ? now - started : 0;
+  if (phase === "timing") {
+    if (when) sub.push("chrono lancé " + when);
+    sub.push("le jeu n’a pas encore été vu");
   } else {
     const ending = phase === "ended" ? sessionEndReasonText(cur.end_reason) : "";
     if (ending) sub.push(ending);
@@ -328,10 +336,12 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
     if (cur.game_version) sub.push("jeu " + cur.game_version);
   }
   const tripsText = sessionTripsText(cur.trips);
-  const canEnd = phase === "active" || phase === "idle";
+  // Closing a session that holds something asks first; a chronometer that holds nothing is restarted or deleted at once.
+  const closes = phase === "active" || phase === "idle";
+  const canEnd = closes || phase === "timing";
   const hints: any = {
-    waiting:
-      "Rien à terminer ni à recommencer : cette session démarre toute seule dès que le jeu est détecté.",
+    timing:
+      "Le chrono tourne depuis ton clic et ne repart pas à zéro quand le jeu se lance. « Terminer la session » la supprime (elle ne contient rien : rien à archiver).",
     ended:
       "Rien n’est compté tant que tu ne démarres pas une nouvelle session ou que le jeu n’est pas relancé.",
   };
@@ -355,8 +365,15 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
     sub: cur.minutes_per_trip !== null ? "≈\u00a0" + cur.minutes_per_trip + " min par trajet" : "",
     tone: "",
   };
-  if (phase === "waiting") {
-    // The game was never seen during this session: there is no figure to show, not even a dash.
+  if (phase === "timing") {
+    // The game was never seen during this session: one figure only, the chronometer (never a dash for a missing result).
+    kpis.push({
+      id: "time",
+      label: "Chrono",
+      value: L.formatDuration(elapsed),
+      sub: "depuis ton clic",
+      tone: "",
+    });
   } else if (hasMoney) {
     // ONE basis (the sum of each trip's result, else the balance change); the parts are named in the small line.
     const net = money.net_auec;
@@ -479,7 +496,7 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
   // balance is shown.
   const rate = hasMoney && money.net_per_hour_auec !== null ? money.net_per_hour_auec : null;
   const line = ["Session " + cur.number];
-  if (phase === "waiting") line.push("en attente du jeu");
+  if (phase === "timing") line.push("chrono " + L.formatDuration(elapsed));
   else {
     if (phase === "ended") line.push(sessionEndedText(cur, now));
     line.push(cur.trips + (cur.trips > 1 ? " trajets" : " trajet"));
@@ -514,10 +531,12 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
     hint: hints[phase] || "",
     kpis,
     notes,
-    // What the buttons offer: ending needs a session with something in it; a new session is pointless on an empty one.
+    // What the buttons offer: starting a session is possible in EVERY state (a chronometer that holds nothing is restarted
+    // at once); ending too, except once ended. `closes`: the click would close a session that holds something, so it asks.
     canEnd,
-    canNew: phase !== "waiting",
-    newLabel: "Nouvelle session",
+    canNew: true,
+    closes,
+    newLabel: phase === "timing" ? "Redémarrer le chrono" : "Nouvelle session",
     newPrimary: phase === "ended",
     endAsk:
       "Terminer la session " +
@@ -535,13 +554,13 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
   };
 }
 
-/** The state of one session in the list, in words: in progress / waiting for the game / ended (and how). */
+/** The state of one session in the list, in words: in progress / chronometer without the game yet / ended (and how). */
 export function sessionRowStatus(s: any): string {
   if (s.status === "ended") {
     const how = sessionEndReasonText(s.end_reason);
     return "terminée" + (how ? " · " + how : "");
   }
-  if (s.empty) return "en attente du jeu";
+  if (s.empty) return "en cours · jeu pas encore vu";
   return s.game_closed_at ? "en cours · jeu fermé" : "en cours";
 }
 
@@ -558,6 +577,10 @@ export function sessionActionText(kind: string, raw: any, now: number): string {
       ? " Attention : le changement n’a pas pu être enregistré sur le disque, il reste en mémoire."
       : "";
   if (kind === "end") {
+    if (r.reason === "discarded")
+      return (
+        "Session " + n + " supprimée : elle ne contenait rien, il n’y a rien à archiver." + unsaved
+      );
     if (r.ok === true && s)
       return (
         "Session " +
@@ -569,13 +592,17 @@ export function sessionActionText(kind: string, raw: any, now: number): string {
         "). Elle reste dans l’historique." +
         unsaved
       );
-    if (r.reason === "empty") return "Rien à terminer : la session " + n + " attend le jeu.";
     if (r.reason === "already_ended") return "La session " + n + " est déjà terminée.";
     if (r.reason === "none") return "Il n’y a aucune session à terminer.";
     return "Fin de session : réponse inattendue du serveur.";
   }
-  if (r.started === false)
-    return "Rien à démarrer : la session " + n + " attend déjà le jeu." + unsaved;
+  if (r.restarted === true)
+    return (
+      "Chrono de la session " +
+      n +
+      " redémarré : il repart de maintenant (la session ne contenait rien)." +
+      unsaved
+    );
   return (
     "Session " +
     n +
@@ -838,8 +865,8 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   const menu = el("div", "ses-menu");
   const menuHead = el("div", "ses-menu-head");
   const menuTitle = el("h3", "ses-menu-title", "Sessions passées");
-  const btnClose = button("Fermer", () => closeMenu(), "mini");
-  add(menuHead, menuTitle, btnClose);
+  // One button opens and closes the list: "Sessions ▾/▴" on the card (aria-expanded flips with it); no separate "Fermer".
+  add(menuHead, menuTitle);
   const menuMsg = el("p", "ses-note", "");
   const stats = el("div", "ses-stats");
   const statEls: any[] = [];
@@ -910,7 +937,11 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   exportPre.setAttribute("aria-label", "Texte du bilan");
   add(exportBox, exportRow, exportHint, exportMsg, exportPre);
   add(detail, detailHead, exportBox, facts, tripsTitle, tripList, breaksTitle, breaksList);
-  add(menu, menuHead, menuMsg, stats, list, detail);
+  // The list shows the latest sessions only; this button shows all the saved ones in the same panel, and back. (A dedicated
+  // view of the sessions is the place for more.)
+  const btnAll = button("Toutes les sessions", () => toggleAll(), "mini");
+  btnAll.setAttribute("aria-expanded", "false");
+  add(menu, menuHead, menuMsg, stats, list, btnAll, detail);
   add(root, one, bar, hint, confirmBox, status, notes, menu);
 
   // ------------------------------------------------------------------------------ state
@@ -925,6 +956,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     list: null,
     stats: null,
     detail: null,
+    all: false, // the list shows every saved session instead of the latest few
     // The inline confirmation: null, or what is being confirmed ({ kind: "end" | "new", id }). It has no timer: it stays until
     // the player confirms or cancels (or the session it was opened for is no longer the current one).
     confirm: null,
@@ -962,9 +994,9 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     const info = st.info;
     if (!info || st.busy || st.confirm) return;
     if (kind === "end" ? !info.canEnd : !info.canNew) return;
-    // Starting a new session closes the one in progress; after an ended one (or with none) nothing is closed.
-    const closes = kind === "end" || info.canEnd;
-    if (!closes) {
+    // Only a session that holds something is closed with a question. A chronometer that holds nothing is restarted or deleted at
+    // once, an ended session is not closed again, and with no session there is nothing to close.
+    if (!info.closes) {
       st.confirm = { kind, id: info.id };
       void run();
       return;
@@ -1056,6 +1088,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     st.open = true;
     st.view = "list";
     renderMenu();
+    renderActions(); // the one button flips to "Sessions ▴" (aria-expanded true) at once, not at the next poll
     void loadMenu();
   }
 
@@ -1079,7 +1112,14 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     st.detail = null;
     st.asked = null;
     st.view = "list";
+    st.all = false;
     blankNodes();
+  }
+
+  /** "Toutes les sessions" / "Les dernières seulement": the same list, every saved session or the latest few. */
+  function toggleAll() {
+    st.all = !st.all;
+    renderMenu();
   }
 
   function closeMenu() {
@@ -1398,8 +1438,19 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   function renderList() {
     const l = st.list;
     const sessions = l ? l.sessions : [];
+    const limit = st.all ? rows.length : cfg.latestRows;
+    // The button appears only when there is more to show than the latest few (the saved total, not just what was fetched).
+    const total = l ? Math.max(l.total, sessions.length) : 0;
+    show(btnAll, total > cfg.latestRows);
+    setText(
+      btnAll,
+      st.all
+        ? "Les " + cfg.latestRows + " dernières seulement"
+        : "Toutes les sessions (" + total + ")",
+    );
+    setAttr(btnAll, "aria-expanded", st.all ? "true" : "false");
     for (let i = 0; i < rows.length; i++) {
-      const s = sessions[i];
+      const s = i < limit ? sessions[i] : undefined;
       show(rows[i], !!s);
       if (!s) continue;
       const info = sessionRowInfo(L, s, !!st.ctx.showBalance, st.ctx.now);
@@ -1436,7 +1487,11 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       detailTitle,
       "Session " +
         s.number +
-        (s.status === "ended" ? " (terminée)" : s.empty ? " (en attente du jeu)" : " (en cours)"),
+        (s.status === "ended"
+          ? " (terminée)"
+          : s.empty
+            ? " (en cours, jeu pas encore vu)"
+            : " (en cours)"),
     );
     const f: string[] = [];
     const how = s.ended_at ? sessionEndReasonText(s.end_reason) : "";
@@ -1573,6 +1628,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       show(detail, false);
     } else {
       show(stats, false);
+      show(btnAll, false);
       renderDetail();
     }
     renderExport();
@@ -1605,7 +1661,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       // the sessions went off) is dropped, and the player is told. A result about an older session goes once a newer one shows.
       const c = st.confirm;
       // (Both confirmations exist only for a session that holds something: the one that "Terminer" closes.)
-      if (c && !st.busy && (!info.visible || info.id !== c.id || !info.canEnd)) {
+      if (c && !st.busy && (!info.visible || info.id !== c.id || !info.closes)) {
         st.confirm = null;
         setFlash(
           "La session a changé pendant que tu hésitais : la confirmation est annulée, rien n’a été fait.",
