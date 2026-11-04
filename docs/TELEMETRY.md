@@ -464,7 +464,9 @@ runs ("Contrat en cours : title, step 2/3").
   says so and points to `sc_log_status`, which explains how to enable it; nothing fails.
 - **What it knows.** For the contracts of the current game session: the title, a short mission id, when it was
   accepted and when it ended (completed, abandoned or failed), and for each hauling step a pickup or a drop-off with
-  its place and the name of the goods, in the order the game announced them. Duration is the end minus the
+  its place and the name of the goods, in the order the game announced them. **Caveat:** those step lines exist in logs written up to spring 2025 and are
+  absent from the 12 build 4.10 logs of the reference install (cause not verified), so on current builds expect the
+  contracts, their times and the measured gain, but no steps. Duration is the end minus the
   acceptance. Steps are ticked from the number of "Objective Complete" notices of that contract; that assumes the
   notices come in step order, and the log does not say which step they close, so the ticks are an estimate.
 - **What it does not know.** The quantity (SCU) and the reward: the game log carries neither, so the panel shows

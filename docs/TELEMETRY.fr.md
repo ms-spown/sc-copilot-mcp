@@ -482,7 +482,10 @@ seule ligne tant qu'un contrat est en cours (« Contrat en cours : titre, étape
   le panneau le dit et renvoie vers `sc_log_status`, qui explique comment l'activer ; rien n'échoue.
 - **Ce qu'il sait.** Pour les contrats de la session de jeu en cours : le titre, un identifiant court de mission, la
   date d'acceptation et de fin (terminé, abandonné ou échoué), et pour chaque étape de transport un chargement ou une
-  livraison avec son lieu et le nom de la marchandise, dans l'ordre où le jeu les a annoncées. La durée est la fin
+  livraison avec son lieu et le nom de la marchandise, dans l'ordre où le jeu les a annoncées. **Réserve :** ces lignes d'étapes existent dans les journaux écrits jusqu'au
+  printemps 2025 et sont absentes des 12 journaux de la version 4.10 de l'installation de référence (cause non
+  vérifiée) : sur les versions actuelles, attendez-vous aux contrats, à leurs durées et au gain mesuré, mais pas aux
+  étapes. La durée est la fin
   moins l'acceptation. Les étapes sont cochées d'après le nombre de notices « Objective Complete » du contrat ; cela
   suppose qu'elles arrivent dans l'ordre des étapes, et le journal ne dit pas quelle étape elles closent : les coches
   sont donc une estimation.
