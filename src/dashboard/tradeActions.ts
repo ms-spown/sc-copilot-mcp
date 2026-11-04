@@ -954,7 +954,7 @@ export function tradeNextWanted(trade: any, plan: any, tried: string, now: numbe
 /**
  * `render(ctx)` is called by the View on each render; the component keeps its own state (options, results, requests).
  * ctx: { enabled, fullscreen, follower, now, balance (safe number or null, only while the balance is shown),
- *        sheetCargo, trade, plan, call(name, args, timeoutMs), say(text), setPlan(plan), feedback(text), takeLead(),
+ *        sheetCargo, trade, sessionTrade (the same section limited to the session's runs: "Et ensuite ?"), plan, call(name, args, timeoutMs), say(text), setPlan(plan), feedback(text), takeLead(),
  *        openFull(), later(fn, ms), changed() }
  */
 export function tradeActionsPanel(doc: any, L: any): any {
@@ -2053,7 +2053,13 @@ export function tradeActionsPanel(doc: any, L: any): any {
 
     // The automatic suggestion, once per completed run; only the leading, visible View asks.
     if (full && !H.follower && !S.busy) {
-      const want = tradeNextWanted(H.trade, H.plan, S.nextTried, now);
+      // Only a run of the play session seeds the suggestion: an older run from the journal says nothing about where you are.
+      const want = tradeNextWanted(
+        H.sessionTrade !== undefined ? H.sessionTrade : H.trade,
+        H.plan,
+        S.nextTried,
+        now,
+      );
       if (want) void startNext(want);
     }
   }

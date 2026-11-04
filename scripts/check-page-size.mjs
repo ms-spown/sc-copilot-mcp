@@ -27,7 +27,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // 2026-11-04 (hold list of the route form): 391.6 kB with the "Soute" list (the flown ship, the runs, the fleet list, a default
 // worked out and labelled, "Autre taille…") in the commerce action bar; the budget is that size plus about 5 % (411 kB), rounded.
 // Same status: our own guard, nothing was removed to fit it, the host's own limit is still unproven.
-const BUDGET_BYTES = 411_000;
+// 2026-11-04 (account balance reminder F4 and the commerce card scoped to the session F3, on top of the hold list): 400.0 kB with
+// the header "Solde" zone (live / last known with its age / unknown with the reason), the split of the journal's runs between the
+// current play session and the older ones, the folded "Dernier trajet connu, hors session" block, and the session's trade section
+// handed to the Debrief button, "Et ensuite ?" and the alert boxes; the budget is that size plus about 5 % (420 kB), rounded. Same
+// status: our own guard, nothing was removed to fit it, the host's own limit is still unproven.
+const BUDGET_BYTES = 420_000;
 
 const page = await import(pathToFileURL(path.join(root, "dist", "dashboard", "page.js")).href);
 const bytes = Buffer.byteLength(page.dashboardHtml(), "utf8");

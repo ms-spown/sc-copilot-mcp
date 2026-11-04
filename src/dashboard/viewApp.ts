@@ -932,7 +932,6 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       canDownload: canDownload,
       refresh: () => pollFresh(),
       say: (text: string) => feedback(text),
-      toggleBalance: () => toggleBalance(),
     });
 
     // Commerce card (tradePanel.ts): full width at the top of the cockpit, a compact line under the small view.
@@ -1851,17 +1850,21 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       .slice(0, R.condList.length);
     R.health.render(view.poll, { showBalance, now, link: view.link });
     const tradeLedger = L.ledgerNormalize(view.poll && view.poll.ledger);
+    // The runs of the journal that are not of the play session are kept apart (tradeSplitBySession): the card, the ask
+    // buttons, the alerts and the "Et ensuite ?" suggestion speak of the session's own runs. The action bar's list of holds
+    // still reads the whole journal (a hold flown last week is still the player's).
+    const scope = L.tradeSessionScope(view.poll);
+    const split = L.tradeSplitBySession(tradeLedger ? tradeLedger.trade : null, scope, now);
+    const sessionTrade = split.trade;
     // The action bar asks the server for routes; it needs a server that answers, not a live stream.
     const actionsOn =
       initialised && !tornDown && !retired && !!view.poll && view.poll.state !== "off";
     // A ship destroyed with the player aboard, else a price refused at the kiosk, goes into the verdict: it is the most urgent
     // thing the page knows.
-    const refusal = actionsOn
-      ? L.tradeAlertInfo(L, tradeLedger ? tradeLedger.trade : null, now, showBalance)
-      : null;
+    const refusal = actionsOn ? L.tradeAlertInfo(L, sessionTrade, now, showBalance) : null;
     // The "Ask Claude" buttons: their words and the message they send follow the situation (a loss, a refused price, a run
     // that just ended, else the plain analysis). The full-screen card keeps its longer default words.
-    ask = L.tradeAskInfo(L, tradeLedger ? tradeLedger.trade : null, now, actionsOn);
+    ask = L.tradeAskInfo(L, sessionTrade, now, actionsOn);
     setText(R.btnAnalyse, ask.label);
     setText(R.btnAnalyse2, ask.kind === "analyse" ? "Analyser ma situation" : ask.label);
     setAttr(R.btnAnalyse, "data-ask", ask.kind);
@@ -1900,16 +1903,13 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const calibration = showBalance
       ? L.calibrationFromLedger(L, view.poll && view.poll.ledger)
       : null;
-    // The runs of the journal that are not of the play session are kept apart by the card (tradeSplitBySession). The net
-    // taken apart change by change belongs to the card's own run: with an older newest run it is not shown at all.
-    const scope = L.tradeSessionScope(view.poll);
+    // The net taken apart change by change belongs to the card's own run: with an older newest run it is not shown at all.
     const conn = view.poll && view.poll.connection ? view.poll.connection.state : null;
-    const sessionTrade = L.tradeSplitBySession(tradeLedger ? tradeLedger.trade : null, scope, now);
     const newestIsOlder =
       !!tradeLedger &&
       !!tradeLedger.trade &&
-      sessionTrade.past.length > 0 &&
-      sessionTrade.trade.runs[0] !== tradeLedger.trade.runs[0];
+      split.past.length > 0 &&
+      sessionTrade.runs[0] !== tradeLedger.trade.runs[0];
     const decomposition = newestIsOlder ? null : moved.decomposition;
     R.trade.render({
       calibration,
@@ -1937,11 +1937,15 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     });
     renderOrderUi();
     R.tradeActions.render(
-      tradeActionsContext(actionsOn, tradeLedger ? tradeLedger.trade : null, now, calibration),
+      tradeActionsContext(
+        actionsOn,
+        tradeLedger ? tradeLedger.trade : null,
+        sessionTrade,
+        now,
+        calibration,
+      ),
     );
-    R.preflight.render(
-      tradePreflightContext(actionsOn, tradeLedger ? tradeLedger.trade : null, now),
-    );
+    R.preflight.render(tradePreflightContext(actionsOn, sessionTrade, now));
     const I = L.instrumentInfo(view.poll, view);
     const sheetIns = view.poll && view.poll.ship && view.poll.ship.instruments;
     I.speed = L.speedWithSheet(
@@ -1965,7 +1969,13 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   }
 
   /** What the commerce action bar may use: the balance only while it is shown, and only as a number for its own screen. */
-  function tradeActionsContext(on: boolean, trade: any, now: number, calibration: any): any {
+  function tradeActionsContext(
+    on: boolean,
+    trade: any,
+    sessionTrade: any,
+    now: number,
+    calibration: any,
+  ): any {
     const specs = view.poll && view.poll.specs;
     const bal = balanceInfo(view.poll);
     return {
@@ -1983,6 +1993,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       sheetName:
         specs && specs.status === "ready" && typeof specs.name === "string" ? specs.name : null,
       trade,
+      // The commerce section limited to the play session's runs: what "Et ensuite ?" reads (the holds read `trade`).
+      sessionTrade,
       calibration,
       plan: view.plan,
       call: async (name: string, args: any, timeoutMs: number) =>

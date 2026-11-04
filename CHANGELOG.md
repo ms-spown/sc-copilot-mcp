@@ -96,7 +96,11 @@ versions follow [Semantic Versioning](https://semver.org/).
   quantity, duration; turnover and net only while the balance is shown, "Montants masqués" otherwise), the others are dated in the folded
   "Trajets précédents", and the compact view gets one calm line with no amount. Without a session to compare with
   (`SC_SESSIONS=off`, or a bar with no session in it) a run over 3 hours old is treated the same way. The poll's `ledger.trade.runs` is unchanged (the View does the
-  split); the net decomposition is not drawn for an older run.
+  split); the net decomposition is not drawn for an older run. The Debrief button, the "Et ensuite ?" suggestion and the alert and
+  pre-flight boxes read the session's runs the same way (the action bar's list of holds still reads the whole journal). The
+  session card no longer has a second "Afficher le solde" button: the header's "Solde" zone holds the page's one show/hide control.
+  Page size 400.0 kB on the merged tree; the internal budget of `check:page-size` is raised from 411 kB to 420 kB (about 5 %, our own
+  guard, nothing removed to fit it).
 
 ## [2.7.0] - 2026-11-04
 
