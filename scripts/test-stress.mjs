@@ -2,7 +2,7 @@
 // timing. Local use only, NOT part of CI. See "Running the suite under load" in CONTRIBUTING.md.
 //
 //   npm run test:stress                         # 3 rounds, 4 suites at once, one CPU burner per logical core
-//   npm run test:stress -- --rounds 10 --parallel 6 --burners 8
+//   npm run test:stress -- --rounds 10 --parallel 6 --burners 16 --workers 8
 //
 // Each round starts `--parallel` full vitest runs at the same time (each with its own temp folder, so they do not
 // share a cache), plus `--burners` busy-loop processes that keep the CPU saturated. A round passes when every run
@@ -29,6 +29,9 @@ function arg(name, fallback) {
 const rounds = arg("rounds", 3);
 const parallel = Math.max(1, arg("parallel", 4));
 const burners = arg("burners", os.cpus().length);
+// Workers per suite: vitest starts one per core by default, which with several suites at once is hundreds of node
+// processes and a machine that swaps (a memory problem, not the CPU load this script is about).
+const workers = Math.max(2, arg("workers", Math.floor(os.cpus().length / parallel)));
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "sc-stress-"));
 const vitestBin = path.join(root, "node_modules", "vitest", "vitest.mjs");
 
@@ -50,7 +53,7 @@ function runOnce(round, index) {
   const report = path.join(work, `${tag}.json`);
   fs.mkdirSync(tmp, { recursive: true });
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [vitestBin, "run", "--reporter=json", `--outputFile=${report}`], {
+    const child = spawn(process.execPath, [vitestBin, "run", `--maxWorkers=${workers}`, "--reporter=json", `--outputFile=${report}`], {
       cwd: root,
       // Own temp folder per run: concurrent suites must not share the cache folder that vitest.config.ts derives
       // from os.tmpdir().
@@ -97,7 +100,7 @@ for (let round = 1; round <= rounds; round++) {
 stopBurners();
 
 console.log(
-  `\n${runs - failedRuns}/${runs} runs passed under load (${parallel} suites at once, ${burners} burners, ` +
+  `\n${runs - failedRuns}/${runs} runs passed under load (${parallel} suites at once with ${workers} workers each, ${burners} burners, ` +
     `${Math.round((Date.now() - started) / 1000)} s).`,
 );
 if (counts.size > 0) {

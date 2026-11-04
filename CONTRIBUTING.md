@@ -164,6 +164,40 @@ tool needs: its definition and handler in `src/tools/`, an entry in `src/tools/c
 channel, profiles), tests, and a refreshed `src/tools/tools-surface.golden.json` (see CLAUDE.md). Never add a
 host except in `ALLOWED_HOSTS`, never a remote write, and read `SECURITY.md` and `THIRD_PARTY.md` first.
 
+## Time in tests, and running the suite under load
+
+A test that passes on an idle machine and fails on a busy one is a bug in the test. The suite is meant to pass
+whatever else the machine is doing (a CI runner with other jobs, a laptop compiling, several worktrees testing at
+once). The rules:
+
+- **No real clock in an assertion.** Never `expect(Date.now() - started).toBeLessThan(...)`. Say what the code does
+  instead: inject the clock the code already takes (`now: () => clock.t`, a manual clock moved with `clock.t += ...`),
+  count what it did (bytes copied, calls made, connections opened), or freeze the timers (`vi.useFakeTimers` with
+  `toFake` limited to the timers, the sockets stay real) so that code which waited for a timer would never finish.
+- **No sleep to wait for something to happen.** Wait for the event or the condition: `waitFor` from
+  `src/testing/waitFor.ts`, a counter the fake exposes (`g.connections()`, `g.closedConnections()`), or the promise of
+  the work itself. A fixed `setTimeout` is accepted only to check that something does NOT happen (it can then pass
+  too early, but never fail), or as the delay a fake itself needs.
+- **Real I/O is allowed where it is the point** (the session store's lock files, the fake game's loopback socket).
+  Bound it by a generous hang detector (20 s for a wait, 30 s per test by default in `vitest.config.ts`), not by what
+  an idle machine needs. A lower bound on elapsed time is safe (a timer never fires early); an upper bound is not.
+- **No shared ports or folders.** Use port 0 and `mkdtemp`. For "nothing listens here", use `UNUSED_PORT` from
+  `src/providers/telemetry/testing/fakeServer.ts`, never a port you just closed: another test file can be handed it.
+- **A fake must not lose what it is given.** The fake game queues frames sent before its stream is registered; keep it
+  that way if you extend it.
+
+To check a change, run the whole suite under CPU load with `npm run test:stress` (local only, not in CI). It starts
+several complete runs at once, each with its own temp folder, next to busy-loop processes, and lists every test that
+failed with the number of runs it failed in:
+
+```bash
+npm run test:stress                                       # 3 rounds, 4 suites at once, one burner per core
+npm run test:stress -- --rounds 10 --parallel 3 --burners 16   # the setting used to validate the suite
+```
+
+A run takes about ten times longer than an idle one. A test that fails there and passes alone is flaky: fix its
+cause (above) rather than raising a bound.
+
 ## Reporting a security problem
 
 Do not open a public issue. Follow [SECURITY.md](SECURITY.md) (private security advisory on this repository).
