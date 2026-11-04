@@ -24,6 +24,8 @@ describe("Feature: the generated page stays within its size budget", () => {
     expect(list).not.toBeNull();
     const names = list![1].split(",").map((s) => s.trim());
     expect(names.length).toBeGreaterThan(200);
+    // a function reached by a computed name (`L[name]`) would not show in the count below: none may exist
+    expect(script).not.toMatch(/L\[/);
     const seen = new Map<string, number>();
     for (const t of tokenizer(script, { ecmaVersion: "latest", sourceType: "script" })) {
       if (t.type.label === "name") {
