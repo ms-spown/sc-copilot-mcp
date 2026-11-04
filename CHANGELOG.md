@@ -66,7 +66,7 @@ versions follow [Semantic Versioning](https://semver.org/).
   screen opens**, before any click, when there is a saved size or a fleet ship to name; it is outside the planner's throttle, runs
   no planner and sends no player data; sources that fail give an empty list. `src/tools/tools-surface.golden.json` and `docs/TOOLS.md` were regenerated (the `action` enum and the
   description changed). No host, variable or stored file was added.
-- **Page size:** 384.7 kB (373.0 kB in 2.7.0); the internal budget of `check:page-size` is raised from 392 kB to 403 kB (measured
+- **Page size:** 391.6 kB on the merged tree (373.0 kB in 2.7.0, 379.6 kB with the sessions fix); the internal budget of `check:page-size` is raised from 392 kB to 411 kB (measured
   size plus about 5 %; our own guard, not a proven host limit, and nothing was removed to fit it).
 
 ## [2.7.0] - 2026-11-04
