@@ -66,7 +66,7 @@ describe("Feature: the line of the folded session card", () => {
     const info = sessionBarInfo(L, sessionBarNormalize(bar, true), { showBalance: true, now: NOW });
     expect(info.line).not.toContain("aUEC/h");
     expect(lineOf("ended", false)).toContain("terminée");
-    expect(lineOf("stale", false)).toContain("inactive");
+    expect(NB(lineOf("stale", false))).toContain("inactive depuis 3 h");
     expect(lineOf("empty", false)).toBe("Aucune session");
   });
 });
@@ -174,8 +174,10 @@ describe("Feature: the one line unfolds on a real button", () => {
         showBalance: false,
         now: NOW,
       }).line;
-    expect(line("readonly")).toContain("note");
-    expect(line("story")).not.toContain("note");
+    expect(line("readonly")).toContain("fichier en lecture seule");
+    expect(line("readonly")).not.toMatch(/\bnote\b/);
+    expect(line("story")).not.toContain("lecture seule");
+    expect(line("story")).not.toContain("enregistrement impossible");
   });
 
   it("Given the stylesheet, Then the compact margins beat the margins of the cards (higher specificity, not order)", () => {

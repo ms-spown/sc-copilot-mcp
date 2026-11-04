@@ -391,6 +391,10 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   | `boost_critical` | avertissement | Le boost signale critique |
   | `countermeasures_low`, `countermeasures_empty` | avertissement, critique | Mêmes seuils que les événements (trois salves ou moins ; aucune), pour un type vu avec du stock |
   | `health_low`, `down_or_dead` | avertissement, critique | Santé sous 30 pour cent ; santé 0 |
+
+  Le cadran de santé suit la même limite : rouge à 30 pour cent et moins, orange sous 50 pour cent, vert à partir de
+  50 pour cent (un choix, pas une mesure). La bande de santé envoyée au modèle la suit : basse jusqu'à 30 pour cent,
+  moyenne sous 50 pour cent.
   | `hunger_low`, `thirst_low` | info | Sous 25 pour cent |
   | `not_breathable` | critique, non vérifié | L'atmosphère est signalée non respirable |
   | `in_quantum`, `in_jump` | info | Mode quantique actif ; saut en cours |
@@ -670,7 +674,10 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
   confirmées (les ambiguës comprises) sont laissées de côté et signalées par une note sur la carte ; un montant dans une
   autre monnaie que l'aUEC n'est jamais ajouté. Le journal nomme les marchandises par un identifiant seulement (les 8
   premiers caractères du GUID du jeu) ; les noms que `sc_trade_journal` trouve dans la liste du wiki ne sont pas
-  cherchés ici, donc la carte affiche « marchandise 5c2e9a41 » sauf si le plan nomme la marchandise, et un plan ne peut
+  cherchés par le serveur en arrière-plan (une requête pour la liste publique, comparée localement sur le GUID complet,
+  au plus toutes les 5 minutes par GUID, jamais attendue par le sondage) : le trajet porte alors `commodity_name`. Tant
+  qu'il est inconnu la carte dit « marchandise inconnue » (l'identifiant n'est jamais affiché) et la ligne compacte d'un
+  trajet en cours prend la marchandise du plan, étiquetée « d’après ton plan », et un plan ne peut
   pas être comparé aux marchandises du journal (« supposé »). Sans journal de jeu il n'y a pas de journal de commerce :
   la carte le dit, montre le plan et montre la variation du solde sous son vrai nom (« Variation du solde », avec
   l'avertissement que ce n'est pas un bénéfice). Les tests et l'aperçu font passer des lignes de journal inventées par

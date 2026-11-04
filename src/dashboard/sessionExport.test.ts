@@ -166,13 +166,18 @@ describe("Feature: copy the report", () => {
     const w = await page({ clipboard: copied });
     await showBalance(w);
     await openDetail(w);
+    // What is announced is the EXPORTED report. The detail drawn on the screen (the same page) does show the balances
+    // while the player shows them: the hint says so, so the two are not taken for one another.
     expect(text(w)).toContain(
-      "Le bilan contient des montants, mais pas les soldes de départ et final. Relis-le avant de le partager.",
+      "Le bilan exporté contient des montants, mais pas les soldes de départ et final (le détail affiché plus bas, lui, les montre). Relis-le avant de le partager.",
     );
+    expect(text(w)).toMatch(BALANCES);
     findButton(w.root, "Copier le bilan").click();
     await w.advance(500);
+    // The content against the announcement: amounts in, balances and the balance line out.
     expect(NB(copied[0]!)).toMatch(NET);
     expect(copied[0]).not.toMatch(BALANCES);
+    expect(copied[0]).not.toMatch(/Solde\s*:/);
     expect(debriefCalls(w).at(-1)!.args).toMatchObject({
       include_balance: true,
       include_start_balance: false,
@@ -180,7 +185,9 @@ describe("Feature: copy the report", () => {
     // the explicit choice, per use
     control(w, "Soldes de départ et final : non")!.click();
     await w.advance(50);
-    expect(text(w)).toContain("Le bilan contient des montants et les soldes de départ et final.");
+    expect(text(w)).toContain(
+      "Le bilan exporté contient des montants et les soldes de départ et final.",
+    );
     expect(control(w, "Soldes de départ et final : oui")!.attrs["aria-pressed"]).toBe("true");
     findButton(w.root, "Copier le bilan").click();
     await w.advance(500);
@@ -189,6 +196,7 @@ describe("Feature: copy the report", () => {
       include_start_balance: true,
     });
     expect(NB(copied[1]!)).toMatch(BALANCES);
+    expect(copied[1]).toMatch(/Solde\s*:/);
   });
 });
 

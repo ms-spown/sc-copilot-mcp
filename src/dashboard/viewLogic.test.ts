@@ -318,6 +318,18 @@ describe("Feature: what goes to the model is rare, compact and never the balance
     });
   const sum = (p: any, events: any[] = []) => L.contextSummary(p, events);
 
+  it("Given health at 30, 31, 49 and 50 %, Then what the model is told follows the same limits as the dial", () => {
+    const words = (current: number) =>
+      sum(live({ pilot: { health: { current, max: 100, percent: current / 100 } } }))!.text;
+    expect(words(80)).toContain("santé bonne");
+    expect(words(50)).toContain("santé bonne");
+    expect(words(49)).toContain("santé moyenne");
+    expect(words(35)).toContain("santé moyenne");
+    expect(words(31)).toContain("santé moyenne");
+    expect(words(30)).toContain("santé basse");
+    expect(words(25)).toContain("santé basse");
+  });
+
   it("Given a summary, Then it has no balance, no event text, and points to sc_live_state", () => {
     const s = sum(live(), [
       { seq: 1, confidence: "confirmed", group: "wallet", text: "balance 424242" },
@@ -531,9 +543,19 @@ describe("Feature: alerts, lights, health", () => {
     expect(L.healthInfo(null).known).toBe(false);
     expect(L.healthInfo({ health: { current: 50, max: 0 } }).known).toBe(false);
     expect(L.healthInfo({ health: { current: 30, max: 100 } })).toMatchObject({
-      level: "warn",
+      level: "bad",
       fraction: 0.3,
     });
+  });
+
+  it("Given health after a fight, Then 35 % is not green: red at 30 % and below, amber under 50 %, green from 50 %", () => {
+    const level = (current: number) => L.healthInfo({ health: { current, max: 100 } }).level;
+    expect(level(30)).toBe("bad");
+    expect(level(31)).toBe("warn");
+    expect(level(35)).toBe("warn");
+    expect(level(49)).toBe("warn");
+    expect(level(50)).toBe("ok");
+    expect(level(51)).toBe("ok");
   });
 
   it("Given power and modes absent, Then they are 'unknown', not 'off'", () => {

@@ -49,7 +49,8 @@ describe("Feature: the session card keeps every note", () => {
     const t = text(w);
     expect(t).toContain("Session reprise après 1 arrêt");
     expect(t).toContain("Solde de départ");
-    expect(t).toContain("Sessions could not be saved");
+    expect(t).toContain("n’ont pas pu être enregistrées sur le disque");
+    expect(t).not.toContain("could not be saved");
     expect(t).toContain("Aucune activité depuis plus de 3 h");
     expect(count(t, "Vaisseau détruit à")).toBe(3);
     expect(t).toContain("Propriété du vaisseau non vérifiée");

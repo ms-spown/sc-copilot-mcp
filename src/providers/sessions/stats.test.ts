@@ -343,3 +343,34 @@ describe("Feature: a run stored twice by an older build counts once in every sum
     expect(a.contracts).toBe(0);
   });
 });
+
+describe("Feature: the cargo lost with a ship against the session result (verification, not a feature)", () => {
+  const LOSS = {
+    at: stamp(30),
+    ship_class: "MISC_Hull_C",
+    cause: "combat" as const,
+    causer: "other" as const,
+    zone: null,
+    cargo_scu: 696,
+    cargo_paid_auec: 137_911,
+  };
+
+  it("Given a completed trip and a ship lost with cargo, Then the result of the trips does NOT hold the lost purchase", () => {
+    // A run cut by a destroyed ship never completes, so it never becomes a trip (trips.ts): its purchase is in no trip
+    // result. A line "of which lost cargo -137 911" under this result would be false.
+    const m = summarizeSession(
+      played(1, { trips: [trip({ net_auec: 3000 })], ship_losses: [LOSS] }),
+    ).money;
+    expect(m.net_source).toBe("trips");
+    expect(m.net_auec).toBe(3000);
+    expect(m.lost_cargo_paid_auec).toBe(137_911);
+  });
+
+  it("Given no trip result, Then the result is the balance change whatever the loss record says (it may or may not hold the purchase)", () => {
+    // The stored loss has no purchase time: whether the purchase fell after the start balance cannot be told here.
+    const a = summarizeSession(played(1, { ship_losses: [LOSS] })).money;
+    const b = summarizeSession(played(1)).money;
+    expect(a.net_source).toBe("balance");
+    expect(a.net_auec).toBe(b.net_auec);
+  });
+});

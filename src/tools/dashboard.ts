@@ -35,6 +35,7 @@ import {
   TradeSuggestService,
   type FlownShip,
 } from "../dashboard/tradeSuggest.js";
+import { CommodityNameResolver } from "../dashboard/commodityNames.js";
 import type { ConnectionTracker } from "../providers/gamelog/connection.js";
 import type { SessionManager } from "../providers/sessions/manager.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
@@ -142,6 +143,8 @@ export function dashboardTools(
       log: logConfigFacts(gameLog),
       sessionsOff: sessionsSwitchedOff(),
     },
+    // The names of the goods of the trade runs, from the wiki's public commodity list (background, bounded, nothing sent).
+    scwClient ? new CommodityNameResolver(scwClient, overrides.now ?? Date.now) : undefined,
   );
   const enabled = () => telemetry?.enabled === true;
   // The server's runtime balance choice. Without one passed (some tests), a private one: shown, until a click.

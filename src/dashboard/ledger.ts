@@ -365,6 +365,8 @@ export interface LedgerInput {
   calibration?: CalibrationSection | undefined;
   /** The player's ships destroyed with him aboard (ledgerService.shipLosses()); absent: none known. */
   losses?: readonly ShipLoss[] | undefined;
+  /** Names of goods by lower-case resource GUID (commodityNames.ts), for display. Absent: none known. */
+  commodityNames?: ReadonlyMap<string, string> | undefined;
   nowMs: number;
 }
 
@@ -530,6 +532,7 @@ export function buildLedgerPayload(input: LedgerInput): LedgerPayload {
       plan: input.plan,
       nowMs,
       losses: input.losses,
+      commodityNames: input.commodityNames,
     });
   }
   if (includeBalance && base.status === "ok") {
