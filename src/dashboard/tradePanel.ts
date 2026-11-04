@@ -613,6 +613,8 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       msg =
         "Le solde est masqué : les montants du bilan (chiffre d’affaires, frais, bénéfice net) apparaissent quand tu affiches le solde.";
     }
+    // With the action bar alone (no run, no plan) there is no bilan to explain: the bar comes first and alone.
+    if (bare) msg = "";
     setText(message, msg);
     show(message, msg !== "");
 
