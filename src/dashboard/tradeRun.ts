@@ -1,6 +1,7 @@
 import { cleanLabel } from "../core/untrusted.js";
 import type { BalancePoint } from "../providers/telemetry/service.js";
 import { pairCargoRuns, type Transaction } from "../providers/gamelog/trade.js";
+import type { RunDecomposition } from "./balanceMovements.js";
 
 /**
  * The commerce model: from the transactions of a trading run, the balance history and the optional plan, what the
@@ -132,6 +133,16 @@ export interface FeeReport {
   reason?: "solde_autre_raison" | "lignes_non_confirmees" | "stock_anterieur";
 }
 
+/**
+ * The balance changes the net is made of: the ones after `from` (`from` itself included when `from_inclusive`) up to
+ * `to`, so their sum is exactly `end_balance - start_balance`. The balance movement explainer decomposes this window.
+ */
+export interface NetWindow {
+  from: number;
+  to: number;
+  from_inclusive: boolean;
+}
+
 export interface NetReport {
   auec: number | null;
   /** `mesure`: end balance - start balance. `calcule`: gross margin - measured fees. null: unknown. */
@@ -146,6 +157,8 @@ export interface NetReport {
     | "pas_de_solde";
   start_balance?: number;
   end_balance?: number;
+  /** Only with `method: "mesure"`: the instants the two balances were read at. */
+  window?: NetWindow;
 }
 
 export interface PlannedNet {
@@ -199,6 +212,11 @@ export interface RunMoney {
   avg_sell_per_scu: number | null;
   planned_net: PlannedNet | null;
   projection: Projection | null;
+  /**
+   * What the balance variation is made of, change by change (balanceMovements.ts). Added after the model by
+   * `withDecompositions` (movementsLedger.ts), only for a measured net. Absent otherwise.
+   */
+  decomposition?: RunDecomposition;
 }
 
 export interface TradeRunView {
@@ -346,7 +364,7 @@ export function splitRuns(counted: readonly Tx[]): Tx[][] {
 // The balance
 // -------------------------------------------------------------------------------------------------
 
-interface Move {
+export interface Move {
   at: number;
   delta: number;
   /** The stream was cut before this change: the delta may hide unseen changes. */
@@ -354,7 +372,7 @@ interface Move {
 }
 
 /** The balance changes between consecutive points (the first point has no predecessor, so no change). */
-function movesOf(history: readonly BalancePoint[]): Move[] {
+export function movesOf(history: readonly BalancePoint[]): Move[] {
   const moves: Move[] = [];
   for (let i = 1; i < history.length; i++) {
     const p = history[i]!;
@@ -382,24 +400,37 @@ function valueAt(history: readonly BalancePoint[], t: number): number | null {
 /**
  * The balance just before the first purchase: the value before the first decrease inside the purchase window; if no
  * decrease was seen there, the value in effect just before the window (it is certain only if the telemetry covered it).
+ * `from` says which balance changes come after that value (see NetWindow), so the net can be decomposed change by change.
  */
-function balanceBefore(history: readonly BalancePoint[], firstBuy: number): number | null {
+function balanceBefore(
+  history: readonly BalancePoint[],
+  firstBuy: number,
+): { value: number; from: number; inclusive: boolean } | null {
   for (let i = 1; i < history.length; i++) {
     const p = history[i]!;
     const q = history[i - 1]!;
     if (p.at < firstBuy - TRADE_MATCH_BEFORE_MS) continue;
     if (p.at > firstBuy + TRADE_MATCH_AFTER_MS) break;
-    if (p.uec < q.uec && p.at - q.until <= TRADE_GAP_TOLERANCE_MS) return q.uec;
+    if (p.uec < q.uec && p.at - q.until <= TRADE_GAP_TOLERANCE_MS)
+      return { value: q.uec, from: p.at, inclusive: true };
   }
-  return valueAt(history, firstBuy - TRADE_MATCH_BEFORE_MS);
+  const t = firstBuy - TRADE_MATCH_BEFORE_MS;
+  const value = valueAt(history, t);
+  return value === null ? null : { value, from: t, inclusive: false };
 }
 
 // -------------------------------------------------------------------------------------------------
 // Fees measured against the balance
 // -------------------------------------------------------------------------------------------------
 
-type ClusterResult =
-  | { ok: true; fee: number; exact: boolean }
+export type ClusterResult =
+  | {
+      ok: true;
+      fee: number;
+      exact: boolean;
+      /** The balance changes the fee was measured from: the explainer labels exactly these. */
+      used: readonly Move[];
+    }
   | { ok: false; why: "none" | "mixed" | "gap" | "implausible" };
 
 /**
@@ -412,7 +443,7 @@ type ClusterResult =
  * moved the balance), a line the journal could not confirm (it may have gone through and moved the balance too), or
  * when the result is not a plausible fee (negative, or more than half of the price).
  */
-function clusterFee(
+export function clusterFee(
   cluster: readonly Tx[],
   side: "buy" | "sell",
   everyTx: readonly Tx[],
@@ -434,10 +465,15 @@ function clusterFee(
   const fee = side === "buy" ? -change - price : price - change;
   const slack = Math.max(1, price * 0.001);
   if (fee < -slack || fee > price * TRADE_MAX_FEE_SHARE) return { ok: false, why: "implausible" };
-  return { ok: true, fee: Math.max(0, Math.round(fee)), exact: cluster.length === 1 };
+  return {
+    ok: true,
+    fee: Math.max(0, Math.round(fee)),
+    exact: cluster.length === 1,
+    used: inside,
+  };
 }
 
-function clustersOf(txs: readonly Tx[]): Tx[][] {
+export function clustersOf(txs: readonly Tx[]): Tx[][] {
   const out: Tx[][] = [];
   for (const x of txs) {
     const group = out[out.length - 1];
@@ -671,10 +707,11 @@ function moneyOf(
     if (before === null) net.reason = "solde_avant_inconnu";
     else if (after === null) net.reason = "solde_apres_inconnu";
     else {
-      net.auec = after - before;
+      net.auec = after - before.value;
       net.method = "mesure";
-      net.start_balance = before;
+      net.start_balance = before.value;
       net.end_balance = after;
+      net.window = { from: before.from, to: endLimit, from_inclusive: before.inclusive };
     }
   }
   // Net inferred from the gross margin and the fees measured on both sides (no balance before/after).

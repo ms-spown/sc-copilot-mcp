@@ -565,6 +565,46 @@ same thing. Each figure now has one meaning:
   plan is not verified.
 - **Action bar.** Right under the headline numbers sits the bar described in the next section (it is also reachable
   before there is any run or plan).
+- **Where the money went ("Mouvements du solde").** A folded block in the card's details, and the words of the card's
+  "unexplained" warning. A pure explainer (`src/dashboard/balanceMovements.ts`) labels EVERY balance change of the game
+  session (and, for a run, the exact window its net was read over) with at most one cause and an honest confidence.
+  Inputs, all already there: the telemetry's balance history (one point per change, precision about one frame on this
+  server's clock, 500 changes kept in memory: it does not use the aggregated `uec_changed` events), the trade journal's
+  transactions (cargo and shop items), the contracts' ends, insurance claim requests, hangar requests and `login_completed`
+  (the ledger service keeps these last ones apart from its own events). Categories:
+
+  | Category | Meaning | Confidence |
+  | --- | --- | --- |
+  | `explained_by_transaction` | a log transaction and the balance change agree (cargo settlements through the commerce model's own reconciliation; other lines by an exact amount) | `matched` |
+  | `fee_on_transaction` | what a cargo settlement took on top of the log amount, per cluster: the model's `clusterFee`, not a copy | `measured` (`ambiguous` when the same window also holds a shop item, a contract end or an insurance/hangar event) |
+  | `item_purchase` | a completed shop item line whose total equals one balance change | `matched` |
+  | `probable_contract_reward` | an otherwise unexplained rise from 3 s before to 20 s after a contract ended `completed`; the amount is the balance's, the log has no reward line | `probable` |
+  | `probable_insurance_or_hangar_cost` | an otherwise unexplained fall from 3 s before to 20 s after an insurance claim request or a hangar request completed | `probable` |
+  | `unexplained` | everything else; reasons `no_cause`, `ambiguous` (two kinds of cause fit: none is chosen) or `stream_gap` (the change spans a cut in the stream: neither its time nor its content is known) | `none` / `ambiguous` |
+
+  A change goes to at most one cause (strong evidence, an amount that matches, comes before time proximity). **Fuel,
+  repairs, fines, transfers between players and rewards without a nearby event leave no line in the log: they can only be
+  "non expliqué"**, and the block says what they could be without picking one. A contract that failed or was abandoned
+  just before a fall only adds a hint, never a penalty claim. Invariant, tested: the amounts of all the entries add up,
+  to the aUEC, to the balance change of the window; a settlement that holds a price and a fee is ONE balance change split
+  in two parts of one cause. Same-sign unexplained changes less than 1 s apart are shown as one line.
+  **Run decomposition.** For a run whose net was measured, the warning (shown when the net holds more than the margin and
+  the fees explain) reads: variation = gross margin + fees + items + probable rewards + probable costs + unexplained, with
+  the unexplained part named. The equation is shown as closing only when everything bought was sold in the run, there is no
+  prior stock and every log line found its balance change; otherwise only the movements are added up. The legacy
+  `fees.unexplained` keeps its sign (positive: the balance fell more than the margin says); the decomposition's parts are
+  in the balance's sign. **Tolerances, and what is measured:** 3 s before / 20 s after for rewards and costs (the 3 s is
+  measured: on the 95 logs of the reference install the "Contract Complete" notice comes 0 to 3.1 s after `MissionEnded`;
+  the 20 s is an assumption, twice the ledger's settle delay), 2 s before / 8 s after for transactions (the commerce
+  model's assumption), exact amounts within the larger of 1 aUEC and 0.1 %. Measured on those logs too: the 131 completed
+  contract ends never lie within 30 s of a shop or commerce line (so rewards and sales do not compete in practice), cargo
+  purchases of a settlement are at least 10 s apart (hence the 20 s cluster), only 12 % of item lines follow another within
+  4 s, and insurance claim requests are mostly isolated (155 of 187 bursts are single lines). What could NOT be measured:
+  the delay between a log line and the balance change it causes (the log has no balance: it needs a capture of both at
+  once), and what insurance or hangar requests really cost. Every amount here is derived from the balance: built only when
+  the View asked for it, drawn after the click, stripped by the sender and the receiver on the channel between Views, never
+  in `ui/update-model-context` or the fixed messages. The block lists the newest 40 movements (the totals cover all). A
+  pure hook, `movementsForSummary`, is left for the session summary (not wired: the sessions work owns that file).
 
 #### Trade actions: find the next route
 

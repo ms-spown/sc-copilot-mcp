@@ -266,6 +266,8 @@ export function ledgerStripBalance(raw: any): any {
   const out: any = Object.assign({}, raw);
   delete out.balance;
   delete out.plan_compare;
+  // Where the money went (movementsPanel.ts): every figure in it comes from the balance.
+  delete out.movements;
   if (Array.isArray(raw.contracts)) {
     out.contracts = raw.contracts.map((c: any) => {
       const copy: any = Object.assign({}, c);

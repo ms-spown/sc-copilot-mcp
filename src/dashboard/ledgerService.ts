@@ -7,6 +7,7 @@ import {
 } from "../providers/gamelog/trade.js";
 import type { GameLog } from "../providers/gamelog/reader.js";
 import { buildContracts, EMPTY_LEDGER, type LedgerBase } from "./ledger.js";
+import type { MovementEvent } from "./balanceMovements.js";
 
 /**
  * The reading side of the transport ledger: keeps the contracts of the current game session in memory and refreshes
@@ -50,6 +51,19 @@ const LEDGER_TYPES = new Set([
   "objective_new",
   "objective_completed",
   "hauling_objective",
+]);
+
+/**
+ * The events the balance movement explainer needs, kept apart from `events` (the ledger's own list, whose cap and
+ * count they must not change): insurance claims, hangar requests and session boundaries, with their time only.
+ */
+export const LEDGER_MAX_MOVEMENT_EVENTS = 300;
+const MOVEMENT_TYPES = new Set<string>([
+  "insurance_claim_requested",
+  "hangar_request_completed",
+  "login_completed",
+  "spawned",
+  "session_end",
 ]);
 
 /** What the service needs from the log: injectable, so tests never touch a real Game.log. */
@@ -149,6 +163,8 @@ export class LedgerService {
   private commerceKeys = new Set<string>();
   private lastTime: string | null = null;
   private journal: Transaction[] = [];
+  private movementLog: MovementEvent[] = [];
+  private movementKeys = new Set<string>();
   /** How the file was read, for tests and diagnostics. */
   reads = 0;
   fullReads = 0;
@@ -195,6 +211,16 @@ export class LedgerService {
     if (this.inFlight) await this.inFlight;
   }
 
+  /**
+   * Insurance claims, hangar requests and session boundaries of the session, oldest first, as last read (time and
+   * type only). Empty until the log has been read or when it is not configured: the explainer then simply has no
+   * such event to lean on.
+   */
+  movementEvents(): readonly MovementEvent[] {
+    if (!this.source || !this.source.configured) return [];
+    return this.current.status === "ok" ? this.movementLog : [];
+  }
+
   /** Resolves when the refresh in flight (if any) is done. For tests. */
   async settled(): Promise<void> {
     if (this.inFlight) await this.inFlight;
@@ -222,6 +248,8 @@ export class LedgerService {
     this.commerceKeys = new Set();
     this.lastTime = null;
     this.journal = [];
+    this.movementLog = [];
+    this.movementKeys = new Set();
   }
 
   private unreadable(): void {
@@ -314,6 +342,18 @@ export class LedgerService {
       this.commerceKeys = new Set(this.commerce.map((r) => JSON.stringify(r)));
     }
     for (const e of events) {
+      if (MOVEMENT_TYPES.has(e.type)) {
+        const at = typeof e.time === "string" ? Date.parse(e.time) : NaN;
+        const key = `${e.type}|${at}`;
+        if (!Number.isFinite(at) || this.movementKeys.has(key)) continue;
+        this.movementKeys.add(key);
+        this.movementLog.push({ type: e.type as MovementEvent["type"], atMs: at });
+        if (this.movementLog.length > LEDGER_MAX_MOVEMENT_EVENTS) {
+          this.movementLog = this.movementLog.slice(-LEDGER_MAX_MOVEMENT_EVENTS);
+          this.movementKeys = new Set(this.movementLog.map((x) => `${x.type}|${x.atMs}`));
+        }
+        continue;
+      }
       if (!LEDGER_TYPES.has(e.type)) continue;
       const key = eventKey(e);
       if (this.keys.has(key)) continue;

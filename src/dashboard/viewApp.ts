@@ -909,6 +909,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.trade = L.tradePanel(doc, L, SVG_NS);
     R.tradeActions = L.tradeActionsPanel(doc, L);
     add(R.trade.slot, R.tradeActions.root);
+    // "Mouvements du solde" (movementsPanel.ts): a folded block in the card's details.
+    R.movements = L.movementsPanel(doc, L);
+    add(R.trade.more, R.movements.root);
 
     add(R.full, R.offNote, R.trade.card, R.colInstr, R.colShip, R.colPilot, R.wide);
 
@@ -1444,6 +1447,10 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     // The action bar asks the server for routes; it needs a server that answers, not a live stream.
     const actionsOn =
       initialised && !tornDown && !retired && !!view.poll && view.poll.state !== "off";
+    // Where the money went: read from the raw payload (ledgerNormalize does not keep it), drawn only with the balance.
+    const moved = showBalance
+      ? L.movementsFromLedger(L, view.poll && view.poll.ledger)
+      : { section: null, decomposition: null };
     R.trade.render({
       trade: tradeLedger?.trade ?? null,
       ledgerStatus: tradeLedger ? tradeLedger.status : null,
@@ -1453,6 +1460,13 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       balance: showBalance && view.poll ? view.poll.balance : null,
       baseline: L.baselineLabel(view.poll),
       actionsEnabled: actionsOn,
+      decomposition: moved.decomposition,
+    });
+    R.movements.render({
+      section: moved.section,
+      decomposition: moved.decomposition,
+      showBalance,
+      fullscreen: displayMode === "fullscreen",
     });
     R.tradeActions.render(
       tradeActionsContext(actionsOn, tradeLedger ? tradeLedger.trade : null, now),

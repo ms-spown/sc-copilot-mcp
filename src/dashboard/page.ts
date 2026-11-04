@@ -3,6 +3,8 @@ import { LEDGER_CSS } from "./ledgerStyles.js";
 import { SESSION_VIEW_FUNCTIONS } from "./sessionPanel.js";
 import { SESSION_CSS } from "./sessionStyles.js";
 import { dashboardMain } from "./viewApp.js";
+import { MOVEMENTS_VIEW_FUNCTIONS } from "./movementsPanel.js";
+import { MOVEMENTS_CSS } from "./movementsStyles.js";
 import { SPECS_VIEW_FUNCTIONS } from "./specsView.js";
 import { SPECS_CSS } from "./specsStyles.js";
 import { TRADE_ACTIONS_VIEW_FUNCTIONS } from "./tradeActions.js";
@@ -33,6 +35,7 @@ export function viewScript(): string {
     ...TRADE_VIEW_FUNCTIONS,
     ...TRADE_ACTIONS_VIEW_FUNCTIONS,
     ...SESSION_VIEW_FUNCTIONS,
+    ...MOVEMENTS_VIEW_FUNCTIONS,
   ];
   const functions = all.map((f) => f.toString()).join("\n");
   const names = all.map((f) => f.name).join(", ");
@@ -60,7 +63,7 @@ export function dashboardHtml(): string {
     '<meta name="color-scheme" content="light dark">',
     `<meta http-equiv="Content-Security-Policy" content="${CSP}">`,
     "<title>Tableau de bord en direct</title>",
-    `<style>${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}${TRADE_CSS}${TRADE_ACTIONS_CSS}${SESSION_CSS}</style>`,
+    `<style>${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}${TRADE_CSS}${TRADE_ACTIONS_CSS}${SESSION_CSS}${MOVEMENTS_CSS}</style>`,
     "</head>",
     "<body>",
     '<div id="app" data-stream="init" data-mode="inline" data-grey="1"></div>',

@@ -590,6 +590,52 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
   correspond pas, elle dit que le plan n'est pas vérifié.
 - **Barre d'actions.** Juste sous les chiffres principaux se trouve la barre décrite dans la section suivante (elle est
   aussi accessible avant tout trajet ou plan).
+- **Où est passé l'argent (« Mouvements du solde »).** Un bloc replié dans les détails de la carte, et les mots de
+  l'avertissement « non expliqué » de la carte. Un explicateur pur (`src/dashboard/balanceMovements.ts`) étiquette
+  CHAQUE variation du solde de la session de jeu (et, pour un trajet, la fenêtre exacte sur laquelle son net a été lu)
+  avec au plus une cause et un degré de certitude honnête. Entrées, toutes déjà là : l'historique du solde de la
+  télémétrie (un point par variation, précision d'environ une trame sur l'horloge de ce serveur, 500 variations gardées
+  en mémoire : il n'utilise pas les événements agrégés `uec_changed`), les transactions du journal de commerce
+  (marchandises et objets de boutique), la fin des contrats, les demandes de réclamation d'assurance, les demandes de
+  hangar et `login_completed` (le service du carnet garde ces derniers à part de ses propres événements). Catégories :
+
+  | Catégorie | Sens | Certitude |
+  | --- | --- | --- |
+  | `explained_by_transaction` | une transaction du journal et la variation du solde concordent (marchandises via la réconciliation du modèle de commerce ; autres lignes par montant exact) | `matched` |
+  | `fee_on_transaction` | ce qu'un règlement de marchandise a pris en plus du montant du journal, par groupe : le `clusterFee` du modèle, pas une copie | `measured` (`ambiguous` quand la même fenêtre contient aussi un objet de boutique, une fin de contrat ou un événement d'assurance/hangar) |
+  | `item_purchase` | une ligne d'objet de boutique terminée dont le total égale une variation du solde | `matched` |
+  | `probable_contract_reward` | une hausse par ailleurs non expliquée de 3 s avant à 20 s après la fin d'un contrat `completed` ; le montant est celui du solde, le journal n'a aucune ligne de récompense | `probable` |
+  | `probable_insurance_or_hangar_cost` | une baisse par ailleurs non expliquée de 3 s avant à 20 s après une demande de réclamation d'assurance ou une demande de hangar terminée | `probable` |
+  | `unexplained` | tout le reste ; raisons `no_cause`, `ambiguous` (deux sortes de cause conviennent : aucune n'est choisie) ou `stream_gap` (la variation chevauche une coupure du flux : ni son heure ni son contenu ne sont connus) | `none` / `ambiguous` |
+
+  Une variation va à une cause au plus (une preuve forte, un montant qui correspond, passe avant la proximité dans le
+  temps). **Carburant, réparations, amendes, virements entre joueurs et récompenses sans événement à côté ne laissent
+  aucune ligne dans le journal : ils ne peuvent être que « non expliqués »**, et le bloc dit ce que ce pourrait être sans
+  en choisir un. Un contrat échoué ou abandonné juste avant une baisse n'ajoute qu'un indice, jamais l'affirmation d'une
+  pénalité. Invariant, testé : les montants de toutes les entrées s'additionnent, à l'aUEC près, à la variation du solde
+  de la fenêtre ; un règlement qui contient un prix et des frais est UNE variation du solde coupée en deux parts d'une
+  seule cause. Les variations non expliquées de même signe distantes de moins d'1 s sont montrées sur une ligne.
+  **Décomposition d'un trajet.** Pour un trajet dont le net est mesuré, l'avertissement (affiché quand le net contient
+  plus que la marge et les frais n'expliquent) dit : variation = marge brute + frais + objets + récompenses probables +
+  coûts probables + non expliqué, la part non expliquée étant nommée. L'équation n'est présentée comme bouclée que si tout
+  ce qui a été acheté a été vendu pendant le trajet, sans stock d'avant et si chaque ligne du journal a trouvé sa
+  variation du solde ; sinon seules les variations sont additionnées. Le `fees.unexplained` historique garde son signe
+  (positif : le solde a plus baissé que la marge ne le dit) ; les parts de la décomposition sont dans le signe du solde.
+  **Tolérances, et ce qui est mesuré :** 3 s avant / 20 s après pour récompenses et coûts (les 3 s sont mesurées : sur
+  les 95 journaux de l'installation de référence, l'avis « Contract Complete » arrive 0 à 3,1 s après `MissionEnded` ;
+  les 20 s sont une hypothèse, le double du délai de stabilisation du carnet), 2 s avant / 8 s après pour les
+  transactions (hypothèse du modèle de commerce), montants exacts à plus ou moins le plus grand de 1 aUEC et 0,1 %.
+  Mesuré aussi sur ces journaux : les 131 fins de contrat terminées ne tombent jamais à moins de 30 s d'une ligne de
+  boutique ou de commerce (récompenses et ventes ne se disputent donc pas en pratique), les achats de marchandise d'un
+  règlement sont espacés d'au moins 10 s (d'où le groupe de 20 s), seules 12 % des lignes d'objets suivent une autre à
+  moins de 4 s, et les demandes de réclamation d'assurance sont surtout isolées (155 des 187 rafales sont une seule
+  ligne). Ce qui n'a PAS pu être mesuré : le délai entre une ligne du journal et la variation du solde qu'elle cause
+  (le journal n'a pas de solde : il faut une capture des deux en même temps), et ce que coûtent vraiment une assurance
+  ou un hangar. Tout montant ici est dérivé du solde : construit seulement quand la View l'a demandé, dessiné après le
+  clic, retiré par l'émetteur et le récepteur sur le canal entre Views, jamais dans `ui/update-model-context` ni les
+  messages fixes. Le bloc liste les 40 mouvements les plus récents (les totaux couvrent tous). Un crochet pur,
+  `movementsForSummary`, est laissé pour le résumé de session (non branché : le travail sur les sessions possède ce
+  fichier).
 
 #### Actions de commerce : trouver la prochaine route
 

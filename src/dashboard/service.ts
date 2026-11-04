@@ -149,6 +149,8 @@ export class DashboardService {
     const history =
       includeBalance && telemetry.balanceHistory ? await telemetry.balanceHistory() : [];
     const trades = this.trades ? this.trades() : undefined;
+    // Insurance, hangar and session events, for the balance movement explainer (only used with the balance).
+    const movementEvents = includeBalance && this.ledger ? this.ledger.movementEvents() : undefined;
     return buildLedgerPayload({
       base,
       history,
@@ -156,6 +158,7 @@ export class DashboardService {
       plan: this.plan,
       nowMs,
       ...(trades ? { trades } : {}),
+      ...(movementEvents ? { movementEvents } : {}),
     });
   }
 

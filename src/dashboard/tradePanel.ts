@@ -320,11 +320,12 @@ export function tradeInlineText(L: any, trade: any, showBalance: boolean): strin
 /**
  * Builds the card and the compact line once; `render(ctx)` then only changes text, attributes and custom properties.
  * svgNs is the SVG namespace name, handed in by the View (one place names it).
- * ctx: { trade, plan, showBalance, fullscreen, balance, baseline }
+ * ctx: { trade, plan, showBalance, fullscreen, balance, baseline, decomposition }
  *   trade    the normalised commerce section of the ledger (or null)
  *   plan     the cleaned plan (or null)
  *   balance  the poll's balance { delta, since } while shown (fallback when no trade journal exists)
  *   baseline where the balance change is counted from, in words
+ *   decomposition the net taken apart change by change (movementsPanel.ts), or null
  */
 export function tradePanel(doc: any, L: any, svgNs: string): any {
   const cfg = tradeConfig();
@@ -772,6 +773,15 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       m &&
       m.fees.unexplained !== null &&
       m.turnover &&
+      Math.abs(m.fees.unexplained) > m.turnover * 0.02 &&
+      ctx.decomposition
+    )
+      // The net is taken apart change by change (movementsPanel.ts / balanceMovements.ts): say what it is made of.
+      warns.push(L.movementsWarningText(ctx.decomposition));
+    else if (
+      m &&
+      m.fees.unexplained !== null &&
+      m.turnover &&
       Math.abs(m.fees.unexplained) > m.turnover * 0.02
     )
       warns.push(
@@ -1081,7 +1091,8 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     }
   }
 
-  return { line, card: root, slot, render };
+  // `more` is the body of the folded details: blocks of other modules (the balance movements) are added to it.
+  return { line, card: root, slot, more: moreBody, render };
 }
 
 /** The functions of this file, in the order they are serialised (page.ts). */
