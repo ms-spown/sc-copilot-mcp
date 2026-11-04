@@ -18,12 +18,12 @@ What the manual already carries, so the pasted block need not repeat it: rule 1 
 (untrusted text), rule 4 (errors), the trade tool choice in rule 3 (the price, planner, history, market status,
 refining, item, marketplace, journal and saved-session tools), the core of rules 6 and 7 (no safety claim, a hidden balance respected, connection state, no second dashboard, never `sc_live_poll`, `sc_live_mark` or `sc_trade_suggest`) and the way to accompany.
 What it does not carry, and the block must keep: the other lines of rule 3 (ships, patches, missions, wiki, game
-log), rule 5, the details of rules 6 and 7 (what the stream lacks, on foot or seated, the dashboard balance) and rule 9
-(the shortcuts zone: the server's manual says nothing of it).
+log), rule 5, the details of rules 6 and 7 (what the stream lacks, on foot or seated, the dashboard balance), rule 9
+(the shortcuts zone: the server's manual says nothing of it) and rule 10 (the route cards and the sessions of the dashboard).
 
 - Claude Desktop or claude.ai, canary question 1 fails: keep the whole block.
 - Claude Code, or a client where canary question 1 passes: you may drop rules 1, 2 and 4 and the trade lines of
-  rule 3. If you use live telemetry, keep rules 6, 7 and 9.
+  rule 3. If you use live telemetry, keep rules 6, 7, 9 and 10.
 
 ```
 You have the Star Citizen tools from the "sc-copilot" server. Rules:
@@ -129,6 +129,17 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    defaults taken from public sources, never checked in the game on 4.10: say "the default key is X, check your
    Keybindings", never "press X". Never deduce from it that the player changed a key, that it is dark, or that the
    lights are on or off.
+10. The dashboard's route cards ("Trouver une route") come from the same planner as uex_plan_trade. When the player sends you
+   a card with "Demander à l'agent", the message carries the exact uex_plan_trade call that reproduces it (hold, ship,
+   budget when the player typed one, starting place, constraints, stop time) and the card's own figures: replay THAT call, never
+   your own defaults, compare its first result with the figures in the message and say explicitly what differs and why (stock,
+   price age, assumptions) before giving a verdict. If the message says the budget is the player's balance, read it yourself
+   (sc_live_state) when it is shown; when it is hidden, run without a budget and say so. The "Fiabilité" block of a card (a level,
+   its reasons, a prudent first run) and "Partir de ma position" (a place the game log named, dated, or typed by the player: the
+   game has no live position) are the dashboard's own labelled estimates: quote the level and the reasons, never call a route
+   safe or certain. The player starts and ends play sessions from the dashboard ("Démarrer une session", "Nouvelle session",
+   "Terminer", the Sessions tab with archive and delete): call sc_session_new or sc_session_end only when the player asks;
+   sc_session_list leaves out archived sessions unless include_archived is true.
 ```
 
 ## The dashboard's shortcuts zone: what Claude should and should not say about keys
@@ -140,6 +151,18 @@ keys it shows as defaults taken from public sources and never checked in the gam
 T, each labelled "défaut"): say "the default key is X, check it in your Keybindings", never "press X". The page does not know
 whether the player rebound a key, whether it is dark, or whether the lights are on (the stream cannot tell off from not
 reported), and Claude should not claim any of them from it either.
+
+## The route cards and the sessions of the dashboard: what changed for the player (2.8.0)
+
+This is rule 10 of the block above, with its reasons. Until 2.7.0, "Demander à l'agent" sent the route, the prices and the gain,
+but none of the request that had produced the card (the hold, the budget, the starting place, the constraints), so Claude re-ran
+`uex_plan_trade` with the tool's own defaults and found another plan. Now the message carries the exact call and the card's figures,
+and asks Claude to say what differs and why. A budget that is the player's balance is never written in the message: when it is shown,
+Claude is told to read it itself; when it is hidden, Claude goes without. Each card also has a "Fiabilité" block (how far the estimate
+can be trusted, why, and a prudent first run), and "Partir de ma position" plans from a place the game log named (never a live
+position, which the game does not have). In the dashboard the player can start a session at any time, see them all in a Sessions
+tab and archive or delete ended ones; the wording about the balance in the block is unchanged (shown by default, hidden is the
+player's choice). Recopy the block if you want rule 10.
 
 ## Canary test: are the server instructions honoured?
 

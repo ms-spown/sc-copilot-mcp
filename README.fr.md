@@ -251,6 +251,13 @@ l'activer** : c'est une fonction non documentée du jeu, et le risque est le vô
   la mise en page a été testée dans un navigateur contre un faux hôte, et une page de test jetable a été affichée dans
   Claude Desktop, mais le mainteneur n'a pas encore vu ce tableau de bord lui-même dans Claude Desktop (voir
   [docs/ROADMAP.md](docs/ROADMAP.md)).
+- **Sessions, solde et routes dans ce tableau de bord (2.8.0).** Une boîte « Solde » est le premier élément de l'en-tête (en
+  direct, ou le dernier solde connu avec son âge, ou la raison pour laquelle il est inconnu ; elle suit « Masquer le solde »). Une
+  session peut être démarrée à tout moment, et un onglet « Sessions » les liste toutes avec archiver et supprimer. La carte de
+  commerce ne parle que de la session en cours (un ancien trajet est « hors session »). « Trouver une route » prend votre soute
+  dans une liste, peut partir « de ma position » (un lieu daté et étiqueté, avec un trajet d'ouverture en chemin) et montre un
+  bloc de fiabilité sur chaque carte ; « Demander à l'agent » envoie l'appel exact de `uex_plan_trade` qui reproduit la carte,
+  pour que l'agent trouve la même route. Voir [CHANGELOG.md](CHANGELOG.md).
 - **Raccourcis selon le contexte (dans ce tableau de bord).** Une zone « Raccourcis » rappelle les actions qui
   conviennent au moment (train sorti, à pied, verrouillage hostile...), à partir d'états déjà dans le flux. Quelques
   touches par défaut sont affichées, marquées « défaut », tirées de sources publiques et non vérifiées en jeu sur la

@@ -235,6 +235,12 @@ short "Read this first" block).
   [docs/TELEMETRY.md](docs/TELEMETRY.md#live-dashboard). **Unverified:** the layout was tested in a browser against
   a fake host, and a throwaway test page was displayed in Claude Desktop, but the maintainer has not yet seen this
   dashboard itself inside Claude Desktop (see [docs/ROADMAP.md](docs/ROADMAP.md)).
+- **Sessions, balance and routes in that dashboard (2.8.0).** A "Solde" box is the first thing of the header (live, or the last
+  known balance with its age, or why it is unknown; it follows "Masquer le solde"). A session can be started at any time, and a
+  "Sessions" tab lists them all with archive and delete. The commerce card speaks of the current session only (an older run is
+  "hors session"). "Trouver une route" takes your hold from a list, can start "from my position" (a dated, labelled place, with an
+  opening trade on the way) and shows a reliability block on every card; "Demander à l'agent" sends the exact `uex_plan_trade`
+  call that reproduces the card, so the agent finds the same route. See [CHANGELOG.md](CHANGELOG.md).
 - **Context shortcuts (in that dashboard).** A "Raccourcis" zone reminds you of the actions that fit the moment (landing
   gear out, on foot, hostile lock...), from states already in the stream. A few default keys are shown, labelled
   "défaut", taken from public sources and not checked in the game on 4.10; the other actions have no key. It never

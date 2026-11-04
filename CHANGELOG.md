@@ -6,6 +6,32 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-11-04
+
+This release is the answer to the first in-game test pass of the dashboard (the player used it for a session inside Claude Desktop and
+reported what was confusing). **Sessions work:** no phantom "Session 1" when the dashboard opens, a session can be started at any time
+("Démarrer une session", a chronometer that the game fills later), the game starts one by itself when it is launched, "Terminer" and
+"Nouvelle session" say what they did, and a **Sessions tab** lists every session with archive and delete per session. **The balance is
+obvious:** a "Solde" box, first in the header, with the live balance, the last known one with its age, or the reason it is unknown;
+it is independent of the session and follows the "Masquer le solde" choice. **The commerce card speaks of the current session only**: a
+run of an older session is kept apart ("Dernier trajet connu, hors session"). **"Trouver une route"** takes your own hold by default (a
+list, not a blank field), can **start from your position** ("Partir de ma position", with an opening trade on the way), and every card
+carries a **reliability block** (how far the estimate can be trusted, why, and a prudent first run). **The messages to Claude follow the
+balance choice** (no more "Ne lis pas mon solde" while the balance is shown) and **"Demander à l'agent" carries the exact call that
+reproduces the card**, so the agent finds the same route instead of re-running the planner with its own defaults.
+
+Tool surface (the golden file and `docs/TOOLS.md` were regenerated along the way): one new **app-only** tool, `sc_session_manage`
+(archive, unarchive, delete; refused to a client that does not show Views, never the session in progress), so 66 tools exist and Claude
+still sees 52 by default; `sc_session_list` accepts `limit` up to 200 and `include_archived`; `sc_session_stats` gains
+`include_archived` and `archived_not_counted`; the app-only `sc_trade_suggest` gains the action `holds`, the `search` inputs
+`position` and `position_text`, and answers with `origin` (the starting place as resolved), `position` and per-option `opening`.
+`uex_plan_trade` is unchanged (its answer does not carry the new reliability fields). The session file stays version 2 and gains
+optional fields (`archived`, `started_by`); an older server that rewrites it drops them. The block to paste into a Claude project
+gains a short paragraph on what changed for the player: **recopy the block of `docs/USING_WITH_CLAUDE.md` (or `.fr.md`) if you want
+it**. The dashboard page grew from 373 to 439 kB; the guardrail is raised to 462 kB and a slimming pass is the first item of the
+roadmap. Still **not verified: the dashboard itself inside Claude Desktop, the four default keys (X, H, J, T) in the game, and the
+reliability and position features on a real market session.**
+
 ### Fixed (the fixed messages follow the balance choice, F6)
 - **No more "Ne lis pas mon solde" appended to every click while the balance is shown.** Every fixed message the page posts now
   reads the player's choice at the click: shown, it says nothing about the balance and names no `include_balance` (it also drops

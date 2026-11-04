@@ -441,7 +441,7 @@ describe("Feature: every page says the same true thing about what is saved", () 
     }
   });
 
-  it("Given the block to paste, Then its last rule says the Raccourcis zone is a display and its keys are unverified defaults", () => {
+  it("Given the block to paste, Then rule 9 says the Raccourcis zone is a display and its keys are unverified defaults", () => {
     const expected = [
       [
         "docs/USING_WITH_CLAUDE.md",
@@ -462,10 +462,47 @@ describe("Feature: every page says the same true thing about what is saved", () 
       const text = flat(read(file));
       const fence = text.indexOf("```");
       const block = text.slice(fence, text.indexOf("```", fence + 3));
-      // the rule is the LAST of the block to paste, not a sentence of the explanation under it
-      const rule9 = block.slice(block.indexOf(" 9. "));
+      // rule 9 ends where rule 10 begins; both are inside the block to paste, not in the explanation under it
+      const rule9 = block.slice(block.indexOf(" 9. "), block.indexOf(" 10. "));
       for (const phrase of phrases) expect(rule9, file).toContain(phrase.trim());
       expect(block.indexOf(" 9. "), file).toBeGreaterThan(block.indexOf(" 8. "));
+    }
+  });
+
+  it("Given the block to paste, Then its last rule (10) tells Claude to replay the card's call, say what differs, and read the balance itself", () => {
+    const expected = [
+      [
+        "docs/USING_WITH_CLAUDE.md",
+        "10. The dashboard's route cards",
+        "replay THAT call, never your own defaults",
+        "say explicitly what differs and why (stock, price age, assumptions) before giving a verdict",
+        "read it yourself (sc_live_state) when it is shown; when it is hidden, run without a budget and say so",
+        "never call a route safe or certain",
+        "sc_session_list leaves out archived sessions unless include_archived is true",
+      ],
+      [
+        "docs/USING_WITH_CLAUDE.fr.md",
+        "10. Les cartes de route du tableau de bord",
+        "rejouez CET appel, jamais vos valeurs par défaut",
+        "dites explicitement ce qui diffère et pourquoi (stock, âge des prix, hypothèses) avant de donner un verdict",
+        "lisez-le vous-même (sc_live_state) quand il est affiché ; masqué, lancez sans budget et dites-le",
+        "ne dites jamais qu'une route est sûre ou certaine",
+        "sc_session_list laisse de côté les sessions archivées sauf include_archived à true",
+      ],
+    ] as const;
+    for (const [file, ...phrases] of expected) {
+      const text = flat(read(file));
+      const fence = text.indexOf("```");
+      const block = text.slice(fence, text.indexOf("```", fence + 3));
+      const rule10 = block.slice(block.indexOf(" 10. "));
+      for (const phrase of phrases) expect(rule10, file).toContain(phrase.trim());
+      // the last rule of the block, after rule 9, with no backtick (the block is a code fence)
+      expect(block.indexOf(" 10. "), file).toBeGreaterThan(block.indexOf(" 9. "));
+      expect(rule10, file).not.toContain("`");
+      // the wording about the balance did not change: shown by default, hiding is the player's choice
+      expect(block, file).toMatch(
+        /include_balance=true is ignored then|include_balance=true est ignoré/,
+      );
     }
   });
 

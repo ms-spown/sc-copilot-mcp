@@ -37,7 +37,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // per-step figures of the message to the agent. A 420 kB budget left 0.1 kB for the built page and none for the vitest measure
 // (CI failed on it), so the budget is the larger measure plus about 5 % (440 kB), rounded; both guards use the same number. Same
 // status: our own guard, nothing was removed to fit it, the host's own limit is still unproven.
-const BUDGET_BYTES = 440_000;
+// 2026-11-04 (release 2.8.0 housekeeping): 439.3 kB built (about 439.7 kB as the vitest guard measures it) after the sessions fixes and
+// the Sessions view, the account balance zone, the commerce card scoped to the session, the agent recipe, the route reliability block
+// and "Partir de ma position" (373.0 kB in 2.7.0). A 440 kB budget left under 1 kB: the next fix would have tripped CI on a measure
+// that no feature moved, so the budget is the measure plus about 5 % (462 kB), rounded; both guards use the same number. Product code
+// is untouched by this change. Same status: our own guard, nothing was removed to fit it, the host's own limit is still unproven.
+// The page grew by 66 kB over this wave: a slimming pass is the first item of the roadmap.
+const BUDGET_BYTES = 462_000;
 
 const page = await import(pathToFileURL(path.join(root, "dist", "dashboard", "page.js")).href);
 const bytes = Buffer.byteLength(page.dashboardHtml(), "utf8");
