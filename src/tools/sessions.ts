@@ -176,7 +176,7 @@ export function sessionTools({
     {
       name: "sc_session_new",
       description:
-        "Starts a new play session now (the player pressed or asked for 'Nouvelle session'): the current one is closed with its numbers kept, the new one starts from the balance just seen. Writes only this server's own session file; nothing is sent to the game. Use only when the player asks. Optional note (500 characters).",
+        "Starts a new play session now (the player pressed or asked for 'Nouvelle session'): the current one is closed with its numbers kept, the new one starts from the balance just seen. A session that is still empty (waiting for the game) already is the next one: nothing starts (started=false). Writes only this server's own session file; nothing is sent to the game. Use only when the player asks. Optional note (500 characters).",
       inputSchema: {
         type: "object",
         properties: { note: { type: "string", maxLength: 500 } },
@@ -188,7 +188,11 @@ export function sessionTools({
         const made = await sessions.newSession(note);
         return result({
           ok: true,
-          message: `Session ${made.summary.number} started.${made.previous !== null ? ` Session ${made.previous} was closed.` : ""}${saveWarning(made.saved)}`,
+          started: made.started,
+          closed_session: made.closedPrevious,
+          message: made.started
+            ? `Session ${made.summary.number} started.${made.closedPrevious !== null ? ` Session ${made.closedPrevious} was closed.` : ""}${saveWarning(made.saved)}`
+            : `Nothing started: session ${made.summary.number} is empty and still waits for the game, so it already is the next session.${note ? " The note was added to it." : ""}${saveWarning(made.saved)}`,
           session: withoutMoney(made.summary),
           persistence: { saved: made.saved, status: sessions.notice ?? "ok" },
         });
@@ -197,7 +201,7 @@ export function sessionTools({
     {
       name: "sc_session_end",
       description:
-        "Ends the current play session now (the player asked to finish it); its numbers stay in the history. The next play period starts a new one once the game is seen starting afresh. Writes only this server's own session file. Use only when the player asks. Optional note (500 characters).",
+        "Ends the current play session now (the player asked to finish it); its numbers stay in the history. The next play period starts a new one once the game is seen starting afresh. A session that is still empty (waiting for the game) has nothing to end and stays open (ok=false, reason=empty). Writes only this server's own session file. Use only when the player asks. Optional note (500 characters).",
       inputSchema: {
         type: "object",
         properties: { note: { type: "string", maxLength: 500 } },
@@ -207,11 +211,17 @@ export function sessionTools({
         if (!sessions || !sessions.enabled) return off();
         const { note } = z.object({ note: z.string().max(500).optional() }).parse(args || {});
         const ended = await sessions.endSession(note);
+        const n = ended.summary?.number;
         return result({
           ok: ended.ended,
+          reason: ended.reason,
           message: ended.ended
-            ? `Session ${ended.summary?.number} ended.${saveWarning(ended.saved)}`
-            : "No session was open (an empty one is simply dropped).",
+            ? `Session ${n} ended.${saveWarning(ended.saved)}`
+            : ended.reason === "empty"
+              ? `Nothing ended: session ${n} is empty and still waits for the game (nothing to close). It stays open.`
+              : ended.reason === "already_ended"
+                ? `Nothing ended: session ${n} was already ended. Start a new one with sc_session_new, or the next play period will.`
+                : "Nothing ended: there is no session yet.",
           persistence: { saved: ended.saved, status: sessions.notice ?? "ok" },
           ...(ended.summary ? { session: withoutMoney(ended.summary) } : {}),
         });

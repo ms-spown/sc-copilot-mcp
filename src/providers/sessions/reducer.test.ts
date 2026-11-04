@@ -5,6 +5,7 @@ import {
   HEARTBEAT_MS,
   isEmpty,
   latest,
+  needsEnsure,
   observe,
   startNew,
   type Observation,
@@ -262,6 +263,189 @@ describe("Feature: the player can end a session and start another", () => {
     observe(s, obs({ now: T0, balance: 1 }), cfg);
     endCurrent(s, T0 + 2 * HOUR);
     expect(latest(s)!.ended_at).toBe(new Date(T0).toISOString());
+  });
+});
+
+/** The five states a player can find the card in, built by the same functions the server uses. */
+const STATES = {
+  none: () => emptyState(),
+  waiting: () => {
+    const s = emptyState();
+    ensureCurrent(s, T0, cfg);
+    return s;
+  },
+  active: () => {
+    const s = emptyState();
+    observe(s, obs({ now: T0, balance: 1000, freshStart: true, trips: [trip(1, T0 + MIN)] }), cfg);
+    observe(s, obs({ now: T0 + HEARTBEAT_MS, balance: 1200 }), cfg);
+    return s;
+  },
+  ended: () => {
+    const s = STATES.active();
+    endCurrent(s, T0 + 2 * MIN);
+    return s;
+  },
+};
+const summary = (s: ReturnType<typeof emptyState>) =>
+  s.sessions.map((x) => `${x.number}:${x.ended_at === null ? "open" : (x.end_reason ?? "ended")}`);
+
+describe("Feature: the state machine of the session card (every state x every action)", () => {
+  it("Given no session, Then ending says there is none, and starting makes session 1 from the click", () => {
+    const s = STATES.none();
+    const e = endCurrent(s, T0);
+    expect([e.ended, e.reason, e.changed]).toEqual([false, "none", false]);
+    const n = startNew(s, T0, cfg, null);
+    expect(n.action).toBe("created");
+    expect(summary(s)).toEqual(["1:open"]);
+    expect(isEmpty(latest(s)!)).toBe(true);
+  });
+
+  it("Given an empty session waiting for the game, Then ending changes nothing and says it is empty", () => {
+    const s = STATES.waiting();
+    const before = JSON.stringify(s);
+    const e = endCurrent(s, T0 + MIN, "a note");
+    expect([e.ended, e.reason, e.changed]).toEqual([false, "empty", false]);
+    expect(JSON.stringify(s)).toBe(before);
+    // Repeated clicks do not loop either: same session, same number, same ids.
+    endCurrent(s, T0 + 2 * MIN);
+    expect(summary(s)).toEqual(["1:open"]);
+  });
+
+  it("Given an empty session waiting for the game, Then 'Nouvelle session' changes nothing (same number), or adopts a note in place", () => {
+    const s = STATES.waiting();
+    const id = latest(s)!.id;
+    const before = JSON.stringify(s);
+    const n = startNew(s, T0 + MIN, cfg, null);
+    expect([n.action, n.changed]).toEqual(["kept", false]);
+    expect(JSON.stringify(s)).toBe(before);
+    const withNote = startNew(s, T0 + 2 * MIN, cfg, null, "  for the evening ");
+    expect(withNote.action).toBe("renewed");
+    expect(latest(s)!.id).toBe(id);
+    expect(latest(s)!.note).toBe("for the evening");
+    expect(summary(s)).toEqual(["1:open"]);
+  });
+
+  it("Given an empty session, When the dashboard is polled at any time, Then it is kept, or renewed after the gap (never piled up)", () => {
+    const s = STATES.waiting();
+    expect(ensureCurrent(s, T0 + MIN, cfg).action).toBe("kept");
+    expect(ensureCurrent(s, T0 + 10 * HOUR, cfg).action).toBe("renewed");
+    expect(summary(s)).toEqual(["1:open"]);
+  });
+
+  it("Given an empty session, When the game is seen, Then it becomes the session in progress", () => {
+    const s = STATES.waiting();
+    const r = observe(s, obs({ now: T0 + 10 * MIN, balance: 7, freshStart: true }), cfg);
+    expect(r.action).toBe("started");
+    expect(isEmpty(latest(s)!)).toBe(false);
+    expect(summary(s)).toEqual(["1:open"]);
+  });
+
+  it("Given a session in progress, Then ending closes it by hand and starting closes it for the new one", () => {
+    const a = STATES.active();
+    const e = endCurrent(a, T0 + 5 * MIN);
+    expect([e.ended, e.reason, e.changed]).toEqual([true, "ended", true]);
+    expect(summary(a)).toEqual(["1:manual"]);
+    const b = STATES.active();
+    startNew(b, T0 + 5 * MIN, cfg, 1300);
+    expect(summary(b)).toEqual(["1:new_session", "2:open"]);
+    expect(latest(b)!.start_balance).toBe(1300);
+  });
+
+  it("Given a session in progress quiet for longer than the gap, Then the poll closes it as a gap and a fresh one waits", () => {
+    const s = STATES.active();
+    expect(needsEnsure(s, T0 + 5 * HOUR, cfg)).toBe(true);
+    ensureCurrent(s, T0 + 5 * HOUR, cfg);
+    expect(summary(s)).toEqual(["1:gap", "2:open"]);
+    expect(isEmpty(latest(s)!)).toBe(true);
+  });
+
+  it("Given an ended session, When the dashboard is polled, Then it stays ended however long the wait (no session is made behind the player's back)", () => {
+    const s = STATES.ended();
+    const before = JSON.stringify(s);
+    for (const wait of [MIN, HOUR, 4 * HOUR, 100 * HOUR]) {
+      expect(needsEnsure(s, T0 + wait, cfg)).toBe(false);
+      const r = ensureCurrent(s, T0 + wait, cfg);
+      expect([r.action, r.changed]).toEqual(["kept", false]);
+    }
+    expect(JSON.stringify(s)).toBe(before);
+  });
+
+  it("Given an ended session, When ending again, Then it says it was already ended and changes nothing", () => {
+    const s = STATES.ended();
+    const e = endCurrent(s, T0 + 10 * MIN);
+    expect([e.ended, e.reason, e.changed]).toEqual([false, "already_ended", false]);
+    expect(summary(s)).toEqual(["1:manual"]);
+  });
+
+  it("Given an ended session, When 'Nouvelle session' is pressed, Then a new one starts and nothing is closed twice", () => {
+    const s = STATES.ended();
+    const endedAt = latest(s)!.ended_at;
+    const n = startNew(s, T0 + 30 * MIN, cfg, null);
+    expect(n.action).toBe("created");
+    expect(summary(s)).toEqual(["1:manual", "2:open"]);
+    expect(s.sessions[0].ended_at).toBe(endedAt);
+    expect(isEmpty(latest(s)!)).toBe(true);
+  });
+
+  it("Given an ended session and the game still running, Then looks hold (nothing recorded) even when the balance reappears after a restart", () => {
+    const s = STATES.ended();
+    const ended = latest(s)!.ended_at!;
+    const joined = new Date(Date.parse(ended) - HOUR).toISOString(); // the join that is already behind us
+    for (const [at, freshStart] of [
+      [T0 + 3 * MIN, false],
+      [T0 + 4 * MIN, true], // a restarted server sees its first balance late: not a new play period
+    ] as const) {
+      const r = observe(
+        s,
+        obs({ now: at, balance: 5, freshStart, connection: { state: "online", since: joined } }),
+        cfg,
+      );
+      expect(r.action).toBe("held");
+    }
+    // Same with the game stopped.
+    expect(observe(s, obs({ now: T0 + HOUR, running: false }), cfg).action).toBe("held");
+    expect(summary(s)).toEqual(["1:manual"]);
+  });
+
+  it("Given an ended session, When the game is started again, Then a new session starts (by the log, or by the balance when the log says nothing)", () => {
+    const viaLog = STATES.ended();
+    const since = new Date(T0 + 20 * MIN).toISOString();
+    observe(
+      viaLog,
+      obs({ now: T0 + 21 * MIN, balance: 9, connection: { state: "menu", since } }),
+      cfg,
+    );
+    expect(summary(viaLog)).toEqual(["1:manual", "2:open"]);
+    const noLog = STATES.ended();
+    observe(noLog, obs({ now: T0 + 21 * MIN, balance: 9, freshStart: true }), cfg);
+    expect(summary(noLog)).toEqual(["1:manual", "2:open"]);
+    const unknownLog = STATES.ended();
+    observe(
+      unknownLog,
+      obs({
+        now: T0 + 21 * MIN,
+        balance: 9,
+        freshStart: true,
+        connection: { state: "unknown", since: null },
+      }),
+      cfg,
+    );
+    expect(summary(unknownLog)).toEqual(["1:manual", "2:open"]);
+  });
+
+  it("Given a game that closes cleanly, Then the open session says so and resumes when the game is back", () => {
+    const s = STATES.active();
+    const quit = new Date(T0 + 5 * MIN).toISOString();
+    observe(
+      s,
+      obs({ now: T0 + 5 * MIN, running: false, connection: { state: "closed", since: quit } }),
+      cfg,
+    );
+    expect(latest(s)!.quit_at).toBe(quit);
+    expect(latest(s)!.ended_at).toBeNull();
+    observe(s, obs({ now: T0 + 40 * MIN, balance: 1300 }), cfg);
+    expect(summary(s)).toEqual(["1:open"]);
+    expect(latest(s)!.interruptions[0].kind).toBe("game_closed");
   });
 });
 

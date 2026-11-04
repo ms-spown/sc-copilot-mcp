@@ -931,8 +931,6 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       refresh: () => pollOnce(),
       say: (text: string) => feedback(text),
       toggleBalance: () => toggleBalance(),
-      setTimeout: (fn: () => void, ms: number) => win.setTimeout(fn, ms),
-      clearTimeout: (t: any) => win.clearTimeout(t),
     });
 
     // Commerce card (tradePanel.ts): full width at the top of the cockpit, a compact line under the small view.

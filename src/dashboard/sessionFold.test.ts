@@ -132,11 +132,14 @@ describe("Feature: the one line unfolds on a real button", () => {
     expect(text(w)).not.toMatch(MONEY_DIGITS);
   });
 
-  it("Given the card, Then 'Nouvelle session' is a secondary button, never the loud one", async () => {
+  it("Given a session in progress, Then 'Nouvelle session' is a secondary button, never the loud one (it is the main one only once the session has ended)", async () => {
     const w = await page();
     await w.advance(5 * SECOND);
     const b = findButton(w.root, "Nouvelle session");
     expect(b.className).toBe("btn small");
+    const ended = await page("ended");
+    await ended.advance(5 * SECOND);
+    expect(findButton(ended.root, "Nouvelle session").className).toBe("btn small primary");
   });
 
   it("Given the compact view, Then the order is header, alerts, dials, ship, session line, balance, then the rest", async () => {

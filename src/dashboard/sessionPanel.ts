@@ -111,6 +111,9 @@ export function sessionSummaryNormalize(raw: any, allowMoney: boolean): any {
     started_at: startedAt,
     ended_at: sessionIso(raw.ended_at),
     last_activity_at: sessionIso(raw.last_activity_at),
+    // True while the game was never seen during the session: it only waits for the game (nothing to end or restart).
+    empty: raw.empty === true,
+    game_closed_at: sessionIso(raw.game_closed_at),
     duration_ms: sessionNum(raw.duration_ms),
     active_ms: sessionNum(raw.active_ms) || 0,
     interruptions: sessionCount(raw.interruptions, 999),
@@ -191,10 +194,44 @@ export function sessionWhen(iso: any, now: number): string {
   return two(d.getDate()) + "/" + two(d.getMonth() + 1) + " " + clock;
 }
 
+/**
+ * Where the card stands, in one word: "none" (no session), "waiting" (an empty session: the game was never seen during it),
+ * "active" (in progress), "idle" (open but quiet for longer than the gap), "ended" (closed: by hand, by a new session or by a gap).
+ */
+export function sessionPhase(cur: any, stale: boolean): string {
+  if (!cur) return "none";
+  if (cur.status === "ended") return "ended";
+  if (cur.empty) return "waiting";
+  return stale ? "idle" : "active";
+}
+
 export function sessionStateLabel(cur: any, stale: boolean): string {
-  if (!cur) return "";
-  if (cur.status === "ended") return "terminée";
-  return stale ? "inactive" : "en cours";
+  const phase = sessionPhase(cur, stale);
+  if (phase === "none") return "";
+  if (phase === "ended") return "terminée";
+  if (phase === "waiting") return "en attente du jeu";
+  return phase === "idle" ? "inactive" : "en cours";
+}
+
+/** How a session ended, in a few words ("" when unknown). */
+export function sessionEndReasonText(reason: any): string {
+  if (reason === "manual") return "fin manuelle";
+  if (reason === "new_session") return "remplacée par une nouvelle session";
+  if (reason === "gap") return "inactivité prolongée";
+  return "";
+}
+
+/** "terminée à 16:10" (today), "terminée hier 22:10", "terminée le 03/11 22:10"; "terminée" when the time is unknown. */
+export function sessionEndedText(cur: any, now: number): string {
+  const when = cur ? sessionWhen(cur.ended_at, now) : "";
+  if (!when) return "terminée";
+  if (when.indexOf("aujourd’hui ") === 0) return "terminée à " + when.slice("aujourd’hui ".length);
+  if (when.indexOf("hier ") === 0) return "terminée " + when;
+  return "terminée le " + when;
+}
+
+function sessionTripsText(n: number): string {
+  return n === 0 ? "aucun trajet" : n + (n > 1 ? " trajets" : " trajet");
 }
 
 /** "inactive depuis 2 h", "inactive depuis 12 min": how long an open session has been quiet. "inactive" when that is unknown. */
@@ -257,23 +294,47 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
     return {
       visible: true,
       empty: true,
+      phase: "none",
+      id: "",
+      number: 0,
       title: "Aucune session",
       line: "Aucune session",
       chip: "",
-      sub: "Elle démarre quand le jeu est détecté, ou avec « Nouvelle session ».",
+      sub: "Elle démarre toute seule quand le jeu est détecté, ou avec « Démarrer une session ».",
+      hint: "",
       kpis: [],
       notes: notice ? [notice] : [],
       canEnd: false,
+      canNew: true,
+      newLabel: "Démarrer une session",
+      newPrimary: true,
+      endAsk: "",
+      newAsk: "",
       stale: false,
     };
   }
+  const phase = sessionPhase(cur, bar.stale);
   const money = showBalance ? cur.money : null;
   const hasMoney = !!money && typeof money === "object";
   const sub: string[] = [];
   const when = sessionWhen(cur.started_at, now);
-  if (when) sub.push("depuis " + when);
-  if (cur.active_ms > 0) sub.push(L.formatDuration(cur.active_ms) + " de jeu");
-  if (cur.game_version) sub.push("jeu " + cur.game_version);
+  if (phase === "waiting") {
+    if (when) sub.push("créée " + when);
+  } else {
+    const ending = phase === "ended" ? sessionEndReasonText(cur.end_reason) : "";
+    if (ending) sub.push(ending);
+    if (when) sub.push((phase === "ended" ? "début " : "depuis ") + when);
+    if (cur.active_ms > 0) sub.push(L.formatDuration(cur.active_ms) + " de jeu");
+    if (cur.game_version) sub.push("jeu " + cur.game_version);
+  }
+  const tripsText = sessionTripsText(cur.trips);
+  const canEnd = phase === "active" || phase === "idle";
+  const hints: any = {
+    waiting:
+      "Rien à terminer ni à recommencer : cette session démarre toute seule dès que le jeu est détecté.",
+    ended:
+      "Rien n’est compté tant que tu ne démarres pas une nouvelle session ou que le jeu n’est pas relancé.",
+  };
   const kpis: any[] = [];
   const trips = {
     id: "trips",
@@ -294,7 +355,9 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
     sub: cur.minutes_per_trip !== null ? "≈\u00a0" + cur.minutes_per_trip + " min par trajet" : "",
     tone: "",
   };
-  if (hasMoney) {
+  if (phase === "waiting") {
+    // The game was never seen during this session: there is no figure to show, not even a dash.
+  } else if (hasMoney) {
     // ONE basis (the sum of each trip's result, else the balance change); the parts are named in the small line.
     const net = money.net_auec;
     const grossOnly = money.net_source === "trips" && money.measured_net_auec === null;
@@ -356,11 +419,19 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
     });
   }
   const notes: string[] = [];
-  if (bar.stale)
+  if (phase === "idle")
     notes.push(
       "Aucune activité depuis plus de " +
         bar.gap_hours +
         " h : la prochaine partie démarrera une nouvelle session.",
+    );
+  if (phase === "active" && cur.game_closed_at)
+    notes.push(
+      "Le jeu est fermé depuis " +
+        L.formatClock(cur.game_closed_at) +
+        " : la session reprend si tu le relances dans les " +
+        bar.gap_hours +
+        " h.",
     );
   if (cur.interruptions > 0)
     notes.push(
@@ -407,11 +478,15 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
   // The compact view's one line: the net per hour comes from the same `money` as the kpis, so it exists only while the
   // balance is shown.
   const rate = hasMoney && money.net_per_hour_auec !== null ? money.net_per_hour_auec : null;
-  const line = ["Session " + cur.number, cur.trips + (cur.trips > 1 ? " trajets" : " trajet")];
-  if (cur.active_ms > 0) line.push(L.formatDuration(cur.active_ms));
-  if (rate !== null) line.push(L.fmtAuec(rate, true) + "\u00a0aUEC/h");
-  if (cur.status === "ended") line.push(sessionStateLabel(cur, false));
-  else if (bar.stale) line.push(sessionIdleText(cur, now));
+  const line = ["Session " + cur.number];
+  if (phase === "waiting") line.push("en attente du jeu");
+  else {
+    if (phase === "ended") line.push(sessionEndedText(cur, now));
+    line.push(cur.trips + (cur.trips > 1 ? " trajets" : " trajet"));
+    if (cur.active_ms > 0) line.push(L.formatDuration(cur.active_ms));
+    if (rate !== null) line.push(L.fmtAuec(rate, true) + "\u00a0aUEC/h");
+    if (phase === "idle") line.push(sessionIdleText(cur, now));
+  }
   if (cur.ship_losses_count > 0)
     line.push(
       cur.ship_losses_count +
@@ -428,16 +503,88 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
   return {
     visible: true,
     empty: false,
+    phase,
+    id: cur.id,
+    number: cur.number,
     line: line.join(" · "),
     title: "Session " + cur.number,
-    chip: sessionStateLabel(cur, bar.stale),
-    chipState: cur.status === "ended" ? "ended" : bar.stale ? "stale" : "open",
+    chip: phase === "ended" ? sessionEndedText(cur, now) : sessionStateLabel(cur, bar.stale),
+    chipState: phase === "idle" ? "stale" : phase === "active" ? "open" : phase,
     sub: sub.join(" · "),
+    hint: hints[phase] || "",
     kpis,
     notes,
-    canEnd: cur.status === "open",
+    // What the buttons offer: ending needs a session with something in it; a new session is pointless on an empty one.
+    canEnd,
+    canNew: phase !== "waiting",
+    newLabel: "Nouvelle session",
+    newPrimary: phase === "ended",
+    endAsk:
+      "Terminer la session " +
+      cur.number +
+      " (" +
+      tripsText +
+      ") ? Elle reste dans l’historique, et rien n’y sera plus compté tant que tu ne démarres pas une nouvelle session ou que le jeu n’est pas relancé.",
+    newAsk:
+      "Démarrer une nouvelle session ? La session " +
+      cur.number +
+      " (" +
+      tripsText +
+      ") sera terminée et restera dans l’historique.",
     stale: !!bar.stale,
   };
+}
+
+/** The state of one session in the list, in words: in progress / waiting for the game / ended (and how). */
+export function sessionRowStatus(s: any): string {
+  if (s.status === "ended") {
+    const how = sessionEndReasonText(s.end_reason);
+    return "terminée" + (how ? " · " + how : "");
+  }
+  if (s.empty) return "en attente du jeu";
+  return s.game_closed_at ? "en cours · jeu fermé" : "en cours";
+}
+
+/**
+ * What the player is told once the server answered "Terminer" (`kind` "end") or "Nouvelle session" ("new"): French, built from the
+ * structured answer (never the server's English message), no amount. An answer that changed nothing says why.
+ */
+export function sessionActionText(kind: string, raw: any, now: number): string {
+  const r = raw && typeof raw === "object" ? raw : {};
+  const s = sessionSummaryNormalize(r.session, false);
+  const n = s ? s.number : 0;
+  const unsaved =
+    r.persistence && r.persistence.saved === false
+      ? " Attention : le changement n’a pas pu être enregistré sur le disque, il reste en mémoire."
+      : "";
+  if (kind === "end") {
+    if (r.ok === true && s)
+      return (
+        "Session " +
+        n +
+        " " +
+        sessionEndedText(s, now) +
+        " (" +
+        sessionTripsText(s.trips) +
+        "). Elle reste dans l’historique." +
+        unsaved
+      );
+    if (r.reason === "empty") return "Rien à terminer : la session " + n + " attend le jeu.";
+    if (r.reason === "already_ended") return "La session " + n + " est déjà terminée.";
+    if (r.reason === "none") return "Il n’y a aucune session à terminer.";
+    return "Fin de session : réponse inattendue du serveur.";
+  }
+  if (r.started === false)
+    return "Rien à démarrer : la session " + n + " attend déjà le jeu." + unsaved;
+  return (
+    "Session " +
+    n +
+    " démarrée." +
+    (typeof r.closed_session === "number"
+      ? " La session " + r.closed_session + " est terminée et reste dans l’historique."
+      : "") +
+    unsaved
+  );
 }
 
 /** One row of the list of past sessions. */
@@ -455,6 +602,7 @@ export function sessionRowInfo(L: any, s: any, showBalance: boolean, now: number
     number: "N°\u00a0" + s.number,
     when: sessionWhen(s.started_at, now),
     detail: parts.join(" · "),
+    status: sessionRowStatus(s),
     result,
     tone: m && m.net_auec !== null ? (m.net_auec < 0 ? "warn" : "ok") : "",
     open: s.status === "open",
@@ -643,12 +791,35 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   one.setAttribute("aria-expanded", "false");
   one.setAttribute("aria-controls", "ses-bar");
   const actions = el("div", "ses-actions");
-  const btnNew = button("Nouvelle session", () => onNew(), "small");
+  // The two actions on the session itself sit on the card (not in the menu of past sessions): "Terminer" only while the
+  // session holds something, "Nouvelle session" never on a session that is still empty. A button that could change nothing is
+  // not drawn; the line under the card says why.
+  const btnEnd = button("Terminer la session", () => ask("end"), "small");
+  const btnNew = button("Nouvelle session", () => ask("new"), "small");
   const btnMenu = button("Sessions", () => toggleMenu(), "small");
   btnMenu.setAttribute("aria-expanded", "false");
   const btnBalance = button("Afficher le solde", () => api.toggleBalance(), "small");
-  add(actions, btnBalance, btnMenu, btnNew);
+  add(actions, btnBalance, btnMenu, btnEnd, btnNew);
   add(bar, id, kpiBox, actions);
+  // The explanation of what the card offers (or why it offers nothing), the inline confirmation, and the result of the last
+  // action. The result is ONE live region, present from the start and never hidden (a region that appears together with its
+  // text is not always announced); it holds no amount, so hiding the balance never has to clear it.
+  const hint = el("p", "ses-hint", "");
+  const confirmBox = el("div", "ses-confirm");
+  confirmBox.setAttribute("role", "group");
+  confirmBox.setAttribute("aria-label", "Confirmation");
+  const confirmText = el("p", "ses-confirm-text", "");
+  const confirmRow = el("div", "ses-confirm-row");
+  const btnYes = button("Confirmer", () => void run(), "small primary");
+  const btnNo = button("Annuler", () => cancel(), "small");
+  add(confirmRow, btnYes, btnNo);
+  add(confirmBox, confirmText, confirmRow);
+  confirmBox.addEventListener("keydown", (e: any) => {
+    if (e && e.key === "Escape") cancel();
+  });
+  const status = el("p", "ses-status", "");
+  status.setAttribute("role", "status");
+  status.setAttribute("tabindex", "-1");
   const notes = el("div", "ses-notes");
   const noteEls: any[] = [];
   // Room for every note the card can hold at once (stale, resumed, start balance, store notice, 3 losses and their count, the
@@ -663,9 +834,8 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   const menu = el("div", "ses-menu");
   const menuHead = el("div", "ses-menu-head");
   const menuTitle = el("h3", "ses-menu-title", "Sessions passées");
-  const btnEnd = button("Terminer la session", () => onEnd(), "mini");
   const btnClose = button("Fermer", () => closeMenu(), "mini");
-  add(menuHead, menuTitle, btnEnd, btnClose);
+  add(menuHead, menuTitle, btnClose);
   const menuMsg = el("p", "ses-note", "");
   const stats = el("div", "ses-stats");
   const statEls: any[] = [];
@@ -684,7 +854,8 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     r.when = el("span", "ses-r-when", "");
     r.detail = el("span", "ses-r-detail", "");
     r.result = el("span", "ses-r-result", "");
-    add(r, r.n, r.when, r.detail, r.result);
+    r.status = el("span", "ses-r-status", "");
+    add(r, r.n, r.when, r.detail, r.result, r.status);
     r.addEventListener("click", () => openDetail(r._id));
     rows.push(r);
     add(list, r);
@@ -736,7 +907,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   add(exportBox, exportRow, exportHint, exportMsg, exportPre);
   add(detail, detailHead, exportBox, facts, tripsTitle, tripList, breaksTitle, breaksList);
   add(menu, menuHead, menuMsg, stats, list, detail);
-  add(root, one, bar, notes, menu);
+  add(root, one, bar, hint, confirmBox, status, notes, menu);
 
   // ------------------------------------------------------------------------------ state
   const st: any = {
@@ -750,9 +921,14 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     list: null,
     stats: null,
     detail: null,
-    confirmNew: false,
-    confirmEnd: false,
-    timer: null,
+    // The inline confirmation: null, or what is being confirmed ({ kind: "end" | "new", id }). It has no timer: it stays until
+    // the player confirms or cancels (or the session it was opened for is no longer the current one).
+    confirm: null,
+    // A call to the server is under way ("end" | "new" | null): the action buttons are not offered meanwhile.
+    busy: null,
+    // The last result, shown in the live region: { text, number } (number: the session it is about, to drop it once a newer
+    // session is on the card). Never holds an amount.
+    flash: null,
     token: 0,
     // The report to take out: never kept across a change of the balance choice, never stored, never sent anywhere.
     exportText: null, // the text shown for hand copying, or null
@@ -767,65 +943,91 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     if (api.say) api.say(text);
   }
 
-  function resetConfirm() {
-    st.confirmNew = false;
-    st.confirmEnd = false;
+  // ------------------------------------------------------------------------------ the two actions on the session
+  // "Terminer" and "Nouvelle session". A session that holds something (trips, a balance, played time) is closed only after an
+  // inline confirmation that has NO timer and a cancel; a harmless action (a new session after an ended one, or when there is
+  // none) is done at once. The result is always written in the live region under the card, and the card itself changes: it
+  // shows the session as ended (with its time and its result) or the new one.
+
+  function setFlash(text: string, number: number) {
+    st.flash = text ? { text, number } : null;
   }
 
-  async function onNew() {
-    if (!st.confirmNew) {
-      resetConfirm();
-      st.confirmNew = true;
-      renderButtons();
-      if (st.timer !== null) api.clearTimeout(st.timer);
-      st.timer = api.setTimeout(() => {
-        st.timer = null;
-        st.confirmNew = false;
-        renderButtons();
-      }, 5000);
+  /** The first click: asks for the confirmation, or does it at once when nothing would be closed. */
+  function ask(kind: string) {
+    const info = st.info;
+    if (!info || st.busy || st.confirm) return;
+    if (kind === "end" ? !info.canEnd : !info.canNew) return;
+    // Starting a new session closes the one in progress; after an ended one (or with none) nothing is closed.
+    const closes = kind === "end" || info.canEnd;
+    if (!closes) {
+      st.confirm = { kind, id: info.id };
+      void run();
       return;
     }
-    resetConfirm();
-    renderButtons();
-    try {
-      const r = await api.call("sc_session_new", {});
-      say(
-        r && typeof r.message === "string"
-          ? sessionText(r.message, 120)
-          : "Nouvelle session démarrée.",
-      );
-      st.asked = null;
-      if (api.refresh) await api.refresh();
-      if (st.open) await loadMenu();
-    } catch (err: any) {
-      say(
-        "Nouvelle session impossible : " +
-          sessionText(err && err.message ? err.message : "erreur", 100),
-      );
-    }
+    st.flash = null;
+    st.confirm = { kind, id: info.id };
+    renderActions();
+    btnYes.focus();
   }
 
-  async function onEnd() {
-    if (!st.confirmEnd) {
-      resetConfirm();
-      st.confirmEnd = true;
-      renderButtons();
-      return;
-    }
-    resetConfirm();
-    renderButtons();
+  function cancel() {
+    const c = st.confirm;
+    if (!c || st.busy) return;
+    st.confirm = null;
+    const info = st.info;
+    setFlash(
+      c.kind === "end"
+        ? "Fin de session annulée : la session continue."
+        : "Nouvelle session annulée : la session continue.",
+      info ? info.number : 0,
+    );
+    renderActions();
+    (c.kind === "end" ? btnEnd : btnNew).focus();
+  }
+
+  async function run() {
+    const c = st.confirm;
+    if (!c || st.busy) return;
+    const info = st.info;
+    const number = info ? info.number : 0;
+    st.confirm = null;
+    st.busy = c.kind;
+    setFlash(
+      c.kind === "end" ? "Fin de la session en cours…" : "Démarrage de la nouvelle session…",
+      number,
+    );
+    renderActions();
+    let done = false;
     try {
-      const r = await api.call("sc_session_end", {});
-      say(r && typeof r.message === "string" ? sessionText(r.message, 120) : "Session terminée.");
-      st.asked = null;
-      if (api.refresh) await api.refresh();
-      if (st.open) await loadMenu();
+      const r = await api.call(c.kind === "end" ? "sc_session_end" : "sc_session_new", {});
+      const about =
+        r && r.session && typeof r.session.number === "number" ? r.session.number : number;
+      setFlash(sessionActionText(c.kind, r, st.ctx.now), about);
+      done = true;
     } catch (err: any) {
-      say(
-        "Fin de session impossible : " +
+      setFlash(
+        (c.kind === "end" ? "Fin de session impossible : " : "Nouvelle session impossible : ") +
           sessionText(err && err.message ? err.message : "erreur", 100),
+        number,
       );
     }
+    // The card follows the server: ask for the bar again (and the list, when the menu is open), whatever the answer was. The
+    // buttons stay away until it is back, so that a stale card never offers the action that was just done.
+    renderActions();
+    if (done) st.asked = null;
+    try {
+      if (api.refresh) await api.refresh();
+      if (st.open) await loadMenu();
+    } catch {
+      /* the next poll shows the truth */
+    }
+    st.busy = null;
+    renderActions();
+    // The button that was pressed may be gone (a session that has ended offers another one): the focus goes to the next
+    // thing to do, else to the result, so that a keyboard user never loses their place.
+    if (st.info && st.info.canNew) btnNew.focus();
+    else status.focus();
   }
 
   function toggleFold() {
@@ -861,6 +1063,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       setText(r.when, "");
       setText(r.detail, "");
       setText(r.result, "");
+      setText(r.status, "");
     }
     setText(detailTitle, "");
   }
@@ -879,9 +1082,8 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     clearExport(true);
     blankMenu();
     st.open = false;
-    resetConfirm();
     renderMenu();
-    renderButtons();
+    renderActions();
   }
 
   function backToList() {
@@ -1080,12 +1282,26 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   }
 
   // ------------------------------------------------------------------------------ rendering
-  function renderButtons() {
+  /** The buttons, the explanation line, the inline confirmation and the result line: all of them follow `st` and `st.info`. */
+  function renderActions() {
     const info = st.info;
-    setText(btnNew, st.confirmNew ? "Confirmer : nouvelle session" : "Nouvelle session");
-    setAttr(btnNew, "aria-pressed", st.confirmNew ? "true" : "false");
-    setText(btnEnd, st.confirmEnd ? "Confirmer la fin" : "Terminer la session");
-    show(btnEnd, !!(info && info.canEnd));
+    const free = !!info && !st.busy && !st.confirm;
+    show(btnEnd, free && !!info.canEnd);
+    show(btnNew, free && !!info.canNew);
+    if (info) {
+      setText(btnNew, info.newLabel);
+      const cls = "btn small" + (info.newPrimary ? " primary" : "");
+      if (btnNew.className !== cls) btnNew.className = cls;
+    }
+    const c = st.confirm;
+    show(confirmBox, !!c && !st.busy && !!info);
+    if (c && info) {
+      setText(confirmText, c.kind === "end" ? info.endAsk : info.newAsk);
+      setText(btnYes, c.kind === "end" ? "Confirmer la fin" : "Confirmer : nouvelle session");
+    }
+    setText(hint, info && !st.busy && !c ? info.hint : "");
+    show(hint, !!(info && info.hint) && !st.busy && !c);
+    setText(status, st.flash ? st.flash.text : "");
     setText(btnMenu, st.open ? "Sessions ▴" : "Sessions ▾");
     setAttr(btnMenu, "aria-expanded", st.open ? "true" : "false");
     show(btnBalance, !st.ctx.showBalance);
@@ -1188,12 +1404,20 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       setText(rows[i].when, info.when);
       setText(rows[i].detail, info.detail);
       setText(rows[i].result, info.result);
+      setText(rows[i].status, info.status);
       setAttr(rows[i].result, "data-tone", info.tone);
       setAttr(rows[i], "data-open", info.open ? "1" : "0");
       setAttr(
         rows[i],
         "aria-label",
-        "Ouvrir la session " + s.number + " : " + info.when + ", " + info.detail,
+        "Ouvrir la session " +
+          s.number +
+          " : " +
+          info.when +
+          ", " +
+          info.detail +
+          ", " +
+          info.status,
       );
       rows[i]._id = s.id;
     }
@@ -1207,13 +1431,18 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     const m = s.money;
     setText(
       detailTitle,
-      "Session " + s.number + (s.status === "ended" ? " (terminée)" : " (en cours)"),
+      "Session " +
+        s.number +
+        (s.status === "ended" ? " (terminée)" : s.empty ? " (en attente du jeu)" : " (en cours)"),
     );
     const f: string[] = [];
+    const how = s.ended_at ? sessionEndReasonText(s.end_reason) : "";
     f.push(
       "Début : " +
         sessionWhen(s.started_at, st.ctx.now) +
-        (s.ended_at ? " · fin : " + sessionWhen(s.ended_at, st.ctx.now) : ""),
+        (s.ended_at
+          ? " · fin : " + sessionWhen(s.ended_at, st.ctx.now) + (how ? " (" + how + ")" : "")
+          : ""),
     );
     f.push(
       "Temps de jeu : " +
@@ -1329,7 +1558,6 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     show(btnBack, !inList);
     show(menuTitle, inList);
     show(detailHead, !inList);
-    show(btnEnd, inList && !!(st.info && st.info.canEnd));
     show(stats, inList && !!st.stats);
     setText(
       menuMsg,
@@ -1370,15 +1598,30 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       const bar2 = sessionBarNormalize(rawBar, st.ctx.showBalance);
       const info = sessionBarInfo(L, bar2, st.ctx);
       st.info = info;
+      // What was asked of a session that is no longer the one on the card (another View ended it, the game started a new one,
+      // the sessions went off) is dropped, and the player is told. A result about an older session goes once a newer one shows.
+      const c = st.confirm;
+      // (Both confirmations exist only for a session that holds something: the one that "Terminer" closes.)
+      if (c && !st.busy && (!info.visible || info.id !== c.id || !info.canEnd)) {
+        st.confirm = null;
+        setFlash(
+          "La session a changé pendant que tu hésitais : la confirmation est annulée, rien n’a été fait.",
+          info.number,
+        );
+      }
+      if (st.flash && (!info.visible || info.number > st.flash.number)) st.flash = null;
       show(root, info.visible);
       if (!info.visible) return;
       setAttr(root, "data-empty", info.empty ? "1" : "0");
+      setAttr(root, "data-phase", info.phase);
       setAttr(root, "data-state", info.chipState || "");
       renderFold();
       setText(title, info.title);
       setText(chip, info.chip);
       show(chip, !!info.chip);
       setText(sub, info.sub);
+      show(sub, !!info.sub);
+      show(kpiBox, info.kpis.length > 0);
       setAttr(kpiBox, "data-count", String(info.kpis.length));
       for (let i = 0; i < kpis.length; i++) {
         const k = info.kpis[i];
@@ -1396,7 +1639,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
         show(noteEls[i], !!info.notes[i]);
       }
       show(notes, info.notes.length > 0);
-      renderButtons();
+      renderActions();
       // The menu was fetched with another balance choice: ask again so that no figure is drawn that was not asked for.
       if (st.open && st.asked !== null && st.asked !== st.ctx.showBalance && !st.loading) {
         if (st.view === "detail" && st.detail) void openDetail(st.detail.session.id);
@@ -1420,12 +1663,18 @@ export const SESSION_VIEW_FUNCTIONS = [
   sessionChannelClean,
   sessionBarStripBalance,
   sessionWhen,
+  sessionPhase,
   sessionStateLabel,
+  sessionEndReasonText,
+  sessionEndedText,
+  sessionTripsText,
   sessionIdleText,
   sessionNoticeText,
   sessionInterruptionLabel,
   sessionQualityLabel,
   sessionBarInfo,
+  sessionActionText,
+  sessionRowStatus,
   sessionRowInfo,
   sessionListNormalize,
   sessionAggregateSession,

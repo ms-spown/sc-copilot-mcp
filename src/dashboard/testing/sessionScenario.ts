@@ -8,7 +8,16 @@
  */
 
 export type SessionVariant =
-  "story" | "empty" | "off" | "stale" | "ended" | "readonly" | "gross" | "losses" | "manylosses";
+  | "story"
+  | "empty"
+  | "off"
+  | "stale"
+  | "ended"
+  | "waiting"
+  | "readonly"
+  | "gross"
+  | "losses"
+  | "manylosses";
 
 const HOUR = 3_600_000;
 const MIN = 60_000;
@@ -30,6 +39,12 @@ interface Fixture {
   shipLosses?: number;
   /** How long ago the game was last seen in an open session (default: just now). A quiet session is hours old. */
   idleMs?: number;
+  /** The game was never seen during the session: it only waits for it. */
+  empty?: boolean;
+  /** How an ended session ended (default: "gap", the older fixtures). */
+  endReason?: "manual" | "new_session" | "gap";
+  /** The game wrote its quit line during this open session, this long ago. */
+  gameClosedAgoMs?: number;
 }
 
 /** What the server paid, in the story, for the cargo lost with a ship (invented). */
@@ -108,12 +123,15 @@ export function sessionSummary(f: Fixture, now: number, includeBalance: boolean,
     id: `s_fixture_${f.number}`,
     number: f.number,
     status,
-    end_reason: status === "ended" ? "gap" : null,
+    end_reason: status === "ended" ? (f.endReason ?? "gap") : null,
     started_at: new Date(startedAt).toISOString(),
     ended_at: status === "ended" ? new Date(startedAt + f.activeMs + 10 * MIN).toISOString() : null,
     last_activity_at: new Date(
       status === "ended" ? startedAt + f.activeMs : now - (f.idleMs ?? 4000),
     ).toISOString(),
+    empty: f.empty ?? false,
+    game_closed_at:
+      f.gameClosedAgoMs !== undefined ? new Date(now - f.gameClosedAgoMs).toISOString() : null,
     duration_ms: f.activeMs + 10 * MIN,
     active_ms: f.activeMs,
     interruptions: f.interruptions ?? 0,
@@ -153,6 +171,26 @@ const CURRENT: Fixture = {
   interruptions: 1,
 };
 
+/** The story's session 4, ended by hand 3 hours after it began... */
+const ENDED_BY_HAND: Fixture = {
+  ...CURRENT,
+  status: "ended",
+  startedAgoMs: 3 * HOUR,
+  endReason: "manual",
+};
+/** ...and the empty session that waits for the game (nothing seen during it: no trip, no balance, no played time). */
+const WAITING: Fixture = {
+  number: 5,
+  startedAgoMs: 4 * MIN,
+  activeMs: 0,
+  trips: 0,
+  net: null,
+  start: null,
+  last: null,
+  empty: true,
+  idleMs: 4 * MIN,
+};
+
 /** The `sessions` field of a poll answer. */
 export function sessionBar(
   nowMs: number,
@@ -186,11 +224,14 @@ export function sessionBar(
     return {
       ...base,
       status: "ok",
-      current: sessionSummary(
-        { ...CURRENT, status: "ended", startedAgoMs: 3 * HOUR },
-        nowMs,
-        includeBalance,
-      ),
+      current: sessionSummary(ENDED_BY_HAND, nowMs, includeBalance),
+      stale: false,
+    };
+  if (variant === "waiting")
+    return {
+      ...base,
+      status: "ok",
+      current: sessionSummary(WAITING, nowMs, includeBalance),
       stale: false,
     };
   if (variant === "gross")
@@ -243,9 +284,20 @@ export function sessionBar(
 }
 
 /** What the session tools answer to the View (structured content). */
-export function sessionToolAnswer(name: string, args: Record<string, any>, nowMs: number) {
+export function sessionToolAnswer(
+  name: string,
+  args: Record<string, any>,
+  nowMs: number,
+  variant: SessionVariant = "story",
+) {
   const include = args["include_balance"] !== false;
-  const all = [...BASE, CURRENT];
+  // The history the variant implies: session 4 is the one in progress, ended by hand, or replaced by the waiting session 5.
+  const all =
+    variant === "ended"
+      ? [...BASE, ENDED_BY_HAND]
+      : variant === "waiting"
+        ? [...BASE, { ...ENDED_BY_HAND, endReason: "new_session" as const }, WAITING]
+        : [...BASE, CURRENT];
   if (name === "sc_session_list") {
     return {
       total: all.length,
@@ -363,8 +415,69 @@ export function sessionToolAnswer(name: string, args: Record<string, any>, nowMs
       ...(args["kind"] === "csv" ? { csv } : { markdown }),
     };
   }
-  if (name === "sc_session_new")
-    return { ok: true, message: "Session 5 started. Session 4 was closed." };
-  if (name === "sc_session_end") return { ok: true, message: "Session 4 ended." };
+  // The shapes of tools/sessions.ts (the server's English messages are never shown by the View).
+  const live = variant === "waiting" ? WAITING : variant === "ended" ? ENDED_BY_HAND : CURRENT;
+  if (name === "sc_session_new") {
+    const closes = variant === "story" || variant === "stale" || variant === "readonly";
+    return variant === "waiting"
+      ? {
+          ok: true,
+          started: false,
+          closed_session: null,
+          message: "Nothing started: session 5 is empty and still waits for the game.",
+          session: sessionSummary(live, nowMs, false),
+          persistence: { saved: true, status: "ok" },
+        }
+      : {
+          ok: true,
+          started: true,
+          closed_session: closes ? live.number : null,
+          message: "Session 5 started.",
+          session: sessionSummary(WAITING, nowMs, false),
+          persistence: { saved: true, status: "ok" },
+        };
+  }
+  if (name === "sc_session_end") {
+    const reason =
+      variant === "waiting" ? "empty" : variant === "ended" ? "already_ended" : "ended";
+    const done = reason === "ended";
+    return {
+      ok: done,
+      reason,
+      message: done ? "Session 4 ended." : "Nothing ended.",
+      session: sessionSummary(done ? ENDED_BY_HAND : live, nowMs, false),
+      persistence: { saved: true, status: "ok" },
+    };
+  }
   return {};
+}
+
+/**
+ * A stateful stand-in for the server's session side: the bar and the tools answer from ONE variant, and "Terminer" /
+ * "Nouvelle session" move it the way the real reducer does (end: in progress to ended, an empty session stays; new: anything
+ * but a waiting session to a waiting session 5). So a test or the preview sees the card change after a click.
+ */
+export function sessionFake(initial: SessionVariant = "story") {
+  let variant = initial;
+  const calls: string[] = [];
+  return {
+    get variant() {
+      return variant;
+    },
+    set variant(v: SessionVariant) {
+      variant = v;
+    },
+    /** Every session tool call, in order (the same names as the real tools). */
+    calls,
+    bar: (nowMs: number, include: boolean) => sessionBar(nowMs, include, variant),
+    tool: (name: string, args: Record<string, any>, nowMs: number) => {
+      const answer = sessionToolAnswer(name, args, nowMs, variant);
+      if (name === "sc_session_end" || name === "sc_session_new") {
+        calls.push(name);
+        if (name === "sc_session_end" && (answer as any).ok === true) variant = "ended";
+        if (name === "sc_session_new" && (answer as any).started === true) variant = "waiting";
+      }
+      return answer;
+    },
+  };
 }

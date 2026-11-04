@@ -22,11 +22,11 @@
 //                 trade=refusal  (the story, then a purchase the game refuses at 400 s because the price moved: the alert; use t=410)
 //                 calib=1  (the route calibration section the server sends with the balance: invented ratios for Laranite on the
 //                 route Port Tressler > Area18 TDD (4 runs), Gold (2 runs, wide spread) and Agricium (8 runs); needs balance=1)
-//                 click=<button label>  (presses it once the page is up, e.g. click=Plus rentable)
+//                 click=<button label>  (presses it once the page is up, e.g. click=Plus rentable; click=A|B presses A then B, 1.5 s apart)
 //                 refine=1 (opens "Affiner")  card=1 (opens the details of the first card)
 //                 fw=<px>  (width of the frame in full screen, to see a narrow host at 360 px in a window that cannot be that narrow)
 //                 conn=disconnected|menu|closed|online  (the connection read from Game.log)
-//                 sessions=story|empty|off|stale|ended|readonly|gross|losses|manylosses|none  (the saved play session bar; story
+//                 sessions=story|empty|off|stale|ended|waiting|readonly|gross|losses|manylosses|none  (the saved play session bar; story
 //                 by default; the figures are invented, see src/dashboard/testing/sessionScenario.ts; losses = a resumed
 //                 session with a store notice, a start balance that is not the game's and 3 ships destroyed, manylosses = 5)
 //                 menu=1|detail  (opens the "Sessions" menu, or the detail of session 2, after the page has loaded)
@@ -77,7 +77,7 @@ import { Scenario } from "/dist/dashboard/testing/scenario.js";
 import { createFakeHost } from "/dist/dashboard/testing/fakeHost.js";
 import { transportLedger } from "/dist/dashboard/testing/ledgerScenario.js";
 import { specsSamples } from "/dist/dashboard/testing/specsFixtures.js";
-import { sessionBar, sessionToolAnswer } from "/dist/dashboard/testing/sessionScenario.js";
+import { sessionFake } from "/dist/dashboard/testing/sessionScenario.js";
 import { tradeBalanceAt, tradeLedger } from "/dist/dashboard/testing/tradeScenario.js";
 import { suggestAnswer } from "/dist/dashboard/testing/suggestFixtures.js";
 import { healthSection } from "/dist/dashboard/testing/healthScenario.js";
@@ -144,8 +144,10 @@ if (transport !== "none") {
 // The saved play session bar and the session tools: invented sessions, the real shapes of the server's answers.
 const sess = q.get("sessions") ?? "story";
 if (sess !== "none") {
-  host.overrides.poll = (base, include) => ({ ...base, sessions: sessionBar(scenario.now, include, sess) });
-  host.overrides.tool = (name, args) => sessionToolAnswer(name, args, scenario.now);
+  // A stateful fake: "Terminer" and "Nouvelle session" move the card the way the server does.
+  const fake = sessionFake(sess);
+  host.overrides.poll = (base, include) => ({ ...base, sessions: fake.bar(scenario.now, include) });
+  host.overrides.tool = (name, args) => fake.tool(name, args, scenario.now);
 }
 // health=...: the health strip. Composed with the session override above (both rewrite the poll).
 const hv = q.get("health");
@@ -229,8 +231,11 @@ if (q.get("click") || q.get("refine") || q.get("card")) frame.addEventListener("
   const doc = frame.contentDocument;
   if (q.get("refine")) doc.querySelectorAll("details.ta-refine").forEach((d) => { d.open = true; });
   if (q.get("click")) {
-    const b = [...doc.querySelectorAll("button")].find((x) => x.textContent === q.get("click") && x.offsetParent !== null);
-    if (b) b.click();
+    // click=A|B|C presses A, then (1.5 s later) B, then C: e.g. click=Terminer la session|Confirmer la fin
+    q.get("click").split("|").forEach((label, i) => setTimeout(() => {
+      const b = [...doc.querySelectorAll("button")].find((x) => x.textContent === label && x.offsetParent !== null);
+      if (b) b.click();
+    }, i * 1500));
   }
   if (q.get("card")) setTimeout(() => doc.querySelectorAll("details.ta-more").forEach((d, i) => { if (i === 1) d.open = true; }), 400);
 }, 3000));

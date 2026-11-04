@@ -12,11 +12,13 @@ import {
   cloneLight,
   endCurrent,
   ensureCurrent,
+  isEmpty,
   latest,
   needsEnsure,
   observe,
   setNote,
   startNew,
+  type EndReason,
   type Observation,
   type ReduceConfig,
   type ReduceResult,
@@ -595,9 +597,19 @@ export class SessionManager {
     };
   }
 
-  async newSession(
-    note?: string,
-  ): Promise<{ summary: SessionSummary; previous: number | null; saved: boolean }> {
+  /**
+   * "Nouvelle session". `started` is false when nothing was started because the last session was still empty (the game was
+   * never seen during it: it already is the next one); `closedPrevious` is the number of the session this click closed
+   * (null when there was none to close: no session, one already ended, or an empty one). `previous` is the number of the
+   * last session before the click, whatever its state.
+   */
+  async newSession(note?: string): Promise<{
+    summary: SessionSummary;
+    started: boolean;
+    previous: number | null;
+    closedPrevious: number | null;
+    saved: boolean;
+  }> {
     await this.flush().catch(() => undefined); // the last trip of the session that closes is not lost
     const now = this.now();
     const prev = latest(await this.deps.store.read());
@@ -605,20 +617,34 @@ export class SessionManager {
     const r = await this.apply((s) => startNew(s, now, this.rc, balance, note));
     return {
       summary: summarizeSession(r.current as Session),
+      started: r.action === "created",
       previous: prev ? prev.number : null,
+      closedPrevious:
+        r.action === "created" && prev && prev.ended_at === null && !isEmpty(prev)
+          ? prev.number
+          : null,
       saved: this.persistence.saved,
     };
   }
 
-  async endSession(
-    note?: string,
-  ): Promise<{ ended: boolean; summary: SessionSummary | null; saved: boolean }> {
+  /**
+   * "Terminer". `reason` says why nothing was ended when `ended` is false: "none" (no session yet), "already_ended", or
+   * "empty" (the session only waits for the game: it has nothing to end). `summary` is the session the answer is about
+   * (the one just ended, or the one that could not be), never null when a session exists.
+   */
+  async endSession(note?: string): Promise<{
+    ended: boolean;
+    reason: EndReason;
+    summary: SessionSummary | null;
+    saved: boolean;
+  }> {
     await this.flush().catch(() => undefined);
     const now = this.now();
     const r = await this.apply((s) => endCurrent(s, now, note));
     return {
       ended: r.ended,
-      summary: r.ended && r.current ? summarizeSession(r.current) : null,
+      reason: r.reason,
+      summary: r.current ? summarizeSession(r.current) : null,
       saved: this.persistence.saved,
     };
   }

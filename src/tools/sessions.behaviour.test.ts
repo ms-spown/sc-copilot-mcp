@@ -43,13 +43,13 @@ afterEach(async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-function rig(enabled = true, extraTrip?: TripInput, balance?: BalancePolicy) {
+function rig(enabled = true, extraTrip?: TripInput, balance?: BalancePolicy, game = true) {
   const clock = { t: T0 };
   const file = path.join(dir, "sessions.json");
   const tel = { balance: BALANCE as number | null, calls: 0 };
   const telemetry: Telemetry = {
     enabled,
-    status: async () => ({ state: "live" }) as TelemetryStatusReport,
+    status: async () => ({ state: game ? "live" : "waiting" }) as TelemetryStatusReport,
     snapshot: async () => {
       tel.calls += 1;
       return { state: { pilot: { uec_balance: tel.balance } } } as unknown as TelemetrySnapshot;
@@ -62,7 +62,7 @@ function rig(enabled = true, extraTrip?: TripInput, balance?: BalancePolicy) {
     telemetry,
     store: new SessionStore(file, { now: () => clock.t }),
     config: { enabled, file, gapMs: 3 * 60 * MIN },
-    gameHint: async () => ({ running: true, telemetryRegistered: true }),
+    gameHint: async () => ({ running: game, telemetryRegistered: true }),
     now: () => clock.t,
     trips: {
       collect: async () => ({
@@ -338,5 +338,55 @@ describe("Feature: new and end write only the server's own file", () => {
     expect(again.data.data.ok).toBe(false);
     const doc = JSON.parse(fs.readFileSync(path.join(dir, "sessions.json"), "utf8"));
     expect(doc.sessions.map((s: { number: number }) => s.number)).toEqual([1, 2]);
+  });
+
+  it("Given the game closed and an empty session, Then 'end' and 'new' say plainly that nothing changed, in fields the dashboard reads", async () => {
+    const t = rig(true, undefined, undefined, false);
+    // The dashboard opened: an empty session waits for the game.
+    const bar = await t.manager.bar(false);
+    expect(bar.current?.empty).toBe(true);
+    const e = await t.call("sc_session_end");
+    expect(e.data.data.ok).toBe(false);
+    expect(e.data.data.reason).toBe("empty");
+    expect(e.data.data.message).toMatch(/Nothing ended.*empty.*waits for the game.*stays open/);
+    expect(e.data.data.session.number).toBe(1);
+    const n = await t.call("sc_session_new");
+    expect(n.data.data.ok).toBe(true);
+    expect(n.data.data.started).toBe(false);
+    expect(n.data.data.message).toMatch(/Nothing started.*empty.*already is the next session/);
+    expect(n.data.data.message).not.toMatch(/was closed/);
+    expect(n.data.data.session.number).toBe(1);
+    const doc = JSON.parse(fs.readFileSync(path.join(dir, "sessions.json"), "utf8"));
+    expect(doc.sessions.map((s: { number: number }) => s.number)).toEqual([1]);
+  });
+
+  it.each([...HIDDEN_MODES, ...SHOWN_MODES])(
+    "Given $label, Then the answers of end and new hold no aUEC figure (the dashboard writes them to the screen)",
+    async (mode) => {
+      const t = rig(true, undefined, mode.policy);
+      await t.play(30);
+      for (const name of ["sc_session_end", "sc_session_end", "sc_session_new", "sc_session_new"]) {
+        const { text, r } = await t.call(name);
+        for (const out of [text, JSON.stringify(r.structuredContent)]) {
+          expect(out, name).not.toContain(String(BALANCE));
+          expect(out, name).not.toContain("41000");
+          expect(out, name).toContain("withheld");
+        }
+      }
+    },
+  );
+
+  it("Given a session ended by hand, Then 'end' says it was already ended and 'new' starts without claiming to close it", async () => {
+    const t = rig();
+    await t.play(10);
+    expect((await t.call("sc_session_end")).data.data.reason).toBe("ended");
+    const again = await t.call("sc_session_end");
+    expect(again.data.data.ok).toBe(false);
+    expect(again.data.data.reason).toBe("already_ended");
+    expect(again.data.data.message).toMatch(/already ended/);
+    const n = await t.call("sc_session_new");
+    expect(n.data.data.started).toBe(true);
+    expect(n.data.data.message).toContain("Session 2 started");
+    expect(n.data.data.message).not.toMatch(/Session 1 was closed/);
   });
 });
