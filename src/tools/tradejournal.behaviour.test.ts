@@ -1,3 +1,4 @@
+import type { BalancePolicy } from "../core/balance.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,6 +8,7 @@ import type { HttpClient } from "../core/http.js";
 import { FleetStore } from "../providers/fleet/store.js";
 import { GameLog } from "../providers/gamelog/reader.js";
 import { Scmdb } from "../providers/scmdb/store.js";
+import { HIDDEN_MODES, SHOWN_MODES } from "../testing/balanceModes.js";
 import { allTools, createRegistry } from "./registry.js";
 
 /**
@@ -58,7 +60,7 @@ beforeEach(() => {
 });
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-function world(lines: string[] | null, scw?: (url: string) => unknown) {
+function world(lines: string[] | null, scw?: (url: string) => unknown, balance?: BalancePolicy) {
   const file = path.join(dir, "Game.log");
   if (lines) fs.writeFileSync(file, [...HEADER, ...lines].join("\n"));
   const get = vi.fn(async (url: string) => {
@@ -78,6 +80,7 @@ function world(lines: string[] | null, scw?: (url: string) => unknown) {
       scmdb: new Scmdb({ raw: empty, api: empty, repo: "o/r", cacheDir: () => "unused" }),
       gameLog: new GameLog({ logPath: file }),
       fleet: new FleetStore("unused-fleet.json"),
+      ...(balance ? { balance } : {}),
     }),
     {},
   );
@@ -156,66 +159,98 @@ describe("Feature: sc_trade_journal", () => {
     });
   });
 
-  describe("Scenario: aUEC amounts are withheld unless the player agreed (include_balance)", () => {
+  describe("Scenario: aUEC amounts are given by default and withheld when the player hid them", () => {
     // Every amount of TRIP, as a number a scan can look for: line totals, unit prices, cost, revenue, margins, spending.
     const AMOUNTS = [120923, 10581, 292480, 25592, 131504, 318072, 186568, 900, 1.889409, 267.8];
     const AMOUNT_KEYS =
       /"(total_auec|unit_price_auec|shop_unit_price_scu|cost_auec|revenue_auec|gross_margin_auec|gross_margin_per_scu_auec|bought_auec|sold_auec|auec)"/;
 
-    it("Given no flag, When I ask for the journal, Then no amount, key or figure of aUEC is in the answer", async () => {
-      const { registry } = world(TRIP, () => wikiPage([{ uuid: WASTE, name: "Waste" }]));
-      const result = await registry.call("sc_trade_journal", {});
-      const text = result.content[0].text;
-      expect(text).not.toMatch(AMOUNT_KEYS);
-      for (const amount of AMOUNTS) expect(text, String(amount)).not.toContain(String(amount));
-      const out = JSON.parse(text);
-      expect(out.data.money_note).toMatch(/include_balance=true/);
-    });
+    it.each(HIDDEN_MODES)(
+      "Given $label, When I ask for the journal, Then no amount, key or figure of aUEC is in the answer",
+      async (mode) => {
+        const { registry } = world(
+          TRIP,
+          () => wikiPage([{ uuid: WASTE, name: "Waste" }]),
+          mode.policy,
+        );
+        const result = await registry.call("sc_trade_journal", { ...mode.args });
+        const text = result.content[0].text;
+        expect(text).not.toMatch(AMOUNT_KEYS);
+        for (const amount of AMOUNTS) expect(text, String(amount)).not.toContain(String(amount));
+        const out = JSON.parse(text);
+        expect(out.data.money_note).toMatch(/Montants masqués/);
+        // the player's hidden choice says what it ignores; a call that only passed false says its own, shorter note
+        if (mode.policy) {
+          expect(out.data.money_note).toMatch(/include_balance=true est ignoré/);
+        } else {
+          expect(out.data.money_note).toMatch(/pour cet appel/);
+        }
+      },
+    );
 
-    it("Given no flag, Then counts, SCU, kinds, statuses, categories and the structure stay", async () => {
-      const { registry } = world(TRIP, () => wikiPage([{ uuid: WASTE, name: "Waste" }]));
-      const s = body(await registry.call("sc_trade_journal", {})).data.sessions[0];
-      expect(s.cargo_runs[0]).toMatchObject({
-        commodity_name: "Waste",
-        state: "closed",
-        paired_scu: 696,
-        bought_scu: 696,
-        buy_lines: 2,
-        sell_lines: 2,
-        estimated: true,
-      });
-      expect(s.spending_by_category).toEqual([
-        { category: "armor", lines: 1, quantity: 3, inferred: true },
-      ]);
-      expect(s.totals.cargo).toMatchObject({ bought_scu: 696, sold_scu: 696, buy_lines: 2 });
-      expect(s.transactions[0]).toMatchObject({
-        kind: "commodity",
-        side: "buy",
-        unit: "SCU",
-        quantity: 640,
-        status: expect.any(String),
-        confidence: "inferred",
-      });
-      expect(s.transactions_shown).toBe(5);
-    });
+    it.each(HIDDEN_MODES)(
+      "Given $label, Then counts, SCU, kinds, statuses, categories and the structure stay",
+      async (mode) => {
+        const { registry } = world(
+          TRIP,
+          () => wikiPage([{ uuid: WASTE, name: "Waste" }]),
+          mode.policy,
+        );
+        const s = body(await registry.call("sc_trade_journal", { ...mode.args })).data.sessions[0];
+        expect(s.cargo_runs[0]).toMatchObject({
+          commodity_name: "Waste",
+          state: "closed",
+          paired_scu: 696,
+          bought_scu: 696,
+          buy_lines: 2,
+          sell_lines: 2,
+          estimated: true,
+        });
+        expect(s.spending_by_category).toEqual([
+          { category: "armor", lines: 1, quantity: 3, inferred: true },
+        ]);
+        expect(s.totals.cargo).toMatchObject({ bought_scu: 696, sold_scu: 696, buy_lines: 2 });
+        expect(s.transactions[0]).toMatchObject({
+          kind: "commodity",
+          side: "buy",
+          unit: "SCU",
+          quantity: 640,
+          status: expect.any(String),
+          confidence: "inferred",
+        });
+        expect(s.transactions_shown).toBe(5);
+      },
+    );
 
-    it("Given include_balance true, Then the amounts are there (positive control) and there is no withheld note", async () => {
-      const { registry } = world(TRIP, () => wikiPage([{ uuid: WASTE, name: "Waste" }]));
-      const out = body(await registry.call("sc_trade_journal", { include_balance: true }));
-      expect(out.data.sessions[0].cargo_runs[0]).toMatchObject({
-        cost_auec: 131504,
-        revenue_auec: 318072,
-        gross_margin_auec: 186568,
-      });
-      expect(out.data.sessions[0].transactions[0].total_auec).toBe(120923);
-      expect(out.data.money_note).toBeUndefined();
-    });
+    it.each(SHOWN_MODES)(
+      "Given $label, Then the amounts are there (positive control) and there is no withheld note",
+      async (mode) => {
+        const { registry } = world(
+          TRIP,
+          () => wikiPage([{ uuid: WASTE, name: "Waste" }]),
+          mode.policy,
+        );
+        const out = body(await registry.call("sc_trade_journal", { ...mode.args }));
+        expect(out.data.sessions[0].cargo_runs[0]).toMatchObject({
+          cost_auec: 131504,
+          revenue_auec: 318072,
+          gross_margin_auec: 186568,
+        });
+        expect(out.data.sessions[0].transactions[0].total_auec).toBe(120923);
+        expect(out.data.money_note).toBeUndefined();
+      },
+    );
 
-    it("Given include_balance false, Then it is the same as no flag", async () => {
-      const { registry } = world(TRIP, () => wikiPage([{ uuid: WASTE, name: "Waste" }]));
-      const text = (await registry.call("sc_trade_journal", { include_balance: false })).content[0]
-        .text;
-      expect(text).not.toMatch(AMOUNT_KEYS);
+    it("Given SC_BALANCE=hidden, Then include_balance true is ignored, and only the player's click on Afficher gives the amounts", async () => {
+      const policy = { hiddenByDefault: true, playerChoice: null as "hidden" | "shown" | null };
+      const { registry } = world(TRIP, () => wikiPage([{ uuid: WASTE, name: "Waste" }]), policy);
+      const ignored = (await registry.call("sc_trade_journal", { include_balance: true }))
+        .content[0].text;
+      expect(ignored).not.toContain("120923");
+      expect(ignored).toContain("Montants masqués par le joueur");
+      policy.playerChoice = "shown";
+      const lifted = (await registry.call("sc_trade_journal", {})).content[0].text;
+      expect(lifted).toContain("120923");
     });
   });
 

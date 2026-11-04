@@ -13,7 +13,7 @@ switch it on, in particular [Risks](#risks).
 > - **Risks.** CIG has neither allowed nor forbidden it, the RSI terms apply to you, and the risk is yours: read [Risks](#risks) (near the end of this page) before you switch it on.
 > - **Not verified.** The maintainer has not yet seen the dashboard itself inside Claude Desktop (see [Who shows it](#live-dashboard)).
 > - **Turn it off.** `npm run telemetry -- disable --apply` (without `--apply`, `enable` and `disable` are dry runs that write nothing). It removes only what the tool set: a variable you set by hand stays, and the command says how to remove it. Then restart Claude Desktop, quit the RSI Launcher completely (tray icon too) and start it again. It does not delete your saved sessions.
-> - **What is saved, and how to erase it.** Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; ship losses: time, model, cause, place, presumed cargo (SCU and aUEC paid); and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (the money figures only with `include_balance`); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it. Details: [Saved sessions](#saved-sessions).
+> - **What is saved, and how to erase it.** Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; ship losses: time, model, cause, place, presumed cargo (SCU and aUEC paid); and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (money figures included, unless you hide them: "Masquer le solde" in the dashboard or `SC_BALANCE=hidden` hides them from the tools until you click "Afficher le solde", and `include_balance` false hides them from one call); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it. Details: [Saved sessions](#saved-sessions).
 
 ## What it is, and where it comes from
 
@@ -271,7 +271,7 @@ What becomes of every field of the stream. `poll.` is the answer of `sc_live_pol
 | `ActorState.locomotion` | `poll.pilot.locomotion` | Body position (`locomotion`) |
 | `ActorState.crew_role` | `poll.pilot.crew_role` | Crew role and seat (`crew`) |
 | `ActorState.seat_name` | `poll.pilot.seat` | Crew role and seat (`crew`) |
-| `ActorState.uec_balance` | `poll.balance.uec` | Balance (hidden by default) (`balance`) |
+| `ActorState.uec_balance` | `poll.balance.uec` | Balance (shown by default, can be hidden) (`balance`) |
 | `ActorFrame.vitals` | `poll.pilot` | Health (`health`) |
 | `ActorFrame.state` | `poll.pilot.locomotion` | Body position (`locomotion`) |
 | `ActorFrame.environment` | `poll.pilot.outside_temperature_c` | Outside temperature (`temperature`) |
@@ -404,11 +404,7 @@ that this server provides and that the client renders next to the chat.
   capped (60 characters) and displayed as plain text; numbers are bounded; fewer than two usable price points make no
   curve. The plan feeds the commerce card below. A suggested route has the same shape as a plan: the action bar (see Trade
   actions) applies one through the same cleaner.
-- **Balance privacy.** The balance is hidden in the page until you click "Afficher le solde". Only then does the
-  page ask the server for it (`include_balance`). The balance is never put in the automatic summary that the
-  page may send to the model, nor in the fixed messages of the buttons, nor on the channel between dashboards (see
-  below), with one exception: the button "Route avec mon solde et ce vaisseau" sends it in a message, says so in the
-  text, and only when you press it.
+- **Balance privacy.** The balance is shown in the page by default (the server's default since 2.6; it started hidden before). "Masquer le solde" hides it on that screen AND for Claude's tools: the page tells the server (a click, sent once), and from then on `sc_live_state`, `sc_live_events`, `sc_session_*` and `sc_trade_journal` answer without amounts, an `include_balance: true` is ignored (an instruction hidden in a UEX name or a journal note cannot reveal them) and the answer says the player hid them. "Afficher le solde" lifts it; the last click wins, whichever dashboard it comes from, and every dashboard follows the server's state at its next poll (a new one reads it on mounting). The click is kept in the memory of THIS server process only, never in a file: **a server restart forgets it** (the dashboard then starts as the configuration says, except that a dashboard that holds its own "Masquer" click says it again to the restarted server instead of showing the balance; a click of another dashboard on "Afficher le solde" is followed), another client or another server process has its own memory (Claude Desktop can start two), so a click protects only the tools of the same process, and only `SC_BALANCE=hidden` covers every client durably. Lifting the mask needs a token that only the served page carries (a caller that did not read the page is refused; hiding needs none). With `SC_BALANCE=hidden` in the server's entry the dashboard starts hidden and the tools answer without amounts, permanently; a click on "Afficher le solde" lifts it for the running process. The hidden state is visible and reversible: the "Solde" row reads "••••••" with its button. Whatever the state, the balance is never put in the automatic summary that the page may send to the model, nor in the fixed messages of the buttons, nor on the channel between dashboards (a dashboard that follows another one shows it hidden, with the button to take the lead), with one exception: the button "Route avec mon solde et ce vaisseau" sends it in one message, says so in the text, and only when you press it; it changes nothing else (not the server's choice, not the screen). `include_balance: false` hides one call. When amounts are shown they reach the model and your conversation: it is your choice.
 - **Health strip: what is wired, what is missing.** A new player who installs the server sees a dashboard that
   silently shows less than it could: without the game log there is no connection state (a "kicked for inactivity"
   stays invisible), no trade journal, no ledger and weaker session figures; with telemetry off nothing at all; a game
@@ -432,9 +428,7 @@ that this server provides and that the client renders next to the chat.
   6. **Saved sessions**: on (with the time of the last write of this server process), off by `SC_SESSIONS=off` (a
      deliberate choice: listed behind the "?", not a reminder), read-only (a newer file) or degraded (a write failed,
      the sessions stay in memory).
-  7. **Balance**: what "Afficher le solde" reveals (the amount, on this screen only; nothing in the automatic summary
-     or on the channel between dashboards, and only the route button sends it, when you press it) and that the saved
-     sessions keep their figures in a local file.
+  7. **Balance**: whether it is shown or hidden on this screen, what "Masquer le solde" and "Afficher le solde" do (the mask also covers Claude's tools, is sticky, and is forgotten when the server restarts: `SC_BALANCE=hidden` is the permanent way), nothing in the automatic summary or on the channel between dashboards, only the route button sends it (when you press it), and that the saved sessions keep their figures in a local file.
   8. **Freshness of the data**: not measured here (it would need the sources, so the network); the line points to
      `sc_data_status`.
 
@@ -598,8 +592,7 @@ runs ("Contrat en cours : title, step 2/3").
   over that contract, so the reward minus what the contract cost, not a profit. It cannot check that the contract is the
   planned route. For the result of a trading run, see the commerce card.
 - **Balance privacy.** Everything derived from the balance (gain, total, pace, planned against measured) is built by
-  the server and drawn by the page only after you click "Afficher le solde". Without it the ledger shows steps and
-  durations only, and the server's answer holds no such figure. None of it goes into the automatic summary sent to
+  the server and drawn by the page while the balance is shown (the default). With the balance hidden ("Masquer le solde", `SC_BALANCE=hidden`) the ledger shows steps and durations only, and the server's answer holds no such figure. None of it goes into the automatic summary sent to
   the model or into the fixed messages.
 - **Load.** The log file's modification date is looked at at most every 5 seconds, from a poll, and nothing is read
   unless that date changed. The first read takes the end of the log (as the other log tools do); after that only the
@@ -675,7 +668,7 @@ same thing. Each figure now has one meaning:
   is shown, the average price really obtained per SCU. The dot is the last price. The points are Claude's, taken from
   UEX, and may be old.
 - **Balance privacy, stricter than the ledger.** Every amount of a run (turnover, cost, margin, fees, net, pace,
-  projection) is built by the server only when the View asked for the balance and drawn only after your click. Without
+  projection) is built by the server only while the balance is shown and drawn only then. Without
   it the section carries goods, places, SCU, times and counts, nothing in aUEC. It travels on the channel between
   Views without any amount (stripped by the sender and again by the receiver) and never goes into the automatic
   summary or the fixed messages.
@@ -726,8 +719,7 @@ same thing. Each figure now has one meaning:
   20 s cluster), only 12 % of item lines follow another within
   4 s, and insurance claim requests are mostly isolated (155 of 187 bursts are single lines). What could NOT be measured:
   the delay between a log line and the balance change it causes (the log has no balance: it needs a capture of both at
-  once), and what insurance or hangar requests really cost. Every amount here is derived from the balance: built only when
-  the View asked for it, drawn after the click, stripped by the sender and the receiver on the channel between Views, never
+  once), and what insurance or hangar requests really cost. Every amount here is derived from the balance: built only while the balance is shown, drawn only then, stripped by the sender and the receiver on the channel between Views, never
   in `ui/update-model-context` or the fixed messages. The block lists the newest 40 movements (the totals cover all; the filters
   and "Ce trajet seulement" only see those lines, and the block says so when the list is shorter than the totals). Nothing
   of this is stored in the session summary.
@@ -856,7 +848,7 @@ transaction of the same side and kind went through (`superseded`); for a
 cargo trade it suggests checking the plan again (the button is highlighted; nothing is asked by itself). The session
 counts them: `price_refusals` (additive, optional, the file stays version 2 and older files read as 0; a watermark makes
 the count idempotent) in the session summary, `sc_session_current`, `sc_session_list` and `sc_session_stats` (a total and
-per session, a count, so not withheld without `include_balance`).
+per session, a count, so never hidden with the amounts).
 
 Measured on the reference install's 95 logs (March 2025 to November 2026, read-only, counts and timings only): 81 cargo
 requests (39 purchases, 42 sales) and 183 shop requests; `TransactionCostMismatch` appeared twice (one cargo purchase,
@@ -881,7 +873,7 @@ place names (an "OOC_" body, a jump point, a star system or a body ...): these a
 list of places, so anything else ("Hangar_" followed by a name, a custom entity) is shown as "modèle inconnu" or "lieu inconnu" (after the family, at most 6 short segments, none starting with hangar, apartment, home, habitat or room). A short hash of the ship's identifier
 links a purchase to its ship, in memory only: it is never written, sent to a View or exported. The SCU go with or without
 the balance (`trade.ship_losses`: the server sends the newest 5, the View keeps the newest 3; also on the channel between Views); the aUEC paid is a balance figure and
-is withheld without it. The session keeps `ship_losses` (additive, optional, the file stays version 2): only the time, the
+is withheld when the amounts are hidden. The session keeps `ship_losses` (additive, optional, the file stays version 2): only the time, the
 model, the cause, the kind of causer, the place and the cargo presumed lost; the debrief lists them.
 
 ## Saved sessions
@@ -973,7 +965,7 @@ balance change that overlapped a cargo run is left out so that the run's sales a
 time), best trip, and efficiency against the plan when Claude passed one with the dashboard. Across sessions: totals,
 average per hour, trend (the last sessions against the ones before, 10 percent threshold), best and worst session, best
 routes and goods when known. A figure that cannot be worked out is `null`, never zero. All of them are raw measures: the
-balance also moves with purchases, fines and repairs. Each session also counts the transactions the game refused because the price moved (`price_refusals`, a count: it is not an aUEC figure, so it is given without `include_balance`; see [the pre-flight check](#before-leaving-the-pre-flight-check-and-the-price-that-moved)).
+balance also moves with purchases, fines and repairs. Each session also counts the transactions the game refused because the price moved (`price_refusals`, a count: it is not an aUEC figure, so it is given even when the amounts are hidden; see [the pre-flight check](#before-leaving-the-pre-flight-check-and-the-price-that-moved)).
 
 ### Route reliability (calibration)
 
@@ -1021,7 +1013,7 @@ compares what the plan promised with what you really got (`src/providers/session
   the typical net ratio when at least 2 runs have their own net, otherwise times the typical gross ratio less the usual fee
   rate on the plan's turnover. An ESTIMATE, always with its number of runs and its confidence; it claims no cause (a ratio
   below 100 % can come from prices, quantity or a slow sale).
-- **Where it shows.** `sc_session_stats` (section `route_reliability`, only with `include_balance`); a quiet line under each
+- **Where it shows.** `sc_session_stats` (section `route_reliability`, not with `include_balance` false); a quiet line under each
   suggested route of the action bar ("D'après tes N trajets ... : tu réalises ≈ X % du prévu (frais ≈ Y %)", with the tag
   "estimé · N trajets", only when data exist; a route with two legs says "Sur le 1er tronçon" in the line and, in the
   fold "Comment lire ça", that it is not a round-trip figure; the confidence is in the tag's tooltip, and stays in the tag
@@ -1029,8 +1021,7 @@ compares what the plan promised with what you really got (`src/providers/session
   figure when the plan in force has a group of 2 runs or more; one sentence in the server instructions and in the prompt
   `trade_copilot` so that Claude quotes it with its number of runs.
 - **Privacy.** A ratio times the plan reveals the realised result, so the section exists only where the balance is shown:
-  absent from the tool without `include_balance`, from the dashboard poll (and so from its hash) of a View that did not ask
-  for the balance, from the channel between Views, from `ui/update-model-context` and from the message of "Demander à l'agent".
+  absent from the tool with `include_balance` false (or under `SC_BALANCE=hidden`), from the dashboard poll (and so from its hash) of a View that hid the balance, from the channel between Views, from `ui/update-model-context` and from the message of "Demander à l'agent".
   The View ignores it while the balance is hidden, even if a server sent it.
 - **Stored (file version 2).** For a trade trip: the plan's quantity, the plan's two terminals (UEX names: the plan's, not
   observed places), `plan_link`, how the fees were obtained (`fees_method`), and what the balance holds beyond the run
@@ -1087,10 +1078,10 @@ compares what the plan promised with what you really got (`src/providers/session
   and LibreOffice; it is a mitigation, not a promise about every program that can open a CSV: read a file from someone else
   before opening it, as you would any spreadsheet.
   **Privacy.** Every aUEC figure comes from the balance, so the report holds amounts only when the balance is shown (the
-  dashboard's choice) or `include_balance` is true. Otherwise it is the non-monetary report (counts, durations, SCU, labels) and
+  dashboard's choice) unless `include_balance` is false (or the server starts hidden and the call does not say true). Otherwise it is the non-monetary report (counts, durations, SCU, labels) and
   says amounts are withheld; the best trip, the plan efficiency, the route reliability and the trips' methods are withheld with
   them. The balance at the start and at the last sighting never appear, even with amounts, unless you also switch on
-  **Soldes de départ et final** (`include_start_balance`; per use, never remembered, ignored without `include_balance`); what can
+  **Soldes de départ et final** (`include_start_balance`; per use, never remembered, ignored when the amounts are hidden); what can
   show, once amounts are on, is their difference (the balance change over the session, in the unexplained section). The
   server stores no handle, account id, address, GUID, raw log line or path, but the labels of the trips and your note are your
   own and the game's own wording: they are cleaned again, bounded and escaped (no HTML, no link, no table break), **not
@@ -1098,10 +1089,7 @@ compares what the plan promised with what you really got (`src/providers/session
   session stays bounded: the table of the download keeps up to 500 trips, the CSV up to 500 rows. The text is built on request,
   held in the page only while you look at it, and removed from the page (its text, not just hidden) when you hide the balance,
   leave the session, close the menu or the page goes away; it is never stored and never sent anywhere by the server.
-- **Balance privacy.** Every aUEC figure (balances, results, turnover, gross margin, rates) is withheld from the model
-  unless the tool is called with `include_balance` (Claude asks you first), and is drawn in the dashboard, and
-  sent in its poll and between dashboards, only after you click "Afficher le solde". Counts, times and place names are
-  not withheld.
+- **Balance privacy.** Every aUEC figure (balances, results, turnover, gross margin, rates) is given to the model by default and drawn in the dashboard. It is withheld from the model, and from the dashboard, its poll and the session calls it makes, while the player's choice is hidden ("Masquer le solde" or `SC_BALANCE=hidden`, see the dashboard's Balance privacy), whatever `include_balance` says; `include_balance: false` hides one call. It never travels between dashboards. Counts, times and place names are never withheld.
 - **Not verified in the real game:** the whole feature was built against fake games and invented logs. The start balance
   quality, the game-running detection from the log's date and the resume after a real crash have not been observed.
 
@@ -1111,10 +1099,8 @@ compares what the plan promised with what you really got (`src/providers/session
   it is not reachable from the network.
 - It contains your health, your ship and your **aUEC balance**. It does not contain your position.
 - This server never logs frames, never writes them to disk and never sends them over a network. Its diagnostics
-  contain field numbers only. Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; ship losses: time, model, cause, place, presumed cargo (SCU and aUEC paid); and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (the money figures only with `include_balance`); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it. The summaries include balances, by your explicit decision, and this server makes no network request for them (see [Saved sessions](#saved-sessions)).
-- **Tool results are part of your conversation with Claude**, which goes to Anthropic. For that reason the balance
-  is withheld unless the tool is called with `include_balance`, and Claude is told to ask you first. What you let
-  Claude read is what leaves your machine.
+  contain field numbers only. Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; ship losses: time, model, cause, place, presumed cargo (SCU and aUEC paid); and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (money figures included, unless you hide them: "Masquer le solde" in the dashboard or `SC_BALANCE=hidden` hides them from the tools until you click "Afficher le solde", and `include_balance` false hides them from one call); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it. The summaries include balances, by your explicit decision, and this server makes no network request for them (see [Saved sessions](#saved-sessions)).
+- **Tool results are part of your conversation with Claude**, which goes to Anthropic. The balance is returned by default, so that Claude can help with your trades; hide it with the dashboard's "Masquer le solde" (sticky, kept in the memory of this server process until it restarts, and protecting only the tools of that process) or `SC_BALANCE=hidden` (permanent, every client) if you would rather not share it. What Claude reads, amounts included, is what leaves your machine; the server itself sends nothing over a network.
 
 ### Limits against a program that pretends to be the game
 

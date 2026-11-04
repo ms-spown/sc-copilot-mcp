@@ -122,11 +122,11 @@ describe("Feature: prompts the user can pick in Claude", () => {
       ]);
       expect(text).toMatch(/GROSS/);
       expect(text).toMatch(/never net/);
-      expect(text).toMatch(/only after I agree/);
+      expect(text).toMatch(/if it says they are hidden, that is my choice/);
       expect(text).toMatch(/next action/);
     });
 
-    it("Then trade_copilot reads the session first, asks before money, plans, verifies, and labels estimates", async () => {
+    it("Then trade_copilot reads the session first, respects a hidden balance, plans, verifies, and labels estimates", async () => {
       const text = await render("trade_copilot", { budget: "500000" });
       expect(text).toContain("Budget in aUEC: 500000.");
       inOrder(text, [
@@ -136,7 +136,8 @@ describe("Feature: prompts the user can pick in Claude", () => {
         "uex_get_market_status",
         "uex_get_price_history",
       ]);
-      expect(text).toMatch(/Never read them without asking/);
+      expect(text).toMatch(/if it says they are hidden, that is my choice: do not work around it/);
+      expect(text).not.toMatch(/WITHOUT include_balance|Never read them without asking/);
       expect(text).toMatch(/ESTIMATES/);
       expect(text).toMatch(/never call a route safe/);
       expect(text).toMatch(/next action/);

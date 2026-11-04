@@ -227,8 +227,10 @@ To add a scenario:
    `world.applyPlan()` (the action bar's own search and "apply"), `world.sessionsJson()`. `world.crash()`,
    `world.playDownTo()` and `world.restart()` kill the server objects and recreate them on the same files.
 4. Write the expected figures from the story, not from what the code prints. Check privacy at every step with
-   `sweepWithoutBalance` and `expectAbsent` (`audit.ts`), and always the positive control (`expectPresent`) with the
-   balance: an absence proves nothing if the figure was never there.
+   `sweepWithoutBalance` and `expectAbsent` (`audit.ts`; it sweeps both hiding modes, `include_balance: false` and a server
+   started with `SC_BALANCE=hidden`, through `world.balancePolicy`), and always the positive control (`expectPresent`) with the
+   balance: an absence proves nothing if the figure was never there. Unit tests of a tool take their modes from
+   `src/testing/balanceModes.ts` (`HIDDEN_MODES`, `SHOWN_MODES`): a masking guard runs in every hiding mode.
 
 Rules the harness depends on (each one cost a false failure once):
 

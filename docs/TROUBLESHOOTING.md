@@ -87,7 +87,7 @@ without changing anything; `npm run doctor` repeats it. Full explanations and th
   conversation). Only the most recent visible one calls the game's data, the older ones follow it. Click "Reprendre
   ici" to make this one the leader. If a dashboard does not follow, the host may not share the origin of its Views
   (not verified by us): each one then polls by itself, and one away for 30 seconds retires.
-- **The balance is masked**: that is the default. Click "Afficher le solde" in the page.
+- **The balance is masked**: since 2.6 the balance is shown by default, so it was hidden on purpose: you clicked "Masquer le solde" (it then also hides it from Claude's tools, until you click "Afficher le solde"; the click is kept in the memory of that server process only: a restart forgets it, and another process has its own), or the server starts with `SC_BALANCE=hidden` in its entry, or this dashboard follows a newer one (a follower never shows the balance; click "Reprendre ici"). Click "Afficher le solde" in the page.
 
 ## A tool says "unexpected shape" or "format may have changed"
 

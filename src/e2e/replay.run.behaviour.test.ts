@@ -259,13 +259,25 @@ describe("Feature: the player's run, from the first frame to the saved session",
       [PLAYER_RUN.start, PLAYER_RUN.end, F.net, F.fees, F.buyFee, F.sellFee],
       "sc_trade_journal",
     );
-    // Without the flag the journal gives no aUEC amount at all (cost, turnover, margin, line totals): the positive
-    // control is the call above, which asked for them.
-    const bare = await w.call("sc_trade_journal", { resolve_names: false });
-    expectAbsent(
-      JSON.stringify(bare),
-      [F.cost, F.turnover, F.gross, F.buyFee, F.sellFee],
-      "sc_trade_journal without include_balance",
+    // Hidden (include_balance false, or a server started with SC_BALANCE=hidden and no argument) the journal gives no
+    // aUEC amount at all (cost, turnover, margin, line totals): the positive control is the call above, which shows them.
+    const figures = [F.cost, F.turnover, F.gross, F.buyFee, F.sellFee];
+    const bare = await w.call("sc_trade_journal", { resolve_names: false, include_balance: false });
+    expectAbsent(JSON.stringify(bare), figures, "sc_trade_journal with include_balance false");
+    w.balancePolicy.hiddenByDefault = true;
+    w.balancePolicy.playerChoice = null;
+    try {
+      const started = await w.call("sc_trade_journal", { resolve_names: false });
+      expectAbsent(JSON.stringify(started), figures, "sc_trade_journal under SC_BALANCE=hidden");
+    } finally {
+      w.balancePolicy.hiddenByDefault = false;
+    }
+    // Shown by default: the same call with no argument gives them.
+    const byDefault = await w.call("sc_trade_journal", { resolve_names: false });
+    expectPresent(
+      JSON.stringify(byDefault),
+      [F.cost, F.turnover, F.gross],
+      "sc_trade_journal by default",
     );
 
     // Route reliability is silent: one run is not a sample (n < 2), in the tool and in the poll.

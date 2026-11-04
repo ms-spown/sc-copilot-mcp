@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MAX_OUTPUT_CHARS, formatOutputRaw } from "../core/format.js";
+import { hiddenNote, wantsBalance, type BalancePolicy } from "../core/balance.js";
 import { TELEMETRY_WARNING } from "../core/telemetryNotice.js";
 import { addNote, recordFetch, setChannel, setGameVersion } from "../core/provenance.js";
 import {
@@ -21,8 +22,9 @@ import type { ToolDefinition, ToolResult } from "./types.js";
  * - sc_live_status: always advertised. Says why there is no data, and how to turn it on.
  * - sc_live_state / sc_live_events: advertised only when SC_TELEMETRY=on.
  *
- * Tool results are part of the conversation, which goes to the model provider. So the UEC balance is returned only
- * when the caller asks for it (`include_balance`); the stream itself stays on this PC.
+ * Tool results are part of the conversation, which goes to the model provider. The UEC balance is returned by default
+ * (the player's choice, since 2.6); `include_balance: false` or SC_BALANCE=hidden leaves it out. The stream itself stays
+ * on this PC.
  */
 
 const ok = (value: unknown): ToolResult => ({
@@ -101,16 +103,14 @@ function logContext(gameLog: GameLog | undefined) {
   };
 }
 
-function stripBalance(snapshot: TelemetrySnapshot, include: boolean) {
+function stripBalance(snapshot: TelemetrySnapshot, include: boolean, note: string) {
   const { state, uec_session, ...rest } = snapshot;
   const pilot = state.pilot ? { ...state.pilot } : state.pilot;
   if (pilot && !include) delete pilot.uec_balance;
   return {
     ...rest,
     ...(include && uec_session ? { uec_session } : {}),
-    ...(include
-      ? {}
-      : { uec_balance: "withheld: call again with include_balance=true if the player agrees" }),
+    ...(include ? {} : { uec_balance: note }),
     state: { ...state, pilot },
   };
 }
@@ -137,10 +137,12 @@ export function telemetryTools({
   telemetry,
   gameLog,
   connection,
+  balance,
 }: {
   telemetry?: Telemetry;
   gameLog?: GameLog;
   connection?: ConnectionTracker;
+  balance?: BalancePolicy;
 }): ToolDefinition[] {
   const enabled = () => telemetry?.enabled === true;
   const addLogContext = logContext(gameLog);
@@ -188,7 +190,7 @@ export function telemetryTools({
     {
       name: "sc_live_state",
       description:
-        "Snapshot of the running game from its local telemetry, only when the user enabled it: ship (name, speed, altitude, heading, hydrogen, boost, g-force, gear, flight modes, power flags, warning lights), weapons per seat, countermeasures, and the pilot (locomotion, health, hunger, thirst, heart rate, atmosphere). Say how old it is (frame_age_ms); fields not sent are left out, never zero. NOT in the stream: position, shield level, hull, heat, ammo, power distribution, quantum fuel. Health 0 is 'down or dead'. The UEC balance is withheld unless include_balance is true (ask the player first). available=false (waiting or connected) means no data yet, normal in menus and loading: never say the game is not running or that something is wrong. On foot only pilot data exists; ship data needs the player seated in a ship. When the game log is configured, `connection` says if the player is online, in the menus, disconnected (for example kicked for inactivity) or has quit: if it is not online, the values are the last ones held and are not current. Not advertised when telemetry is off.",
+        "Snapshot of the running game from its local telemetry, only when the user enabled it: ship (name, speed, altitude, heading, hydrogen, boost, g-force, gear, flight modes, power flags, warning lights), weapons per seat, countermeasures, and the pilot (locomotion, health, hunger, thirst, heart rate, atmosphere). Say how old it is (frame_age_ms); fields not sent are left out, never zero. NOT in the stream: position, shield level, hull, heat, ammo, power distribution, quantum fuel. Health 0 is 'down or dead'. The UEC balance is given by default; include_balance=false hides it, and it stays hidden (include_balance=true is ignored) once the player hid it. available=false (waiting or connected) means no data yet, normal in menus and loading: never say the game is not running or that something is wrong. On foot only pilot data exists; ship data needs the player seated in a ship. When the game log is configured, `connection` says if the player is online, in the menus, disconnected (for example kicked for inactivity) or has quit: if it is not online, the values are the last ones held and are not current. Not advertised when telemetry is off.",
       inputSchema: {
         type: "object",
         properties: {
@@ -200,7 +202,7 @@ export function telemetryTools({
           include_balance: {
             type: "boolean",
             description:
-              "Include the aUEC balance and its change since the reader started. Default false: the result goes into the conversation.",
+              "Include the aUEC balance and its change since the reader started. Default true; false hides it (the player's choice).",
           },
         },
       },
@@ -236,7 +238,8 @@ export function telemetryTools({
         }
         recordFetch({ fetchedAt: Date.now() - snapshot.frame_age_ms, cache: "network" });
         addNote("Live telemetry: a frame is only as current as frame_age_ms says.");
-        const view = stripBalance(snapshot, include_balance === true);
+        const money = wantsBalance(include_balance, balance);
+        const view = stripBalance(snapshot, money, hiddenNote(balance));
         const { state } = view;
         const wanted = new Set(sections ?? ["ship", "pilot", "weapons"]);
         const status = await telemetry.status(false);
@@ -266,8 +269,8 @@ export function telemetryTools({
             : {}),
           derived: state.derived,
           conditions: out ? [] : state.conditions,
-          ...(include_balance && view.uec_session ? { uec_session: view.uec_session } : {}),
-          ...(!include_balance ? { uec_balance: view.uec_balance } : {}),
+          ...(money && view.uec_session ? { uec_session: view.uec_session } : {}),
+          ...(!money ? { uec_balance: view.uec_balance } : {}),
           not_available: unavailable,
           sections_unreadable: state.broken,
           limits: LIMITS,
@@ -282,7 +285,7 @@ export function telemetryTools({
     {
       name: "sc_live_events",
       description:
-        "Recent events derived from the live telemetry (took off, landed, quantum jump, lock-on, hits taken, shields down, power lost, health low or 0, respawn, countermeasures, hunger), newest last, from an in-memory ring that starts when the reader starts. Each event says confidence: 'confirmed' (seen working in the field test) or 'unverified' (heuristic or never seen live). The game itself sends almost no events, so these are inferred and debounced; a missing event proves nothing. Use after_seq with the last_seq of a previous call to get only new ones. Balance-change events are withheld unless include_balance is true. Not advertised when telemetry is off.",
+        "Recent events derived from the live telemetry (took off, landed, quantum jump, lock-on, hits taken, shields down, power lost, health low or 0, respawn, countermeasures, hunger), newest last, from an in-memory ring that starts when the reader starts. Each event says confidence: 'confirmed' (seen working in the field test) or 'unverified' (heuristic or never seen live). The game itself sends almost no events, so these are inferred and debounced; a missing event proves nothing. Use after_seq with the last_seq of a previous call to get only new ones. Balance-change events are left out while the amounts are hidden (the player's choice, or include_balance false) and the answer says so. Not advertised when telemetry is off.",
       inputSchema: {
         type: "object",
         properties: {
@@ -298,7 +301,7 @@ export function telemetryTools({
           },
           include_balance: {
             type: "boolean",
-            description: "Include balance-change events (default false).",
+            description: "Include balance-change events (default true; false hides them).",
           },
         },
       },
@@ -314,6 +317,7 @@ export function telemetryTools({
           })
           .parse(args || {});
         await addLogContext();
+        const money = wantsBalance(include_balance, balance);
         const max = Math.min(Math.max(Math.floor(limit ?? 30), 1), 100);
         // Filter BEFORE the cap: limit=1 must give the newest event that is allowed, not an empty answer.
         const result = await telemetry.events(
@@ -321,7 +325,7 @@ export function telemetryTools({
           max,
           (e) =>
             (confidence !== "confirmed" || e.confidence === "confirmed") &&
-            (include_balance === true || e.type !== "uec_changed"),
+            (money || e.type !== "uec_changed"),
         );
         const status = await telemetry.status(false);
         const events = result.events;
@@ -332,6 +336,8 @@ export function telemetryTools({
           stream: { state: status.state, last_frame_age_ms: status.last_frame_age_ms },
           events,
           last_seq: result.last_seq,
+          // Said when balance-change events were left out, as sc_live_state says it for the balance.
+          ...(money ? {} : { balance_events_note: hiddenNote(balance) }),
           note: "Events exist only since the reader started in this server process, and only while the game was sending frames.",
         };
         return okFitted<Record<string, unknown> & { events: typeof events }>(answer, (a) =>

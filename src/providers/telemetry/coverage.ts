@@ -104,7 +104,10 @@ export const WIDGETS = {
   air: { en: "Atmosphere breathable", fr: "Atmosphère respirable" },
   locomotion: { en: "Body position", fr: "Position du corps" },
   crew: { en: "Crew role and seat", fr: "Rôle et siège" },
-  balance: { en: "Balance (hidden by default)", fr: "Solde (masqué par défaut)" },
+  balance: {
+    en: "Balance (shown by default, can be hidden)",
+    fr: "Solde (affiché par défaut, masquable)",
+  },
   unverified: { en: "Unverified values card", fr: "Carte des valeurs non vérifiées" },
 } as const satisfies Record<string, Reason>;
 

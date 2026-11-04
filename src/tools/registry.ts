@@ -1,3 +1,4 @@
+import type { BalancePolicy } from "../core/balance.js";
 import { toErrorResult } from "../core/errors.js";
 import type { FleetStore } from "../providers/fleet/store.js";
 import type { ConnectionTracker } from "../providers/gamelog/connection.js";
@@ -60,6 +61,8 @@ export interface ToolClients {
   connection?: ConnectionTracker;
   /** Saved play sessions (SC_TELEMETRY=on and SC_SESSIONS not off). Absent: their tools say they are off. */
   sessions?: SessionManager;
+  /** Whether the aUEC amounts start hidden (SC_BALANCE=hidden). Absent: shown, the default. */
+  balance?: BalancePolicy;
 }
 
 /** Every tool this server implements, before any scoping. */

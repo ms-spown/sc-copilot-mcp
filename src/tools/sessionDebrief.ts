@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { hiddenNote, wantsBalance, type BalancePolicy } from "../core/balance.js";
 import { sanitizeUntrusted } from "../core/untrusted.js";
 import { DASHBOARD_URI } from "../dashboard/constants.js";
 import {
@@ -10,7 +11,6 @@ import {
   type Debrief,
 } from "../providers/sessions/debrief.js";
 import type { SessionManager } from "../providers/sessions/manager.js";
-import { MONEY_WITHHELD_NOTE } from "../providers/sessions/stats.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
 /**
@@ -26,9 +26,11 @@ import type { ToolDefinition, ToolResult } from "./types.js";
  * Why tools of their own and not a `format` on sc_session_current: every string of a session-file answer is cut at 200
  * characters by the registry (catalog.ts `maxText`), a limit that must stay for the others.
  *
- * Money: every aUEC figure comes from the player's balance. Without include_balance the report has none (counts,
- * durations, SCU, labels) and says so. With it, amounts appear, but the balance at the start and at the last sighting only
- * with include_start_balance too (the report is meant to be shared: that is the player's separate choice).
+ * Money: every aUEC figure comes from the player's balance. While the player's choice is hidden (a click, or
+ * SC_BALANCE=hidden; an include_balance true is then ignored) or with include_balance=false, the report has none
+ * (counts, durations, SCU, labels) and says so. Otherwise amounts appear, but the balance at the start and at the last
+ * sighting only with include_start_balance too (the report is meant to be shared: that stays the player's separate,
+ * explicit choice, false by default).
  */
 
 const OFF =
@@ -39,7 +41,7 @@ const APP_ONLY_META = { ui: { resourceUri: DASHBOARD_URI, visibility: ["app"] } 
 const includeBalanceProp = {
   type: "boolean",
   description:
-    "Include aUEC figures (results, margins, fees, rate). Default false. Ask the player first: the answer goes into the conversation.",
+    "Include aUEC figures (results, margins, fees, rate). Default true; false hides them (the player's choice).",
 };
 const includeStartBalanceProp = {
   type: "boolean",
@@ -78,13 +80,19 @@ const meta = (d: Debrief) => ({
   csv_delimiter: d.csv_delimiter,
 });
 
-export function sessionDebriefTools({ sessions }: { sessions?: SessionManager }): ToolDefinition[] {
+export function sessionDebriefTools({
+  sessions,
+  balance,
+}: {
+  sessions?: SessionManager;
+  balance?: BalancePolicy;
+}): ToolDefinition[] {
   const enabled = () => sessions?.enabled === true;
   return [
     {
       name: "sc_session_debrief",
       description:
-        "The report of the player's saved play session (or the newest N), to share or keep: Markdown (default; header, key numbers, trips table with measured/computed/estimated/unknown tags, what is unexplained, footer) or the trips as CSV (format csv, 100 rows at most). Text in French, about 28,000 characters at most, older trips cut with a count. Without include_balance there is NO aUEC amount (counts, times, SCU, labels) and the report says so; with it amounts appear, but the start and end balances only with include_start_balance too: ask the player, the report is meant to be shared. Give the Markdown as it is, add no figure, send it nowhere. The player downloads the full Markdown and CSV from the session bar of the dashboard: mention it. id: a past session; last: the newest N (1 to 10). Needs SC_TELEMETRY=on.",
+        "The report of the player's saved play session (or the newest N), to share or keep: Markdown (default; header, key numbers, trips table with measured/computed/estimated/unknown tags, what is unexplained, footer) or the trips as CSV (format csv, 100 rows at most). Text in French, about 28,000 characters at most, older trips cut with a count. With include_balance=false there is NO aUEC amount (counts, times, SCU, labels) and the report says so; otherwise amounts appear (unless the player's hidden choice is active: it removes them), but the start and end balances only with include_start_balance too: ask the player, the report is meant to be shared. Give the Markdown as it is, add no figure, send it nowhere. The player downloads the full Markdown and CSV from the session bar of the dashboard: mention it. id: a past session; last: the newest N (1 to 10). Needs SC_TELEMETRY=on.",
       inputSchema: {
         type: "object",
         properties: {
@@ -119,7 +127,7 @@ export function sessionDebriefTools({ sessions }: { sessions?: SessionManager })
         const which = pick(parsed);
         if (typeof which === "string") return textResult(which);
         const format = parsed.format ?? "markdown";
-        const money = parsed.include_balance === true;
+        const money = wantsBalance(parsed.include_balance, balance);
         const balancesAsked = parsed.include_start_balance === true;
         const d = await sessions.debrief({
           ...which,
@@ -148,7 +156,7 @@ export function sessionDebriefTools({ sessions }: { sessions?: SessionManager })
           format,
           ...meta(d),
           ...(format === "markdown" ? { markdown: d.markdown } : { csv: d.csv }),
-          ...(money ? {} : { money_note: MONEY_WITHHELD_NOTE }),
+          ...(money ? {} : { money_note: hiddenNote(balance) }),
           ...(balancesAsked && !money
             ? {
                 balances_note:
@@ -198,7 +206,7 @@ export function sessionDebriefTools({ sessions }: { sessions?: SessionManager })
           })
           .strict()
           .parse(args || {});
-        const money = parsed.include_balance === true;
+        const money = wantsBalance(parsed.include_balance, balance);
         const d = await sessions.debrief({
           id: parsed.id,
           includeMoney: money,

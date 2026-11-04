@@ -12,7 +12,22 @@ describe("loadConfig", () => {
       enabledTools: null,
       profiles: null,
       telemetry: false,
+      balanceHiddenByDefault: false,
+      balanceEnvUnrecognised: false,
     });
+  });
+
+  it("shows the balance by default and hides it only for an explicit SC_BALANCE value", () => {
+    expect(loadConfig({}).balanceHiddenByDefault).toBe(false);
+    expect(loadConfig({ SC_BALANCE: "shown" }).balanceHiddenByDefault).toBe(false);
+    expect(loadConfig({ SC_BALANCE: " Hidden " }).balanceHiddenByDefault).toBe(true);
+    expect(loadConfig({ SC_BALANCE: "hidden" }).balanceEnvUnrecognised).toBe(false);
+  });
+
+  it("fails toward privacy on an SC_BALANCE value it does not know, and says so", () => {
+    const typo = loadConfig({ SC_BALANCE: "hiden" });
+    expect(typo.balanceHiddenByDefault).toBe(true);
+    expect(typo.balanceEnvUnrecognised).toBe(true);
   });
 
   it("switches telemetry on only for an explicit SC_TELEMETRY value", () => {

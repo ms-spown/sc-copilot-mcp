@@ -288,9 +288,6 @@ export function withoutMoney<T extends { money: unknown }>(
   return { ...summary, money: "withheld" };
 }
 
-export const MONEY_WITHHELD_NOTE =
-  "aUEC figures (balances, results, turnover, rates) are withheld: they come from the player's balance. Ask the player, then call again with include_balance=true.";
-
 // -------------------------------------------------------------------------------------------------
 // Across sessions
 // -------------------------------------------------------------------------------------------------

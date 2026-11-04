@@ -13,7 +13,7 @@ Lisez cette page en entier avant de l'activer, en particulier les [Risques](#ris
 > - **Risques.** CIG ne l'a ni autorisée ni interdite, les conditions de RSI s'appliquent à vous, et le risque est le vôtre : lisez les [Risques](#risques) (vers la fin de cette page) avant de l'activer.
 > - **Non vérifié.** Le mainteneur n'a pas encore vu le tableau de bord lui-même dans Claude Desktop (voir [Qui l'affiche](#tableau-de-bord-en-direct)).
 > - **L'éteindre.** `npm run telemetry -- disable --apply` (sans `--apply`, `enable` et `disable` sont des simulations qui n'écrivent rien). La commande ne retire que ce que l'outil a défini : une variable que vous avez définie à la main reste, et la commande indique comment la retirer. Redémarrez ensuite Claude Desktop, quittez complètement le RSI Launcher (icône de la zone de notification comprise) et relancez-le. Cela ne supprime pas vos sessions enregistrées.
-> - **Ce qui est enregistré, et comment l'effacer.** Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais écrites. La seule exception est le résumé de session : le solde au départ et à la dernière observation ; la version du jeu, les heures (dont la durée pendant laquelle le jeu a été vu en marche) et les coupures ; le dernier lieu et les dernières marchandises nommés par le journal ; votre note ; le nombre de prix refusés ; pertes de vaisseau : heure, modèle, cause, lieu, cargo présumé (SCU et aUEC payés) ; et, pour chaque trajet, son libellé (titre du contrat, lieux, marchandises), la quantité, le coût, le revenu, la marge, les frais, le net et le plan appliqué (profit prévu, quantité, terminaux). Il est gardé dans un fichier local, `sessions.json`, seulement quand la télémétrie est activée ; ce serveur ne l'envoie jamais nulle part, sauf que les outils `sc_session_*` en renvoient des parties à votre client MCP, donc à votre conversation (les chiffres d'argent seulement avec `include_balance`) ; `SC_SESSIONS=off` le désactive ; et supprimer `sessions.json` ainsi que les copies `.bak` et `.corrupt` à côté de lui l'efface. Détails : [Sessions enregistrées](#sessions-enregistrées).
+> - **Ce qui est enregistré, et comment l'effacer.** Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais écrites. La seule exception est le résumé de session : le solde au départ et à la dernière observation ; la version du jeu, les heures (dont la durée pendant laquelle le jeu a été vu en marche) et les coupures ; le dernier lieu et les dernières marchandises nommés par le journal ; votre note ; le nombre de prix refusés ; pertes de vaisseau : heure, modèle, cause, lieu, cargo présumé (SCU et aUEC payés) ; et, pour chaque trajet, son libellé (titre du contrat, lieux, marchandises), la quantité, le coût, le revenu, la marge, les frais, le net et le plan appliqué (profit prévu, quantité, terminaux). Il est gardé dans un fichier local, `sessions.json`, seulement quand la télémétrie est activée ; ce serveur ne l'envoie jamais nulle part, sauf que les outils `sc_session_*` en renvoient des parties à votre client MCP, donc à votre conversation (chiffres d'argent compris, sauf si vous les masquez : « Masquer le solde » dans le tableau de bord ou `SC_BALANCE=hidden` les cache aux outils jusqu'à votre clic sur « Afficher le solde », et `include_balance` à false les cache pour un appel) ; `SC_SESSIONS=off` le désactive ; et supprimer `sessions.json` ainsi que les copies `.bak` et `.corrupt` à côté de lui l'efface. Détails : [Sessions enregistrées](#sessions-enregistrées).
 
 ## Ce que c'est, et d'où cela vient
 
@@ -275,7 +275,7 @@ Ce que devient chaque champ du flux. `poll.` est la réponse de `sc_live_poll` (
 | `ActorState.locomotion` | `poll.pilot.locomotion` | Position du corps (`locomotion`) |
 | `ActorState.crew_role` | `poll.pilot.crew_role` | Rôle et siège (`crew`) |
 | `ActorState.seat_name` | `poll.pilot.seat` | Rôle et siège (`crew`) |
-| `ActorState.uec_balance` | `poll.balance.uec` | Solde (masqué par défaut) (`balance`) |
+| `ActorState.uec_balance` | `poll.balance.uec` | Solde (affiché par défaut, masquable) (`balance`) |
 | `ActorFrame.vitals` | `poll.pilot` | Santé (`health`) |
 | `ActorFrame.state` | `poll.pilot.locomotion` | Position du corps (`locomotion`) |
 | `ActorFrame.environment` | `poll.pilot.outside_temperature_c` | Température extérieure (`temperature`) |
@@ -417,11 +417,7 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   caractères) et affichés en texte brut ; les nombres sont bornés ; moins de deux prix utilisables ne donnent pas de
   courbe. Le plan alimente la carte Commerce ci-dessous. Une route suggérée a la forme d'un plan : la barre d'actions
   (voir Actions de commerce) l'applique en la repassant dans le même nettoyage.
-- **Confidentialité du solde.** Le solde est masqué dans la page tant que vous ne cliquez pas sur « Afficher le
-  solde ». C'est seulement alors que la page le demande au serveur (`include_balance`). Le solde n'est jamais mis
-  dans le résumé automatique que la page peut envoyer au modèle, ni dans les messages fixes des boutons, ni sur le
-  canal entre tableaux de bord (voir plus bas), avec une exception : le bouton « Route avec mon solde et ce vaisseau »
-  l'envoie dans un message, le dit dans le texte, et seulement quand vous l'appuyez.
+- **Confidentialité du solde.** Le solde est affiché dans la page par défaut (le réglage du serveur depuis la 2.6 ; il démarrait masqué avant). « Masquer le solde » le masque sur cet écran ET pour les outils de Claude : la page le dit au serveur (un clic, envoyé une fois), et dès lors `sc_live_state`, `sc_live_events`, `sc_session_*` et `sc_trade_journal` répondent sans montants, un `include_balance: true` est ignoré (une consigne cachée dans un nom UEX ou une note du journal ne peut pas les dévoiler) et la réponse dit que le joueur les a masqués. « Afficher le solde » le lève ; le dernier clic gagne, quel que soit le tableau de bord, et chaque tableau suit l'état du serveur à sa prochaine interrogation (un nouveau le lit au montage). Le clic n'est gardé que dans la mémoire de CE processus du serveur, jamais dans un fichier : **un redémarrage du serveur l'oublie** (le tableau de bord démarre alors comme la configuration le dit, sauf qu'un tableau qui détient son propre clic « Masquer » le redit au serveur redémarré au lieu d'afficher le solde ; le clic « Afficher le solde » d'un autre tableau est suivi), un autre client ou un autre processus du serveur a sa propre mémoire (Claude Desktop peut en lancer deux), donc un clic ne protège que les outils du même processus, et seul `SC_BALANCE=hidden` couvre durablement tous les clients. Lever le masque demande un jeton que seule la page servie porte (un appelant qui n'a pas lu la page est refusé ; masquer n'en demande aucun). Avec `SC_BALANCE=hidden` dans l'entrée du serveur, le tableau de bord démarre masqué et les outils répondent sans montants, en permanence ; un clic sur « Afficher le solde » le lève pour le processus en cours. L'état masqué reste visible et réversible : la ligne « Solde » affiche « •••••• » avec son bouton. Quel que soit l'état, le solde n'est jamais mis dans le résumé automatique que la page peut envoyer au modèle, ni dans les messages fixes des boutons, ni sur le canal entre tableaux de bord (un tableau qui en suit un autre l'affiche masqué, avec le bouton pour prendre la main), avec une exception : le bouton « Route avec mon solde et ce vaisseau » l'envoie dans un message, le dit dans le texte, et seulement quand vous l'appuyez ; il ne change rien d'autre (ni le choix du serveur, ni l'écran). `include_balance: false` masque un appel. Quand les montants sont affichés, ils atteignent le modèle et votre conversation : c'est votre choix.
 - **Bandeau de santé : ce qui est branché, ce qui manque.** Un nouveau joueur qui installe le serveur voit un tableau
   de bord qui en montre silencieusement moins qu'il ne pourrait : sans le journal du jeu, pas d'état de connexion (un
   « renvoyé pour inactivité » reste invisible), pas de journal de commerce, pas de grand livre et des chiffres de session
@@ -448,9 +444,7 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   6. **Sessions enregistrées** : actives (avec l'heure de la dernière écriture de ce processus serveur), désactivées par
      `SC_SESSIONS=off` (un choix délibéré : listé derrière le « ? », pas un rappel), en lecture seule (fichier plus
      récent) ou dégradées (une écriture a échoué, les sessions restent en mémoire).
-  7. **Solde** : ce que « Afficher le solde » révèle (le montant, sur cet écran seulement ; rien dans le résumé
-     automatique ni sur le canal entre tableaux de bord, et seul le bouton de route l'envoie, quand vous l'appuyez) et
-     que les sessions enregistrées gardent leurs chiffres dans un fichier local.
+  7. **Solde** : s'il est affiché ou masqué sur cet écran, ce que font « Masquer le solde » et « Afficher le solde » (le masque couvre aussi les outils de Claude, est collant, et s'oublie au redémarrage du serveur : `SC_BALANCE=hidden` est le moyen permanent), rien dans le résumé automatique ni sur le canal entre tableaux de bord, seul le bouton de route l'envoie (quand vous l'appuyez), et que les sessions enregistrées gardent leurs chiffres dans un fichier local.
   8. **Fraîcheur des données** : non mesurée ici (il faudrait les sources, donc le réseau) ; la ligne renvoie à
      `sc_data_status`.
 
@@ -630,8 +624,7 @@ seule ligne tant qu'un contrat est en cours (« Contrat en cours : titre, étape
   variation du solde sur ce contrat, donc la récompense moins ce que le contrat a coûté, pas un bénéfice. Il ne peut
   pas vérifier que ce contrat est la route prévue. Pour le bilan d'un trajet commercial, voir la carte Commerce.
 - **Confidentialité du solde.** Tout ce qui dérive du solde (gain, total, rythme, prévu contre réalisé) est construit
-  par le serveur et dessiné par la page seulement après votre clic sur « Afficher le solde ». Sans lui, le carnet ne
-  montre que les étapes et les durées, et la réponse du serveur ne contient aucun de ces chiffres. Rien n'entre dans le
+  par le serveur et dessiné par la page tant que le solde est affiché (par défaut). Solde masqué (« Masquer le solde », `SC_BALANCE=hidden`), le carnet ne montre que les étapes et les durées, et la réponse du serveur ne contient aucun de ces chiffres. Rien n'entre dans le
   résumé automatique envoyé au modèle ni dans les messages fixes.
 - **Charge.** La date de modification du fichier du journal est consultée au plus toutes les 5 secondes, à partir d'une
   interrogation, et rien n'est lu tant que cette date n'a pas changé. La première lecture prend la fin du journal
@@ -711,8 +704,7 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
   le prix moyen réellement obtenu par SCU. Le point est le dernier prix. Les relevés sont ceux de Claude, tirés d'UEX,
   et peuvent dater.
 - **Confidentialité du solde, plus stricte que le carnet.** Tout montant d'un trajet (chiffre d'affaires, coût, marge,
-  frais, net, rythme, projection) est construit par le serveur seulement quand la View a demandé le solde, et dessiné
-  seulement après votre clic. Sans lui, la section ne contient que marchandises, lieux, SCU, heures et nombres, rien en
+  frais, net, rythme, projection) est construit par le serveur seulement tant que le solde est affiché, et dessiné seulement alors. Sans lui, la section ne contient que marchandises, lieux, SCU, heures et nombres, rien en
   aUEC. Elle circule sur le canal entre Views sans aucun montant (retiré par l'émetteur puis par le récepteur) et
   n'entre jamais dans le résumé automatique ni dans les messages fixes.
 - **Plusieurs trajets.** Un achat après une vente commence un nouveau trajet (deux heures de silence aussi) ; la carte
@@ -767,8 +759,7 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
   moins de 4 s, et les demandes de réclamation d'assurance sont surtout isolées (155 des 187 rafales sont une seule
   ligne). Ce qui n'a PAS pu être mesuré : le délai entre une ligne du journal et la variation du solde qu'elle cause
   (le journal n'a pas de solde : il faut une capture des deux en même temps), et ce que coûtent vraiment une assurance
-  ou un hangar. Tout montant ici est dérivé du solde : construit seulement quand la View l'a demandé, dessiné après le
-  clic, retiré par l'émetteur et le récepteur sur le canal entre Views, jamais dans `ui/update-model-context` ni les
+  ou un hangar. Tout montant ici est dérivé du solde : construit seulement tant que le solde est affiché, dessiné seulement alors, retiré par l'émetteur et le récepteur sur le canal entre Views, jamais dans `ui/update-model-context` ni les
   messages fixes. Le bloc liste les 40 mouvements les plus récents (les totaux couvrent tous ; les filtres et
   « Ce trajet seulement » ne voient que ces lignes, et le bloc le dit quand la liste est plus courte que les totaux).
   Rien de tout cela n'est stocké dans le résumé de session.
@@ -906,8 +897,7 @@ ensuite, en une ligne juste sous l'en-tête dans la petite vue, ET DANS LE VERDI
 avant). Seule la phrase stable est dans les régions vivantes, pas le temps écoulé ; elle est coupée dès qu'une transaction ultérieure du même côté et du même genre a abouti (`superseded`) ; pour une cargaison il suggère de revérifier le plan (le bouton est mis en avant ; rien n'est
 demandé tout seul). La session les compte : `price_refusals` (additif, optionnel, le fichier reste en version 2 et les
 anciens fichiers se lisent à 0 ; un repère d'horodatage rend le comptage idempotent) dans le résumé de session,
-`sc_session_current`, `sc_session_list` et `sc_session_stats` (un total et par session ; c'est un nombre, donc non retenu
-sans `include_balance`).
+`sc_session_current`, `sc_session_list` et `sc_session_stats` (un total et par session ; c'est un nombre, donc jamais masqué avec les montants).
 
 Mesuré sur les 95 journaux de l'installation de référence (mars 2025 à novembre 2026, lecture seule, comptes et durées
 uniquement) : 81 requêtes de cargaison (39 achats, 42 ventes) et 183 requêtes de boutique ; `TransactionCostMismatch`
@@ -934,7 +924,7 @@ pas une liste de lieux ; tout le reste (« Hangar_ » suivi d'un nom, une entit�
 est omis. Une courte empreinte de l'identifiant du vaisseau
 relie un achat à son vaisseau, en mémoire seulement : elle n'est jamais écrite, envoyée à une View ni exportée. Les SCU
 partent avec ou sans le solde (`trade.ship_losses` : le serveur envoie les 5 plus récents, la View garde les 3 plus récents ; aussi sur le canal entre Views) ; les aUEC payés
-viennent du solde et sont retenus sans lui. La session garde `ship_losses` (additif, optionnel, le fichier reste en
+viennent du solde et sont retenus quand les montants sont masqués. La session garde `ship_losses` (additif, optionnel, le fichier reste en
 version 2) : seulement l'heure, le modèle, la cause, le type de responsable, le lieu et le cargo présumé perdu ; le bilan les liste.
 
 ## Sessions enregistrées
@@ -1034,7 +1024,7 @@ minutes de temps actif), meilleur trajet, et efficacité face au plan quand Clau
 Entre sessions : totaux, moyenne par heure, tendance (les dernières sessions face aux précédentes, seuil de 10 %),
 meilleure et moins bonne session, meilleurs trajets et marchandises quand ils sont connus. Un chiffre qu'on ne peut pas
 établir vaut `null`, jamais zéro. Ce sont tous des mesures brutes : le solde bouge aussi avec les achats, les amendes
-et les réparations. Chaque session compte aussi les transactions que le jeu a refusées parce que le prix avait bougé (`price_refusals`, un nombre : ce n'est pas un montant en aUEC, il est donc donné sans `include_balance` ; voir [la vérification avant le départ](#avant-de-partir--la-vérification-du-plan-et-le-prix-qui-a-bougé)).
+et les réparations. Chaque session compte aussi les transactions que le jeu a refusées parce que le prix avait bougé (`price_refusals`, un nombre : ce n'est pas un montant en aUEC, il est donc donné même quand les montants sont masqués ; voir [la vérification avant le départ](#avant-de-partir--la-vérification-du-plan-et-le-prix-qui-a-bougé)).
 
 ### Fiabilité des routes (calibration)
 
@@ -1089,7 +1079,7 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   quand au moins 2 cargaisons ont leur propre net, sinon fois le ratio brut typique moins le taux de frais habituel sur le
   chiffre d'affaires du plan. Une ESTIMATION, toujours avec son nombre de cargaisons et sa confiance ; elle n'affirme
   aucune cause (un ratio sous 100 % peut venir des prix, de la quantité ou d'une vente lente).
-- **Où cela s'affiche.** `sc_session_stats` (section `route_reliability`, seulement avec `include_balance`) ; une ligne
+- **Où cela s'affiche.** `sc_session_stats` (section `route_reliability`, pas avec `include_balance` à false) ; une ligne
   discrète sous chaque route suggérée de la barre d'actions (« D'après tes N trajets ... : tu réalises ≈ X % du prévu
   (frais ≈ Y %) », avec l'étiquette « estimé · N trajets », seulement quand il y a des données ; une route à deux
   tronçons dit « Sur le 1er tronçon » dans la ligne et, dans le repli « Comment lire ça », que ce n'est pas un chiffre
@@ -1098,8 +1088,7 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   plus ; une phrase dans les instructions du serveur et dans le prompt `trade_copilot` pour que Claude la cite avec son
   nombre de cargaisons.
 - **Confidentialité.** Un ratio fois le plan révèle le résultat réalisé : la section n'existe que là où le solde est
-  affiché. Elle est absente de l'outil sans `include_balance`, de l'interrogation du tableau de bord (donc de son
-  empreinte) d'une vue qui n'a pas demandé le solde, du canal entre vues, de `ui/update-model-context` et du message de
+  affiché. Elle est absente de l'outil avec `include_balance` à false (ou sous `SC_BALANCE=hidden`), de l'interrogation du tableau de bord (donc de son empreinte) d'une vue qui a masqué le solde, du canal entre vues, de `ui/update-model-context` et du message de
   « Demander à l'agent ». La vue l'ignore tant que le solde est masqué, même si un serveur l'avait envoyée.
 - **Enregistré (version 2 du fichier).** Pour un trajet de commerce : la quantité du plan, les deux terminaux du plan (noms
   UEX : ceux du plan, pas des lieux observés), `plan_link`, comment les frais ont été obtenus (`fees_method`), et ce que le
@@ -1160,11 +1149,10 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   LibreOffice ; c'est une atténuation, pas une promesse pour tous les programmes qui ouvrent un CSV : relisez un fichier reçu
   d'un autre avant de l'ouvrir, comme n'importe quel tableur.
   **Confidentialité.** Tout chiffre en aUEC vient du solde : le bilan n'en contient que si le solde est affiché (choix du
-  tableau de bord) ou si `include_balance` est vrai. Sinon c'est le bilan sans montants (comptes, durées, SCU, libellés), qui
+  tableau de bord) sauf si `include_balance` est à false (ou si le serveur démarre masqué et que l'appel ne dit pas true). Sinon c'est le bilan sans montants (comptes, durées, SCU, libellés), qui
   dit que les montants sont retenus ; le meilleur trajet, l'efficacité face au plan, la fiabilité des routes et les méthodes des
   trajets sont retenus avec eux. Le solde de départ et celui du dernier relevé n'apparaissent jamais, même avec les montants,
-  sauf si vous activez aussi **Soldes de départ et final** (`include_start_balance` ; à chaque usage, jamais retenu, ignoré
-  sans `include_balance`) ; ce qui peut apparaître, montants affichés, c'est leur écart (la variation du solde sur la session,
+  sauf si vous activez aussi **Soldes de départ et final** (`include_start_balance` ; à chaque usage, jamais retenu, ignoré quand les montants sont masqués) ; ce qui peut apparaître, montants affichés, c'est leur écart (la variation du solde sur la session,
   dans la section « pas expliqué »). Le serveur n'enregistre aucun pseudo, identifiant de compte, adresse, GUID, ligne brute du
   journal ni chemin, mais les libellés des trajets et votre note sont vos mots et ceux du jeu : ils sont nettoyés à nouveau,
   bornés et échappés (ni HTML, ni lien, ni tableau cassé), **mais pas contrôlés sur ce qu'ils disent** : relisez le bilan avant
@@ -1172,10 +1160,7 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   jusqu'à 500 trajets, le CSV jusqu'à 500 lignes. Le texte est construit à la demande, gardé dans la page le temps de le
   regarder, et retiré de la page (son texte, pas seulement masqué) quand vous masquez le solde, quittez la session, fermez le
   menu ou que la page disparaît ; il n'est jamais enregistré ni envoyé ailleurs par le serveur.
-- **Confidentialité du solde.** Tout chiffre en aUEC (soldes, résultats, chiffre d'affaires, marge brute, rythmes) est
-  retenu au modèle sauf appel avec `include_balance` (Claude vous demande d'abord), et n'est dessiné dans le tableau de
-  bord, envoyé dans son interrogation et entre tableaux de bord qu'après votre clic sur « Afficher le solde ». Les
-  comptes, les durées et les noms de lieux ne sont pas retenus.
+- **Confidentialité du solde.** Tout chiffre en aUEC (soldes, résultats, chiffre d'affaires, marge brute, rythmes) est donné au modèle par défaut et dessiné dans le tableau de bord. Il est retenu au modèle, et au tableau de bord, à son interrogation et aux appels de session qu'il fait, tant que le choix du joueur est « masqué » (« Masquer le solde » ou `SC_BALANCE=hidden`, voir la confidentialité du tableau de bord), quoi que dise `include_balance` ; `include_balance: false` masque un appel. Il ne circule jamais entre tableaux de bord. Les comptes, les durées et les noms de lieux ne sont jamais retenus.
 - **Non vérifié dans le vrai jeu :** toute la fonction a été construite contre de faux jeux et des journaux inventés. La
   fiabilité du solde de départ, la détection du jeu en marche d'après la date du journal et la reprise après un vrai
   plantage n'ont pas été observées.
@@ -1186,10 +1171,8 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   la boucle locale, il n'est donc pas joignable depuis le réseau.
 - Il contient votre santé, votre vaisseau et votre **solde aUEC**. Il ne contient pas votre position.
 - Ce serveur ne journalise jamais les trames, ne les écrit jamais sur disque et ne les envoie jamais sur un réseau.
-  Ses diagnostics ne contiennent que des numéros de champs. Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais écrites. La seule exception est le résumé de session : le solde au départ et à la dernière observation ; la version du jeu, les heures (dont la durée pendant laquelle le jeu a été vu en marche) et les coupures ; le dernier lieu et les dernières marchandises nommés par le journal ; votre note ; le nombre de prix refusés ; pertes de vaisseau : heure, modèle, cause, lieu, cargo présumé (SCU et aUEC payés) ; et, pour chaque trajet, son libellé (titre du contrat, lieux, marchandises), la quantité, le coût, le revenu, la marge, les frais, le net et le plan appliqué (profit prévu, quantité, terminaux). Il est gardé dans un fichier local, `sessions.json`, seulement quand la télémétrie est activée ; ce serveur ne l'envoie jamais nulle part, sauf que les outils `sc_session_*` en renvoient des parties à votre client MCP, donc à votre conversation (les chiffres d'argent seulement avec `include_balance`) ; `SC_SESSIONS=off` le désactive ; et supprimer `sessions.json` ainsi que les copies `.bak` et `.corrupt` à côté de lui l'efface. Les résumés incluent des soldes, par votre décision explicite, et ce serveur ne fait aucune requête réseau pour eux (voir [Sessions enregistrées](#sessions-enregistrées)).
-- **Les résultats des outils font partie de votre conversation avec Claude**, qui est envoyée à Anthropic. Pour cette
-  raison, le solde est retenu sauf si l'outil est appelé avec `include_balance`, et Claude a pour consigne de vous
-  demander d'abord. Ce que vous laissez Claude lire est ce qui quitte votre machine.
+  Ses diagnostics ne contiennent que des numéros de champs. Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais écrites. La seule exception est le résumé de session : le solde au départ et à la dernière observation ; la version du jeu, les heures (dont la durée pendant laquelle le jeu a été vu en marche) et les coupures ; le dernier lieu et les dernières marchandises nommés par le journal ; votre note ; le nombre de prix refusés ; pertes de vaisseau : heure, modèle, cause, lieu, cargo présumé (SCU et aUEC payés) ; et, pour chaque trajet, son libellé (titre du contrat, lieux, marchandises), la quantité, le coût, le revenu, la marge, les frais, le net et le plan appliqué (profit prévu, quantité, terminaux). Il est gardé dans un fichier local, `sessions.json`, seulement quand la télémétrie est activée ; ce serveur ne l'envoie jamais nulle part, sauf que les outils `sc_session_*` en renvoient des parties à votre client MCP, donc à votre conversation (chiffres d'argent compris, sauf si vous les masquez : « Masquer le solde » dans le tableau de bord ou `SC_BALANCE=hidden` les cache aux outils jusqu'à votre clic sur « Afficher le solde », et `include_balance` à false les cache pour un appel) ; `SC_SESSIONS=off` le désactive ; et supprimer `sessions.json` ainsi que les copies `.bak` et `.corrupt` à côté de lui l'efface. Les résumés incluent des soldes, par votre décision explicite, et ce serveur ne fait aucune requête réseau pour eux (voir [Sessions enregistrées](#sessions-enregistrées)).
+- **Les résultats des outils font partie de votre conversation avec Claude**, qui est envoyée à Anthropic. Le solde est donné par défaut, pour que Claude puisse aider sur vos trajets ; masquez-le avec « Masquer le solde » du tableau de bord (collant, gardé dans la mémoire de ce processus du serveur jusqu'à son redémarrage, et qui ne protège que les outils de ce processus) ou `SC_BALANCE=hidden` (permanent, tous les clients) si vous préférez ne pas le partager. Ce que Claude lit, montants compris, est ce qui quitte votre machine ; le serveur lui-même n'envoie rien sur un réseau.
 
 ### Limites face à un programme qui se fait passer pour le jeu
 

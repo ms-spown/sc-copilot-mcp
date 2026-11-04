@@ -65,14 +65,13 @@ ask for by installing the server:
 - Tools that need the feature set `advertised` (`ToolDefinition.advertised`): they are left out of `tools/list` while
   it is off. A tool that must always be there to explain the feature (`sc_live_status`) is always listed.
 - Frames stay in memory; the session summaries are the one exception (see "Persistence" below). Names that come from
-  the stream are only passed on if they look like a game identifier. Anything that reaches the conversation and is personal (the aUEC balance) is withheld unless the
-  caller asks for it.
+  the stream are only passed on if they look like a game identifier. Anything that reaches the conversation and is personal (the aUEC balance) is returned by default (the player's choice) and withheld while it is hidden. `core/balance.ts` holds ONE `BalancePolicy` per process (`createBalancePolicy(config)` in `src/index.ts`, shared by the tools and the dashboard resource): the start choice (`SC_BALANCE=hidden`) and the player's last click (`playerChoice`, memory only, never a file; the last click wins; it is set only by `sc_live_poll`'s `balance_choice`, which the View sends after a click and never with an ordinary poll). `wantsBalance(requested, policy)` is resolved once per call: hidden wins over everything (an `include_balance: true` from the model is ignored), otherwise `include_balance: false` hides that call. The dashboard page carries the effective choice in `data-balance` (hidden when the attribute is missing) and every poll answer carries `balance_state`, which each View follows (the last click in any dashboard wins; a View with a click to deliver ignores a stale answer). The route button asks for one answer with `balance_once` and changes no choice. A View that follows another one draws nothing derived from the balance, and goes back to the choice when it leads again.
 - `npm run check:telemetry-silence` listens on the port itself and proves that the built server makes no connection
   when the switch is off and does when it is on.
 
 ## Persistence
 
-The session file is the only place a derived balance is written. Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; ship losses: time, model, cause, place, presumed cargo (SCU and aUEC paid); and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (the money figures only with `include_balance`); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it. `providers/sessions/store.ts` writes it under a lock file, through a temporary file and an atomic rename, bounded in bytes; `providers/sessions/manager.ts` keeps the telemetry reader alive while the game is believed to be running, so the reader's five idle minutes no longer apply then. The other writes are the HTTP and dump caches (`cache/`, safe to delete), the wiki snapshots (`data/snapshots`) and the fleet file. Details and the wipe procedure: [TELEMETRY.md](TELEMETRY.md#saved-sessions).
+The session file is the only place a derived balance is written. Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; ship losses: time, model, cause, place, presumed cargo (SCU and aUEC paid); and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (money figures included, unless you hide them: "Masquer le solde" in the dashboard or `SC_BALANCE=hidden` hides them from the tools until you click "Afficher le solde", and `include_balance` false hides them from one call); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it. `providers/sessions/store.ts` writes it under a lock file, through a temporary file and an atomic rename, bounded in bytes; `providers/sessions/manager.ts` keeps the telemetry reader alive while the game is believed to be running, so the reader's five idle minutes no longer apply then. The other writes are the HTTP and dump caches (`cache/`, safe to delete), the wiki snapshots (`data/snapshots`) and the fleet file. Details and the wipe procedure: [TELEMETRY.md](TELEMETRY.md#saved-sessions).
 
 ## The live dashboard (an MCP App)
 
@@ -92,8 +91,7 @@ session report, when sessions are on).
   script with `Function.prototype.toString`; `viewPage.test.ts` runs that very script in `node:vm` against a fake DOM
   (which refuses `innerHTML`) and a fake host. No browser is involved in the tests.
 - **Cost of many Views.** Claude mounts one iframe per tool call and never unmounts them, so several Views exist.
-  Server side, `service.ts` shares one answer per half second (the cache key is `include_balance` only, so a balance
-  is never handed to a View that did not ask); `tailorPoll` then cuts that shared answer per request (events newer
+  Server side, `service.ts` shares one answer per half second (the cache key is the balance choice only, so amounts are never handed to a View that hid them); `tailorPoll` then cuts that shared answer per request (events newer
   than `since_seq`, sections whose hash is in `have` left out and listed in `unchanged`, `not_in_stream` only with
   `include_static`), so the cache never depends on what a View holds. View side, the Views of a connector share a
   sandbox origin and talk on a `BroadcastChannel` (`electLeader`, `notePeer`, `parseChannelMessage`, `cleanPoll`, all
@@ -117,7 +115,7 @@ session report, when sessions are on).
   (`poll.ts`). The View side lives in `specsView.ts` (pure, serialised into the page after `viewLogic.ts` by
   `page.ts`) and `specsStyles.ts`, so the sheet gauges stay out of the files the rest of the View changes in.
 - **The transport ledger** is kept in modules of its own. `ledger.ts` is pure (log events and a balance history in, a
-  bounded payload out: contracts, steps, durations, and, only with `include_balance`, gains, totals, pace and
+  bounded payload out: contracts, steps, durations, and, unless the amounts are hidden, gains, totals, pace and
   planned against measured). `ledgerService.ts` keeps the last result in memory and refreshes it from the game log at
   most every 5 seconds: the file's modification date is looked at, and nothing is read unless it changed. The first
   read is a full one; after that only the bytes added since the last position are parsed (with a 16 kB look-behind
@@ -126,7 +124,7 @@ session report, when sessions are on).
   The poll calls the synchronous `state()` and never waits for the file. `TelemetryService.balanceHistory()` (500
   points at most, one per change, memory only, optional on the `Telemetry` interface) feeds it and is exposed by no
   tool. The ledger is the fifth section of the delta protocol (`have.ledger`, `hash.ledger`, `unchanged`): its hash
-  is computed from the content built for that balance choice, so the shared cache (keyed by `include_balance`)
+  is computed from the content built for that balance choice, so the shared cache (keyed by the balance choice)
   never mixes the two and a hash of a version with amounts is never sent to a View that did not ask for the balance.
   The panel is `ledgerPanel.ts` (with `ledgerStyles.ts`), compiled into the page after `specsView.ts`; it writes
   only the nodes that change. On the channel between Views the ledger travels without every balance-derived field

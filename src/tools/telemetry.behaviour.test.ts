@@ -27,13 +27,19 @@ import {
 import { createMcpServer } from "../server.js";
 import { allTools, createRegistry, type ToolClients } from "./registry.js";
 import { waitFor } from "../testing/waitFor.js";
+import type { BalancePolicy } from "../core/balance.js";
+import { HIDDEN_MODES, SHOWN_MODES } from "../testing/balanceModes.js";
 
 const empty = {
   defaults: { baseURL: "https://unused.test" },
   get: async () => ({ data: {} }),
 } as unknown as HttpClient;
 
-function clients(telemetry?: Telemetry, gameLog = new GameLog({})): ToolClients {
+function clients(
+  telemetry?: Telemetry,
+  gameLog = new GameLog({}),
+  balance?: BalancePolicy,
+): ToolClients {
   return {
     uexClient: empty,
     scwClient: empty,
@@ -42,6 +48,7 @@ function clients(telemetry?: Telemetry, gameLog = new GameLog({})): ToolClients 
     gameLog,
     fleet: new FleetStore("unused-fleet.json"),
     ...(telemetry ? { telemetry } : {}),
+    ...(balance ? { balance } : {}),
   };
 }
 
@@ -81,7 +88,7 @@ function manualClock(start = 1_000_000) {
  * `clock` given: the service reads that clock and handles every frame (no 30 ms rate limit, which is a real timer).
  * Tests then say "5 s later" by moving the clock, and wait for frames by counting them, never by sleeping.
  */
-async function liveWorld(clock?: { now: () => number }) {
+async function liveWorld(clock?: { now: () => number }, balance?: BalancePolicy) {
   const game: FakeGame = await startFakeGame();
   cleanup.push(() => game.close());
   const telemetry = createTelemetry({
@@ -93,7 +100,7 @@ async function liveWorld(clock?: { now: () => number }) {
     },
   });
   cleanup.push(() => telemetry.stop());
-  const world = await connect(clients(telemetry));
+  const world = await connect(clients(telemetry, new GameLog({}), balance));
   const state = async () => (await world.call("sc_live_status")).json.data.state as string;
   const untilConnected = () => waitFor(async () => (await state()) === "connected", "connected");
   const untilLive = () => waitFor(async () => (await state()) === "live", "live");
@@ -181,35 +188,59 @@ describe("Feature: reading the live game through the tools", () => {
   });
 
   describe("Scenario: the game is live", () => {
-    it("Given frames, When sc_live_state is called, Then values come with their age and limits, WITHOUT the balance", async () => {
-      const { game, call, untilConnected, untilLive } = await liveWorld();
-      await untilConnected();
-      game.send(
-        frame(
-          vehicleField({
-            name: "DRAK_Cutter_1",
-            speed: 180,
-            altitude: 2000,
-            heading: 45,
-            lights: { shld: "nominal" },
-          }),
-          actorField({ health: 90, uec: 987654321, locomotion: 3 }),
-          weaponsField({ decoy: 8 }),
-        ),
-      );
-      await untilLive();
-      const { json, text } = await call("sc_live_state");
-      expect(json.data.stream.state).toBe("live");
-      expect(json.data.stream.frame_age_ms).toBeGreaterThanOrEqual(0);
-      expect(json.data.ship.instruments.speed_ms).toBeCloseTo(180);
-      expect(json.data.ship.manufacturer_derived).toBe("Drake");
-      expect(json.data.pilot.health.percent).toBeCloseTo(0.9);
-      expect(json.data.weapons.countermeasures).toEqual({ decoy: 8 });
-      expect(json.data.limits.join(" ")).toMatch(/position/);
-      expect(json.provenance).toMatchObject({ kind: "local_telemetry" });
-      expect(text).not.toContain("987654321");
-      expect(json.data.uec_balance).toMatch(/withheld/);
-    });
+    it.each(HIDDEN_MODES)(
+      "Given frames and $label, When sc_live_state is called, Then values come with their age and limits, WITHOUT the balance",
+      async (mode) => {
+        const { game, call, untilConnected, untilLive } = await liveWorld(undefined, mode.policy);
+        await untilConnected();
+        game.send(
+          frame(
+            vehicleField({
+              name: "DRAK_Cutter_1",
+              speed: 180,
+              altitude: 2000,
+              heading: 45,
+              lights: { shld: "nominal" },
+            }),
+            actorField({ health: 90, uec: 987654321, locomotion: 3 }),
+            weaponsField({ decoy: 8 }),
+          ),
+        );
+        await untilLive();
+        const { json, text } = await call("sc_live_state", mode.args);
+        expect(json.data.stream.state).toBe("live");
+        expect(json.data.stream.frame_age_ms).toBeGreaterThanOrEqual(0);
+        expect(json.data.ship.instruments.speed_ms).toBeCloseTo(180);
+        expect(json.data.ship.manufacturer_derived).toBe("Drake");
+        expect(json.data.pilot.health.percent).toBeCloseTo(0.9);
+        expect(json.data.weapons.countermeasures).toEqual({ decoy: 8 });
+        expect(json.data.limits.join(" ")).toMatch(/position/);
+        expect(json.provenance).toMatchObject({ kind: "local_telemetry" });
+        expect(text).not.toContain("987654321");
+        expect(json.data.uec_balance).toMatch(/Montants masqués/);
+        expect(text).not.toContain("uec_session");
+      },
+    );
+
+    it.each(SHOWN_MODES)(
+      "Given frames and $label, Then sc_live_state gives the balance and the session delta",
+      async (mode) => {
+        const { game, call, untilConnected, untilLive } = await liveWorld(undefined, mode.policy);
+        await untilConnected();
+        game.send(frame(actorField({ uec: 5000, health: 100 })));
+        await untilLive();
+        game.send(frame(actorField({ uec: 4000, health: 100 })));
+        await waitFor(
+          async () =>
+            (await call("sc_live_state", mode.args)).json.data?.uec_session?.current === 4000,
+          "delta",
+        );
+        const { json } = await call("sc_live_state", mode.args);
+        expect(json.data.pilot.uec_balance).toBe(4000);
+        expect(json.data.uec_session).toMatchObject({ start: 5000, delta: -1000 });
+        expect(json.data.uec_balance).toBeUndefined();
+      },
+    );
 
     it("Given include_balance true, Then the balance and the session delta appear", async () => {
       const { game, call, untilConnected, untilLive } = await liveWorld();
@@ -320,62 +351,89 @@ describe("Feature: reading the live game through the tools", () => {
     });
   });
 
-  describe("Scenario: the balance stays out unless asked for", () => {
-    it("Given balance-change events, Then sc_live_events hides them by default and shows them with include_balance", async () => {
-      const clock = manualClock();
-      const { call, untilConnected, send } = await liveWorld(clock);
-      await untilConnected();
-      await send(frame(actorField({ uec: 1000, health: 100 })));
-      clock.t += 20;
-      await send(frame(actorField({ uec: 400, health: 100 })));
-      // the balance event is raised once the balance has been quiet for 5 s: feed a later identical frame
-      clock.t += 5200;
-      await send(frame(actorField({ uec: 400, health: 100 })));
-      await waitFor(async () => {
-        const all = (await call("sc_live_events", { include_balance: true })).json.data.events;
-        return all.some((e: { type: string }) => e.type === "uec_changed");
-      }, "uec_changed");
-      const hidden = (await call("sc_live_events")).json;
-      expect(JSON.stringify(hidden.data.events)).not.toContain("uec_changed");
-      expect(hidden.text ?? JSON.stringify(hidden)).not.toContain("400");
-      const shown = (await call("sc_live_events", { include_balance: true })).json.data.events;
-      expect(shown.find((e: { type: string }) => e.type === "uec_changed").data).toMatchObject({
-        delta: "-600",
-        balance: 400,
-      });
-    });
+  describe("Scenario: the balance is shown by default and stays out when the player hides it", () => {
+    it.each(HIDDEN_MODES)(
+      "Given balance-change events and $label, Then sc_live_events leaves them out",
+      async (mode) => {
+        const clock = manualClock();
+        const { call, telemetry, untilConnected, send } = await liveWorld(clock, mode.policy);
+        await untilConnected();
+        await send(frame(actorField({ uec: 1000, health: 100 })));
+        clock.t += 20;
+        await send(frame(actorField({ uec: 400, health: 100 })));
+        // the balance event is raised once the balance has been quiet for 5 s: feed a later identical frame
+        clock.t += 5200;
+        await send(frame(actorField({ uec: 400, health: 100 })));
+        await waitFor(async () => {
+          const all = (await telemetry.events(0, 100)).events;
+          return all.some((e: { type: string }) => e.type === "uec_changed");
+        }, "uec_changed");
+        const hidden = (await call("sc_live_events", mode.args)).json;
+        expect(JSON.stringify(hidden.data.events)).not.toContain("uec_changed");
+        expect(hidden.text ?? JSON.stringify(hidden)).not.toContain("400");
+      },
+    );
 
-    it("Given include_balance is not set, Then sc_live_state has no uec_session and no balance anywhere", async () => {
-      const { game, call, untilConnected, untilLive } = await liveWorld();
-      await untilConnected();
-      game.send(frame(actorField({ uec: 424242, health: 100 })));
-      await untilLive();
-      const { text } = await call("sc_live_state");
-      expect(text).not.toContain("424242");
-      expect(text).not.toContain("uec_session");
-    });
+    it.each(SHOWN_MODES)(
+      "Given balance-change events and $label, Then sc_live_events gives them",
+      async (mode) => {
+        const clock = manualClock();
+        const { call, untilConnected, send } = await liveWorld(clock, mode.policy);
+        await untilConnected();
+        await send(frame(actorField({ uec: 1000, health: 100 })));
+        clock.t += 20;
+        await send(frame(actorField({ uec: 400, health: 100 })));
+        clock.t += 5200;
+        await send(frame(actorField({ uec: 400, health: 100 })));
+        await waitFor(async () => {
+          const all = (await call("sc_live_events", mode.args)).json.data.events;
+          return all.some((e: { type: string }) => e.type === "uec_changed");
+        }, "uec_changed");
+        const shown = (await call("sc_live_events", mode.args)).json.data.events;
+        expect(shown.find((e: { type: string }) => e.type === "uec_changed").data).toMatchObject({
+          delta: "-600",
+          balance: 400,
+        });
+      },
+    );
+
+    it.each(HIDDEN_MODES)(
+      "Given $label, Then sc_live_state has no uec_session and no balance anywhere",
+      async (mode) => {
+        const { game, call, untilConnected, untilLive } = await liveWorld(undefined, mode.policy);
+        await untilConnected();
+        game.send(frame(actorField({ uec: 424242, health: 100 })));
+        await untilLive();
+        const { text } = await call("sc_live_state", mode.args);
+        expect(text).not.toContain("424242");
+        expect(text).not.toContain("uec_session");
+      },
+    );
   });
 
   describe("Scenario: filters apply before the cap", () => {
-    it("Given the newest event is a hidden balance event, When limit is 1, Then the newest allowed event is still returned", async () => {
-      const clock = manualClock();
-      const { call, untilConnected, send } = await liveWorld(clock);
-      await untilConnected();
-      await send(frame(actorField({ uec: 100, health: 100, intoxication: 0 })));
-      clock.t += 20;
-      await send(frame(actorField({ uec: 100, health: 100, intoxication: 3 }))); // intoxicated (older)
-      clock.t += 20;
-      await send(frame(actorField({ uec: 50, health: 100, intoxication: 3 })));
-      clock.t += 5200;
-      await send(frame(actorField({ uec: 50, health: 100, intoxication: 3 }))); // uec_changed (newest)
-      await waitFor(async () => {
-        const all = (await call("sc_live_events", { include_balance: true })).json.data.events;
-        return all.some((e: { type: string }) => e.type === "uec_changed");
-      }, "uec_changed");
-      const { json } = await call("sc_live_events", { limit: 1 });
-      expect(json.data.events).toHaveLength(1);
-      expect(json.data.events[0].type).toBe("intoxicated");
-    });
+    it.each(HIDDEN_MODES)(
+      "Given the newest event is a hidden balance event and $label, When limit is 1, Then the newest allowed event is still returned",
+      async (mode) => {
+        const clock = manualClock();
+        const { call, telemetry, untilConnected, send } = await liveWorld(clock, mode.policy);
+        await untilConnected();
+        await send(frame(actorField({ uec: 100, health: 100, intoxication: 0 })));
+        clock.t += 20;
+        await send(frame(actorField({ uec: 100, health: 100, intoxication: 3 }))); // intoxicated (older)
+        clock.t += 20;
+        await send(frame(actorField({ uec: 50, health: 100, intoxication: 3 })));
+        clock.t += 5200;
+        await send(frame(actorField({ uec: 50, health: 100, intoxication: 3 }))); // uec_changed (newest)
+        await waitFor(async () => {
+          const all = (await telemetry.events(0, 100)).events;
+          return all.some((e: { type: string }) => e.type === "uec_changed");
+        }, "uec_changed");
+        const { json } = await call("sc_live_events", { limit: 1, ...mode.args });
+        expect(json.data.events).toHaveLength(1);
+        expect(json.data.events[0].type).toBe("intoxicated");
+      },
+    );
   });
 
   describe("Scenario: a program pretending to be the game", () => {

@@ -1,3 +1,4 @@
+import type { BalancePolicy } from "../core/balance.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,6 +11,7 @@ import { SessionManager } from "../providers/sessions/manager.js";
 import { SessionStore } from "../providers/sessions/store.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
 import type { TelemetrySnapshot, TelemetryStatusReport } from "../providers/telemetry/service.js";
+import { HIDDEN_MODES } from "../testing/balanceModes.js";
 import { allTools, createRegistry } from "./registry.js";
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
@@ -37,7 +39,7 @@ afterEach(async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-function rig() {
+function rig(balance?: BalancePolicy) {
   const clock = { t: T0 };
   const file = path.join(dir, "sessions.json");
   const refusals: {
@@ -78,6 +80,7 @@ function rig() {
         fleet: new FleetStore("unused.json"),
         telemetry,
         sessions: manager,
+        ...(balance ? { balance } : {}),
       },
       [],
     ),
@@ -96,33 +99,52 @@ function rig() {
 }
 
 describe("Feature: the session tools report price refusals", () => {
-  it("Given two refusals during the session, Then current, list and stats give the count without the balance", async () => {
+  it.each(HIDDEN_MODES)(
+    "Given two refusals during the session and $label, Then current, list and stats give the count without the balance",
+    async (mode) => {
+      const t = rig(mode.policy);
+      await t.play(2);
+      for (const minutes of [3, 5]) {
+        t.refusals.push({
+          at: new Date(T0 + minutes * MIN).toISOString(),
+          side: "buy",
+          kind: "commodity",
+          confidence: "confirmed",
+          superseded: false,
+        });
+      }
+      await t.play(10);
+
+      const current = await t.call("sc_session_current", mode.args);
+      expect(current.data.session.price_refusals).toBe(2);
+      expect(current.data.session.money).toBe("withheld");
+
+      const list = await t.call("sc_session_list", mode.args);
+      expect(list.data.sessions[0].price_refusals).toBe(2);
+
+      const stats = await t.call("sc_session_stats", mode.args);
+      expect(stats.data.price_refusals).toBe(2);
+      expect(stats.data.per_session[0].price_refusals).toBe(2);
+      expect(stats.data.money).toBe("withheld");
+
+      for (const r of [current, list, stats]) expect(r.text).not.toContain(String(BALANCE));
+    },
+  );
+
+  it("Given two refusals and the default (amounts shown), Then the count is there too and the money is not 'withheld'", async () => {
     const t = rig();
     await t.play(2);
-    for (const minutes of [3, 5]) {
-      t.refusals.push({
-        at: new Date(T0 + minutes * MIN).toISOString(),
-        side: "buy",
-        kind: "commodity",
-        confidence: "confirmed",
-        superseded: false,
-      });
-    }
+    t.refusals.push({
+      at: new Date(T0 + 3 * MIN).toISOString(),
+      side: "buy",
+      kind: "commodity",
+      confidence: "confirmed",
+      superseded: false,
+    });
     await t.play(10);
-
     const current = await t.call("sc_session_current");
-    expect(current.data.session.price_refusals).toBe(2);
-    expect(current.data.session.money).toBe("withheld");
-
-    const list = await t.call("sc_session_list");
-    expect(list.data.sessions[0].price_refusals).toBe(2);
-
-    const stats = await t.call("sc_session_stats");
-    expect(stats.data.price_refusals).toBe(2);
-    expect(stats.data.per_session[0].price_refusals).toBe(2);
-    expect(stats.data.money).toBe("withheld");
-
-    for (const r of [current, list, stats]) expect(r.text).not.toContain(String(BALANCE));
+    expect(current.data.session.price_refusals).toBe(1);
+    expect(current.data.session.money).not.toBe("withheld");
   });
 
   it("Given no refusal, Then the count is 0, not absent", async () => {

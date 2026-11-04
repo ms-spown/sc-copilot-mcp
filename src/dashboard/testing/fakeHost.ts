@@ -26,12 +26,25 @@ export interface HostOptions {
    * answers when it settles (to test a slow planner). Default: the invented answer of testing/suggestFixtures.ts.
    */
   suggest?: (args: any) => unknown | Promise<unknown>;
+  /** The server's balance choice; give the same object to several hosts to play two dashboards of one process. */
+  balanceServer?: { hidden: boolean; source?: "click" | "config" };
+  /** The token the page was built with: lifting the mask and the one-off need it, as on the server. */
+  balanceToken?: string;
 }
 
 export interface HostLog {
   /** Every request or notification the View sent, in order. */
   received: { method: string; params: any; at: number }[];
-  polls: { includeBalance: boolean; at: number; bytes: number }[];
+  polls: {
+    includeBalance: boolean;
+    at: number;
+    bytes: number;
+    /** The click recorded with this poll (balance_choice), and whether it was the route button's one-off. */
+    choice?: string;
+    token?: string;
+    once?: boolean;
+    refused?: boolean;
+  }[];
   messages: string[];
   contexts: string[];
   modeRequests: string[];
@@ -80,6 +93,13 @@ export function createFakeHost(options: HostOptions) {
     suggests: [],
     tools: [],
   };
+  /** The server's runtime balance choice (shared by the Views of one process). Starts shown. */
+  const balanceServer: { hidden: boolean; source?: "click" | "config" } = options.balanceServer ?? {
+    hidden: false,
+  };
+  const tokenOk = (t: unknown) => options.balanceToken !== undefined && t === options.balanceToken;
+  /** A test holds the answers of polls to deliver them late (a poll in flight while the player clicks). */
+  const hold: { on: boolean; held: (() => void)[] } = { on: false, held: [] };
   /** Set by a test to change what the next polls answer. */
   const overrides: {
     poll?: (base: any, includeBalance: boolean) => any;
@@ -103,6 +123,12 @@ export function createFakeHost(options: HostOptions) {
   return {
     log,
     overrides,
+    /** Hold the answers of polls (`on`), then `release()` delivers them in order, late. */
+    hold,
+    releasePolls(): void {
+      const held = hold.held.splice(0);
+      for (const f of held) f();
+    },
     get displayMode() {
       return displayMode;
     },
@@ -136,8 +162,23 @@ export function createFakeHost(options: HostOptions) {
         case "tools/call": {
           scenario.advanceTo(Math.max(scenario.t, nowMs - scenario.epoch));
           if (params.name === "sc_live_poll") {
-            const include = params.arguments?.include_balance === true;
             const a = params.arguments ?? {};
+            // Like the server: a click is remembered (the last one wins, shared by the Views of the process), hidden
+            // ignores include_balance true, and the one-off of the route button changes nothing.
+            let refused = false;
+            if (a.balance_choice === "hidden") {
+              balanceServer.hidden = true;
+              balanceServer.source = "click";
+            } else if (a.balance_choice === "shown") {
+              if (tokenOk(a.balance_token)) {
+                balanceServer.hidden = false;
+                balanceServer.source = "click";
+              } else refused = true;
+            }
+            const onceAsked = a.balance_once === true && a.include_balance === true;
+            const once = onceAsked && tokenOk(a.balance_token);
+            if (onceAsked && !once) refused = true;
+            const include = once || (!balanceServer.hidden && a.include_balance !== false);
             const base = scenario.poll(
               include,
               options.legacyFullPolls
@@ -148,16 +189,29 @@ export function createFakeHost(options: HostOptions) {
                     ...(a.have && typeof a.have === "object" ? { have: a.have } : {}),
                   },
             );
-            const structuredContent = overrides.poll ? overrides.poll(base, include) : base;
+            const answered = overrides.poll ? overrides.poll(base, include) : base;
+            const structuredContent = {
+              ...answered,
+              balance_state: balanceServer.hidden ? "hidden" : "shown",
+              balance_source: balanceServer.source ?? "config",
+              ...(refused ? { balance_refused: true } : {}),
+            };
             log.polls.push({
               includeBalance: include,
               at: nowMs,
               bytes: JSON.stringify(structuredContent).length,
+              ...(typeof a.balance_choice === "string" ? { choice: a.balance_choice } : {}),
+              ...(typeof a.balance_token === "string" ? { token: a.balance_token } : {}),
+              ...(once ? { once: true } : {}),
+              ...(refused ? { refused: true } : {}),
             });
-            respond(id, {
-              content: [{ type: "text", text: `live dashboard poll: ${base.state}` }],
-              structuredContent,
-            });
+            const deliverPoll = () =>
+              respond(id, {
+                content: [{ type: "text", text: `live dashboard poll: ${base.state}` }],
+                structuredContent,
+              });
+            if (hold.on) hold.held.push(deliverPoll);
+            else deliverPoll();
           } else if (params.name === "sc_live_mark") {
             log.marks.push(params.arguments?.action);
             const structuredContent = scenario.mark(params.arguments?.action);

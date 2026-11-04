@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { BalancePolicy } from "../core/balance.js";
 import type { HttpClient } from "../core/http.js";
 import { FleetStore } from "../providers/fleet/store.js";
 import { GameLog } from "../providers/gamelog/reader.js";
@@ -11,6 +12,7 @@ import { SessionStore } from "../providers/sessions/store.js";
 import type { TripInput } from "../providers/sessions/types.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
 import type { TelemetrySnapshot, TelemetryStatusReport } from "../providers/telemetry/service.js";
+import { HIDDEN_MODES, SHOWN_MODES } from "../testing/balanceModes.js";
 import { allTools, createRegistry } from "./registry.js";
 
 // Every change to the session file is a real write with fsync (the store's promise: a power cut keeps the old file or
@@ -41,7 +43,7 @@ afterEach(async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-function rig(enabled = true, extraTrip?: TripInput) {
+function rig(enabled = true, extraTrip?: TripInput, balance?: BalancePolicy) {
   const clock = { t: T0 };
   const file = path.join(dir, "sessions.json");
   const tel = { balance: BALANCE as number | null, calls: 0 };
@@ -98,6 +100,7 @@ function rig(enabled = true, extraTrip?: TripInput) {
       fleet: new FleetStore("unused.json"),
       telemetry,
       sessions: manager,
+      ...(balance ? { balance } : {}),
     },
     [],
   );
@@ -112,7 +115,7 @@ function rig(enabled = true, extraTrip?: TripInput) {
     const r = await registry.call(name, args);
     return { r, text: r.content[0].text, data: JSON.parse(r.content[0].text) };
   };
-  return { registry, manager, play, call, tel, clock };
+  return { registry, manager, play, call, tel, clock, policy: balance };
 }
 
 describe("Feature: the tools are there only when sessions are on", () => {
@@ -142,96 +145,121 @@ describe("Feature: the tools are there only when sessions are on", () => {
 });
 
 describe("Feature: sc_session_current gives what Claude needs to accompany the player", () => {
-  it("Given a session in play, Then it gives trips, time and the last known place, and withholds the money", async () => {
-    const t = rig();
-    await t.play(20);
-    const { text, data } = await t.call("sc_session_current");
-    expect(data.data.session.trips).toBe(1);
-    expect(data.data.session.active_ms).toBeGreaterThan(0);
-    expect(data.data.last_known.location).toBe("Orison");
-    expect(data.data.is_current).toBe(true);
-    expect(data.data.session.money).toBe("withheld");
-    expect(data.data.note_for_the_model).toContain("uex_get_trade_routes");
-    expect(text).not.toContain(String(BALANCE));
-    expect(text).not.toContain("41000");
-    expect(JSON.stringify(data.data.recent_trips)).not.toContain("41000");
-    // Free text from the game is data: the envelope marks the answer.
-    expect(data.provenance.trust).toBe("untrusted_text");
-    expect(data.notice).toBeTruthy();
-  });
+  it.each(HIDDEN_MODES)(
+    "Given a session in play and $label, Then it gives trips, time and the last known place, and withholds the money",
+    async (mode) => {
+      const t = rig(true, undefined, mode.policy);
+      await t.play(20);
+      const { text, data } = await t.call("sc_session_current", mode.args);
+      expect(data.data.session.trips).toBe(1);
+      expect(data.data.session.active_ms).toBeGreaterThan(0);
+      expect(data.data.last_known.location).toBe("Orison");
+      expect(data.data.is_current).toBe(true);
+      expect(data.data.session.money).toBe("withheld");
+      expect(data.data.note_for_the_model).toContain("uex_get_trade_routes");
+      expect(text).not.toContain(String(BALANCE));
+      expect(text).not.toContain("41000");
+      expect(JSON.stringify(data.data.recent_trips)).not.toContain("41000");
+      // Free text from the game is data: the envelope marks the answer.
+      expect(data.provenance.trust).toBe("untrusted_text");
+      expect(data.notice).toBeTruthy();
+    },
+  );
 
-  it("Given a cargo run with a gross margin, Then the margin, cost and revenue are withheld like any other aUEC figure", async () => {
-    const t = rig(true, {
-      key: "00000000000000bb",
-      kind: "trade",
-      source: "trade_journal",
-      ended_at: new Date(T0 + 3 * MIN).toISOString(),
-      label: "Cargo Waste",
-      commodity: "Waste",
-      cost_auec: 123_456,
-      revenue_auec: 234_567,
-      gross_margin_auec: 111_111,
-      net_auec: null,
-    });
-    await t.play(20);
-    const hidden = await t.call("sc_session_current");
-    expect(hidden.text).not.toMatch(/111111|123456|234567/);
-    expect(JSON.stringify(hidden.r.structuredContent)).not.toMatch(/111111|123456|234567/);
-    expect(hidden.data.data.recent_trips[1].commodity).toBe("Waste");
-    const shown = await t.call("sc_session_current", { include_balance: true });
-    expect(shown.data.data.session.money.gross_margin_auec).toBe(111_111);
-    expect(shown.data.data.recent_trips[1].gross_margin_auec).toBe(111_111);
-  });
+  it.each(HIDDEN_MODES)(
+    "Given a cargo run with a gross margin and $label, Then the margin, cost and revenue are withheld like any other aUEC figure",
+    async (mode) => {
+      const t = rig(
+        true,
+        {
+          key: "00000000000000bb",
+          kind: "trade",
+          source: "trade_journal",
+          ended_at: new Date(T0 + 3 * MIN).toISOString(),
+          label: "Cargo Waste",
+          commodity: "Waste",
+          cost_auec: 123_456,
+          revenue_auec: 234_567,
+          gross_margin_auec: 111_111,
+          net_auec: null,
+        },
+        mode.policy,
+      );
+      await t.play(20);
+      const hidden = await t.call("sc_session_current", mode.args);
+      expect(hidden.text).not.toMatch(/111111|123456|234567/);
+      expect(JSON.stringify(hidden.r.structuredContent)).not.toMatch(/111111|123456|234567/);
+      expect(hidden.data.data.recent_trips[1].commodity).toBe("Waste");
+      // the positive control: the player clicks Afficher (lifts any mask), then the same figures come out
+      if (t.policy) t.policy.playerChoice = "shown";
+      const shown = await t.call("sc_session_current", { include_balance: true });
+      expect(shown.data.data.session.money.gross_margin_auec).toBe(111_111);
+      expect(shown.data.data.recent_trips[1].gross_margin_auec).toBe(111_111);
+    },
+  );
 
-  it("Given a trade run whose fees were deduced, Then the way they were obtained is withheld with the balance it comes from (found by the end-to-end replay)", async () => {
-    // "estime" says the stream was cut around the sales, "mesure" that it was not, null that the balance moved for another
-    // reason: all of it is what the balance did, so it goes with net_doubtful and net_kind.
-    const t = rig(true, {
-      key: "00000000000000cc",
-      kind: "trade",
-      source: "trade_journal",
-      ended_at: new Date(T0 + 3 * MIN).toISOString(),
-      label: "Cargo Waste",
-      commodity: "Waste",
-      cost_auec: 123_456,
-      revenue_auec: 234_567,
-      gross_margin_auec: 111_111,
-      fees_auec: 7_777,
-      fees_method: "estime",
-      net_auec: 103_334,
-      net_kind: "balance_delta",
-      net_doubtful: true,
-      unexplained_auec: 4_321,
-    });
-    await t.play(20);
-    const hidden = await t.call("sc_session_current");
-    const trip = hidden.data.data.recent_trips[1];
-    expect(trip).toMatchObject({
-      commodity: "Waste",
-      fees_method: null,
-      net_doubtful: null,
-      net_kind: null,
-      unexplained_auec: null,
-    });
-    expect(hidden.text).not.toMatch(/estime|7777|4321/);
-    expect(JSON.stringify(hidden.r.structuredContent)).not.toMatch(/estime|7777|4321/);
-    const shown = await t.call("sc_session_current", { include_balance: true });
-    expect(shown.data.data.recent_trips[1]).toMatchObject({
-      fees_method: "estime",
-      net_doubtful: true,
-      unexplained_auec: 4_321,
-    });
-  });
+  it.each(HIDDEN_MODES)(
+    "Given a trade run whose fees were deduced and $label, Then the way they were obtained is withheld with the balance it comes from (found by the end-to-end replay)",
+    async (mode) => {
+      // "estime" says the stream was cut around the sales, "mesure" that it was not, null that the balance moved for another
+      // reason: all of it is what the balance did, so it goes with net_doubtful and net_kind.
+      const t = rig(
+        true,
+        {
+          key: "00000000000000cc",
+          kind: "trade",
+          source: "trade_journal",
+          ended_at: new Date(T0 + 3 * MIN).toISOString(),
+          label: "Cargo Waste",
+          commodity: "Waste",
+          cost_auec: 123_456,
+          revenue_auec: 234_567,
+          gross_margin_auec: 111_111,
+          fees_auec: 7_777,
+          fees_method: "estime",
+          net_auec: 103_334,
+          net_kind: "balance_delta",
+          net_doubtful: true,
+          unexplained_auec: 4_321,
+        },
+        mode.policy,
+      );
+      await t.play(20);
+      const hidden = await t.call("sc_session_current", mode.args);
+      const trip = hidden.data.data.recent_trips[1];
+      expect(trip).toMatchObject({
+        commodity: "Waste",
+        fees_method: null,
+        net_doubtful: null,
+        net_kind: null,
+        unexplained_auec: null,
+      });
+      expect(hidden.text).not.toMatch(/estime|7777|4321/);
+      expect(JSON.stringify(hidden.r.structuredContent)).not.toMatch(/estime|7777|4321/);
+      // the positive control: the player clicks Afficher (lifts any mask), then the same figures come out
+      if (t.policy) t.policy.playerChoice = "shown";
+      const shown = await t.call("sc_session_current", { include_balance: true });
+      expect(shown.data.data.recent_trips[1]).toMatchObject({
+        fees_method: "estime",
+        net_doubtful: true,
+        unexplained_auec: 4_321,
+      });
+    },
+  );
 
-  it("Given include_balance=true, Then the figures are there, with their basis", async () => {
-    const t = rig();
-    await t.play(20);
-    const { data } = await t.call("sc_session_current", { include_balance: true });
-    expect(data.data.session.money.start_balance_auec).toBe(BALANCE);
-    expect(data.data.session.money.net_auec).toBe(41_000);
-    expect(data.data.session.money.net_source).toBe("trips");
-    expect(data.data.recent_trips[0].net_auec).toBe(41_000);
-  });
+  it.each(SHOWN_MODES)(
+    "Given $label, Then the figures are there, with their basis",
+    async (mode) => {
+      const t = rig(true, undefined, mode.policy);
+      await t.play(20);
+      const { data } = await t.call("sc_session_current", mode.args);
+      expect(data.data.money_note).toBeUndefined();
+      expect(data.data.session.money.start_balance_auec).toBe(BALANCE);
+      expect(data.data.session.money.net_auec).toBe(41_000);
+      expect(data.data.session.money.net_source).toBe("trips");
+      expect(data.data.recent_trips[0].net_auec).toBe(41_000);
+    },
+  );
 
   it("Given a past session id, Then it opens read-only; given a wrong id, Then it says so", async () => {
     const t = rig();
@@ -256,22 +284,39 @@ describe("Feature: sc_session_current gives what Claude needs to accompany the p
   });
 });
 
-describe("Feature: list and stats never leak the balance unasked", () => {
-  it("Given include_balance false, Then neither the list nor the stats hold a figure", async () => {
-    const t = rig();
-    await t.play(30);
-    await t.call("sc_session_new");
-    await t.play(15);
-    for (const name of ["sc_session_list", "sc_session_stats"]) {
-      const { text } = await t.call(name);
-      expect(text, name).not.toContain(String(BALANCE));
-      expect(text, name).not.toContain("41000");
-      expect(text, name).toContain("withheld");
-    }
-    const stats = await t.call("sc_session_stats", { include_balance: true });
-    expect(stats.data.data.money.net_auec).not.toBeNull();
-    expect(stats.data.data.basis).toContain("Raw measures");
-  });
+describe("Feature: list and stats show the figures by default and leak none when the player hides them", () => {
+  it.each(HIDDEN_MODES)(
+    "Given $label, Then neither the list nor the stats hold a figure",
+    async (mode) => {
+      const t = rig(true, undefined, mode.policy);
+      await t.play(30);
+      await t.call("sc_session_new");
+      await t.play(15);
+      for (const name of ["sc_session_list", "sc_session_stats"]) {
+        const { text, r } = await t.call(name, mode.args);
+        expect(text, name).not.toContain(String(BALANCE));
+        expect(text, name).not.toContain("41000");
+        expect(text, name).toMatch(/Montants masqués/);
+        expect(JSON.stringify(r.structuredContent), name).not.toContain("41000");
+      }
+    },
+  );
+
+  it.each(SHOWN_MODES)(
+    "Given $label, Then the list and the stats hold the figures",
+    async (mode) => {
+      const t = rig(true, undefined, mode.policy);
+      await t.play(30);
+      await t.call("sc_session_new");
+      await t.play(15);
+      const stats = await t.call("sc_session_stats", mode.args);
+      expect(stats.data.data.money.net_auec).not.toBeNull();
+      expect(stats.data.data.basis).toContain("Raw measures");
+      expect(stats.data.data.money_note).toBeUndefined();
+      const list = await t.call("sc_session_list", mode.args);
+      expect(list.text).toContain("41000");
+    },
+  );
 
   it("Given the arguments are out of range, Then the call is refused with an error, not a crash", async () => {
     const t = rig();

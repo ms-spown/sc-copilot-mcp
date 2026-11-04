@@ -1,5 +1,14 @@
 import { z } from "zod";
 import {
+  balanceHidden,
+  balanceSource,
+  balanceToken,
+  balanceTokenMatches,
+  HIDDEN_NOTE,
+  wantsBalance,
+  type BalancePolicy,
+} from "../core/balance.js";
+import {
   DASHBOARD_URI,
   PLAN_PRICE_POINTS_MAX,
   PLAN_TEXT_MAX,
@@ -61,7 +70,13 @@ const off = (): ToolResult => ({
   isError: true,
 });
 
-export function dashboardResources({ telemetry }: { telemetry?: Telemetry }): ResourceDefinition[] {
+export function dashboardResources({
+  telemetry,
+  balance,
+}: {
+  telemetry?: Telemetry;
+  balance?: BalancePolicy;
+}): ResourceDefinition[] {
   return [
     {
       uri: DASHBOARD_URI,
@@ -71,7 +86,8 @@ export function dashboardResources({ telemetry }: { telemetry?: Telemetry }): Re
       mimeType: UI_MIME_TYPE,
       advertised: () => telemetry?.enabled === true,
       contentMeta: { ui: { prefersBorder: false } },
-      text: dashboardHtml,
+      // The page carries the server's start choice for the balance (shown unless SC_BALANCE=hidden).
+      text: () => dashboardHtml({ balanceHidden: balanceHidden(balance), token: balanceToken() }),
     },
   ];
 }
@@ -93,6 +109,7 @@ export function dashboardTools(
     connection,
     gameLog,
     sessions,
+    balance,
   }: {
     telemetry?: Telemetry;
     scwClient?: HttpClient;
@@ -100,6 +117,7 @@ export function dashboardTools(
     connection?: ConnectionTracker;
     gameLog?: GameLog;
     sessions?: SessionManager;
+    balance?: BalancePolicy;
   },
   overrides: DashboardOverrides = {},
 ): ToolDefinition[] {
@@ -126,6 +144,8 @@ export function dashboardTools(
     },
   );
   const enabled = () => telemetry?.enabled === true;
+  // The server's runtime balance choice. Without one passed (some tests), a private one: shown, until a click.
+  const policy: BalancePolicy = balance ?? { hiddenByDefault: false, playerChoice: null };
 
   // The flown ship for the trade suggestions: its class comes from the stream, its wiki sheet from the resolver the
   // poll already uses, its quantum speed and hold from the same lookup uex_plan_trade makes. Server state only: the
@@ -200,7 +220,7 @@ export function dashboardTools(
     {
       name: "sc_live_dashboard",
       description:
-        "Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance stays hidden until the player clicks). Call it when the player asks to see their ship or session live. If a dashboard is already open in this conversation, do not open it again unless the player explicitly asks for a new one: it updates by itself, and each extra copy stays on screen (only the most recent one calls the server, the others show a banner). Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Waiting or connected means no data yet (menus, loading): never say the game is not running or that something is wrong, no troubleshooting unless it shows a game launched without telemetry or an unknown format. On foot only character data exists; ship instruments need the player seated in a ship. Optional plan: after uex_get_trade_routes, pass the route (expected_profit_auec is the PROFIT, not the turnover; unit prices and recent price points are welcome) so the View compares planned profit with the measured result of the trade run.",
+        "Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance is shown unless the player hid it). Call it when the player asks to see their ship or session live. If a dashboard is already open in this conversation, do not open it again unless the player explicitly asks for a new one: it updates by itself, and each extra copy stays on screen (only the most recent one calls the server, the others show a banner). Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Waiting or connected means no data yet (menus, loading): never say the game is not running or that something is wrong, no troubleshooting unless it shows a game launched without telemetry or an unknown format. On foot only character data exists; ship instruments need the player seated in a ship. Optional plan: after uex_get_trade_routes, pass the route (expected_profit_auec is the PROFIT, not the turnover; unit prices and recent price points are welcome) so the View compares planned profit with the measured result of the trade run.",
       inputSchema: {
         type: "object",
         properties: {
@@ -283,13 +303,31 @@ export function dashboardTools(
     {
       name: "sc_live_poll",
       description:
-        "For the dashboard View only, not for the model: current telemetry state, recent events and session counters as structured content, refreshed by the View about once a second (answers are shared for half a second). Never starts the reader while telemetry is off. The balance is included only if include_balance is true, which the View sets after the player clicks. Use sc_live_state instead.",
+        "For the dashboard View only, not for the model: current telemetry state, recent events and session counters as structured content, refreshed by the View about once a second (answers are shared for half a second). Never starts the reader while telemetry is off. The balance is included unless it is hidden (the player's click, or SC_BALANCE=hidden) or include_balance is false. balance_choice records a click (hidden, or shown with balance_token); balance_once gives the balance for one answer (with balance_token). Reports balance_state and balance_source. Use sc_live_state instead.",
       inputSchema: {
         type: "object",
         properties: {
           include_balance: {
             type: "boolean",
-            description: "Include the aUEC balance and its change. Default false.",
+            description:
+              "Include the aUEC balance and its change. Default true; false hides it. Ignored (hidden) while the player's choice is hidden.",
+          },
+          balance_choice: {
+            type: "string",
+            enum: ["hidden", "shown"],
+            description:
+              "Only after a CLICK of the player on the balance toggle: the server remembers it (memory only).",
+          },
+          balance_token: {
+            type: "string",
+            maxLength: 64,
+            description:
+              "The token the page carries: required for balance_choice shown and for balance_once. Without it they are refused.",
+          },
+          balance_once: {
+            type: "boolean",
+            description:
+              "With include_balance true: the balance for this answer only, for the route button the player pressed. Changes no choice.",
           },
           include_static: {
             type: "boolean",
@@ -318,9 +356,20 @@ export function dashboardTools(
       meta: APP_ONLY_META,
       handler: async (args: unknown): Promise<ToolResult> => {
         const hash = z.string().regex(/^[0-9a-f]{1,16}$/);
-        const { include_balance, include_static, since_seq, have } = z
+        const {
+          include_balance,
+          balance_choice,
+          balance_once,
+          balance_token,
+          include_static,
+          since_seq,
+          have,
+        } = z
           .object({
             include_balance: z.boolean().optional(),
+            balance_choice: z.enum(["hidden", "shown"]).optional(),
+            balance_once: z.boolean().optional(),
+            balance_token: z.string().max(64).optional(),
             include_static: z.boolean().optional(),
             since_seq: z.number().int().min(0).max(1e12).optional(),
             have: z
@@ -334,8 +383,22 @@ export function dashboardTools(
               .optional(),
           })
           .parse(args || {});
+        // A click of the player is the only thing that changes the choice (an ordinary poll never does: two Views
+        // polling once a second would fight over it). The last click wins.
+        // Hiding is always accepted. Lifting the mask ("shown") and the one-off need the process token that only the served
+        // page carries: a caller that did not read it (a host that exposes this app-only tool to the model) is refused,
+        // and nothing changes.
+        let refused = false;
+        if (balance_choice === "hidden") policy.playerChoice = "hidden";
+        else if (balance_choice === "shown") {
+          if (balanceTokenMatches(balance_token)) policy.playerChoice = "shown";
+          else refused = true;
+        }
+        const onceAsked = balance_once === true && include_balance === true;
+        const once = onceAsked && balanceTokenMatches(balance_token);
+        if (onceAsked && !once) refused = true;
         const result = await service.poll({
-          includeBalance: include_balance === true && enabled(),
+          includeBalance: (once || wantsBalance(include_balance, policy)) && enabled(),
           ...(include_static === true ? { includeStatic: true } : {}),
           ...(since_seq !== undefined ? { sinceSeq: since_seq } : {}),
           ...(have ? { have } : {}),
@@ -343,7 +406,20 @@ export function dashboardTools(
         return {
           // Fixed text on purpose: the data is in structuredContent, and no balance can leak into the text.
           content: [{ type: "text", text: `live dashboard poll: ${result.state}` }],
-          structuredContent: result as unknown as Record<string, unknown>,
+          // The View reads the server's choice here (on mounting, and after another dashboard's click).
+          structuredContent: {
+            ...(result as unknown as Record<string, unknown>),
+            balance_state: balanceHidden(policy) ? "hidden" : "shown",
+            balance_source: balanceSource(policy),
+            ...(refused
+              ? {
+                  balance_refused: true,
+                  balance_note: balanceHidden(policy)
+                    ? HIDDEN_NOTE
+                    : "Jeton absent ou invalide : demande ignorée.",
+                }
+              : {}),
+          },
         };
       },
     },

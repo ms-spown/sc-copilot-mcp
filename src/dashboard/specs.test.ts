@@ -541,7 +541,15 @@ describe("Feature: the poll carries the sheet without ever waiting for it", () =
     const poll = tools.find((t) => t.name === "sc_live_poll")!;
     const props = (poll.inputSchema as { properties: Record<string, { properties?: object }> })
       .properties;
-    expect(Object.keys(props)).toEqual(["include_balance", "include_static", "since_seq", "have"]);
+    expect(Object.keys(props)).toEqual([
+      "include_balance",
+      "balance_choice",
+      "balance_token",
+      "balance_once",
+      "include_static",
+      "since_seq",
+      "have",
+    ]);
     expect(Object.keys(props["have"]!.properties!)).toEqual([
       "ship",
       "pilot",

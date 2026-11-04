@@ -286,7 +286,7 @@
         },
         "include_balance": {
           "type": "boolean",
-          "description": "Include balance-change events (default false)."
+          "description": "Include balance-change events (default true; false hides them)."
         }
       }
     }
@@ -326,7 +326,24 @@
       "properties": {
         "include_balance": {
           "type": "boolean",
-          "description": "Include the aUEC balance and its change. Default false."
+          "description": "Include the aUEC balance and its change. Default true; false hides it. Ignored (hidden) while the player's choice is hidden."
+        },
+        "balance_choice": {
+          "type": "string",
+          "enum": [
+            "hidden",
+            "shown"
+          ],
+          "description": "Only after a CLICK of the player on the balance toggle: the server remembers it (memory only)."
+        },
+        "balance_token": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "The token the page carries: required for balance_choice shown and for balance_once. Without it they are refused."
+        },
+        "balance_once": {
+          "type": "boolean",
+          "description": "With include_balance true: the balance for this answer only, for the route button the player pressed. Changes no choice."
         },
         "include_static": {
           "type": "boolean",
@@ -392,7 +409,7 @@
         },
         "include_balance": {
           "type": "boolean",
-          "description": "Include the aUEC balance and its change since the reader started. Default false: the result goes into the conversation."
+          "description": "Include the aUEC balance and its change since the reader started. Default true; false hides it (the player's choice)."
         }
       }
     }
@@ -583,7 +600,7 @@
       "properties": {
         "include_balance": {
           "type": "boolean",
-          "description": "Include aUEC figures (balances, results, turnover, rate per hour). Default false. Ask the player first: the answer goes into the conversation."
+          "description": "Include aUEC figures (balances, results, turnover, rate per hour). Default true; false hides them (the player's choice)."
         },
         "id": {
           "type": "string",
@@ -608,7 +625,7 @@
         },
         "include_balance": {
           "type": "boolean",
-          "description": "Include aUEC figures (results, margins, fees, rate). Default false. Ask the player first: the answer goes into the conversation."
+          "description": "Include aUEC figures (results, margins, fees, rate). Default true; false hides them (the player's choice)."
         },
         "include_start_balance": {
           "type": "boolean",
@@ -666,7 +683,7 @@
         },
         "include_balance": {
           "type": "boolean",
-          "description": "Include aUEC figures (results, margins, fees, rate). Default false. Ask the player first: the answer goes into the conversation."
+          "description": "Include aUEC figures (results, margins, fees, rate). Default true; false hides them (the player's choice)."
         },
         "include_start_balance": {
           "type": "boolean",
@@ -706,7 +723,7 @@
         },
         "include_balance": {
           "type": "boolean",
-          "description": "Include aUEC figures (balances, results, turnover, rate per hour). Default false. Ask the player first: the answer goes into the conversation."
+          "description": "Include aUEC figures (balances, results, turnover, rate per hour). Default true; false hides them (the player's choice)."
         }
       }
     }
@@ -734,7 +751,7 @@
         },
         "include_balance": {
           "type": "boolean",
-          "description": "Include aUEC figures (balances, results, turnover, rate per hour). Default false. Ask the player first: the answer goes into the conversation."
+          "description": "Include aUEC figures (balances, results, turnover, rate per hour). Default true; false hides them (the player's choice)."
         }
       }
     }
@@ -758,7 +775,7 @@
         },
         "include_balance": {
           "type": "boolean",
-          "description": "Include the aUEC amounts (line totals, unit prices, cost, revenue, gross margin, spending). Default false. Ask the player first: the answer goes into the conversation."
+          "description": "Include the aUEC amounts (line totals, unit prices, cost, revenue, gross margin, spending). Default true; false hides them (the player's choice)."
         }
       }
     }
