@@ -41,7 +41,7 @@ async function page(opts: {
 }
 
 async function openDetail(w: PageWorld) {
-  findAll(w.root, (n) => n.tag === "button" && n.textContent.startsWith("Sessions"))[0]?.click?.();
+  findAll(w.root, (n) => n.tag === "button" && /^Sessions [▾▴]/.test(n.textContent))[0]?.click?.();
   await w.advance(500);
   findAll(
     w.root,
@@ -367,7 +367,7 @@ describe("Feature: a report is gone from the page, not just hidden, whenever the
     await w.advance(3 * SECOND);
     gone(w);
     expect(allText(w)).not.toMatch(BALANCES);
-    findAll(w.root, (n) => n.tag === "button" && n.textContent.startsWith("Sessions"))[0]!.click();
+    findAll(w.root, (n) => n.tag === "button" && /^Sessions [▾▴]/.test(n.textContent))[0]!.click();
     await w.advance(500);
     expect(pre(w).textContent).toBe("");
     expect(allText(w)).not.toMatch(NET);

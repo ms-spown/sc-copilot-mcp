@@ -298,6 +298,11 @@ export function sessionToolAnswer(
   variant: SessionVariant = "story",
   /** How many more (invented, older) ended sessions the file holds, to test a long list. */
   extra = 0,
+  /** What the player archived or deleted in the Sessions view (by session id), kept by sessionFake. */
+  marks: { archived: Set<string>; deleted: Set<string> } = {
+    archived: new Set(),
+    deleted: new Set(),
+  },
 ) {
   const include = args["include_balance"] !== false;
   // The history the variant implies: session 4 is the one in progress, ended by hand, or replaced by the waiting session 5.
@@ -312,16 +317,24 @@ export function sessionToolAnswer(
     number: 100 + i, // invented numbers: the list only needs distinct, older sessions
     startedAgoMs: (60 + i) * HOUR,
   }));
-  const all = [...older, ...recent];
+  const idOf = (f: Fixture) => `s_fixture_${f.number}`;
+  const all = [...older, ...recent].filter((f) => !marks.deleted.has(idOf(f)));
+  const summ = (f: Fixture) => ({
+    ...sessionSummary(f, nowMs, include),
+    archived: marks.archived.has(idOf(f)),
+  });
   if (name === "sc_session_list") {
     // Like the server: newest first, at most `limit` of them, and the total it holds.
     const limit = typeof args["limit"] === "number" ? args["limit"] : 20;
+    const shown =
+      args["include_archived"] === true ? all : all.filter((f) => !marks.archived.has(idOf(f)));
     return {
-      total: all.length,
-      sessions: [...all]
+      total: shown.length,
+      archived: all.length - all.filter((f) => !marks.archived.has(idOf(f))).length,
+      sessions: [...shown]
         .reverse()
         .slice(0, limit)
-        .map((f) => sessionSummary(f, nowMs, include)),
+        .map((f) => summ(f)),
     };
   }
   if (name === "sc_session_stats") {
@@ -366,7 +379,7 @@ export function sessionToolAnswer(
   if (name === "sc_session_current") {
     const f = all.find((x) => `s_fixture_${x.number}` === args["id"]) ?? CURRENT;
     return {
-      session: sessionSummary(f, nowMs, include),
+      session: summ(f),
       is_current: false,
       recent_trips: [
         {
@@ -435,6 +448,19 @@ export function sessionToolAnswer(
       ...(args["kind"] === "csv" ? { csv } : { markdown }),
     };
   }
+  if (name === "sc_session_manage") {
+    // Like the server: only an ENDED session can be archived, unarchived or deleted; the session in progress is refused.
+    const action = String(args["action"]);
+    const f = all.find((x) => idOf(x) === args["id"]);
+    if (!f)
+      return { ok: false, action, reason: "not_found", persistence: { saved: true, status: "ok" } };
+    const base = { action, session: summ(f), persistence: { saved: true, status: "ok" } };
+    if ((f.status ?? "open") === "open") return { ok: false, reason: "open_session", ...base };
+    const isArchived = marks.archived.has(idOf(f));
+    if ((action === "archive" && isArchived) || (action === "unarchive" && !isArchived))
+      return { ok: false, reason: "unchanged", ...base };
+    return { ok: true, reason: "done", ...base };
+  }
   // The shapes of tools/sessions.ts (the server's English messages are never shown by the View).
   const live = variant === "timing" ? TIMING : variant === "ended" ? ENDED_BY_HAND : CURRENT;
   if (name === "sc_session_new") {
@@ -491,6 +517,7 @@ export function sessionFake(initial: SessionVariant = "story") {
   // With saved sessions behind it, deleting the chronometer leaves the last one (ended) on the card; with none, nothing is left.
   const hasHistory = initial !== "empty";
   let extra = 0;
+  const marks = { archived: new Set<string>(), deleted: new Set<string>() };
   const calls: string[] = [];
   return {
     get variant() {
@@ -508,15 +535,31 @@ export function sessionFake(initial: SessionVariant = "story") {
     },
     /** Every session tool call, in order (the same names as the real tools). */
     calls,
+    /** What the player archived or deleted in the Sessions view (by session id). */
+    marks,
+    // (An archived or deleted last session is out of the card: the bar says there is none. Deleting shows no earlier one: an
+    // approximation of the server, which would show the session before it.)
     bar: (nowMs: number, include: boolean) =>
       sessionBar(
         nowMs,
         include,
-        variant,
+        variant === "ended" &&
+          (marks.archived.has("s_fixture_4") || marks.deleted.has("s_fixture_4"))
+          ? "empty"
+          : variant,
         timingFrom === null ? timingAgo : Math.max(0, nowMs - timingFrom),
       ),
     tool: (name: string, args: Record<string, any>, nowMs: number) => {
-      const answer = sessionToolAnswer(name, args, nowMs, variant, extra);
+      const answer = sessionToolAnswer(name, args, nowMs, variant, extra, marks);
+      if (name === "sc_session_manage") {
+        calls.push(name);
+        if ((answer as any).reason === "done") {
+          const id = String(args["id"]);
+          if (args["action"] === "delete") marks.deleted.add(id);
+          else if (args["action"] === "archive") marks.archived.add(id);
+          else marks.archived.delete(id);
+        }
+      }
       if (name === "sc_session_end" || name === "sc_session_new") {
         calls.push(name);
         if (name === "sc_session_new") timingFrom = nowMs; // the chronometer runs from the click

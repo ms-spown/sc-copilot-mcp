@@ -2,6 +2,7 @@ import { z } from "zod";
 import { formatOutputRaw } from "../core/format.js";
 import { hiddenNote, wantsBalance, type BalancePolicy } from "../core/balance.js";
 import { sanitizeUntrusted } from "../core/untrusted.js";
+import { DASHBOARD_URI } from "../dashboard/constants.js";
 import type { SessionManager } from "../providers/sessions/manager.js";
 import { withoutMoney } from "../providers/sessions/stats.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
@@ -118,25 +119,31 @@ export function sessionTools({
     {
       name: "sc_session_list",
       description:
-        "The player's saved play sessions, newest first, with their key numbers: start, active time, trips and, unless include_balance is false, net result and rate per hour. For going back to a past session (open one with sc_session_current and its id). Counts and durations are always given; aUEC figures are given too unless the player hid them (include_balance=false). Needs SC_TELEMETRY=on.",
+        "The player's saved play sessions, newest first, with their key numbers: start, active time, trips and, unless include_balance is false, net result and rate per hour. For going back to a past session (open one with sc_session_current and its id). Sessions the player archived are left out unless include_archived is true. Counts and durations are always given; aUEC figures are given too unless the player hid them (include_balance=false). Needs SC_TELEMETRY=on.",
       inputSchema: {
         type: "object",
         properties: {
           limit: { type: "number", description: "How many sessions, 1 to 200. Default 20." },
+          include_archived: {
+            type: "boolean",
+            description:
+              "Also the sessions the player archived (left out unless asked, flagged archived). Default false.",
+          },
           include_balance: includeBalanceProp,
         },
       },
       advertised: enabled,
       handler: async (args: unknown): Promise<ToolResult> => {
         if (!sessions || !sessions.enabled) return off();
-        const { limit, include_balance } = z
+        const { limit, include_balance, include_archived } = z
           .object({
             limit: z.number().int().min(1).max(200).optional(),
+            include_archived: z.boolean().optional(),
             include_balance: z.boolean().optional(),
           })
           .parse(args || {});
         const money = wantsBalance(include_balance, balance);
-        const out = await sessions.list(limit ?? 20, money);
+        const out = await sessions.list(limit ?? 20, money, include_archived === true);
         return result({
           ...out,
           ...(money ? {} : { money_note: hiddenNote(balance) }),
@@ -229,6 +236,49 @@ export function sessionTools({
                 : "Nothing ended: there is no session yet.",
           persistence: { saved: ended.saved, status: sessions.notice ?? "ok" },
           ...(ended.summary ? { session: withoutMoney(ended.summary) } : {}),
+        });
+      },
+    },
+    {
+      name: "sc_session_manage",
+      description:
+        "For the dashboard only, not for the model: the player's own per-session actions in the Sessions view of the dashboard, on one ENDED saved session (by id): archive (kept in the file, hidden from the default list), unarchive, or delete (the session is REMOVED from the file for good). The session in progress is refused (reason open_session: it is ended first, by the player, with Terminer). Refused to a client that did not declare the UI extension. Writes only this server's own session file; nothing is sent to the game or to a network. Needs SC_TELEMETRY=on.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string", maxLength: 48, description: "A session id from sc_session_list." },
+          action: { type: "string", enum: ["archive", "unarchive", "delete"] },
+        },
+        required: ["id", "action"],
+      },
+      advertised: enabled,
+      requiresUi: true,
+      meta: { ui: { resourceUri: DASHBOARD_URI, visibility: ["app"] } },
+      handler: async (args: unknown): Promise<ToolResult> => {
+        if (!sessions || !sessions.enabled) return off();
+        const { id, action } = z
+          .object({
+            id: z.string().min(1).max(48),
+            action: z.enum(["archive", "unarchive", "delete"]),
+          })
+          .strict()
+          .parse(args || {});
+        const r = await sessions.manage(id, action);
+        const n = r.summary?.number;
+        const done = r.reason === "done";
+        return result({
+          ok: done,
+          action,
+          reason: r.reason,
+          message: done
+            ? `Session ${n} ${action === "delete" ? "deleted" : action === "archive" ? "archived" : "unarchived"}.${saveWarning(r.saved)}`
+            : r.reason === "open_session"
+              ? `Session ${n} is in progress: end it first (Terminer), then it can be archived or deleted.`
+              : r.reason === "unchanged"
+                ? `Session ${n} was already ${action === "archive" ? "archived" : "unarchived"}.`
+                : "No session with this id.",
+          persistence: { saved: r.saved, status: sessions.notice ?? "ok" },
+          ...(r.summary ? { session: withoutMoney(r.summary) } : {}),
         });
       },
     },

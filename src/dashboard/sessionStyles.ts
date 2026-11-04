@@ -68,6 +68,27 @@ export const SESSION_CSS = `
 .ses-trips { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .ses-trip { font-size: var(--fs-s); color: var(--sc-text2); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 
+/* The tabs of the page and the Sessions view (a second panel in its view form). While the view is the tab on screen, the
+   rest of the page is hidden; the header, the tabs, the toasts, the notices and the view stay. */
+.tabs { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-2) 0 0; }
+.tabs .btn[aria-selected="true"] { background: var(--sc-inv-bg); color: var(--sc-inv-text); border-color: var(--sc-inv-bg); font-weight: 600; }
+[data-view="sessions"] > :not(.top):not(.tabs):not(.ses-view):not(.toast):not(.notice):not(.sr-only):not(.tip) { display: none !important; }
+.ses-view { margin: var(--sp-3) 0 0; }
+.ses-view > .ses-menu { margin-top: 0; padding-top: 0; border-top: 0; }
+.ses-filters { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.ses-filters .btn[aria-pressed="true"] { background: var(--sc-inv-bg); color: var(--sc-inv-text); border-color: var(--sc-inv-bg); font-weight: 600; }
+.ses-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); }
+@media (min-width: 760px) { .ses-view .ses-split { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; } }
+.ses-view .ses-list { max-height: none; }
+/* In the view the list column is narrow: number and date on the first line with the result, then the figures, then the state. */
+.ses-view .ses-row { grid-template-columns: 3.5em minmax(0, 1fr) auto; }
+.ses-view .ses-r-result { grid-row: 1; grid-column: 3; }
+.ses-view .ses-r-detail { grid-row: 2; grid-column: 2 / -1; }
+.ses-view .ses-r-status { grid-row: 3; grid-column: 2 / -1; }
+.ses-rowwrap { display: flex; flex-direction: column; gap: 2px; }
+.ses-r-acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); }
+.ses-r-confirm { border: 1px solid var(--sc-warn); border-radius: var(--r-m); background: var(--tint-warn); padding: var(--sp-2) var(--sp-3); }
+.ses-row[data-sel="1"] { border-color: var(--sc-info); background: var(--sc-bg3); }
 .ses-export { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2) 0; }
 .ses-export-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .ses-export-pre { margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--fs-xs) ui-monospace, monospace; background: var(--sc-bg3); border: 1px solid var(--sc-line); border-radius: var(--r-s); padding: var(--sp-2); user-select: all; -webkit-user-select: all; }

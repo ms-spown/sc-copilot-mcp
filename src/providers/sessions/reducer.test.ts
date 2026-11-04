@@ -5,6 +5,7 @@ import {
   isEmpty,
   isLeftover,
   isUntouched,
+  manageSession,
   latest,
   needsTidy,
   observe,
@@ -729,6 +730,57 @@ describe("Feature: the game starts a session by itself, and an ended one stays e
       expect(again.changed, name).toBe(false);
       expect(JSON.stringify(s), name).toBe(once);
     }
+  });
+});
+
+describe("Feature: archive, unarchive and delete of one ended session (the Sessions view)", () => {
+  /** Three sessions: 1 and 2 ended (by new_session and by hand), 3 in progress. */
+  const three = () => {
+    const s = STATES.active();
+    startNew(s, T0 + 5 * MIN, cfg, 1300);
+    latest(s)!.active_ms = 10 * MIN;
+    latest(s)!.note = "real";
+    endCurrent(s, T0 + 20 * MIN);
+    startNew(s, T0 + 30 * MIN, cfg, 1400);
+    return s;
+  };
+  const ids = (s: ReturnType<typeof emptyState>) => s.sessions.map((x) => x.id);
+
+  it("Given an ended session, Then archive and unarchive flip a flag and keep everything else; asking twice changes nothing", () => {
+    const s = three();
+    const [a] = ids(s);
+    const before = JSON.stringify(s.sessions[0].trips);
+    const r = manageSession(s, a!, "archive", T0 + HOUR);
+    expect([r.changed, r.reason]).toEqual([true, "done"]);
+    expect(s.sessions[0].archived).toBe(true);
+    expect(JSON.stringify(s.sessions[0].trips)).toBe(before);
+    expect(manageSession(s, a!, "archive", T0 + HOUR).reason).toBe("unchanged");
+    expect(manageSession(s, a!, "unarchive", T0 + HOUR).changed).toBe(true);
+    expect(s.sessions[0].archived).toBe(false);
+    expect(manageSession(s, a!, "unarchive", T0 + HOUR).reason).toBe("unchanged");
+    expect(s.sessions).toHaveLength(3);
+  });
+
+  it("Given 'delete', Then the session is removed from the list for good and the others and the counter stay", () => {
+    const s = three();
+    const [a, b, c] = ids(s);
+    const next = s.next_number;
+    const r = manageSession(s, b!, "delete", T0 + HOUR);
+    expect([r.changed, r.reason, r.session?.id]).toEqual([true, "done", b]);
+    expect(ids(s)).toEqual([a, c]);
+    expect(s.next_number).toBe(next);
+    expect(manageSession(s, b!, "delete", T0 + HOUR).reason).toBe("not_found");
+  });
+
+  it("Given the session in progress, Then nothing is done to it, whatever the action", () => {
+    const s = three();
+    const open = latest(s)!;
+    const before = JSON.stringify(s);
+    for (const action of ["archive", "unarchive", "delete"] as const) {
+      const r = manageSession(s, open.id, action, T0 + HOUR);
+      expect([r.changed, r.reason]).toEqual([false, "open_session"]);
+    }
+    expect(JSON.stringify(s)).toBe(before);
   });
 });
 

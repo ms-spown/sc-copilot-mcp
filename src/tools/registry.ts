@@ -142,6 +142,7 @@ function withDashboardSet(names: Set<string>): Set<string> {
       "sc_session_new",
       "sc_session_end",
       "sc_session_export",
+      "sc_session_manage",
     ])
       names.add(n);
   }

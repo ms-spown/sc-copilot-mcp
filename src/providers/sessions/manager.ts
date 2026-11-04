@@ -15,12 +15,15 @@ import {
   isEmpty,
   isUntouched,
   latest,
+  manageSession,
   needsTidy,
   observe,
   setNote,
   startNew,
   tidy,
   type EndReason,
+  type ManageAction,
+  type ManageReason,
   type Observation,
   type ReduceConfig,
   type ReduceResult,
@@ -450,7 +453,9 @@ export class SessionManager {
     const now = this.now();
     await this.tidy(now);
     const state = await this.deps.store.read();
-    const cur = latest(state);
+    // The last session, unless the player archived it (an archived one is out of sight: the card says there is none).
+    const last = latest(state);
+    const cur = last && !last.archived ? last : undefined;
     const summary = cur ? summarizeSession(cur) : null;
     return {
       ...base,
@@ -498,16 +503,22 @@ export class SessionManager {
     };
   }
 
-  async list(limit: number, includeBalance: boolean) {
+  /**
+   * The saved sessions, newest first. Archived ones are left out unless `includeArchived` (the sessions view asks for them to
+   * offer its "Archivées" filter); `total` counts the sessions of the list asked for, `archived` the archived ones in the file.
+   */
+  async list(limit: number, includeBalance: boolean, includeArchived = false) {
     this.poke();
     await this.tidy(this.now());
     const state = await this.deps.store.read();
-    const rows = [...state.sessions]
+    const kept = includeArchived ? state.sessions : state.sessions.filter((s) => !s.archived);
+    const rows = [...kept]
       .reverse()
       .slice(0, limit)
       .map((s) => summarizeSession(s));
     return {
-      total: state.sessions.length,
+      total: kept.length,
+      archived: state.sessions.length - state.sessions.filter((s) => !s.archived).length,
       sessions: rows.map((r) => (includeBalance ? r : withoutMoney(r))),
     };
   }
@@ -704,6 +715,30 @@ export class SessionManager {
       summary: r.current ? summarizeSession(r.current) : null,
       saved: this.persistence.saved,
     };
+  }
+
+  /**
+   * The player's per-session actions of the sessions view: archive, unarchive, delete (real deletion from the file). Runs on the
+   * store's own draft (it may touch any session). Never touches the session in progress. `summary` is the session the answer is
+   * about (the removed one for a delete), without money.
+   */
+  async manage(
+    id: string,
+    action: ManageAction,
+  ): Promise<{ reason: ManageReason; summary: SessionSummary | null; saved: boolean }> {
+    const now = this.now();
+    const { result, written } = await this.deps.store.transact((draft) => {
+      const r = manageSession(draft, id, action, now);
+      return {
+        changed: r.changed,
+        result: { reason: r.reason, summary: r.session ? summarizeSession(r.session) : null },
+      };
+    });
+    if (result.reason === "done") {
+      this.lastSaved = written;
+      if (written) this.savedAtMs = this.now();
+    }
+    return { ...result, saved: this.persistence.saved };
   }
 
   async annotate(id: string, note: string): Promise<boolean> {

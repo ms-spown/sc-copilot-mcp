@@ -225,6 +225,7 @@ describe("Feature: a tip is reachable without a mouse", () => {
     walk(w.root, (n) => {
       if (n.attrs["title"] !== undefined) expect(n.tag, n.className).toBe("button");
       if (n.attrs["tabindex"] === "0") {
+        if (n.attrs["role"] === "tab") return; // the two tabs of the page: named buttons of a tablist, not tips
         expect(n.attrs["role"], n.className).toBe("button");
         expect(n.attrs["data-tip"], n.className).toBeTruthy();
       }

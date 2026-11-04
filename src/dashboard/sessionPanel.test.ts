@@ -352,7 +352,7 @@ describe("Feature: the bar in the page", () => {
     await w.advance(5 * SECOND);
     findAll(
       w.root,
-      (n) => n.tag === "button" && n.textContent.startsWith("Sessions"),
+      (n) => n.tag === "button" && /^Sessions [▾▴]/.test(n.textContent),
     )[0]?.click?.();
     await w.advance(500);
     const calls = w.host.log.tools.map((t) => `${t.name}:${t.args.include_balance}`);
@@ -370,7 +370,7 @@ describe("Feature: the bar in the page", () => {
     await w.advance(5 * SECOND);
     findAll(
       w.root,
-      (n) => n.tag === "button" && n.textContent.startsWith("Sessions"),
+      (n) => n.tag === "button" && /^Sessions [▾▴]/.test(n.textContent),
     )[0]?.click?.();
     await w.advance(500);
     findAll(
@@ -395,7 +395,7 @@ describe("Feature: the bar in the page", () => {
     await w.advance(5 * SECOND);
     findAll(
       w.root,
-      (n) => n.tag === "button" && n.textContent.startsWith("Sessions"),
+      (n) => n.tag === "button" && /^Sessions [▾▴]/.test(n.textContent),
     )[0]?.click?.();
     await w.advance(500);
     findAll(

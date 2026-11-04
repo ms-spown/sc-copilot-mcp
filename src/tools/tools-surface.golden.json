@@ -721,10 +721,47 @@
           "type": "number",
           "description": "How many sessions, 1 to 200. Default 20."
         },
+        "include_archived": {
+          "type": "boolean",
+          "description": "Also the sessions the player archived (left out unless asked, flagged archived). Default false."
+        },
         "include_balance": {
           "type": "boolean",
           "description": "Include aUEC figures (balances, results, turnover, rate per hour). Default true; false hides them (the player's choice)."
         }
+      }
+    }
+  },
+  {
+    "name": "sc_session_manage",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 48,
+          "description": "A session id from sc_session_list."
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "archive",
+            "unarchive",
+            "delete"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "action"
+      ]
+    },
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://sc-copilot/live-dashboard.html",
+        "visibility": [
+          "app"
+        ]
       }
     }
   },

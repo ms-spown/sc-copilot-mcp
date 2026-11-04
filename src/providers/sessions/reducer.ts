@@ -177,6 +177,7 @@ function create(
     last_context_at: null,
     note: "",
     started_by: startedBy,
+    archived: false,
     price_refusals: 0,
     price_refusal_last_at: null,
     ship_losses: [],
@@ -728,6 +729,40 @@ export function setNote(state: StoreState, id: string, note: string, now: number
   s.note = cleanText(NOTE_MAX).parse(note);
   s.updated_at = iso(now);
   return true;
+}
+
+export type ManageAction = "archive" | "unarchive" | "delete";
+/**
+ * Why `manageSession` did what it did: "done"; "unchanged" (already in that state); "not_found"; "open_session" (the session
+ * in progress cannot be archived or deleted: it is ended first, by "Terminer", which also deletes one that holds nothing).
+ */
+export type ManageReason = "done" | "unchanged" | "not_found" | "open_session";
+
+/**
+ * The player's per-session actions in the sessions view. Unlike the other reducers this one may touch ANY session (not only
+ * the last), so it must run on the store's own draft (`store.transact`), never on a `cloneLight` copy.
+ *   archive / unarchive: a flag; the session and everything it holds stay in the file.
+ *   delete: the session is REMOVED from the file (real deletion). Its number is not given back.
+ */
+export function manageSession(
+  state: StoreState,
+  id: string,
+  action: ManageAction,
+  now: number,
+): { changed: boolean; reason: ManageReason; session: Session | undefined } {
+  const i = state.sessions.findIndex((x) => x.id === id);
+  const s = i >= 0 ? state.sessions[i] : undefined;
+  if (!s) return { changed: false, reason: "not_found", session: undefined };
+  if (s.ended_at === null) return { changed: false, reason: "open_session", session: s };
+  if (action === "delete") {
+    state.sessions.splice(i, 1);
+    return { changed: true, reason: "done", session: s };
+  }
+  const want = action === "archive";
+  if (s.archived === want) return { changed: false, reason: "unchanged", session: s };
+  s.archived = want;
+  s.updated_at = iso(now);
+  return { changed: true, reason: "done", session: s };
 }
 
 export type { Trip };

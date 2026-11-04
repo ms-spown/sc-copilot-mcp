@@ -11,10 +11,10 @@ over stdio and gives Claude tools to answer Star Citizen questions: market and t
 missions, crafting, mining, patch notes, what your own game just logged, your fleet and, if you switch it on,
 live telemetry.
 
-65 tools exist. While live telemetry is off (the default) 52 are listed to the client, because `sc_live_state`,
+66 tools exist. While live telemetry is off (the default) 52 are listed to the client, because `sc_live_state`,
 `sc_live_events`, `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark` and `sc_trade_suggest` are hidden until telemetry
-is on, and so are the seven session tools (`sc_session_current`, `sc_session_list`, `sc_session_stats`,
-`sc_session_new`, `sc_session_end`, `sc_session_debrief`, `sc_session_export`). The app-only tools (the four of the dashboard and `sc_session_export`) are listed only to a client that can show them
+is on, and so are the eight session tools (`sc_session_current`, `sc_session_list`, `sc_session_stats`,
+`sc_session_new`, `sc_session_end`, `sc_session_debrief`, `sc_session_export`, `sc_session_manage`). The app-only tools (the four of the dashboard, `sc_session_export` and `sc_session_manage`) are listed only to a client that can show them
 (Claude Desktop), never to Claude Code, and are refused by name ("Unknown tool") to a client that did not declare the UI
 extension; a host that does declare it and exposes them to the model is outside this server's control.
 
@@ -324,7 +324,7 @@ Choose what the server advertises with `SCMCP_PROFILES` (comma-separated; unset 
 `sc_data_status` is always added. `SCMCP_TOOLS` (explicit tool names) wins over profiles. An unknown tool or
 profile name stops the server at startup instead of listing nothing. Scoping is for speed (a client that sees
 many tools spends a round trip choosing), not security: a tool that is not listed can still be called by name.
-The thirteen telemetry and session tools stay hidden while telemetry is off, even when named in `SCMCP_TOOLS`. Naming
+The fourteen telemetry and session tools stay hidden while telemetry is off, even when named in `SCMCP_TOOLS`. Naming
 `sc_live_dashboard` there also adds the tools the page needs (`sc_live_poll`, `sc_live_mark`, `sc_trade_suggest` and the
 session tools of its session bar).
 
@@ -333,7 +333,7 @@ session tools of its session bar).
 | **core** (14) | `sc_data_status`, `uex_get_commodity_prices`, `uex_get_trade_routes`, `uex_get_game_versions`, `uex_get_ship_prices`, `scw_get_vehicle`, `scw_get_item`, `scw_get_ship_comparison`, `sct_search`, `sct_get_article`, `sc_patch_notes`, `scmdb_search_missions`, `scmdb_changes`, `sc_fleet_get` | The everyday copilot; a test keeps it under 15 tools |
 | **trade** (23) | The eighteen tools of [section 1](#1-market-and-trade-routes-uex), the three read-only session tools (`sc_session_current`, `sc_session_list`, `sc_session_stats`), `scmdb_rank_hauling` ([section 3](#3-missions-scmdb)) and `sc_data_status` | The full market toolbox |
 | **data** (16) | Wiki browsing and snapshots, missions, crafting, mining, patch notes and history, vocabulary | Reference data, crafting, mining and patch history |
-| **local** (26) | The game log, telemetry, fleet and local-file tools | Things on your PC. Thirteen are listed while telemetry is off |
+| **local** (27) | The game log, telemetry, fleet and local-file tools | Things on your PC. Fourteen are listed while telemetry is off |
 
 ### Variables
 

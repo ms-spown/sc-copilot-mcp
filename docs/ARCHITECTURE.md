@@ -80,8 +80,9 @@ and that talks to the host with JSON-RPC over `postMessage` (hand-written, no pa
 that only it may call (`visibility: ["app"]`): `sc_live_poll` (state, events, session counters as
 `structuredContent`), `sc_live_mark` (session markers, in memory), `sc_trade_suggest` (the commerce action bar: the
 trade planner behind a throttle and a short cache, see `src/dashboard/tradeSuggest.ts`; its `holds` action lists the
-hold sizes known for the player, see `src/dashboard/holds.ts`) and `sc_session_export` (the
-session report, when sessions are on).
+hold sizes known for the player, see `src/dashboard/holds.ts`) `sc_session_export` (the
+session report, when sessions are on) and `sc_session_manage` (the Sessions view's archive, unarchive and
+delete of one ended session: the player's own file, never the session in progress).
 
 - **Conditional surface.** `ToolDefinition.requiresUi` and `registry.list(context)`: the dashboard tools are listed only
   when telemetry is on AND the client declared `capabilities.extensions["io.modelcontextprotocol/ui"]` with the HTML

@@ -543,48 +543,6 @@ describe("Feature: the compact line, the past sessions and the amounts follow th
     expect(text(w)).not.toContain("Sessions passées");
   });
 
-  it("Given more than three sessions, Then the list shows the 3 latest (the current one included) and 'Toutes les sessions' shows them all, and back", async () => {
-    const { w } = await managed("story"); // 4 sessions saved
-    await click(w, "Sessions ▾");
-    const rows = () =>
-      findAll(
-        w.root,
-        (n) =>
-          n.tag === "button" &&
-          n.attrs["aria-label"]?.startsWith("Ouvrir la session ") === true &&
-          isShown(n),
-      ).map((n) => NB(n.attrs["aria-label"]!).split(" : ")[0]);
-    expect(rows()).toEqual(["Ouvrir la session 4", "Ouvrir la session 3", "Ouvrir la session 2"]);
-    expect(button(w, "Toutes les sessions (4)")!.attrs["aria-expanded"]).toBe("false");
-    await click(w, "Toutes les sessions (4)", 100);
-    expect(rows()).toHaveLength(4);
-    expect(button(w, "Les 3 dernières seulement")!.attrs["aria-expanded"]).toBe("true");
-    await click(w, "Les 3 dernières seulement", 100);
-    expect(rows()).toHaveLength(3);
-    // Closing and reopening starts again from the latest few.
-    await click(w, "Toutes les sessions (4)", 100);
-    await click(w, "Sessions ▴");
-    await click(w, "Sessions ▾");
-    expect(rows()).toHaveLength(3);
-  });
-
-  it("Given more than 30 sessions (45), Then 'Toutes les sessions (45)' asks for ALL of them and shows 45 rows, honestly", async () => {
-    const { w, fake } = await managed("story");
-    fake.extraSessions = 41; // 4 + 41 = 45 saved sessions
-    await click(w, "Sessions ▾");
-    const asked = () =>
-      w.host.log.tools.filter((t) => t.name === "sc_session_list").map((t) => t.args["limit"]);
-    expect(asked()).toEqual([3]); // the latest few only, at first
-    const rows = () => findAll(w.root, (n) => n.className === "ses-row" && isShown(n)).length;
-    expect(rows()).toBe(3);
-    await click(w, "Toutes les sessions (45)", 500);
-    expect(asked()).toEqual([3, 45]); // the total the server reported, not a fixed 30
-    expect(rows()).toBe(45);
-    expect(button(w, "Les 3 dernières seulement")).not.toBeNull();
-    await click(w, "Les 3 dernières seulement", 100);
-    expect(rows()).toBe(3);
-  });
-
   it("Given three sessions or fewer, Then there is nothing more to show and no button for it", async () => {
     const { w, fake, at } = await managed("story");
     w.host.overrides.tool = (name: string, args: any) => {
