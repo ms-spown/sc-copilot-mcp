@@ -1159,10 +1159,10 @@ export function cleanPlan(input: any): any {
 export function actionMessage(kind: string, ctx: any): string | null {
   const ship = ctx && isSafeId(ctx.vehicle) ? String(ctx.vehicle) : "";
   if (kind === "analyse") {
-    return "Analyse ma situation dans le jeu à partir de la télémétrie en direct : appelle sc_live_state (sections ship, pilot et weapons) et sc_live_events, dis l\u2019âge des données et ce que le flux ne contient pas, puis ce qui demande mon attention. Ne lis pas mon solde.";
+    return "Analyse ma situation dans le jeu à partir de la télémétrie en direct : appelle sc_live_state (sections ship, pilot et weapons) et sc_live_events, tous deux avec include_balance false, dis l\u2019âge des données et ce que le flux ne contient pas, puis ce qui demande mon attention. Ne lis pas mon solde.";
   }
   if (kind === "bilan") {
-    return "Fais le bilan de ma session à partir de la télémétrie en direct : appelle sc_live_events et sc_live_state, résume décollages, atterrissages, sauts, alertes et combats en distinguant les événements confirmed et unverified. N\u2019inclus pas mon solde.";
+    return "Fais le bilan de ma session à partir de la télémétrie en direct : appelle sc_live_events et sc_live_state, tous deux avec include_balance false, résume décollages, atterrissages, sauts, alertes et combats en distinguant les événements confirmed et unverified. N\u2019inclus pas mon solde.";
   }
   if (kind === "route") {
     if (!ctx || ctx.balance === undefined || ctx.balance === null) return null;
@@ -1180,7 +1180,7 @@ export function actionMessage(kind: string, ctx: any): string | null {
 }
 
 /** The compact state the View may send with ui/update-model-context. NEVER the balance, never an event text. */
-export function contextSummary(poll: any, events: any[]): any {
+export function contextSummary(poll: any, events: any[], balanceHidden?: boolean): any {
   if (!poll || poll.state !== "live") return null;
   const mode = modeInfo(poll);
   const vehicle = poll.ship && isSafeId(poll.ship.name) ? shipTitle(poll.ship) : "";
@@ -1209,7 +1209,9 @@ export function contextSummary(poll: any, events: any[]): any {
       (vehicle || "aucun") +
       ", santé " +
       healthWords[band] +
-      ". Pour des valeurs à jour, appelle sc_live_state.",
+      (balanceHidden
+        ? ". Pour des valeurs à jour, appelle sc_live_state avec include_balance false (le joueur a masqué son solde)."
+        : ". Pour des valeurs à jour, appelle sc_live_state."),
   };
 }
 

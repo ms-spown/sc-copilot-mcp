@@ -2139,7 +2139,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   }
 
   function contextTick() {
-    const summary = L.contextSummary(view.poll, view.events);
+    const summary = L.contextSummary(view.poll, view.events, !showBalance);
     const d = L.contextDecision(gate, summary, clock());
     gate = d.gate;
     if (d.send) {

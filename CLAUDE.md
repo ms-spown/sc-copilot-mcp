@@ -13,7 +13,7 @@ For Claude as a _user_ of the tools, see `docs/USING_WITH_CLAUDE.md` (the block 
   switched on without an explicit action by the user (`SC_TELEMETRY=on` in the server's entry, and the game-side
   variable set by a command the user runs). The address `127.0.0.1:2942` is fixed in code, never from the
   environment; the only thing sent to the game is the empty `TelemetryStream` request; frames are never logged,
-  written to disk or sent over a network (the UEC balance stays on the machine, except for the session summaries below).
+  written to disk or sent over a network (this server sends nothing over a network; what the tools then hand to the model, the balance included, is governed by the balance amendment below).
   Never call it safe,
   undetectable or approved by CIG. Without `SC_TELEMETRY=on` no gRPC/HTTP2 code is loaded and nothing connects.
 - **Saved sessions (amendment, by the user's explicit decision).** Session SUMMARIES may be stored in the server's own

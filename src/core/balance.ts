@@ -12,9 +12,6 @@
  * sends nothing over a network either way.
  */
 
-/** Names the environment variable that starts the server hidden; docs and messages use it. */
-export const BALANCE_ENV = "SC_BALANCE";
-
 /**
  * Reads SC_BALANCE. Only an explicit "shown" value (or nothing) shows the amounts by default; "hidden" hides them.
  * Anything else is a typo, and a typo must fail toward privacy: hidden, with `unrecognised` set so the caller can say it.
@@ -49,7 +46,3 @@ export function wantsBalance(requested: boolean | undefined, policy?: BalancePol
   if (requested !== undefined) return requested;
   return !(policy?.hiddenByDefault === true);
 }
-
-/** Said with every answer that left amounts out, so the model neither guesses nor insists. */
-export const HIDDEN_NOTE =
-  "The aUEC amounts are hidden (include_balance=false, or SC_BALANCE=hidden in the server's setup): that is the player's choice. Do not work around it. Pass include_balance=true only if the player asks to see amounts.";

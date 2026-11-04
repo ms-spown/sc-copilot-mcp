@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Scenario } from "./testing/scenario.js";
+import * as L from "./viewLogic.js";
 import {
   FakeBus,
   VirtualClock,
@@ -83,10 +84,13 @@ describe("Feature: the amounts are shown at the start unless the server starts h
   });
 
   it("Given a page with no data-balance attribute (an old page), Then it starts hidden", async () => {
-    const w = await startPage({ balanceHidden: true });
-    w.root.attrs["data-balance"] = "";
-    await w.advance(30 * SECOND);
+    // The page is built to start SHOWN, but its root carries no attribute: the View must not guess "shown".
+    const w = await startPage({ balanceHidden: false, omitBalanceAttribute: true });
+    await w.advance(100 * SECOND);
+    expect(w.host.log.polls.length).toBeGreaterThan(5);
     expect(w.host.log.polls.every((p) => !p.includeBalance)).toBe(true);
+    expectNoAmount(everything(w.root));
+    expect(hasButton(w, "Afficher le solde")).toBe(true);
   });
 });
 
@@ -125,6 +129,48 @@ describe.each<Start>(["shown", "hidden"])(
     });
   },
 );
+
+describe.each<Start>(["shown", "hidden"])(
+  "Feature: what the dashboard asks Claude to call never invites a balance it was told to leave out (%s start)",
+  (start) => {
+    it("Given the player hid the amounts and presses 'Analyser' or 'Bilan', Then the message tells Claude to pass include_balance false", async () => {
+      const w = await live(start);
+      if (hasButton(w, "Masquer le solde")) {
+        findButton(w.root, "Masquer le solde").click();
+        await w.advance(3 * SECOND);
+      }
+      findButton(w.root, "Analyser").click();
+      await w.advance(500);
+      expect(w.host.log.messages).toHaveLength(1);
+      const message = NBSP_FREE(w.host.log.messages[0]!);
+      expect(message).toContain("sc_live_state");
+      expect(message).toContain("include_balance false");
+      expect(message).toContain("Ne lis pas mon solde");
+      expect(message).not.toMatch(BALANCE_DIGITS);
+    });
+  },
+);
+
+describe("Feature: the automatic context sent to the model follows the hidden balance", () => {
+  const poll = {
+    state: "live",
+    ship: { name: "DRAK_Cutter_1" },
+    pilot: { health: { current: 80 } },
+  };
+
+  it("Given the amounts are hidden, Then the summary tells Claude to call sc_live_state with include_balance false", () => {
+    const hidden = L.contextSummary(poll, [], true);
+    expect(hidden.text).toContain("sc_live_state avec include_balance false");
+    expect(hidden.text).not.toMatch(BALANCE_DIGITS);
+  });
+
+  it("Given the amounts are shown, Then the summary is the plain one, and never holds an amount", () => {
+    const shown = L.contextSummary(poll, [], false);
+    expect(shown.text).toContain("appelle sc_live_state.");
+    expect(shown.text).not.toContain("include_balance");
+    expect(L.contextSummary(poll, []).text).toBe(shown.text);
+  });
+});
 
 describe("Feature: two Views of one conversation, the amounts and the channel", () => {
   async function views(start: Start, count: number) {

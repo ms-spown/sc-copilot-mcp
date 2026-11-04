@@ -280,6 +280,8 @@ export interface WorldOptions {
    * (balanceDefault.page.test.ts) and passes `balanceHidden: false`.
    */
   balanceHidden?: boolean;
+  /** Leave the page's root without the data-balance attribute (an old or foreign page): the View must start hidden. */
+  omitBalanceAttribute?: boolean;
   theme?: "light" | "dark";
   modes?: string[];
   scenario?: Scenario;
@@ -518,7 +520,7 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
   const html = dashboardHtml({ balanceHidden: options.balanceHidden !== false });
   // The page says how the server starts; the fake document has no parser, so the attribute is copied from the markup.
   const start = /data-balance="(\w+)"/.exec(html);
-  if (start) root.setAttribute("data-balance", start[1]!);
+  if (start && !options.omitBalanceAttribute) root.setAttribute("data-balance", start[1]!);
   const script = extractElement(html, "script");
   if (!script) throw new Error("no script in the page");
   vm.runInNewContext(
