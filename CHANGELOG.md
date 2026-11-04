@@ -16,7 +16,8 @@ versions follow [Semantic Versioning](https://semver.org/).
   objective, time, SCU, "estimation UEX" / "relevés de joueurs" tag, the heuristic badge (never "safe"), price age;
   chains are apart. Each card has "Appliquer comme plan" (the commerce card then follows that route) and "Demander à
   l'agent" (a fixed message with the figures of the card; none derived from the balance). "Et ensuite ?" computes one
-  suggestion from where a completed run ended, once per run, never applied by itself. Loading, empty, error and "attends
+  suggestion from the selling terminal of the plan in force when a run completes (once per run, never applied by
+  itself; without a plan nothing is asked, since the journal's shop names are not UEX names). Loading, empty, error and "attends
   N s" states; the bar stays in colour when the stream is grey.
   - New app-only tool `sc_trade_suggest` (`visibility: ["app"]`, listed with the dashboard tools only), implemented in
     `src/dashboard/tradeSuggest.ts`: strict input validation, a bounded and cleaned answer (5 options, 3 chains), a

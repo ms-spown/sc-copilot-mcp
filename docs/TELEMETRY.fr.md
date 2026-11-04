@@ -628,8 +628,10 @@ calme ; avant le premier clic, rien n'est demandé.
   texte fixe construit depuis la carte, envoyé comme message : la route, les prix, le statut d'estimation, les
   contraintes choisies et la demande de vérifier avec `uex_get_trade_routes` et `uex_plan_trade`).
 - **Et ensuite ?** Quand un trajet se termine (il y a moins de 30 minutes), une suggestion est calculée depuis l'endroit
-  où il s'est terminé (le terminal de vente du plan, sinon le nom de boutique du journal, qu'UEX peut ne pas connaître :
-  l'échec est alors silencieux), une fois par trajet, jamais appliquée toute seule. Elle peut être désactivée.
+  où il s'est terminé : le terminal de vente du plan en vigueur (les noms de boutique du journal sont des identifiants
+  du jeu qu'UEX ne connaît pas : sans plan, rien n'est demandé, appliquez une route comme plan pour obtenir la suite ;
+  un terminal inconnu d'UEX échoue en silence), une fois par trajet, jamais appliquée toute seule. Elle peut être
+  désactivée.
 - **Limite de débit.** UEX est un service partagé. Le serveur répond à une question identique depuis une mémoire de 2
   minutes, partage un seul calcul entre des appels identiques simultanés, et sinon ne lance qu'UN nouveau calcul toutes
   les 8 secondes pour toutes les Views : une demande dans l'intervalle reçoit « attends N s » (un état, pas une erreur ;

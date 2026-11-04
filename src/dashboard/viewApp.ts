@@ -1487,7 +1487,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       },
       feedback,
       takeLead,
-      openFull: () => requestMode("fullscreen"),
+      // Without a full-screen mode the bar has no room: the compact view offers no way in.
+      openFull: availableModes.indexOf("fullscreen") >= 0 ? () => requestMode("fullscreen") : null,
       later: (fn: () => void, ms: number) => win.setTimeout(fn, ms),
       cancel: (id: any) => win.clearTimeout(id),
       changed: render,

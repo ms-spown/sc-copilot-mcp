@@ -269,15 +269,14 @@ describe("Feature: 'Et ensuite ?' is triggered once per completed run", () => {
   });
   const trade = (r: any) => ({ runs: [r] });
 
-  it("Given a run that just completed, Then the plan's selling terminal is the origin (the journal's shop is the fallback)", () => {
+  it("Given a run that just completed, Then the plan's selling terminal is the origin, and without a plan there is none (the journal's shop names are not UEX names)", () => {
     expect(tradeNextWanted(trade(run()), { sell_terminal: "Area18 TDD" }, "", NOW)).toEqual({
       runId: run().id,
       fresh: true,
       origin: "Area18 TDD",
     });
-    expect(tradeNextWanted(trade(run()), null, "", NOW)).toMatchObject({
-      origin: "SCShop_Cargo_Area18",
-    });
+    expect(tradeNextWanted(trade(run()), null, "", NOW)).toMatchObject({ origin: "" });
+    expect(tradeNextWanted(trade(run()), {}, "", NOW)).toMatchObject({ origin: "" });
   });
 
   it("Given the run was already handled, still open, or old, Then nothing is asked", () => {

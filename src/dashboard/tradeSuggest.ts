@@ -43,7 +43,8 @@ export const SUGGEST_VIEW_TIMEOUT_MS = 32_000;
 export const SUGGEST_MAX_OPTIONS = 5;
 export const SUGGEST_MAX_CHAINS = 3;
 const MAX_CACHE_ENTRIES = 12;
-const MAX_PLANS = 80;
+// 12 cached answers of at most 8 options each: an id never expires while its answer is still served from memory.
+const MAX_PLANS = 160;
 const NAME_MAX = 60;
 const NOTE_MAX = 200;
 

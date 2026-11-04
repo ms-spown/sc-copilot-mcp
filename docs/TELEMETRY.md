@@ -601,9 +601,10 @@ nothing is asked.
   expected prices, estimated time) and *Demander à l'agent* (a fixed text built from the card, posted as a message: the
   route, prices, estimate status, chosen constraints, and a request to verify with `uex_get_trade_routes` and
   `uex_plan_trade`).
-- **Et ensuite ?** When a run completes (less than 30 minutes ago), one suggestion is computed from where it ended (the
-  plan's selling terminal, else the journal's shop name, which UEX may not know: then it fails quietly), once per run,
-  never applied by itself. It can be switched off.
+- **Et ensuite ?** When a run completes (less than 30 minutes ago), one suggestion is computed from where it ended: the
+  selling terminal of the plan in force (the journal's shop names are game identifiers that UEX does not know, so
+  without a plan nothing is asked: apply a route as the plan to get the follow-up; a terminal UEX does not know fails
+  quietly), once per run, never applied by itself. It can be switched off.
 - **Rate limit.** UEX is a shared service. The server answers an identical question from a 2-minute memory, shares one
   planner run between identical simultaneous calls, and otherwise starts at most ONE new planner run every 8 seconds for
   all Views: a request inside the interval gets "attends N s" (a state, not an error; an automatic re-search retries

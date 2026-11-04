@@ -57,6 +57,25 @@ async function bar(
   return w;
 }
 
+/** What Claude's dashboard tool result carries: the plan in force, whose selling terminal is a UEX name. */
+const withPlan = (w: PageWorld) =>
+  w.fromHost({
+    jsonrpc: "2.0",
+    method: "ui/notifications/tool-result",
+    params: {
+      structuredContent: {
+        view: "sc_live_dashboard",
+        plan: {
+          commodity: "Laranite",
+          buy_terminal: "Port Tressler",
+          sell_terminal: "Area18 TDD",
+          scu: 696,
+          expected_profit_auec: 180_000,
+        },
+      },
+    },
+  });
+
 const fullscreen = async (w: PageWorld) => {
   w.fromHost({
     jsonrpc: "2.0",
@@ -549,6 +568,7 @@ describe("Feature: 'Et ensuite ?' after a completed run", () => {
 
   it("Given the player turned the automatic suggestion off, Then nothing is asked at the end of a run", async () => {
     const w = await bar({ trade: true });
+    withPlan(w);
     await fullscreen(w);
     await tick(w, "Proposer la suite à la fin d’un trajet", false);
     await w.advance(215 * SECOND);
@@ -562,6 +582,7 @@ describe("Feature: 'Et ensuite ?' after a completed run", () => {
       suggest: (a) =>
         ++n === 1 ? { v: 1, state: "throttled", retry_after_s: 3 } : suggestAnswer(a),
     });
+    withPlan(w);
     await fullscreen(w);
     await w.advance(215 * SECOND);
     await w.advance(5 * SECOND);
@@ -569,7 +590,15 @@ describe("Feature: 'Et ensuite ?' after a completed run", () => {
     expect(text(w)).toContain("Depuis");
   });
 
-  it("Given the journal's shop name does not exist at UEX, Then the failure is quiet", async () => {
+  it("Given no plan names a UEX terminal, Then nothing is asked (the journal's shop names are not UEX names)", async () => {
+    const w = await bar({ trade: true });
+    await fullscreen(w);
+    await w.advance(215 * SECOND);
+    expect(w.host.log.suggests).toEqual([]);
+    expect(text(w)).not.toContain("Et ensuite ?");
+  });
+
+  it("Given the plan's terminal is unknown to UEX, Then the failure is quiet", async () => {
     const w = await bar({
       trade: true,
       suggest: () => ({
@@ -579,6 +608,7 @@ describe("Feature: 'Et ensuite ?' after a completed run", () => {
         detail: "No UEX terminal matches",
       }),
     });
+    withPlan(w);
     await fullscreen(w);
     await w.advance(215 * SECOND);
     await w.advance(3 * SECOND);

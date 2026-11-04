@@ -626,7 +626,10 @@ export function tradeNextWanted(trade: any, plan: any, tried: string, now: numbe
   if (!run || run.stage !== "complete" || !run.id || run.id === tried) return null;
   const ended = Date.parse(run.ended_at);
   const fresh = Number.isFinite(ended) && now - ended >= 0 && now - ended <= cfg.nextWithinMs;
-  const origin = (plan && plan.sell_terminal) || (run.sell_shops && run.sell_shops[0]) || "";
+  // Only the plan's selling terminal is a name UEX knows: the journal's shop names are game identifiers that UEX does
+  // not, so without a plan there is no origin and nothing is asked (a failed lookup would still use up the planner's
+  // turn). Apply a route as the plan to get the follow-up suggestion.
+  const origin = plan && plan.sell_terminal ? plan.sell_terminal : "";
   return { runId: run.id, fresh, origin: tradeText(origin, 80) };
 }
 
@@ -1064,6 +1067,8 @@ export function tradeActionsPanel(doc: any, L: any): any {
 
   async function applyOption(o: any) {
     if (!H.call || S.applying) return;
+    // Only the leading View calls the server: a follower takes the lead first.
+    if (H.follower && H.takeLead) H.takeLead();
     S.applying = true;
     try {
       const r = await H.call("sc_trade_suggest", { action: "apply", id: o.id }, cfg.applyTimeoutMs);
