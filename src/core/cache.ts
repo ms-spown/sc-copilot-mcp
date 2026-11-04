@@ -163,10 +163,11 @@ export async function fetchWithCache(
       return entry;
     })();
     inflight.set(key, request);
-    request.then(
-      () => inflight.delete(key),
-      () => inflight.delete(key),
-    );
+    // Settled either way (a deadline in http.ts guarantees it settles): drop this entry, never a newer one.
+    const release = () => {
+      if (inflight.get(key) === request) inflight.delete(key);
+    };
+    request.then(release, release);
     return finish({ ...(await request), cache: "network" });
   } catch (error) {
     if (!isOutage(error)) throw error;
