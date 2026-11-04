@@ -23,7 +23,10 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
    - Commerce : uex_get_trade_routes nécessite une ORIGINE (commodity, terminal ou planète) ; passez ship_name
      (un vaisseau issu de sc_fleet_get) ou cargo_capacity pour calculer le profit selon la soute disponible.
      Vérifiez les relevés joueurs derrière un prix. uex_get_commodity_prices pour savoir où une marchandise
-     s'achète et se vend ; les autres outils uex_* (profil trade) pour les terminaux, moyennes, classements et
+     s'achète et se vend ; uex_plan_trade classe aller-retours, chaînes de deux étapes et routes par profit
+     horaire ESTIMÉ (le temps de trajet est une estimation, dites-le), uex_get_price_history dit si un prix est
+     haut ou bas pour un terminal (environ 10 points : historique court), uex_get_market_status signale pénurie
+     ou saturation ; les autres outils uex_* (profil trade) pour les terminaux, moyennes, classements et
      annonces entre joueurs.
    - Raffinage : uex_get_refining_margins classe les raffineries pour un minerai (ou les minerais, par un indice)
      d'après les bonus de rendement relevés. UEX n'a ni ratio de conversion ni coût de raffinage : n'en tirez jamais

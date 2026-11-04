@@ -21,6 +21,8 @@ const MEMORY_TTL_MS = 5 * 60 * 1000;
 const STALE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_DISK_BYTES = 5 * 1024 * 1024;
 const MAX_DISK_FILES = 400;
+/** Entries kept in memory. Requests keyed on a user's numbers (a budget, a cargo size) would otherwise grow it without end. */
+const MAX_MEMORY_ENTRIES = 300;
 
 export interface Fetched {
   // Upstream JSON, indexed directly by the handlers.
@@ -33,6 +35,8 @@ export interface Fetched {
 }
 
 const memory = new Map<string, { data: unknown; fetchedAt: number }>();
+/** Requests on their way: a second identical question (two tools, two clicks) waits for the first instead of downloading again. */
+const inflight = new Map<string, Promise<{ data: unknown; fetchedAt: number }>>();
 let diskDir: string | null | undefined; // undefined = default location, null = disabled
 let pruned = false;
 
@@ -137,14 +141,39 @@ export async function fetchWithCache(
     return finish({ data: hit.data, fetchedAt: hit.fetchedAt, cache: "memory" });
   }
 
+  const pending = inflight.get(key);
+  if (pending) {
+    console.error(`[Cache Join] ${label}`);
+    try {
+      return finish({ ...(await pending), cache: "network" });
+    } catch (error) {
+      if (!isOutage(error)) throw error;
+      // The shared request failed with an outage: fall through to the same stale-copy rule as the first caller.
+      return serveStale(error);
+    }
+  }
+
   console.error(`[Cache Miss] ${label}`);
   try {
-    const response = await client.get(url, config);
-    const entry = { data: response.data, fetchedAt: Date.now() };
-    memory.set(key, entry);
-    await writeDisk(key, entry);
-    return finish({ ...entry, cache: "network" });
+    const request = (async () => {
+      const response = await client.get(url, config);
+      const entry = { data: response.data, fetchedAt: Date.now() };
+      remember(key, entry);
+      await writeDisk(key, entry);
+      return entry;
+    })();
+    inflight.set(key, request);
+    request.then(
+      () => inflight.delete(key),
+      () => inflight.delete(key),
+    );
+    return finish({ ...(await request), cache: "network" });
   } catch (error) {
+    if (!isOutage(error)) throw error;
+    return serveStale(error);
+  }
+
+  async function serveStale(error: unknown): Promise<Fetched> {
     if (!isOutage(error)) throw error;
     const old =
       (await readDisk(key)) ?? (hit ? { data: hit.data, fetchedAt: hit.fetchedAt } : null);
@@ -159,7 +188,19 @@ export async function fetchWithCache(
   }
 }
 
+/** Keep an answer in memory, dropping the oldest entries past the bound. */
+function remember(key: string, entry: { data: unknown; fetchedAt: number }): void {
+  memory.delete(key);
+  memory.set(key, entry);
+  while (memory.size > MAX_MEMORY_ENTRIES) {
+    const oldest = memory.keys().next();
+    if (oldest.done) break;
+    memory.delete(oldest.value);
+  }
+}
+
 /** Empty the memory cache. Used by tests; the server never needs it. */
 export function clearCache(): void {
   memory.clear();
+  inflight.clear();
 }

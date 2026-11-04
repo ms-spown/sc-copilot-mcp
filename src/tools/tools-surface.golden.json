@@ -1161,6 +1161,38 @@
     }
   },
   {
+    "name": "uex_get_market_status",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "commodity_name": {
+          "type": "string",
+          "description": "Exact commodity name (e.g. 'Laranite')."
+        },
+        "terminal_name": {
+          "type": "string",
+          "description": "Terminal name or nickname (e.g. 'ARC-L1')."
+        },
+        "star_system_name": {
+          "type": "string",
+          "description": "Optional: keep one system (e.g. 'Stanton')."
+        },
+        "only_warnings": {
+          "type": "boolean",
+          "description": "Only rows that carry a critical or warning level (default false: all rows)."
+        },
+        "max_age_days": {
+          "type": "number",
+          "description": "A row older than this is flagged stale (default 7). Rows are never hidden for age."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Rows to return (default 25, max 100)."
+        }
+      }
+    }
+  },
+  {
     "name": "uex_get_marketplace_prices",
     "inputSchema": {
       "type": "object",
@@ -1198,6 +1230,26 @@
           "description": "Without an item: how many of the most traded items (default 15, max 50)."
         }
       }
+    }
+  },
+  {
+    "name": "uex_get_price_history",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "commodity_name": {
+          "type": "string",
+          "description": "Exact commodity name (e.g. 'Medical Supplies')."
+        },
+        "terminal_name": {
+          "type": "string",
+          "description": "Terminal name or nickname (e.g. 'CBD Lorville' or 'TDD Area 18')."
+        }
+      },
+      "required": [
+        "commodity_name",
+        "terminal_name"
+      ]
     }
   },
   {
@@ -1326,6 +1378,92 @@
         "min_reports": {
           "type": "number",
           "description": "Drop routes that have fewer than this many player reports at the origin OR at the destination (default 0: keep UEX estimates, but rank them after reported routes). 1 = only routes both ends of which a player has reported."
+        }
+      }
+    }
+  },
+  {
+    "name": "uex_plan_trade",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "objective": {
+          "type": "string",
+          "enum": [
+            "profit_per_hour",
+            "profit",
+            "speed",
+            "safety"
+          ],
+          "description": "profit_per_hour (default), profit (per run), speed (shortest run), safety (fewest risk factors of the heuristic)."
+        },
+        "ship_name": {
+          "type": "string",
+          "description": "Ship to haul with (e.g. 'Caterpillar'): cargo from UEX, quantum speed from the wiki sheet."
+        },
+        "cargo_scu": {
+          "type": "number",
+          "description": "Hold size in SCU (wins over the ship's)."
+        },
+        "quantum_speed_ms": {
+          "type": "number",
+          "description": "Quantum speed in m/s when there is no ship (e.g. 238314300 for a Cutlass Black)."
+        },
+        "budget": {
+          "type": "number",
+          "description": "aUEC available for one purchase."
+        },
+        "commodity_name": {
+          "type": "string",
+          "description": "Only this commodity (exact name)."
+        },
+        "origin_terminal_name": {
+          "type": "string",
+          "description": "Start at this terminal."
+        },
+        "origin_planet_name": {
+          "type": "string",
+          "description": "Start on this planet (exact name)."
+        },
+        "origin_system_name": {
+          "type": "string",
+          "description": "Stay in this system (e.g. 'Stanton')."
+        },
+        "avoid_pyro": {
+          "type": "boolean",
+          "description": "Leave every Pyro terminal out."
+        },
+        "armistice_only": {
+          "type": "boolean",
+          "description": "Only stops that UEX flags as armistice zones (unknown counts as no)."
+        },
+        "max_legs": {
+          "type": "number",
+          "enum": [
+            1,
+            2
+          ],
+          "description": "1 = one-way routes only (needs an origin); 2 (default) = also round trips and two-leg chains."
+        },
+        "max_age_days": {
+          "type": "number",
+          "description": "Leave out prices older than this (default 7)."
+        },
+        "include_stale": {
+          "type": "boolean",
+          "description": "Keep old prices, flagged stale (default false)."
+        },
+        "min_reports": {
+          "type": "number",
+          "description": "Drop options with fewer player reports than this at an end (default 0)."
+        },
+        "stop_minutes": {
+          "type": "number",
+          "description": "Assumed minutes per stop (landing, terminal, takeoff). Default 8."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Options to return (default 8, max 20)."
         }
       }
     }

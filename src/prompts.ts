@@ -29,7 +29,7 @@ export const PROMPTS: PromptDefinition[] = [
     name: "haul_plan",
     title: "Plan my next hauling run",
     description:
-      "Pick the best trade routes for one of my ships, with the risks, from live UEX data.",
+      "Pick the best trade options for one of my ships, ranked by estimated profit per hour, with the risks, from live UEX data.",
     arguments: [
       { name: "ship", description: "Ship to haul with (default: choose from my fleet)" },
       { name: "origin", description: "Where to start: a planet, terminal or commodity" },
@@ -41,8 +41,8 @@ export const PROMPTS: PromptDefinition[] = [
         given("Ship", a.ship),
         given("Starting point", a.origin),
         given("Budget in aUEC", a.budget),
-        "Steps: 1) call sc_data_status to check how fresh the data is. 2) If no ship was named, call sc_fleet_get and pick the ship with the most cargo SCU that suits the job. If live telemetry is on (sc_live_status says live), you may offer to use the ship I am sitting in (sc_live_state, ship section) and my current balance as the budget: ask me first, then call sc_live_state with include_balance true, say that the balance came from the game's telemetry, and pass it as investment. Never use my balance without saying so. 3) Call uex_get_trade_routes with ship_name (and the origin and investment if given). If no origin was given, ask me or try the planet I am on (sc_log_context if the game log is on). 4) Give the best 3 routes: what to buy, where to sell, SCU to haul, cost, expected profit, distance.",
-        "For each route flag the risks: few player reports behind the prices (reports_origin / reports_destination), old data, a profit that looks too good, and cargo that is illegal in some jurisdictions (check uex_get_commodities).",
+        "Steps: 1) call sc_data_status to check how fresh the data is. 2) If no ship was named, call sc_fleet_get and pick the ship with the most cargo SCU that suits the job. If live telemetry is on (sc_live_status says live), you may offer to use the ship I am sitting in (sc_live_state, ship section) and my current balance as the budget: ask me first, then call sc_live_state with include_balance true, say that the balance came from the game's telemetry, and pass it as investment. Never use my balance without saying so. 3) Call uex_plan_trade with ship_name (and the origin, as commodity_name, origin_terminal_name or origin_planet_name, and the budget if given): it returns options (one-way routes, round trips) ranked by ESTIMATED profit per hour, and open chains A>B>C in a separate list that is not comparable. If no origin was given, ask me or try the planet I am on (sc_log_context if the game log is on). Use uex_get_trade_routes to see the routes of one commodity or origin in UEX's own ranking. 4) For the best 3 options call uex_get_market_status on their commodities (a buy terminal out of stock, a sell terminal with no demand or close to saturation) and uex_get_price_history for the commodity at its sell terminal (is the price high or low for that terminal). 5) Give the best 3: what to buy, where to sell, SCU, cost, profit per run and per hour, distance, and the estimated trip time.",
+        "Say plainly that the trip time and the profit per hour are ESTIMATES (the answer lists its assumptions: quantum flight plus fixed time per stop; fuel is not subtracted). For each option flag the risks: report_status other than reported (a UEX estimate, or not checked), stale prices (price_age_days), shortage or saturation warnings, a short price history (about 10 points), a profit that looks too good, and cargo that is illegal in some jurisdictions (check uex_get_commodities). The safety field is a heuristic from armistice data, never a promise: do not call a route safe.",
         RULES,
       ]
         .filter(Boolean)
