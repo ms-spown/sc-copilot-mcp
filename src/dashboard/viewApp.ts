@@ -1320,10 +1320,19 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   /** The permanent "Solde" reminder of the header and its show/hide control. */
   let lastAcctKind = "";
   function renderAccount(now: number) {
-    const info = L.accountInfo(view.poll, showBalance, now);
+    const info = L.accountInfo(
+      view.poll,
+      showBalance,
+      now,
+      isFollower() && (balancePref === null ? balanceStart : balancePref),
+    );
     setText(R.acctValue, info.text);
     // The dots of a hidden balance mean nothing to a screen reader: the note ("masqué") says it.
-    setAttr(R.acctValue, "aria-hidden", info.kind === "hidden" ? "true" : "false");
+    setAttr(
+      R.acctValue,
+      "aria-hidden",
+      info.kind === "hidden" || info.kind === "follower" ? "true" : "false",
+    );
     setText(R.acctNote, info.note);
     show(R.acctNote, info.note !== "");
     setAttr(R.acct, "data-kind", info.kind);

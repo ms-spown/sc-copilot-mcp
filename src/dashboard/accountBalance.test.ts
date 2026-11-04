@@ -26,7 +26,12 @@ const iso = (ms: number) => new Date(ms).toISOString();
 
 const snap = (uec: number | string | undefined, ageMs: number) =>
   ({
-    state: { pilot: uec === undefined ? {} : { uec_balance: uec } },
+    state: {
+      pilot: { unverified: {}, ...(uec === undefined ? {} : { uec_balance: uec }) },
+      derived: {},
+      conditions: [],
+      unverified: {},
+    },
     frame_age_ms: ageMs,
     received_at: iso(NOW - ageMs),
   }) as never;
@@ -141,6 +146,29 @@ describe("Feature: where the account balance comes from, and nothing invented", 
     }
   });
 
+  it("Given a game launched on the PTU, Then its stream is not presented as the account balance", () => {
+    const base = {
+      status: { state: "live" as const },
+      connection: { state: "online" as const },
+      nowMs: NOW,
+    };
+    // a live PTU frame, nothing saved: no balance, and the reason says why
+    expect(buildAccountBalance({ ...base, snapshot: snap(BAL, 200), channel: "ptu" })).toEqual({
+      source: "unknown",
+      reason: "ptu",
+    });
+    // a saved live-channel balance is still the account's: shown as the last known one, never the PTU frame
+    const saved: SavedBalance = { auec: 111_111, at: iso(NOW - 2 * HOUR) };
+    expect(
+      buildAccountBalance({ ...base, snapshot: snap(BAL, 200), saved, channel: "ptu" }),
+    ).toEqual({ source: "last_known", uec: 111_111, at: saved.at, from: "session" });
+    // the same frame on the live channel (or an unknown one) is live
+    for (const channel of ["live", "unknown", null, undefined] as const)
+      expect(buildAccountBalance({ ...base, snapshot: snap(BAL, 200), channel }).source).toBe(
+        "live",
+      );
+  });
+
   it("Given a frame without a balance, Then it is not read as zero", () => {
     const a = buildAccountBalance({
       status: { state: "live" },
@@ -166,12 +194,24 @@ describe("Feature: where the account balance comes from, and nothing invented", 
     ]);
     expect(found).toEqual({ auec: 100, at: iso(NOW - 10 * HOUR) });
     expect(newestSavedBalance([s("c", null, null)])).toBeNull();
+    // a session played on the PTU (its own test economy) is never the account's balance, even when it is the newest
+    const ptu = { ...(s("p", 999, iso(NOW - HOUR)) as object), game_channel: "ptu" } as never;
+    expect(newestSavedBalance([s("a", 100, iso(NOW - 10 * HOUR)), ptu])).toEqual({
+      auec: 100,
+      at: iso(NOW - 10 * HOUR),
+    });
+    expect(newestSavedBalance([ptu])).toBeNull();
     expect(newestSavedBalance([])).toBeNull();
   });
 });
 
 describe("Feature: the poll carries the reminder only to a View that asked for the balance", () => {
-  const rig = (opts: { frameAgeMs?: number; saved?: SavedBalance | null; state?: string }) => {
+  const rig = (opts: {
+    frameAgeMs?: number;
+    saved?: SavedBalance | null;
+    state?: string;
+    channel?: "live" | "ptu";
+  }) => {
     const telemetry = {
       enabled: true,
       status: vi.fn(async () => ({
@@ -199,6 +239,7 @@ describe("Feature: the poll carries the reminder only to a View that asked for t
         stale: false,
       }),
       calibrationSection: async () => undefined,
+      gameChannel: async () => opts.channel ?? "live",
       savedBalance,
     } as unknown as SessionManager;
     const service = new DashboardService(
@@ -243,6 +284,13 @@ describe("Feature: the poll carries the reminder only to a View that asked for t
       expect(poll.hash).not.toHaveProperty("account");
     },
   );
+
+  it("Given a PTU game and a live stream, Then the poll does not carry the PTU frame as the account balance", async () => {
+    const { service } = rig({ frameAgeMs: 200, state: "live", channel: "ptu" });
+    const poll = await service.poll({ includeBalance: true });
+    expect(poll.account).toEqual({ source: "unknown", reason: "ptu" });
+    expect(JSON.stringify(poll.account)).not.toMatch(WHOLE);
+  });
 
   it("Given a failing sessions file, Then the answer still comes, with an unknown balance", async () => {
     const { service, savedBalance } = rig({});
@@ -297,6 +345,25 @@ describe("Feature: what the header says (pure)", () => {
     expect(accountInfo(null, true, NOW).kind).toBe("wait");
   });
 
+  it("Given a PTU game, Then it says so and shows no figure", () => {
+    const i = accountInfo(poll({ source: "unknown", reason: "ptu" }), true, NOW);
+    expect(i.kind).toBe("unknown");
+    expect(i.note).toContain("PTU");
+    expect(i.text).toBe("Solde inconnu");
+  });
+
+  it("Given a View that follows another one, Then it does not say the player hid the balance", () => {
+    const i = accountInfo(poll({ source: "live", uec: BAL }, "live"), false, NOW, true);
+    expect(i.kind).toBe("follower");
+    expect(i.note).toBe("suivi par un autre tableau");
+    expect(JSON.stringify(i)).not.toMatch(/\d/);
+    expect(JSON.stringify(i)).not.toContain("masqué");
+    // hidden by the player: still "masqué"
+    expect(accountInfo(poll({ source: "live", uec: BAL }, "live"), false, NOW, false).note).toBe(
+      "masqué",
+    );
+  });
+
   it("Given an older server that sends only the live balance, Then it is shown as live", () => {
     const i = accountInfo({ v: 1, state: "live", balance: { uec: BAL } }, true, NOW);
     expect(i.kind).toBe("live");
@@ -327,6 +394,10 @@ describe("Feature: what the header says (pure)", () => {
     expect(NB(accountAgo(10_000)!)).toBe("il y a moins d’1 min");
     expect(NB(accountAgo(5 * 60_000)!)).toBe("il y a 5 min");
     expect(NB(accountAgo(15 * HOUR)!)).toBe("il y a 15 h");
+    // rounded, not cut
+    expect(NB(accountAgo(15 * HOUR + 59 * 60_000)!)).toBe("il y a 16 h");
+    expect(NB(accountAgo(59.6 * 60_000)!)).toBe("il y a 1 h");
+    expect(NB(accountAgo(5 * 60_000 + 40_000)!)).toBe("il y a 6 min");
     expect(NB(accountAgo(72 * HOUR)!)).toBe("il y a 3 j");
     expect(accountAgo(-5000)).toBe("il y a moins d’1\u00a0min");
     expect(accountAgo(null)).toBeNull();

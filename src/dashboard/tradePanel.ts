@@ -219,9 +219,11 @@ export function tradeWhen(iso: any, now: any): string {
  * a figure of such a run next to the session's own would read as a session result.
  *   scope = { known, start, end }: the saved play session in force (poll.sessions.current), epoch ms; `known` false when
  *           there is none to compare with (sessions off, or the bar is absent); `start` Infinity when no session exists yet.
- * A run is OF the session when its last transaction is not before the session's start (a purchase made just before a
- * manual "Nouvelle session" stays a trip under way) and its first one is not after the session's end. Without a known
- * session (sessions off) only the age decides: a run whose last transaction is over 3 hours old is not of the session. The
+ * A run is OF the session when its last transaction is not before the session's start and its first one is not after the
+ * session's end. A run that is NOT finished (open or partial: bought, not all sold) is a trip under way whatever the
+ * session's start says, as long as its last transaction is at most 3 hours old (a purchase made just before a manual
+ * "Nouvelle session" stays the trip you are on); older, it is not. Without a known session (sessions off, or a bar with no
+ * session in it) only the age decides: a run whose last transaction is over 3 hours old is not of the session. The
  * connection does not: a trip left in the menus 2 minutes ago is still a trip (the line says it is not finished).
  * Returns { trade, past }: `trade` is the section limited to the session's runs (a copy; `ship_losses` and the rest stay),
  * `past` the older runs, newest first. The input is never changed.
@@ -234,13 +236,15 @@ export function tradeSplitBySession(trade: any, scope: any, now: any): any {
     const last = Date.parse(r && r.ended_at);
     const first = Date.parse(r && r.started_at);
     if (!Number.isFinite(last)) return true;
+    const stale = typeof now === "number" && Number.isFinite(now) && now - last > 3 * 3600000;
     if (known) {
-      if (typeof scope.start === "number" && last < scope.start) return false;
       if (typeof scope.end === "number" && Number.isFinite(first) && first > scope.end)
         return false;
-      return true;
+      const unfinished = r.stage === "open" || r.stage === "partial";
+      if (unfinished && !stale) return true;
+      return !(typeof scope.start === "number" && last < scope.start);
     }
-    return !(typeof now === "number" && Number.isFinite(now) && now - last > 3 * 3600000);
+    return !stale;
   };
   const mine = trade.runs.filter(of);
   if (mine.length === trade.runs.length) return { trade, past: [] };
@@ -252,18 +256,23 @@ export function tradeSplitBySession(trade: any, scope: any, now: any): any {
 
 /**
  * The play session in force, from the poll's session bar, as tradeSplitBySession wants it: { known, start, end } in epoch
- * ms. `known` is false when sessions are off or the bar is absent. `start` is Infinity when no session exists yet, so that
- * nothing of the journal is "of the session".
+ * ms. `known` is false when sessions are off, the bar is absent or it holds no session (then only the age decides, see
+ * tradeSplitBySession). `ended` is true when the session was ended by hand: the next trips count in the next session.
  */
 export function tradeSessionScope(poll: any): any {
   const bar = poll && poll.sessions;
   if (!bar || typeof bar !== "object" || bar.status === "off") return { known: false };
   const cur = bar.current;
-  if (!cur || typeof cur !== "object") return { known: true, start: Infinity, end: null };
+  if (!cur || typeof cur !== "object") return { known: false };
   const start = Date.parse(cur.started_at);
   if (!Number.isFinite(start)) return { known: false };
   const end = typeof cur.ended_at === "string" ? Date.parse(cur.ended_at) : NaN;
-  return { known: true, start, end: Number.isFinite(end) ? end : null };
+  return {
+    known: true,
+    start,
+    end: Number.isFinite(end) ? end : null,
+    ended: Number.isFinite(end),
+  };
 }
 
 /** The label of the last run known outside the session: "Dernier trajet connu · hier 22:14, hors session". */
@@ -939,6 +948,7 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     // The action bar (tradeActions.ts) needs the card even before there is a run or a plan to show.
     const bare = !run && !plan;
     const hasPast = pastRuns.length > 0;
+    const sessionEnded = !!(ctx && ctx.scope && ctx.scope.ended === true);
     const visible = full && (!bare || hasPast || !!(ctx && ctx.actionsEnabled));
     show(root, visible);
     show(slot, visible && !!(ctx && ctx.actionsEnabled));
@@ -1004,7 +1014,9 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     // What the folded card says in one line (no amount: the stage and the route only).
     lastSummary = bare
       ? hasPast
-        ? "aucun trajet dans cette session"
+        ? sessionEnded
+          ? "session terminée"
+          : "aucun trajet dans cette session"
         : ""
       : [stageText, routeText].filter((t: string) => t !== "").join(" · ");
     show(stage, !bare);
@@ -1020,7 +1032,9 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           : "Journal du jeu non lisible : pas de bilan réel pour ce trajet (voir les réglages à faire en haut de la page).";
     } else if (!run) {
       msg = hasPast
-        ? "Aucun trajet dans cette session pour l’instant : le bilan (chiffre d’affaires, frais, bénéfice net) apparaîtra après le premier trajet. Le dernier trajet connu est plus bas, hors session."
+        ? sessionEnded
+          ? "Session terminée : les prochains trajets comptent dans la prochaine session. Le dernier trajet connu est plus bas, hors session."
+          : "Aucun trajet dans cette session pour l’instant : le bilan (chiffre d’affaires, frais, bénéfice net) apparaîtra après le premier trajet. Le dernier trajet connu est plus bas, hors session."
         : "Aucune transaction de marchandise dans le journal pour l’instant : le bilan (chiffre d’affaires, frais, bénéfice net) apparaîtra après le trajet.";
     } else if (!showBalance) {
       msg =

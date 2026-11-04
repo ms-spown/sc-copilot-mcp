@@ -36,7 +36,7 @@ const PLAN = {
 /** `sessionStartS`: the second of the story the saved play session began at; "off": sessions are off; "empty": none yet. */
 async function page(
   sessionStartS: number | "off" | "empty",
-  options: { variant?: TradeVariant; hidden?: boolean; plan?: boolean } = {},
+  options: { variant?: TradeVariant; hidden?: boolean; plan?: boolean; endS?: number } = {},
 ) {
   const scenario = new Scenario();
   scenario.uec = tradeBalanceAt;
@@ -53,7 +53,11 @@ async function page(
     );
     if (sessionStartS !== "empty") {
       bar.current.started_at = new Date(scenario.epoch + sessionStartS * SECOND).toISOString();
-      bar.current.ended_at = null;
+      bar.current.ended_at =
+        options.endS === undefined
+          ? null
+          : new Date(scenario.epoch + options.endS * SECOND).toISOString();
+      if (options.endS !== undefined) bar.current.status = "ended";
     }
     return { ...base, sessions: bar };
   };
@@ -209,7 +213,7 @@ describe("Feature: a run of the journal that is not of the play session is set a
     );
   });
 
-  it("Given a purchase made just before the session began, Then the trip under way is still the session's", async () => {
+  it("Given a session begun in the middle of a run, Then the run is still the session's (its last transaction is after the start)", async () => {
     // The session starts at 100 s, in the middle of the run (bought at 20 s, sold at 200 s): its last transaction is after.
     const w = await page(100);
     await w.advance(215 * SECOND);
@@ -218,10 +222,22 @@ describe("Feature: a run of the journal that is not of the play session is set a
     expect(holders(w, TURNOVER).filter(isShown).length).toBeGreaterThan(0);
   });
 
-  it("Given no session yet, Then every run of the journal is outside it", async () => {
+  it("Given a bar with no session in it, Then the age decides: a recent run is shown as before", async () => {
     const w = await page("empty");
     await w.advance(215 * SECOND);
     await fullscreen(w);
+    expect(isShown(last(w))).toBe(false);
+    expect(text(w)).toContain("Trajet terminé");
+  });
+
+  it("Given a session the player ended by hand, Then the card says so instead of 'no trip in this session'", async () => {
+    const w = await page(210, { endS: 400 });
+    await w.advance(450 * SECOND);
+    await fullscreen(w);
+    expect(text(w)).toContain(
+      "Session terminée : les prochains trajets comptent dans la prochaine session",
+    );
+    expect(text(w)).not.toContain("Aucun trajet dans cette session");
     expect(isShown(last(w))).toBe(true);
     expect(holders(w, TURNOVER).every(apart)).toBe(true);
   });
@@ -234,11 +250,13 @@ describe("Feature: a run of the journal that is not of the play session is set a
     expect(text(w)).toContain("Trajet terminé");
   });
 
-  it("Given the old run, Then the net taken apart change by change is not drawn for it", async () => {
+  it("Given the old run, Then no 'Détail' button opens a decomposition of its net", async () => {
     const w = await page(300);
     await w.advance(450 * SECOND);
     await fullscreen(w);
-    expect(text(w)).not.toContain("Détail");
+    expect(
+      findAll(w.root, (n) => n.tag === "button" && /^Détail/.test(n.textContent) && isShown(n)),
+    ).toHaveLength(0);
   });
 
   it("Given a click on 'Afficher/Masquer le solde' with the old run, Then the amounts follow the choice", async () => {

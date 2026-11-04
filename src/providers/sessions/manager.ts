@@ -581,6 +581,12 @@ export class SessionManager {
     return newestSavedBalance((await this.deps.store.read()).sessions);
   }
 
+  /** The channel (live, ptu) of the game launched now, from the head of Game.log (cached a minute); null when unknown. */
+  async gameChannel(): Promise<GameInfo["channel"] | null> {
+    const info = await this.deps.gameInfo?.().catch(() => null);
+    return info ? info.channel : null;
+  }
+
   private calibrationMemo: { key: string; report: CalibrationReport } | null = null;
 
   /**

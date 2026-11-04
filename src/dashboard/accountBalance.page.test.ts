@@ -12,6 +12,7 @@ import {
   type PageWorld,
 } from "./testing/pageHarness.js";
 import { Scenario } from "./testing/scenario.js";
+import { sessionBar } from "./testing/sessionScenario.js";
 
 /**
  * The permanent "Solde" reminder in the header of the assembled page, against the fake host. The account balance is an
@@ -146,13 +147,22 @@ describe("Feature: the account balance is a permanent reminder in the header", (
 
   it("Given the reading is independent of any session, Then it does not change with a new session", async () => {
     const w = await page(() => ({ source: "live", uec: BAL }));
+    let variant: "story" | "empty" = "story";
     w.host.overrides.poll = (base: any, include: boolean) => ({
       ...base,
       ...(include ? { account: { source: "live", uec: BAL } } : {}),
-      sessions: { v: 1, status: "ok", notice: null, gap_hours: 3, current: null, stale: false },
+      sessions: sessionBar(Date.UTC(2026, 10, 3, 18, 1, 0), include, variant),
     });
     await w.advance(5 * SECOND);
-    expect(zoneText(w)).toMatch(WHOLE);
+    const before = zoneText(w);
+    const sessionBefore = NB(visibleText(w.root));
+    expect(before).toMatch(WHOLE);
+    expect(sessionBefore).toContain("Session 4");
+    // a brand new, empty session replaces the one in force: the session card changes, the account reminder does not
+    variant = "empty";
+    await w.advance(5 * SECOND);
+    expect(NB(visibleText(w.root))).not.toContain("Session 4");
+    expect(zoneText(w)).toBe(before);
   });
 });
 
@@ -266,5 +276,9 @@ describe("Feature: the channel between dashboards never carries the reminder", (
     expect(wire).not.toContain('"account"');
     // The follower never shows it.
     expect(everything(follower.root)).not.toMatch(WHOLE);
+    // ... and it does not say the player hid the balance: it says another dashboard has it.
+    expect(zoneText(follower)).toContain("suivi par un autre tableau");
+    expect(zoneText(follower)).not.toContain("masqué");
+    expect(zoneText(leader)).not.toContain("suivi par un autre tableau");
   });
 });

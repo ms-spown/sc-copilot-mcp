@@ -75,7 +75,10 @@ versions follow [Semantic Versioning](https://semver.org/).
   balance; otherwise the last known balance labelled with its age ("dernier solde connu · il y a 15 h"), taken from the newer of the
   last frame the reader kept in memory and the last balance saved with a play session in `sessions.json` (the current session starts
   empty, so the file is read across all sessions); "Solde inconnu" with the reason ("jeu fermé", "aucun relevé pour l'instant",
-  "télémétrie non activée") when nothing is known. Nothing is invented. New plain field `account` in the `sc_live_poll` answer
+  "télémétrie non activée", "jeu lancé sur le PTU") when nothing is known; "jeu fermé" is said only on the game's own quit line.
+  A balance saved with a PTU session is never used (separate test economy) and a PTU stream is not presented as the account's
+  (PTU detected from the head of Game.log, so with sessions on). A View that follows another says "suivi par un autre tableau",
+  not "masqué". Nothing is invented. New plain field `account` in the `sc_live_poll` answer
   (`source` live / last_known / unknown, outside the hashes; no tool name or input schema changed): it exists only in an answer built
   with the balance, so "Masquer le solde", `SC_BALANCE=hidden` and `include_balance: false` leave no field and no amount, and a hidden
   state ignores `include_balance: true` as before. It is not in the automatic summary sent to the model, not in a fixed message, and
@@ -86,11 +89,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 - **A run of an older play session no longer reads as a result of the current one.** With the game closed and a new, empty session,
   the card used to show the old journal's "Chiffre d'affaires 318 072 aUEC", "Trajet terminé" and its duration as if they were the
   session's. Now the card, its tiles, its waterfall and its compact line speak of the runs whose last transaction is not before the
-  session's start (and whose first is not after its end); until one exists the card says "Aucun trajet dans cette session pour
-  l'instant". The newest older run is a folded, dashed block, "Dernier trajet connu · hier 22:14, hors session" (goods, places,
+  session's start (and whose first is not after its end), except that a run NOT finished (open or partial) is a trip under way
+  whatever the start says while its last transaction is at most 3 hours old; until one exists the card says "Aucun trajet dans
+  cette session pour l'instant", or "Session terminée : les prochains trajets comptent dans la prochaine session" after a session
+  ended by hand. The newest older run is a folded, dashed block, "Dernier trajet connu · hier 22:14, hors session" (goods, places,
   quantity, duration; turnover and net only while the balance is shown, "Montants masqués" otherwise), the others are dated in the folded
   "Trajets précédents", and the compact view gets one calm line with no amount. Without a session to compare with
-  (`SC_SESSIONS=off`) a run over 3 hours old is treated the same way. The poll's `ledger.trade.runs` is unchanged (the View does the
+  (`SC_SESSIONS=off`, or a bar with no session in it) a run over 3 hours old is treated the same way. The poll's `ledger.trade.runs` is unchanged (the View does the
   split); the net decomposition is not drawn for an older run.
 
 ## [2.7.0] - 2026-11-04

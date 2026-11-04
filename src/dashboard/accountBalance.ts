@@ -32,7 +32,7 @@ export interface AccountBalance {
   /** Where a "last_known" figure comes from. */
   from?: "stream" | "session";
   /** Why it is unknown; only for "unknown". */
-  reason?: "game_closed" | "no_reading";
+  reason?: "game_closed" | "no_reading" | "ptu";
 }
 
 export interface SavedBalance {
@@ -43,13 +43,15 @@ export interface SavedBalance {
 
 /**
  * The newest balance any saved session holds (the current, just-created session has none yet: a session starts with a
- * balance only when one was seen). Looks at every session, newest first; the reading time wins over the order.
+ * balance was seen). Looks at every session; the reading time wins over the order. A session played on the PTU is skipped:
+ * the PTU has its own test economy, its balance is not the account's.
  */
 export function newestSavedBalance(sessions: readonly Session[]): SavedBalance | null {
   let best: SavedBalance | null = null;
   let bestMs = -Infinity;
   for (const s of sessions) {
     if (typeof s.last_balance !== "number" || !Number.isFinite(s.last_balance)) continue;
+    if (s.game_channel === "ptu") continue;
     const at = s.last_balance_at ?? s.start_balance_at ?? s.last_activity_at;
     const ms = Date.parse(at);
     if (!Number.isFinite(ms) || ms <= bestMs) continue;
@@ -64,11 +66,13 @@ export interface AccountInput {
   snapshot: TelemetrySnapshot | null;
   saved?: SavedBalance | null | undefined;
   connection?: Pick<ConnectionInfo, "state"> | null | undefined;
+  /** The channel of the game launched now (Game.log head): "ptu" means the stream's frames are PTU figures. */
+  channel?: "live" | "ptu" | "unknown" | null | undefined;
   nowMs: number;
 }
 
 export function buildAccountBalance(input: AccountInput): AccountBalance {
-  const { status, snapshot, saved, connection, nowMs } = input;
+  const { status, snapshot, saved, connection, channel, nowMs } = input;
   const raw = snapshot?.state.pilot?.uec_balance;
   const streamUec =
     typeof raw === "number" && Number.isFinite(raw)
@@ -81,11 +85,15 @@ export function buildAccountBalance(input: AccountInput): AccountBalance {
     streamUec !== null && Number.isFinite(streamAt) ? { uec: streamUec, at: streamAt } : null;
   const savedMs = saved ? Date.parse(saved.at) : NaN;
   const hasSaved = !!saved && Number.isFinite(savedMs);
+  // On the PTU the stream carries the test economy, not the account's balance: it is not shown as the balance.
+  if (channel === "ptu" && !hasSaved) return { source: "unknown", reason: "ptu" };
 
-  const fresh = !!stream && status.state === "live" && nowMs - stream.at <= ACCOUNT_LIVE_MS;
+  const onPtu = channel === "ptu";
+  const fresh =
+    !onPtu && !!stream && status.state === "live" && nowMs - stream.at <= ACCOUNT_LIVE_MS;
   if (stream && fresh && !notInSession(connection)) return { source: "live", uec: stream.uec };
   // The newer reading wins; on a tie the stream's (it is the one that can be live again).
-  if (stream && (!hasSaved || stream.at >= savedMs)) {
+  if (stream && !onPtu && (!hasSaved || stream.at >= savedMs)) {
     return {
       source: "last_known",
       uec: stream.uec,

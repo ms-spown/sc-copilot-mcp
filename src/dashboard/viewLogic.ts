@@ -1101,12 +1101,13 @@ export function accountAgo(ms: number | null | undefined): string | null {
   if (typeof ms !== "number" || !Number.isFinite(ms)) return null;
   // A reading "in the future" (the two clocks differ a little) is as good as a fresh one.
   const age = ms < 0 ? 0 : ms;
-  const minutes = Math.floor(age / 60000);
-  if (minutes < 1) return "il y a moins d’1\u00a0min";
+  // Rounded, not cut: 15 h 59 is "16 h", not "15 h".
+  if (age < 60000) return "il y a moins d’1\u00a0min";
+  const minutes = Math.round(age / 60000);
   if (minutes < 60) return "il y a " + minutes + "\u00a0min";
-  const hours = Math.floor(minutes / 60);
+  const hours = Math.round(age / 3600000);
   if (hours < 48) return "il y a " + hours + "\u00a0h";
-  return "il y a " + Math.floor(hours / 24) + "\u00a0j";
+  return "il y a " + Math.round(age / 86400000) + "\u00a0j";
 }
 
 /**
@@ -1114,9 +1115,19 @@ export function accountAgo(ms: number | null | undefined): string | null {
  * `account`, built by the server only for an answer that asked for the balance). Nothing is invented: a reading that is not
  * live says so with its age, and no reading says why. While the player hides the balance there is no amount and no
  * `account` is read at all.
- *   kind  hidden | wait | live | last_known | unknown (the screen reader is told when it changes, never at each poll)
+ *   kind  hidden | follower | wait | live | last_known | unknown (the screen reader is told when it changes, never at each poll)
  */
-export function accountInfo(poll: any, showBalance: boolean, now: number): any {
+export function accountInfo(poll: any, showBalance: boolean, now: number, follower?: boolean): any {
+  // A View that follows another one never gets the balance (it is not shared): that is not the player hiding it.
+  if (!showBalance && follower) {
+    return {
+      kind: "follower",
+      text: "••••••",
+      note: "suivi par un autre tableau",
+      tip: "Un autre tableau de bord lit le jeu : celui-ci ne reçoit pas le solde. Le bouton reprend la main.",
+      speak: "",
+    };
+  }
   if (!showBalance) {
     return { kind: "hidden", text: "••••••", note: "masqué", tip: "", speak: "Solde masqué" };
   }
@@ -1160,6 +1171,7 @@ export function accountInfo(poll: any, showBalance: boolean, now: number): any {
   let why = "aucun relevé pour l’instant";
   if (poll.state === "off") why = "télémétrie non activée";
   else if (a && a.reason === "game_closed") why = "jeu fermé";
+  else if (a && a.reason === "ptu") why = "jeu lancé sur le PTU : autre économie";
   return {
     kind: "unknown",
     text: "Solde inconnu",

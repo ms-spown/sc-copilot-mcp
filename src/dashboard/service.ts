@@ -173,6 +173,7 @@ export class DashboardService {
           status,
           snapshot,
           saved: await this.savedBalance(),
+          channel: await this.gameChannel(),
           connection,
           nowMs,
         })
@@ -214,6 +215,15 @@ export class DashboardService {
   private async savedBalance() {
     try {
       return this.sessions?.enabled ? await this.sessions.savedBalance() : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** The channel of the game launched now (live, ptu), from the sessions' game info; null when unknown or sessions are off. */
+  private async gameChannel() {
+    try {
+      return this.sessions?.enabled ? await this.sessions.gameChannel() : null;
     } catch {
       return null;
     }

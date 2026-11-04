@@ -89,14 +89,32 @@ describe("Feature: which runs of the journal are of the play session", () => {
     expect(split.past).toEqual([recent]);
   });
 
-  it("Given no session yet, Then every run is outside it", () => {
-    const split = tradeSplitBySession(
-      section(recent, yesterday),
-      { known: true, start: Infinity, end: null },
-      NOW,
-    );
-    expect(split.trade.runs).toEqual([]);
-    expect(split.past).toHaveLength(2);
+  it("Given a bar with no session in it, Then the scope is unknown and the age decides", () => {
+    const scopeOf = tradeSessionScope({ sessions: { v: 1, status: "ok", current: null } });
+    expect(scopeOf).toEqual({ known: false });
+    const split = tradeSplitBySession(section(recent, yesterday), scopeOf, NOW);
+    expect(split.trade.runs).toEqual([recent]);
+    expect(split.past).toEqual([yesterday]);
+  });
+
+  it("Given an unfinished run whose last transaction is before the session's start, Then it is still the trip under way", () => {
+    const open = run("open", NOW - 2 * HOUR, NOW - 90 * 60_000, { stage: "open" });
+    const partial = run("part", NOW - 2 * HOUR, NOW - 90 * 60_000, { stage: "partial" });
+    for (const r of [open, partial]) {
+      const split = tradeSplitBySession(section(r), scope(10 * 60_000), NOW);
+      expect(split.trade.runs).toEqual([r]);
+      expect(split.past).toEqual([]);
+    }
+    // the same times, finished: outside the session
+    const done = run("done", NOW - 2 * HOUR, NOW - 90 * 60_000, { stage: "complete" });
+    expect(tradeSplitBySession(section(done), scope(10 * 60_000), NOW).past).toEqual([done]);
+  });
+
+  it("Given an unfinished run left over 3 hours ago, or begun after the session's end, Then it is outside", () => {
+    const left = run("left", NOW - 5 * HOUR, NOW - 4 * HOUR, { stage: "open" });
+    expect(tradeSplitBySession(section(left), scope(10 * 60_000), NOW).past).toEqual([left]);
+    const later = run("later", NOW - 30 * 60_000, NOW - 20 * 60_000, { stage: "open" });
+    expect(tradeSplitBySession(section(later), scope(3 * HOUR, HOUR), NOW).past).toEqual([later]);
   });
 
   it("Given sessions are off, Then only a run over 3 hours old is outside; the connection does not decide", () => {
@@ -120,17 +138,13 @@ describe("Feature: which runs of the journal are of the play session", () => {
     const bar = (extra: any) => ({ sessions: { v: 1, status: "ok", ...extra } });
     expect(tradeSessionScope({})).toEqual({ known: false });
     expect(tradeSessionScope(bar({ status: "off", current: null }))).toEqual({ known: false });
-    expect(tradeSessionScope(bar({ current: null }))).toEqual({
-      known: true,
-      start: Infinity,
-      end: null,
-    });
+    expect(tradeSessionScope(bar({ current: null }))).toEqual({ known: false });
     expect(
       tradeSessionScope(bar({ current: { started_at: at(NOW - HOUR), ended_at: null } })),
-    ).toEqual({ known: true, start: NOW - HOUR, end: null });
+    ).toEqual({ known: true, start: NOW - HOUR, end: null, ended: false });
     expect(
       tradeSessionScope(bar({ current: { started_at: at(NOW - HOUR), ended_at: at(NOW - 1000) } })),
-    ).toEqual({ known: true, start: NOW - HOUR, end: NOW - 1000 });
+    ).toEqual({ known: true, start: NOW - HOUR, end: NOW - 1000, ended: true });
     expect(tradeSessionScope(bar({ current: { started_at: "nope" } }))).toEqual({ known: false });
   });
 });
