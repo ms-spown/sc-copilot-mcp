@@ -50,7 +50,7 @@ promise, and every item says what is verified and what is not. The history of wh
     public commodity list (`SC_COMMODITY_NAMES=off` keeps it fully local).
   - *Accessibility.* Readings that were hover-only tooltips can be reached with the keyboard, and the lamps and power
     nodes carry their full name and state as an `aria-label`.
-  - The dashboard page is about 351 kB against our own budget of 368 kB (a guard of ours, not a limit of the host).
+  - The dashboard page is about 373 kB against our own budget of 392 kB (a guard of ours, not a limit of the host).
 - **The agent:** server `instructions`, refreshed prompts (`haul_plan`, `trade_copilot`, `trade_review`,
   `session_debrief`), a block to paste into a Claude project.
 

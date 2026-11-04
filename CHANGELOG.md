@@ -25,8 +25,9 @@ versions follow [Semantic Versioning](https://semver.org/).
   fresh happened in it; fresh is what the "Ask Claude" button already counts (a loss, a refused price, a run ended less than 30
   minutes ago). The player's fold wins until the order changes; the card is never folded while the focus is inside it. The shortcuts
   show only what has a key (X, H, J, T) or is an alert, the rest behind the same button. No section changes its content, no new
-  live region, no new amount (tests in both balance modes), `textContent` only. The page grows from 357.7 kB to 365.5 kB, inside
-  the internal budget of 368 kB (our own guard, not a proven host limit). Not verified in Claude Desktop (how the host sizes
+  live region, no new amount (tests in both balance modes), `textContent` only. The page grows by about 8 kB (357.7 kB to 365.5 kB
+  before the R5 route cards were merged; 373.0 kB with both): the internal budget is raised from 368 kB to 392 kB (measured size plus about
+  5 %; our own guard, not a proven host limit, and nothing was removed to fit it). Not verified in Claude Desktop (how the host sizes
   full screen, whether its frame keeps the scroll position when sections move).
 - **After the independent audit of this change.** (1) The commerce box and the shortcuts, session and health strip that the flight
   order moves into the grid are exempt from the grey rule of a cut stream, so the planner keeps its colours and the grey is the
