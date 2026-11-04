@@ -552,6 +552,32 @@ describe("Feature: runs that are not clean", () => {
     expect(r.buys).toBe(2);
   });
 
+  it("Given a sale for nothing that the game rejected, Then the card tells it as failed like the journal does, and counts nothing", () => {
+    // The journal lists a cargo line with an amount of 0 as failed (`zero_amount`): the card used to drop it silently
+    // because it has no positive amount, so the two disagreed on how many lines failed.
+    const t = tradeTransactions(BASE);
+    t.push({
+      ...t[3]!,
+      time: new Date(BASE + 60_000).toISOString(),
+      total_auec: 0,
+      status: "failed",
+      reason: "zero_amount",
+      basis: "zero_amount",
+      confidence: "confirmed",
+    });
+    const r = latest({ transactions: t });
+    expect(r.failed).toBe(1);
+    expect(r.sells).toBe(2);
+    expect(r.money!.turnover).toBe(318_072);
+    expect(r.money!.fees.total).toBe(43_568);
+    // Only a FAILED line may carry no amount: a completed one with nothing is still dropped.
+    const done = tradeTransactions(BASE);
+    done.push({ ...done[3]!, time: new Date(BASE + 60_000).toISOString(), total_auec: 0 });
+    const kept = prepareTransactions(done);
+    expect(kept.failed).toHaveLength(0);
+    expect(kept.counted).toHaveLength(4);
+  });
+
   it("Given a line the journal could not confirm (even an ambiguous one), Then it is not counted, exactly as the journal does, and is told", () => {
     const t = tradeTransactions(BASE);
     t[3] = {

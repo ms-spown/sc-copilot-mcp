@@ -311,7 +311,10 @@ export function prepareTransactions(raw: readonly Transaction[] | undefined): Pr
     // The journal states an amount in aUEC for cargo; anything else is never added to aUEC.
     if (r.currency !== "aUEC") continue;
     const t = typeof r.time === "string" ? Date.parse(r.time) : NaN;
-    if (!Number.isFinite(t) || !finitePositive(r.total_auec)) continue;
+    // A cargo sale for nothing is always rejected by the game (the journal lists it as failed with `zero_amount`): it
+    // has no positive amount, but it is a failed line all the same and the card must tell it, as the journal does.
+    const amountOk = finitePositive(r.total_auec) || (r.status === "failed" && r.total_auec === 0);
+    if (!Number.isFinite(t) || !amountOk) continue;
     const quantity =
       r.unit === "SCU" &&
       typeof r.quantity === "number" &&
