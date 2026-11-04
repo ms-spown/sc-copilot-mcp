@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { formatOutputRaw } from "../core/format.js";
-import { wantsBalance, type BalancePolicy } from "../core/balance.js";
+import { hiddenNote, wantsBalance, type BalancePolicy } from "../core/balance.js";
 import { sanitizeUntrusted } from "../core/untrusted.js";
 import type { SessionManager } from "../providers/sessions/manager.js";
-import { MONEY_WITHHELD_NOTE, withoutMoney } from "../providers/sessions/stats.js";
+import { withoutMoney } from "../providers/sessions/stats.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
 /**
@@ -104,7 +104,7 @@ export function sessionTools({
           recent_trips: found.recent_trips,
           interruptions: found.interruptions,
           note_for_the_model: PROPOSE_HINT,
-          ...(money ? {} : { money_note: MONEY_WITHHELD_NOTE }),
+          ...(money ? {} : { money_note: hiddenNote(balance) }),
           persistence: {
             status: sessions.notice ?? "ok",
             new_session_after_hours: sessions.gapHours,
@@ -136,7 +136,7 @@ export function sessionTools({
         const out = await sessions.list(limit ?? 20, money);
         return result({
           ...out,
-          ...(money ? {} : { money_note: MONEY_WITHHELD_NOTE }),
+          ...(money ? {} : { money_note: hiddenNote(balance) }),
           persistence: { status: sessions.notice ?? "ok" },
         });
       },
@@ -168,7 +168,7 @@ export function sessionTools({
         const stats = await sessions.stats(last, money);
         return result({
           ...stats,
-          ...(money ? {} : { money_note: MONEY_WITHHELD_NOTE }),
+          ...(money ? {} : { money_note: hiddenNote(balance) }),
           persistence: { status: sessions.notice ?? "ok" },
         });
       },

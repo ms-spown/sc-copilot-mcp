@@ -93,6 +93,15 @@ const spyTelemetry = (enabled: boolean) => {
   } satisfies Telemetry;
 };
 
+/** The token the served page carries (what the View sends back to lift the mask). */
+async function pageToken(client: Client): Promise<string> {
+  const text = ((await client.readResource({ uri: DASHBOARD_URI })).contents[0] as { text: string })
+    .text;
+  const m = /data-token="([0-9a-f]{32})"/.exec(text);
+  if (!m) throw new Error("the page carries no token");
+  return m[1]!;
+}
+
 async function liveWorld(balance?: BalancePolicy) {
   const game = await startFakeGame();
   cleanup.push(() => game.close());
@@ -380,7 +389,12 @@ describe("Feature: the poll answers many Views for the price of one", () => {
     const ignored = await call("sc_live_poll", { include_balance: true });
     expect(ignored.sc).not.toHaveProperty("balance");
     expect(ignored.sc!["balance_state"]).toBe("hidden");
-    const clicked = await call("sc_live_poll", { include_balance: true, balance_choice: "shown" });
+    const token = await pageToken(client);
+    const clicked = await call("sc_live_poll", {
+      include_balance: true,
+      balance_choice: "shown",
+      balance_token: token,
+    });
     expect(clicked.sc!["balance"]).toMatchObject({ uec: 424242 });
     expect(clicked.sc!["balance_state"]).toBe("shown");
     expect(await page()).toContain('data-balance="shown"');
@@ -407,6 +421,7 @@ describe("Feature: the poll answers many Views for the price of one", () => {
 
     it("Given the player clicks 'Masquer le solde', Then a tool with no argument and one with include_balance true give no amount, with the note; and 'Afficher le solde' gives them back", async () => {
       const w = await played();
+      const token = await pageToken(w.client);
       expect(await state(w)).toContain(BAL); // shown by default
       const hid = await w.call("sc_live_poll", {
         include_balance: false,
@@ -425,22 +440,88 @@ describe("Feature: the poll answers many Views for the price of one", () => {
       expect(other.sc).not.toHaveProperty("balance");
       expect(await state(w, { include_balance: true })).not.toContain(BAL);
       // the route button's one-off gives it for that answer only
-      const once = await w.call("sc_live_poll", { include_balance: true, balance_once: true });
+      const once = await w.call("sc_live_poll", {
+        include_balance: true,
+        balance_once: true,
+        balance_token: token,
+      });
       expect(once.sc!["balance"]).toMatchObject({ uec: 424242 });
       expect(await state(w)).not.toContain(BAL);
       // the player clicks 'Afficher le solde'
-      await w.call("sc_live_poll", { include_balance: true, balance_choice: "shown" });
+      await w.call("sc_live_poll", {
+        include_balance: true,
+        balance_choice: "shown",
+        balance_token: token,
+      });
       expect(await state(w)).toContain(BAL);
       expect(await state(w, { include_balance: true })).toContain(BAL);
     });
 
     it("Given the last click wins, Then a later 'Masquer' from another dashboard hides again", async () => {
       const w = await played();
+      const token = await pageToken(w.client);
       await w.call("sc_live_poll", { balance_choice: "hidden" });
-      await w.call("sc_live_poll", { balance_choice: "shown" });
+      await w.call("sc_live_poll", { balance_choice: "shown", balance_token: token });
       expect(await state(w)).toContain(BAL);
       await w.call("sc_live_poll", { balance_choice: "hidden" });
       expect(await state(w)).not.toContain(BAL);
+    });
+
+    it("Given a caller that did not read the page (a host that exposes the app-only poll to the model), Then 'shown' and the one-off are refused without the token or with a wrong one, and nothing changes; 'hidden' needs no token", async () => {
+      const w = await played();
+      const token = await pageToken(w.client);
+      await w.call("sc_live_poll", { balance_choice: "hidden" }); // hiding is always accepted
+      expect(await state(w)).not.toContain(BAL);
+      for (const bad of [
+        {},
+        { balance_token: "0".repeat(32) },
+        { balance_token: "x" },
+        { balance_token: "" },
+      ]) {
+        const lift = await w.call("sc_live_poll", {
+          include_balance: true,
+          balance_choice: "shown",
+          ...bad,
+        });
+        expect(lift.sc!["balance_state"], JSON.stringify(bad)).toBe("hidden");
+        expect(lift.sc!["balance_refused"]).toBe(true);
+        expect(lift.sc!["balance_note"]).toContain("Montants masqués par le joueur");
+        expect(lift.sc).not.toHaveProperty("balance");
+        const once = await w.call("sc_live_poll", {
+          include_balance: true,
+          balance_once: true,
+          ...bad,
+        });
+        expect(once.sc).not.toHaveProperty("balance");
+        expect(once.sc!["balance_refused"]).toBe(true);
+        expect(await state(w, { include_balance: true })).not.toContain(BAL);
+      }
+      // the right token is accepted
+      const lifted = await w.call("sc_live_poll", {
+        include_balance: true,
+        balance_choice: "shown",
+        balance_token: token,
+      });
+      expect(lifted.sc!["balance_state"]).toBe("shown");
+      expect(lifted.sc).not.toHaveProperty("balance_refused");
+      expect(await state(w)).toContain(BAL);
+      // the token itself never comes back in an answer
+      expect(JSON.stringify(lifted.sc)).not.toContain(token);
+      expect(lifted.text).not.toContain(token);
+    });
+
+    it("Given the state, Then every poll says where it comes from: the configuration, or a click", async () => {
+      const w = await played();
+      const token = await pageToken(w.client);
+      expect((await w.call("sc_live_poll", {})).sc!["balance_source"]).toBe("config");
+      expect(
+        (await w.call("sc_live_poll", { balance_choice: "hidden" })).sc!["balance_source"],
+      ).toBe("click");
+      expect(
+        (await w.call("sc_live_poll", { balance_choice: "shown", balance_token: token })).sc![
+          "balance_source"
+        ],
+      ).toBe("click");
     });
   });
 });

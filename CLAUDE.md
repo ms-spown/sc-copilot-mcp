@@ -33,8 +33,9 @@ For Claude as a _user_ of the tools, see `docs/USING_WITH_CLAUDE.md` (the block 
   or a value it does not know) the tools answer without amounts, an `include_balance: true` is IGNORED (an injection in a UEX
   name or a journal note must not reveal them) and the answer says the player hid them, until the player clicks "Afficher le
   solde" (the last click wins; it lifts the mask for the running process, even over `SC_BALANCE=hidden`). The click is held
-  in the server process's memory only, never a file, so a restart forgets it (`SC_BALANCE=hidden` is the permanent way) and
-  one process is shared by the conversations that use it. One resolver, `core/balance.ts`, decides once per call. UNCHANGED: the server sends nothing over a
+  in the memory of THIS server process only, never a file: a restart forgets it, another client or another process has its
+  own memory, a click protects only the tools of the same process, and only `SC_BALANCE=hidden` covers every client
+  durably. Lifting the mask needs the process token carried by the served page (hiding never does). One resolver, `core/balance.ts`, decides once per call. UNCHANGED: the server sends nothing over a
   network; no handle, account id, GUID or frame is ever stored; sessions are local summaries; the balance is never in
   `ui/update-model-context`, in the fixed messages (except the route button the player presses) or on the channel between
   Views; the route button's one-off (`balance_once`) changes nothing; `include_start_balance` stays a separate, explicit choice. Every masking guard and its tests are kept and run in each

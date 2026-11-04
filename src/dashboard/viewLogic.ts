@@ -517,12 +517,19 @@ export function reducePoll(prev: any, incoming: any, now: number): any {
 }
 
 /** What to ask the server for: what this View does not hold yet, so the answer carries only what changed. */
-export function pollArguments(view: any, showBalance: boolean, choice?: string | null): any {
+export function pollArguments(
+  view: any,
+  showBalance: boolean,
+  choice?: string | null,
+  token?: string,
+): any {
   const args: any = {};
   // The View states its choice every time (true or false): it never leaves it to the server's default.
   args.include_balance = !!showBalance;
   // A click of the player on the balance toggle, until the server has it. An ordinary poll never carries one.
   if (choice === "hidden" || choice === "shown") args.balance_choice = choice;
+  // Lifting the mask needs the token of the served page (hiding never does).
+  if (choice === "shown" && token) args.balance_token = token;
   if (!Array.isArray(view.notInStream)) args.include_static = true;
   if (view.lastSeq > 0) args.since_seq = view.lastSeq;
   const have: any = {};

@@ -296,8 +296,7 @@ describe("Feature: list and stats show the figures by default and leak none when
         const { text, r } = await t.call(name, mode.args);
         expect(text, name).not.toContain(String(BALANCE));
         expect(text, name).not.toContain("41000");
-        expect(text, name).toContain("hidden");
-        expect(text, name).toContain("Montants masqués par le joueur");
+        expect(text, name).toMatch(/Montants masqués/);
         expect(JSON.stringify(r.structuredContent), name).not.toContain("41000");
       }
     },

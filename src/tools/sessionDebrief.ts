@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { wantsBalance, type BalancePolicy } from "../core/balance.js";
+import { hiddenNote, wantsBalance, type BalancePolicy } from "../core/balance.js";
 import { sanitizeUntrusted } from "../core/untrusted.js";
 import { DASHBOARD_URI } from "../dashboard/constants.js";
 import {
@@ -11,7 +11,6 @@ import {
   type Debrief,
 } from "../providers/sessions/debrief.js";
 import type { SessionManager } from "../providers/sessions/manager.js";
-import { MONEY_WITHHELD_NOTE } from "../providers/sessions/stats.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
 /**
@@ -27,10 +26,11 @@ import type { ToolDefinition, ToolResult } from "./types.js";
  * Why tools of their own and not a `format` on sc_session_current: every string of a session-file answer is cut at 200
  * characters by the registry (catalog.ts `maxText`), a limit that must stay for the others.
  *
- * Money: every aUEC figure comes from the player's balance. With include_balance=false (or SC_BALANCE=hidden and no
- * explicit choice) the report has none (counts, durations, SCU, labels) and says so. Otherwise amounts appear, but the
- * balance at the start and at the last sighting only with include_start_balance too (the report is meant to be shared:
- * that stays the player's separate, explicit choice, false by default).
+ * Money: every aUEC figure comes from the player's balance. While the player's choice is hidden (a click, or
+ * SC_BALANCE=hidden; an include_balance true is then ignored) or with include_balance=false, the report has none
+ * (counts, durations, SCU, labels) and says so. Otherwise amounts appear, but the balance at the start and at the last
+ * sighting only with include_start_balance too (the report is meant to be shared: that stays the player's separate,
+ * explicit choice, false by default).
  */
 
 const OFF =
@@ -92,7 +92,7 @@ export function sessionDebriefTools({
     {
       name: "sc_session_debrief",
       description:
-        "The report of the player's saved play session (or the newest N), to share or keep: Markdown (default; header, key numbers, trips table with measured/computed/estimated/unknown tags, what is unexplained, footer) or the trips as CSV (format csv, 100 rows at most). Text in French, about 28,000 characters at most, older trips cut with a count. With include_balance=false there is NO aUEC amount (counts, times, SCU, labels) and the report says so; otherwise amounts appear, but the start and end balances only with include_start_balance too: ask the player, the report is meant to be shared. Give the Markdown as it is, add no figure, send it nowhere. The player downloads the full Markdown and CSV from the session bar of the dashboard: mention it. id: a past session; last: the newest N (1 to 10). Needs SC_TELEMETRY=on.",
+        "The report of the player's saved play session (or the newest N), to share or keep: Markdown (default; header, key numbers, trips table with measured/computed/estimated/unknown tags, what is unexplained, footer) or the trips as CSV (format csv, 100 rows at most). Text in French, about 28,000 characters at most, older trips cut with a count. With include_balance=false there is NO aUEC amount (counts, times, SCU, labels) and the report says so; otherwise amounts appear (unless the player's hidden choice is active: it removes them), but the start and end balances only with include_start_balance too: ask the player, the report is meant to be shared. Give the Markdown as it is, add no figure, send it nowhere. The player downloads the full Markdown and CSV from the session bar of the dashboard: mention it. id: a past session; last: the newest N (1 to 10). Needs SC_TELEMETRY=on.",
       inputSchema: {
         type: "object",
         properties: {
@@ -156,7 +156,7 @@ export function sessionDebriefTools({
           format,
           ...meta(d),
           ...(format === "markdown" ? { markdown: d.markdown } : { csv: d.csv }),
-          ...(money ? {} : { money_note: MONEY_WITHHELD_NOTE }),
+          ...(money ? {} : { money_note: hiddenNote(balance) }),
           ...(balancesAsked && !money
             ? {
                 balances_note:

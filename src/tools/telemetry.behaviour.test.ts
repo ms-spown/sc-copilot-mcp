@@ -217,7 +217,7 @@ describe("Feature: reading the live game through the tools", () => {
         expect(json.data.limits.join(" ")).toMatch(/position/);
         expect(json.provenance).toMatchObject({ kind: "local_telemetry" });
         expect(text).not.toContain("987654321");
-        expect(json.data.uec_balance).toMatch(/Montants masqués par le joueur/);
+        expect(json.data.uec_balance).toMatch(/Montants masqués/);
         expect(text).not.toContain("uec_session");
       },
     );

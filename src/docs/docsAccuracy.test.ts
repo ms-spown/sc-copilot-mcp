@@ -275,8 +275,8 @@ const blockVariant = (sentence: string) =>
     )
     .replace("votre note", "la note du joueur")
     .replace(
-      "votre client MCP, donc à votre conversation",
-      "le client MCP du joueur, donc à la conversation",
+      "à votre client MCP, donc à votre conversation",
+      "au client MCP du joueur, donc à la conversation",
     );
 
 /**

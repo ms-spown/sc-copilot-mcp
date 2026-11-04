@@ -641,7 +641,7 @@ Snapshot of the running game from its local telemetry, only when the user enable
 
 ### sc_live_events
 
-Recent events derived from the live telemetry (took off, landed, quantum jump, lock-on, hits taken, shields down, power lost, health low or 0, respawn, countermeasures, hunger), newest last, from an in-memory ring that starts when the reader starts. Each event says confidence: 'confirmed' (seen working in the field test) or 'unverified' (heuristic or never seen live). The game itself sends almost no events, so these are inferred and debounced; a missing event proves nothing. Use after_seq with the last_seq of a previous call to get only new ones. Balance-change events are left out when include_balance is false. Not advertised when telemetry is off.
+Recent events derived from the live telemetry (took off, landed, quantum jump, lock-on, hits taken, shields down, power lost, health low or 0, respawn, countermeasures, hunger), newest last, from an in-memory ring that starts when the reader starts. Each event says confidence: 'confirmed' (seen working in the field test) or 'unverified' (heuristic or never seen live). The game itself sends almost no events, so these are inferred and debounced; a missing event proves nothing. Use after_seq with the last_seq of a previous call to get only new ones. Balance-change events are left out while the amounts are hidden (the player's choice, or include_balance false) and the answer says so. Not advertised when telemetry is off.
 
 *Source:* game telemetry (local, 127.0.0.1) · *Kind:* local_telemetry · *Trust:* structured · *Profiles:* local
 
@@ -664,7 +664,7 @@ Opens the live dashboard of the running game in the conversation (ship, speed, h
 
 ### sc_live_poll
 
-For the dashboard View only, not for the model: current telemetry state, recent events and session counters as structured content, refreshed by the View about once a second (answers are shared for half a second). Never starts the reader while telemetry is off. The balance is included unless it is hidden (a click of the player, or SC_BALANCE=hidden) or include_balance is false. balance_choice records a CLICK of the player (hidden or shown, held in memory, the last click wins); balance_once gives the balance for one answer to the route button only. Reports balance_state. Use sc_live_state instead.
+For the dashboard View only, not for the model: current telemetry state, recent events and session counters as structured content, refreshed by the View about once a second (answers are shared for half a second). Never starts the reader while telemetry is off. The balance is included unless it is hidden (the player's click, or SC_BALANCE=hidden) or include_balance is false. balance_choice records a click (hidden, or shown with balance_token); balance_once gives the balance for one answer (with balance_token). Reports balance_state and balance_source. Use sc_live_state instead.
 
 *Source:* game telemetry (local, 127.0.0.1) · *Kind:* local_telemetry · *Trust:* structured · *Profiles:* local
 
@@ -672,6 +672,7 @@ For the dashboard View only, not for the model: current telemetry state, recent 
 | --- | --- | --- | --- |
 | `include_balance` | boolean | no | Include the aUEC balance and its change. Default true; false hides it. Ignored (hidden) while the player's choice is hidden. |
 | `balance_choice` | `hidden` \| `shown` | no | Only after a CLICK of the player on the balance toggle: the server remembers it (memory only). |
+| `balance_token` | string | no | The token the page carries: required for balance_choice shown and for balance_once. Without it they are refused. |
 | `balance_once` | boolean | no | With include_balance true: the balance for this answer only, for the route button the player pressed. Changes no choice. |
 | `include_static` | boolean | no | Include the list of what the stream never contains. The View asks once. |
 | `since_seq` | number | no | The newest event number the View holds: only newer events come back. |
@@ -765,7 +766,7 @@ Ends the current play session now (the player asked to finish it); its numbers s
 
 ### sc_session_debrief
 
-The report of the player's saved play session (or the newest N), to share or keep: Markdown (default; header, key numbers, trips table with measured/computed/estimated/unknown tags, what is unexplained, footer) or the trips as CSV (format csv, 100 rows at most). Text in French, about 28,000 characters at most, older trips cut with a count. With include_balance=false there is NO aUEC amount (counts, times, SCU, labels) and the report says so; otherwise amounts appear, but the start and end balances only with include_start_balance too: ask the player, the report is meant to be shared. Give the Markdown as it is, add no figure, send it nowhere. The player downloads the full Markdown and CSV from the session bar of the dashboard: mention it. id: a past session; last: the newest N (1 to 10). Needs SC_TELEMETRY=on.
+The report of the player's saved play session (or the newest N), to share or keep: Markdown (default; header, key numbers, trips table with measured/computed/estimated/unknown tags, what is unexplained, footer) or the trips as CSV (format csv, 100 rows at most). Text in French, about 28,000 characters at most, older trips cut with a count. With include_balance=false there is NO aUEC amount (counts, times, SCU, labels) and the report says so; otherwise amounts appear (unless the player's hidden choice is active: it removes them), but the start and end balances only with include_start_balance too: ask the player, the report is meant to be shared. Give the Markdown as it is, add no figure, send it nowhere. The player downloads the full Markdown and CSV from the session bar of the dashboard: mention it. id: a past session; last: the newest N (1 to 10). Needs SC_TELEMETRY=on.
 
 *Source:* session file (local) · *Kind:* user · *Trust:* untrusted_text · *Profiles:* local
 

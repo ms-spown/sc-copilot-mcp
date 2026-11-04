@@ -178,8 +178,13 @@ describe("Feature: sc_trade_journal", () => {
         expect(text).not.toMatch(AMOUNT_KEYS);
         for (const amount of AMOUNTS) expect(text, String(amount)).not.toContain(String(amount));
         const out = JSON.parse(text);
-        expect(out.data.money_note).toMatch(/Montants masqués par le joueur/);
-        expect(out.data.money_note).toMatch(/include_balance=true est ignoré/);
+        expect(out.data.money_note).toMatch(/Montants masqués/);
+        // the player's hidden choice says what it ignores; a call that only passed false says its own, shorter note
+        if (mode.policy) {
+          expect(out.data.money_note).toMatch(/include_balance=true est ignoré/);
+        } else {
+          expect(out.data.money_note).toMatch(/pour cet appel/);
+        }
       },
     );
 

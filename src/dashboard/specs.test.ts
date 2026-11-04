@@ -544,6 +544,7 @@ describe("Feature: the poll carries the sheet without ever waiting for it", () =
     expect(Object.keys(props)).toEqual([
       "include_balance",
       "balance_choice",
+      "balance_token",
       "balance_once",
       "include_static",
       "since_seq",

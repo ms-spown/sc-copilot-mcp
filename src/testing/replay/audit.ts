@@ -30,6 +30,8 @@ const MODEL_TOOLS: [string, Record<string, unknown>][] = [
   ["sc_live_state", {}],
   ["sc_live_events", {}],
   ["sc_live_status", {}],
+  // The journal reads the game log (its amounts follow the same choice).
+  ["sc_trade_journal", { resolve_names: false }],
 ];
 
 export interface Sweep {
@@ -99,6 +101,8 @@ export async function sweepWithoutBalance(world: ReplayWorld): Promise<Sweep> {
   const tools = parts.join("\n");
   expectNoBalanceLabels(poll, "the poll without the balance");
   expectNoBalanceLabels(tools, "the tools without the balance");
+  // The registry cuts every string of an untrusted answer at 200 characters: a hidden answer must say its whole note.
+  expect(tools, "a hidden answer was truncated by the registry").not.toContain("[truncated");
   expectNoBalanceLabels(channel, "the channel between Views");
   return { poll, tools, channel, all: [poll, tools, channel].join("\n") };
 }

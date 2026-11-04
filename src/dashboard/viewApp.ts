@@ -35,6 +35,10 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   let balanceStart = false;
   // A click not yet delivered to the server, and a counter that tells a poll sent before a click from one sent after it.
   let pendingChoice: string | null = null;
+  // The token of the served page, sent back to lift the mask or to ask for the balance once (never anywhere else).
+  let balanceToken = "";
+  // This View holds a click on "Masquer" of its own, not yet superseded by another dashboard's click on "Afficher".
+  let ownHidden = false;
   let choiceVersion = 0;
   let hidden = !!doc.hidden;
   let offscreen = false;
@@ -109,6 +113,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   // The page says how the server starts: data-balance="shown" (default) or "hidden" (SC_BALANCE=hidden). Anything else hides.
   balanceStart = !!root && root.getAttribute("data-balance") === "shown";
   showBalance = balanceStart;
+  balanceToken = (root && root.getAttribute("data-token")) || "";
   const R: any = { cards: [], widgets: {} };
   /** Marks a node as a widget of the coverage table (the test looks for every id of coverage.ts in the page). */
   const widget = (id: string, node: any): any => {
@@ -1759,7 +1764,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     if (inFlight) return inFlight;
     const sentChoice = pendingChoice;
     const sentVersion = choiceVersion;
-    const args: any = L.pollArguments(view, showBalance, sentChoice);
+    const args: any = L.pollArguments(view, showBalance, sentChoice, balanceToken);
     lastPollAt = clock();
     const run = (async () => {
       try {
@@ -1797,6 +1802,15 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const state = sc && sc.balance_state;
     if ((state !== "shown" && state !== "hidden") || pendingChoice !== null) return;
     if (sentVersion !== choiceVersion) return;
+    // The server forgot (it restarted: shown, from its configuration) while this View holds its own click on "Masquer":
+    // say it again (hiding needs no token) instead of showing the balance. A click of another dashboard on "Afficher"
+    // (source "click") is followed.
+    if (state === "shown" && sc.balance_source === "config" && ownHidden) {
+      pendingChoice = "hidden";
+      choiceVersion++;
+      return;
+    }
+    if (state === "shown" && sc.balance_source === "click") ownHidden = false;
     balancePref = state === "shown";
     const was = showBalance;
     syncBalance();
@@ -2156,7 +2170,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
         // answer is used for the message and kept nowhere: it changes neither the server's choice nor this screen.
         const r = await request("tools/call", {
           name: "sc_live_poll",
-          arguments: { include_balance: true, balance_once: true },
+          arguments: { include_balance: true, balance_once: true, balance_token: balanceToken },
         });
         const sc = r && !r.isError ? r.structuredContent : null;
         balance =
@@ -2225,6 +2239,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     balancePref = showBalance;
     // The click is sent to the server with the next poll, which remembers it (sticky, memory only).
     pendingChoice = showBalance ? "shown" : "hidden";
+    ownHidden = !showBalance;
     choiceVersion++;
     // Hidden again: forget it here too. The next answers will not carry it.
     if (!showBalance) forgetBalance();

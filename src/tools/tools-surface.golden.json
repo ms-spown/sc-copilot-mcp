@@ -336,6 +336,11 @@
           ],
           "description": "Only after a CLICK of the player on the balance toggle: the server remembers it (memory only)."
         },
+        "balance_token": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "The token the page carries: required for balance_choice shown and for balance_once. Without it they are refused."
+        },
         "balance_once": {
           "type": "boolean",
           "description": "With include_balance true: the balance for this answer only, for the route button the player pressed. Changes no choice."

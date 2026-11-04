@@ -180,7 +180,7 @@ describe("Feature: the rows say what is wired, per combination", () => {
       expect(row.detail).toContain(
         showBalance ? "ET des outils de Claude" : "pour les outils de Claude",
       );
-      expect(row.detail).toContain("mémoire du serveur");
+      expect(row.detail).toContain("mémoire de ce processus du serveur");
       expect(row.detail).not.toContain("s’il les demande");
       // Said in both states: Claude's tools give the amounts too unless the server starts hidden.
       expect(row.detail).toContain("SC_BALANCE=hidden");

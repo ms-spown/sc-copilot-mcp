@@ -2,6 +2,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   balanceHidden,
+  balanceSource,
+  balanceToken,
+  balanceTokenMatches,
+  CALL_HIDDEN_NOTE,
+  hiddenNote,
   createBalancePolicy,
   HIDDEN_NOTE,
   parseBalanceEnv,
@@ -62,7 +67,50 @@ describe("Feature: who decides whether the aUEC amounts are shown", () => {
     expect(HIDDEN_NOTE).toContain("SC_BALANCE=hidden");
     // The registry cuts every string of an untrusted answer at 200 characters: the note must survive whole.
     expect(HIDDEN_NOTE.length).toBeLessThanOrEqual(190);
+    expect(CALL_HIDDEN_NOTE.length).toBeLessThanOrEqual(190);
     expect(HIDDEN_NOTE).toContain("include_balance=true est ignoré");
+  });
+});
+
+describe("Feature: the note says why, and only says 'ignored' when it is", () => {
+  it("Given the player's choice is hidden, Then the note is the player's; given only this call hid it, Then it is the call's own and ignores nothing", () => {
+    expect(hiddenNote({ hiddenByDefault: true })).toBe(HIDDEN_NOTE);
+    expect(hiddenNote({ hiddenByDefault: false, playerChoice: "hidden" })).toBe(HIDDEN_NOTE);
+    expect(hiddenNote(undefined)).toBe(CALL_HIDDEN_NOTE);
+    expect(hiddenNote({ hiddenByDefault: false, playerChoice: "shown" })).toBe(CALL_HIDDEN_NOTE);
+    expect(CALL_HIDDEN_NOTE).not.toContain("ignoré");
+    expect(HIDDEN_NOTE).toContain("ignoré");
+  });
+
+  it("Given the policy, Then the source is the click when there is one, else the configuration", () => {
+    expect(balanceSource(undefined)).toBe("config");
+    expect(balanceSource({ hiddenByDefault: true, playerChoice: null })).toBe("config");
+    expect(balanceSource({ hiddenByDefault: false, playerChoice: "hidden" })).toBe("click");
+    expect(balanceSource({ hiddenByDefault: true, playerChoice: "shown" })).toBe("click");
+  });
+});
+
+describe("Feature: the process token that lifts the mask", () => {
+  it("Given the token, Then it is 128 random bits in hex, stable for the process, and only an exact string matches", () => {
+    const t = balanceToken();
+    expect(t).toMatch(/^[0-9a-f]{32}$/);
+    expect(balanceToken()).toBe(t);
+    expect(balanceTokenMatches(t)).toBe(true);
+    for (const bad of [
+      undefined,
+      null,
+      0,
+      "",
+      "x",
+      t.slice(1),
+      t + "0",
+      t.toUpperCase(),
+      "0".repeat(32),
+      {},
+      [t],
+    ]) {
+      expect(balanceTokenMatches(bad), JSON.stringify(bad)).toBe(false);
+    }
   });
 });
 

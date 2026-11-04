@@ -125,7 +125,7 @@ const preflightVariant = q.get("preflight") ?? "valid";
 host = createFakeHost({
   scenario,
   // the server's balance choice: hidden=1 plays a server started with SC_BALANCE=hidden
-  balanceServer: { hidden: q.get("hidden") === "1" },
+  balanceServer: { hidden: q.get("hidden") === "1" }, balanceToken: "previewtoken0123456789abcdef012345",
   theme: $("theme").value,
   deliver,
   suggest: (args) => {
@@ -262,7 +262,7 @@ const server = http.createServer((req, res) => {
     res.end(body);
   };
   if (url.pathname === "/") return send(200, "text/html; charset=utf-8", HARNESS);
-  if (url.pathname === "/view.html") return send(200, "text/html; charset=utf-8", page.dashboardHtml({ balanceHidden: url.searchParams.get("hidden") === "1" }));
+  if (url.pathname === "/view.html") return send(200, "text/html; charset=utf-8", page.dashboardHtml({ balanceHidden: url.searchParams.get("hidden") === "1", token: "previewtoken0123456789abcdef012345" }));
   if (url.pathname.startsWith("/dist/") && url.pathname.endsWith(".js")) {
     const file = path.resolve(root, "." + url.pathname);
     if (file.startsWith(dist + path.sep) && fs.existsSync(file)) {

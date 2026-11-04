@@ -130,6 +130,8 @@ export const viewScript = (): string => minifyScript(rawViewScript());
 export interface DashboardHtmlOptions {
   /** SC_BALANCE=hidden: the View starts with the aUEC amounts hidden. Default: shown. */
   balanceHidden?: boolean;
+  /** The process token the View sends back to lift the mask (core/balance.ts balanceToken). Absent: none, the View cannot. */
+  token?: string;
 }
 
 export function dashboardHtml(options: DashboardHtmlOptions = {}): string {
@@ -148,7 +150,7 @@ export function dashboardHtml(options: DashboardHtmlOptions = {}): string {
     `<style>${compactCss(pageCss())}</style>`,
     "</head>",
     "<body>",
-    `<div id="app" data-stream="init" data-mode="inline" data-grey="1" data-balance="${options.balanceHidden === true ? "hidden" : "shown"}"></div>`,
+    `<div id="app" data-stream="init" data-mode="inline" data-grey="1" data-balance="${options.balanceHidden === true ? "hidden" : "shown"}"${options.token ? ` data-token="${options.token}"` : ""}></div>`,
     `<script>${script}</script>`,
     "</body>",
     "</html>",

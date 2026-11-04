@@ -1,4 +1,3 @@
-import { HIDDEN_NOTE } from "../../core/balance.js";
 import type { Session, ShipLossRecord, Trip } from "./types.js";
 
 /**
@@ -288,8 +287,6 @@ export function withoutMoney<T extends { money: unknown }>(
 ): Omit<T, "money"> & { money: "withheld" } {
   return { ...summary, money: "withheld" };
 }
-
-export const MONEY_WITHHELD_NOTE = `${HIDDEN_NOTE} aUEC figures (balances, results, turnover, rates) are hidden.`;
 
 // -------------------------------------------------------------------------------------------------
 // Across sessions

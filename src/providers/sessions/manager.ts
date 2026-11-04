@@ -24,7 +24,6 @@ import {
 import {
   aggregate,
   aggregateWithoutMoney,
-  MONEY_WITHHELD_NOTE,
   summarizeSession,
   withoutMoney,
   type SessionSummary,
@@ -654,5 +653,4 @@ const stripTripMoney = (t: Session["trips"][number]) => ({
   net_doubtful: null,
 });
 
-export { MONEY_WITHHELD_NOTE };
 export type { ReduceResult };

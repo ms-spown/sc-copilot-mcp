@@ -272,6 +272,9 @@ export interface PageWorld {
   firePageHide: () => void;
 }
 
+/** The token of the test page (the real one is random per server process). */
+export const TEST_TOKEN = "0123456789abcdef0123456789abcdef";
+
 export interface WorldOptions {
   /**
    * How the page is built to start. The server's default is SHOWN; this harness defaults to HIDDEN on purpose: the
@@ -283,7 +286,9 @@ export interface WorldOptions {
   /** Leave the page's root without the data-balance attribute (an old or foreign page): the View must start hidden. */
   omitBalanceAttribute?: boolean;
   /** The server's runtime choice, shared by the pages of one process. Default: follows `balanceHidden`. */
-  balanceServer?: { hidden: boolean };
+  balanceServer?: { hidden: boolean; source?: "click" | "config" };
+  /** The token carried by the page (and accepted by the fake server). Default: a fixed test token. */
+  balanceToken?: string;
   theme?: "light" | "dark";
   modes?: string[];
   scenario?: Scenario;
@@ -504,6 +509,7 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     availableDisplayModes: options.modes,
     legacyFullPolls: options.legacyFullPolls,
     balanceServer: options.balanceServer ?? { hidden: options.balanceHidden !== false },
+    balanceToken: options.balanceToken ?? TEST_TOKEN,
     ...(options.suggest ? { suggest: options.suggest } : {}),
     deliver: (message) => fireMessage(message, parent),
   });
@@ -520,10 +526,15 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
 
   const advance = (ms: number) => vclock.advance(ms);
 
-  const html = dashboardHtml({ balanceHidden: options.balanceHidden !== false });
+  const html = dashboardHtml({
+    balanceHidden: options.balanceHidden !== false,
+    token: options.balanceToken ?? TEST_TOKEN,
+  });
   // The page says how the server starts; the fake document has no parser, so the attribute is copied from the markup.
   const start = /data-balance="(\w+)"/.exec(html);
   if (start && !options.omitBalanceAttribute) root.setAttribute("data-balance", start[1]!);
+  const tok = /data-token="(\w+)"/.exec(html);
+  if (tok) root.setAttribute("data-token", tok[1]!);
   const script = extractElement(html, "script");
   if (!script) throw new Error("no script in the page");
   vm.runInNewContext(

@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { balanceHidden, wantsBalance, type BalancePolicy } from "../core/balance.js";
+import {
+  balanceHidden,
+  balanceSource,
+  balanceToken,
+  balanceTokenMatches,
+  HIDDEN_NOTE,
+  wantsBalance,
+  type BalancePolicy,
+} from "../core/balance.js";
 import {
   DASHBOARD_URI,
   PLAN_PRICE_POINTS_MAX,
@@ -79,7 +87,7 @@ export function dashboardResources({
       advertised: () => telemetry?.enabled === true,
       contentMeta: { ui: { prefersBorder: false } },
       // The page carries the server's start choice for the balance (shown unless SC_BALANCE=hidden).
-      text: () => dashboardHtml({ balanceHidden: balanceHidden(balance) }),
+      text: () => dashboardHtml({ balanceHidden: balanceHidden(balance), token: balanceToken() }),
     },
   ];
 }
@@ -295,7 +303,7 @@ export function dashboardTools(
     {
       name: "sc_live_poll",
       description:
-        "For the dashboard View only, not for the model: current telemetry state, recent events and session counters as structured content, refreshed by the View about once a second (answers are shared for half a second). Never starts the reader while telemetry is off. The balance is included unless it is hidden (a click of the player, or SC_BALANCE=hidden) or include_balance is false. balance_choice records a CLICK of the player (hidden or shown, held in memory, the last click wins); balance_once gives the balance for one answer to the route button only. Reports balance_state. Use sc_live_state instead.",
+        "For the dashboard View only, not for the model: current telemetry state, recent events and session counters as structured content, refreshed by the View about once a second (answers are shared for half a second). Never starts the reader while telemetry is off. The balance is included unless it is hidden (the player's click, or SC_BALANCE=hidden) or include_balance is false. balance_choice records a click (hidden, or shown with balance_token); balance_once gives the balance for one answer (with balance_token). Reports balance_state and balance_source. Use sc_live_state instead.",
       inputSchema: {
         type: "object",
         properties: {
@@ -309,6 +317,12 @@ export function dashboardTools(
             enum: ["hidden", "shown"],
             description:
               "Only after a CLICK of the player on the balance toggle: the server remembers it (memory only).",
+          },
+          balance_token: {
+            type: "string",
+            maxLength: 64,
+            description:
+              "The token the page carries: required for balance_choice shown and for balance_once. Without it they are refused.",
           },
           balance_once: {
             type: "boolean",
@@ -342,11 +356,20 @@ export function dashboardTools(
       meta: APP_ONLY_META,
       handler: async (args: unknown): Promise<ToolResult> => {
         const hash = z.string().regex(/^[0-9a-f]{1,16}$/);
-        const { include_balance, balance_choice, balance_once, include_static, since_seq, have } = z
+        const {
+          include_balance,
+          balance_choice,
+          balance_once,
+          balance_token,
+          include_static,
+          since_seq,
+          have,
+        } = z
           .object({
             include_balance: z.boolean().optional(),
             balance_choice: z.enum(["hidden", "shown"]).optional(),
             balance_once: z.boolean().optional(),
+            balance_token: z.string().max(64).optional(),
             include_static: z.boolean().optional(),
             since_seq: z.number().int().min(0).max(1e12).optional(),
             have: z
@@ -362,8 +385,18 @@ export function dashboardTools(
           .parse(args || {});
         // A click of the player is the only thing that changes the choice (an ordinary poll never does: two Views
         // polling once a second would fight over it). The last click wins.
-        if (balance_choice) policy.playerChoice = balance_choice;
-        const once = balance_once === true && include_balance === true;
+        // Hiding is always accepted. Lifting the mask ("shown") and the one-off need the process token that only the served
+        // page carries: a caller that did not read it (a host that exposes this app-only tool to the model) is refused,
+        // and nothing changes.
+        let refused = false;
+        if (balance_choice === "hidden") policy.playerChoice = "hidden";
+        else if (balance_choice === "shown") {
+          if (balanceTokenMatches(balance_token)) policy.playerChoice = "shown";
+          else refused = true;
+        }
+        const onceAsked = balance_once === true && include_balance === true;
+        const once = onceAsked && balanceTokenMatches(balance_token);
+        if (onceAsked && !once) refused = true;
         const result = await service.poll({
           includeBalance: (once || wantsBalance(include_balance, policy)) && enabled(),
           ...(include_static === true ? { includeStatic: true } : {}),
@@ -377,6 +410,15 @@ export function dashboardTools(
           structuredContent: {
             ...(result as unknown as Record<string, unknown>),
             balance_state: balanceHidden(policy) ? "hidden" : "shown",
+            balance_source: balanceSource(policy),
+            ...(refused
+              ? {
+                  balance_refused: true,
+                  balance_note: balanceHidden(policy)
+                    ? HIDDEN_NOTE
+                    : "Jeton absent ou invalide : demande ignorée.",
+                }
+              : {}),
           },
         };
       },

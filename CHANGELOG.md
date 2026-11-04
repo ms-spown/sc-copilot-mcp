@@ -22,9 +22,7 @@ versions follow [Semantic Versioning](https://semver.org/).
   is harmless, so a prompt written for 2.5 keeps working. The last click wins between dashboards; every dashboard follows the
   server's state (a new one reads it on mounting). A click on "Afficher le solde" lifts the mask for the running process,
   even over `SC_BALANCE=hidden`. A value of `SC_BALANCE` it does not know hides and says so on stderr.
-- **Limits, said plainly.** The click is held in the memory of the server process only, never in a file: a restart forgets
-  it (the health strip and the docs say so; `SC_BALANCE=hidden` is the permanent way), and one server process is shared by the
-  conversations that use it. When the amounts are shown they reach the model and the conversation: the player's choice.
+- **Limits, said plainly.** The click is held in the memory of THIS server process only, never in a file: a restart forgets it (a dashboard that holds its own Masquer click then says it again to the restarted server instead of showing the balance), another client or another server process has its own memory (Claude Desktop can start two), so a click protects only the tools of the same process, and only `SC_BALANCE=hidden` covers every client durably; the health strip and the docs say so. Lifting the mask (`balance_choice` shown) and the route button's one-off need a random token of the process that only the served page carries, so a host that exposes the app-only poll to the model cannot lift it (a host that also lets the model read the page could: SECURITY.md). When the amounts are shown they reach the model and the conversation: the player's choice.
   What does not change: the server sends nothing over a network; no handle, account id, GUID of a player or a game session,
   or raw frame is ever stored; sessions are local summaries; the balance is never in `ui/update-model-context`, in the fixed
   messages (except the route button the player presses, which gives it for that one message and changes nothing else) or on

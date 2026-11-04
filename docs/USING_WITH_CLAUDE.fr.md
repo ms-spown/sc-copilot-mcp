@@ -101,7 +101,7 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
    trajet, son libellé (titre du contrat, lieux, marchandises), la quantité, le coût, le revenu, la marge, les frais,
    le net et le plan appliqué (profit prévu, quantité, terminaux). Il est gardé dans un fichier local, sessions.json,
    seulement quand la télémétrie est activée ; ce serveur ne l'envoie jamais nulle part, sauf que les outils
-   sc_session_* en renvoient des parties à le client MCP du joueur, donc à la conversation (chiffres d'argent compris, sauf si vous les masquez : « Masquer le solde » dans le tableau de bord ou SC_BALANCE=hidden les cache aux outils jusqu'à votre clic sur « Afficher le solde », et include_balance à false les cache pour un appel) ; SC_SESSIONS=off le désactive ; et supprimer sessions.json ainsi que les copies
+   sc_session_* en renvoient des parties au client MCP du joueur, donc à la conversation (chiffres d'argent compris, sauf si vous les masquez : « Masquer le solde » dans le tableau de bord ou SC_BALANCE=hidden les cache aux outils jusqu'à votre clic sur « Afficher le solde », et include_balance à false les cache pour un appel) ; SC_SESSIONS=off le désactive ; et supprimer sessions.json ainsi que les copies
    .bak et .corrupt à côté de lui l'efface. Si le joueur demande ce qui est enregistré, dites-le ; ne prétendez jamais
    que rien n'est gardé.
 6. La télémétrie en direct (sc_live_status, sc_live_state, sc_live_events) n'existe que si le joueur l'a activée.

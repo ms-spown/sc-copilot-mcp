@@ -7,6 +7,7 @@ import {
   findAll,
   findButton,
   startPage,
+  TEST_TOKEN,
   visibleText,
   type FakeNode,
   type PageWorld,
@@ -23,6 +24,7 @@ const SECOND = 1000;
 /** The balance in the scenario: 250 000 aUEC at first, 434 500 after the sale at 90 s. */
 const BALANCE_DIGITS = /250 000|434 500|\b250000\b|\b434500\b/;
 const NBSP_FREE = (s: string) => s.replace(/[\u00a0\u202f]/g, " ");
+const FULL = "Plein écran";
 const BANNER = "Remplacé par un tableau de bord plus récent";
 
 type Start = "shown" | "hidden";
@@ -177,6 +179,115 @@ describe("Feature: the automatic context sent to the model follows the hidden ba
     expect(shown.text).toContain("appelle sc_live_state.");
     expect(shown.text).not.toContain("include_balance");
     expect(L.contextSummary(poll, []).text).toBe(shown.text);
+  });
+});
+
+describe("Feature: the server's state is followed, and the player's own click is not lost", () => {
+  it("Given the server restarts and forgets the click (shown, from its configuration), Then a View holding its own Masquer says it again instead of showing the balance", async () => {
+    const server: { hidden: boolean; source?: "click" | "config" } = { hidden: false };
+    const w = await startPage({ balanceHidden: false, balanceServer: server });
+    await w.advance(30 * SECOND);
+    findButton(w.root, "Masquer le solde").click();
+    await w.advance(3 * SECOND);
+    expect(server.hidden).toBe(true);
+    // the server process restarts: memory lost, the configuration says shown
+    server.hidden = false;
+    server.source = "config";
+    const before = w.host.log.polls.length;
+    await w.advance(5 * SECOND);
+    expectNoAmount(everything(w.root));
+    expect(hasButton(w, "Afficher le solde")).toBe(true);
+    const after = w.host.log.polls.slice(before);
+    expect(after.some((p) => p.choice === "hidden")).toBe(true);
+    // no poll of this View asked for the balance after the restart was noticed, except the one before it said so
+    expect(after.filter((p) => p.includeBalance).length).toBeLessThanOrEqual(1);
+    expect(server.hidden).toBe(true); // the server is hidden again
+    expect(server.source).toBe("click");
+  });
+
+  it("Given another dashboard clicked Afficher (source click), Then this View follows it and shows the balance", async () => {
+    const server: { hidden: boolean; source?: "click" | "config" } = { hidden: false };
+    const w = await startPage({ balanceHidden: false, balanceServer: server });
+    await w.advance(30 * SECOND);
+    findButton(w.root, "Masquer le solde").click();
+    await w.advance(3 * SECOND);
+    server.hidden = false;
+    server.source = "click";
+    await w.advance(5 * SECOND);
+    expect(NBSP_FREE(visibleText(w.root))).toMatch(/250 000|434 500/);
+    expect(hasButton(w, "Masquer le solde")).toBe(true);
+  });
+
+  it("Given a poll in flight when the player clicks Masquer and its old answer says shown, Then the screen keeps the click and the next poll carries it", async () => {
+    // The server's state comes from a click of another dashboard (source "click"), so the stale answer cannot be
+    // told apart by its source: only the two guards (a click not yet delivered, a click since the poll was sent) save it.
+    const server: { hidden: boolean; source?: "click" | "config" } = {
+      hidden: false,
+      source: "click",
+    };
+    const w = await startPage({ balanceHidden: false, balanceServer: server });
+    await w.advance(30 * SECOND);
+    w.host.hold.on = true;
+    await w.advance(2 * SECOND); // a poll is now in flight, its answer held (the server said shown)
+    expect(w.host.hold.held.length).toBeGreaterThan(0);
+    findButton(w.root, "Masquer le solde").click();
+    await w.advance(100);
+    // the OLD answer arrives late, saying shown; the next poll (which carries the click) is held too, so that the
+    // screen is looked at BETWEEN the stale answer and the answer to the click
+    w.host.releasePolls();
+    await w.advance(100);
+    expectNoAmount(everything(w.root));
+    expect(hasButton(w, "Afficher le solde")).toBe(true);
+    expect(w.host.log.polls.some((p) => p.choice === "hidden")).toBe(true);
+    w.host.hold.on = false;
+    w.host.releasePolls();
+    await w.advance(100);
+    expectNoAmount(everything(w.root));
+    expect(hasButton(w, "Afficher le solde")).toBe(true);
+    // the click is delivered by a poll sent after it
+    await w.advance(4 * SECOND);
+    expect(w.host.log.polls.some((p) => p.choice === "hidden")).toBe(true);
+    expect(server.hidden).toBe(true);
+    expectNoAmount(everything(w.root));
+    expect(w.host.log.polls.slice(-2).every((p) => !p.includeBalance)).toBe(true);
+  });
+
+  it("Given a click Afficher, Then the View sends the page's token with it, and the route button sends it with its one-off", async () => {
+    const w = await live("hidden");
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(3 * SECOND);
+    const shown = w.host.log.polls.find((p) => p.choice === "shown");
+    expect(shown?.token).toBe(TEST_TOKEN);
+    expect(shown?.refused).toBeUndefined();
+    findButton(w.root, FULL).click();
+    await w.advance(100);
+    findButton(w.root, "Route avec mon solde et ce vaisseau").click();
+    await w.advance(2 * SECOND);
+    const once = w.host.log.polls.find((p) => p.once);
+    expect(once?.token).toBe(TEST_TOKEN);
+  });
+
+  it("Given a page without a token, Then its click on Afficher is refused by the server and it stays hidden", async () => {
+    const w = await startPage({ balanceHidden: true, balanceToken: "" });
+    await w.advance(30 * SECOND);
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(4 * SECOND);
+    const asked = w.host.log.polls.find((p) => p.choice === "shown");
+    expect(asked?.token).toBeUndefined();
+    expect(asked?.refused).toBe(true);
+    expectNoAmount(everything(w.root));
+    expect(hasButton(w, "Afficher le solde")).toBe(true);
+  });
+
+  it("Given a hiding click, Then it never needs a token", async () => {
+    const w = await startPage({ balanceHidden: false, balanceToken: "" });
+    await w.advance(30 * SECOND);
+    findButton(w.root, "Masquer le solde").click();
+    await w.advance(3 * SECOND);
+    const hid = w.host.log.polls.find((p) => p.choice === "hidden");
+    expect(hid).toBeDefined();
+    expect(hid?.refused).toBeUndefined();
+    expectNoAmount(everything(w.root));
   });
 });
 
