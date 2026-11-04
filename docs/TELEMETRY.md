@@ -382,6 +382,51 @@ that this server provides and that the client renders next to the chat.
   page may send to the model, nor in the fixed messages of the buttons, nor on the channel between dashboards (see
   below), with one exception: the button "Route avec mon solde et ce vaisseau" sends it in a message, says so in the
   text, and only when you press it.
+- **Health strip: what is wired, what is missing.** A new player who installs the server sees a dashboard that
+  silently shows less than it could: without the game log there is no connection state (a "kicked for inactivity"
+  stays invisible), no trade journal, no ledger and weaker session figures; with telemetry off nothing at all; a game
+  started without the game-side variable shows only "Jeu lancé sans télémétrie". The page now says so itself. It is
+  **invisible while nothing needs doing**; when something is missing, a compact block under the header names it, says
+  what is lost and gives the exact fix, in a box you can copy with a button (the clipboard may be refused in the host's
+  sandbox: the text is then selected and the page says to press Ctrl+C). The button "?" in the header opens the full
+  list at any time, with "Tout est branché" (or "Rien à régler pour l'instant" when a line only waits for the game) and
+  the legend below. The eight lines:
+  1. **Telemetry**: its state and, when it is off, `npm run telemetry -- enable` (a dry run: add `--apply`).
+  2. **Game log** (`SC_INSTALL_DIR` or `SC_GAME_LOG_PATH`): not configured, configured but unreadable (the file only
+     exists after a first launch, or the folder is wrong), or read. The page shows the NAME of the setting and a fixed
+     short label (`LIVE/Game.log`, `Game.log`, `custom`), never a path and never a value: the server builds the label
+     and the page accepts only that list. The fix is the line to add by hand to the `env` block of the `sc-copilot`
+     entry (`npm run install:claude` would replace that block, so it is not suggested).
+  3. **The registration line** of the telemetry service in `Game.log`: seen, not seen (the game was started without
+     `GRPC_CLIENT_SERVER_ENABLED`: quit the RSI Launcher completely, tray icon included), or not checkable yet.
+  4. **Connection state** and 5. **trade journal and ledger**: they need the log; they point to line 2 instead of
+     repeating it.
+  6. **Saved sessions**: on (with the time of the last write of this server process), off by `SC_SESSIONS=off` (a
+     deliberate choice: listed behind the "?", not a reminder), read-only (a newer file) or degraded (a write failed,
+     the sessions stay in memory).
+  7. **Balance**: what "Afficher le solde" reveals (the amount, on this screen only; nothing in the automatic summary
+     or on the channel between dashboards, and only the route button sends it, when you press it) and that the saved
+     sessions keep their figures in a local file.
+  8. **Freshness of the data**: not measured here (it would need the sources, so the network); the line points to
+     `sc_data_status`.
+
+  The server adds one small `health` object to the poll answer: codes (`log`: `off`, `unchecked`, `ok`, `unreadable`;
+  `registration`; `sessions`), the setting name, the fixed label and the time of the last write. It is built from what
+  the server already holds (the telemetry state, the game-log hint the service keeps, the connection tracker's answer,
+  the session bar): **no new network, no new file read** (with telemetry off nothing is read at all and the log is
+  reported as "not checked"), no amount, nothing derived from the balance, and it takes no part in the section hashes.
+  Every sentence and every command is written in the page; the page rebuilds the object field by field and drops the
+  whole of it when a `log`, `registration` or `sessions` code is unknown (an unknown setting name or label is dropped
+  alone). `npm run doctor` stays the deep check (it reads the Claude config, the user
+  variable and the port); the page does not duplicate it.
+- **How to read the dashboard (the legend).** Shown at the first open and behind the "?" afterwards: **Mesuré**
+  (sent by the game just now), **Calculé** (a sum or difference of measured values), **Estimé** (a trend over the last
+  minutes, with its window), **Probable** (deduced from clues, never confirmed by the game), **Inconnu** (not sent by the
+  game: a dash, never an invented zero). Each term has a glyph, and every state is written as well as coloured. "Grisé"
+  means the values are not current, "non vérifié" that the field has never been seen working.
+- **What the page remembers.** One flag in the browser's own storage, `sc-copilot-help-seen`: "the legend was read". It
+  is best effort and never needed: when the storage is unavailable (a sandbox) the page works the same, and the legend
+  opens by itself only when something needs setting up (closing it is then kept in memory for the session). The server stores nothing new about the player.
 - **What the buttons do.** "Analyser ma situation", "Route avec mon solde et ce vaisseau" and "Bilan de session" post
   a short fixed message in the conversation, as if you had typed it, asking Claude to use `sc_live_state` and
   `sc_live_events`; a confirmation appears next to the buttons and clears itself. Session markers live in this
@@ -677,8 +722,8 @@ it again from any conversation, after a game crash, and after a reboot of the PC
 - **Why a file on the server and not the browser's `localStorage`.** `localStorage` belongs to one page origin: each
   conversation has its own, so two chats would not see the same session; it can be cleared by the host at any time; and
   the model's tools cannot read it. A small JSON file written by this server is shared by every conversation and every
-  server process, survives the host, and is read by the tools and the dashboard alike. The page keeps nothing in the
-  browser's storage.
+  server process, survives the host, and is read by the tools and the dashboard alike. The page keeps no session data in the
+  browser's storage: its only flag is `sc-copilot-help-seen` (the legend was read).
 - **Where.** `sessions.json` in the per-user data folder (Windows: `%LOCALAPPDATA%\sc-copilot-mcp\data`).
   `SCMCP_SESSIONS_FILE` moves it; `SCMCP_DATA_DIR` moves the folder.
 - **When it exists.** Only with `SC_TELEMETRY=on`. With telemetry off nothing is created, read or watched.
@@ -907,6 +952,16 @@ far as we can establish.
 | Port 2942 in use by something else | Another telemetry client is not the problem (several are allowed); another program is | `npm run telemetry -- status` and your usual port tools |
 
 `npm run doctor` reports both switches, whether the launcher must be restarted, and the state of the port.
+
+The dashboard's own health strip (see [Live dashboard](#live-dashboard)) lists what is missing with its fix:
+
+| What the strip says | What to do |
+| --- | --- |
+| "Télémétrie du jeu: Désactivée côté serveur" | `npm run telemetry -- enable`, then add `--apply` and restart Claude Desktop |
+| "Journal du jeu (Game.log): Non configuré" | Add `SC_INSTALL_DIR` (the folder that contains `Game.log`) to the `env` of the `sc-copilot` entry, restart Claude Desktop. Without it: no connection state, no trade journal, no ledger |
+| "Journal du jeu: illisible" | `Game.log` only exists after a first launch of the game; otherwise fix the folder. `npm run doctor` for the full check |
+| "Jeu lancé sans la télémétrie" | Quit the RSI Launcher completely (tray icon too), start it again, start the game. `npm run telemetry -- status` shows both switches |
+| "Sessions enregistrées: À régler" | Read-only: update the server. Write failed: free disk space or fix the rights of the data folder (or `SCMCP_SESSIONS_FILE`) |
 
 ## Credits
 

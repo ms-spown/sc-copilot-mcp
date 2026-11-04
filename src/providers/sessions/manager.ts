@@ -166,6 +166,8 @@ export class SessionManager {
   private planTripKey: string | null = null;
   /** The last change reached the disk (false: it is only in memory, see the store's notice). */
   private lastSaved = true;
+  /** When this process last wrote the session file (memory only, for the dashboard's health strip). */
+  private savedAtMs: number | null = null;
   private ticking: Promise<void> | null = null;
   private lastTickAt = 0;
   private lastPokeAt = -Infinity;
@@ -401,6 +403,7 @@ export class SessionManager {
       return { changed: r.changed, result: r };
     });
     this.lastSaved = written;
+    if (written) this.savedAtMs = this.now();
     return result;
   }
 
@@ -538,6 +541,11 @@ export class SessionManager {
   private freshBalance(): number | null {
     const b = this.lastBalance;
     return b && this.now() - b.at <= BALANCE_FRESH_MS ? b.value : null;
+  }
+
+  /** Epoch ms of the last write this process made, or null when it has made none yet. */
+  get lastSavedAtMs(): number | null {
+    return this.savedAtMs;
   }
 
   /** Whether the last change reached the disk, and the store's own sentence when something is wrong. */

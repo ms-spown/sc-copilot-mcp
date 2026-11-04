@@ -10,6 +10,8 @@ import { parsePlan } from "../dashboard/plan.js";
 import { ledgerLogFrom, LedgerService } from "../dashboard/ledgerService.js";
 import { DashboardService } from "../dashboard/service.js";
 import type { GameLog } from "../providers/gamelog/reader.js";
+import { sessionsSwitchedOff } from "../providers/sessions/config.js";
+import { logConfigFacts } from "../dashboard/health.js";
 import { ShipSpecsResolver } from "../dashboard/specs.js";
 import type { HttpClient } from "../core/http.js";
 import { loadPlaces } from "../providers/uex/places.js";
@@ -113,6 +115,11 @@ export function dashboardTools(
     // The trade journal of the same log reads (providers/gamelog/trade.ts), for the commerce card.
     ledger ? () => ledger.trades() : undefined,
     sessions,
+    // How the log and the sessions are configured, for the health strip (names and a fixed label, never a path).
+    {
+      log: logConfigFacts(gameLog),
+      sessionsOff: sessionsSwitchedOff(),
+    },
   );
   const enabled = () => telemetry?.enabled === true;
 

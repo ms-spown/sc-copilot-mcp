@@ -59,7 +59,22 @@ describe("Feature: the page itself is safe and self-contained", () => {
     expect(has(/\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|importScripts)\b/)).toBe(
       false,
     );
-    expect(has(/localStorage|sessionStorage|indexedDB|document\.cookie/)).toBe(false);
+    expect(has(/sessionStorage|indexedDB|document\.cookie/)).toBe(false);
+  });
+
+  it("Given the page, Then the browser's storage is touched in two places only: one flag, read and written inside try/catch", () => {
+    // The health strip remembers that its legend was read (best effort, never needed). See healthPanel.test.ts for the
+    // behaviour; this pins the surface so that nothing else can start writing to the storage unnoticed.
+    const script = viewScript();
+    expect(script.match(/localStorage/g)).toHaveLength(2);
+    expect(script).toMatch(/win\.localStorage\.getItem\(key\)/);
+    expect(script).toMatch(/win\.localStorage\.setItem\(key, value\)/);
+    // ... and it writes ONE key. A second `storageSet("x", ...)` or `api.set("x", ...)` anywhere must fail here.
+    expect(script.match(/storageSet\(/g)).toHaveLength(1); // the definition: nothing calls it by name
+    expect(script.match(/\bset: storageSet\b/g)).toHaveLength(1);
+    expect(script.match(/api\.set\(/g)).toHaveLength(1);
+    expect(script).toMatch(/const KEY = "sc-copilot-help-seen"/);
+    expect(script).toMatch(/api\.set\(KEY, "1"\)/);
   });
 
   it("Given the script, Then no text can become markup: only textContent, no eval", () => {
