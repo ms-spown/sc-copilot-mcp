@@ -437,6 +437,34 @@ describe("Feature: every page says the same true thing about what is saved", () 
     }
   });
 
+  it("Given the block to paste, Then its last rule says the Raccourcis zone is a display and its keys are unverified defaults", () => {
+    const expected = [
+      [
+        "docs/USING_WITH_CLAUDE.md",
+        ' 9. The "Raccourcis" zone of the dashboard is a display: call nothing for it.',
+        "never checked in the game on 4.10",
+        'never "press X"',
+        "that the player changed a key, that it is dark, or that the lights are on or off",
+      ],
+      [
+        "docs/USING_WITH_CLAUDE.fr.md",
+        " 9. La zone « Raccourcis » du tableau de bord est un affichage : n'appelez rien pour elle.",
+        "jamais vérifiées en jeu sur la 4.10",
+        "jamais « appuyez sur X »",
+        "que le joueur a changé une touche, qu'il fait sombre, ni que les phares sont allumés ou éteints",
+      ],
+    ] as const;
+    for (const [file, ...phrases] of expected) {
+      const text = flat(read(file));
+      const fence = text.indexOf("```");
+      const block = text.slice(fence, text.indexOf("```", fence + 3));
+      // the rule is the LAST of the block to paste, not a sentence of the explanation under it
+      const rule9 = block.slice(block.indexOf(" 9. "));
+      for (const phrase of phrases) expect(rule9, file).toContain(phrase.trim());
+      expect(block.indexOf(" 9. "), file).toBeGreaterThan(block.indexOf(" 8. "));
+    }
+  });
+
   it("Given the stored shapes of the session file, Then every key is covered by the sentence or allowed with a reason", () => {
     const keys = new Set([
       ...Object.keys(SessionSchema.shape),

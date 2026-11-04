@@ -6,6 +6,17 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-11-04
+
+This release is the dashboard's UX pass, almost all in the page and its tests: **a ship loss is now the gravest event of the page** (a
+"fatal" tone, a short "Et maintenant", the cautions folded), the **"Ask Claude" button follows the situation**, the **route cards
+put the estimate, your measured mean and the ratio side by side**, and **full screen adapts to where you are** (a flight order and a
+commerce order, a button "Ordre", no jumping). No tool was added, no input schema, host, variable or stored file changed; the one
+change on the server side is that the calibration groups of `sc_session_stats` gained four balance-gated mean amounts. The block to paste into
+a Claude project gains a rule 9 about the "Raccourcis" zone (what Claude may say about a key): **recopy the block of
+`docs/USING_WITH_CLAUDE.md` (or `.fr.md`) if you want it**; the earlier rules are unchanged. Still **not verified: the dashboard
+itself inside Claude Desktop, the four default keys (X, H, J, T) in the game, and `is_landed` when the game omits it in a hangar.**
+
 ### Changed (dashboard, UX wave C: full screen has a flight order and a commerce order)
 - **The order of the sections in full screen follows the situation (audit recommendation R3).** In flight (stream live, ship
   section "not landed": in the air, quantum mode or a jump) the page shows the verdict and the alerts, the ship banner, the line
@@ -90,6 +101,23 @@ versions follow [Semantic Versioning](https://semver.org/).
 - The calibration groups of `sc_session_stats` (`route_reliability`) and of the dashboard poll carry four new mean amounts
   (`gross_avg_auec`, `gross_planned_avg_auec`, `net_avg_auec`, `net_planned_avg_auec`), derived from the balance like the ratios
   and withheld with them.
+
+### Fixed (two unstable tests)
+- A replay sweep (`src/testing/replay/audit.ts`) and the hidden-amounts test of the trade journal looked for a figure such as 700 or
+  900 as a plain substring, which also sits in the milliseconds of a clock time (`12:32:46.700Z`), so about one CI run in a thousand
+  failed by chance. A figure is now a whole number not preceded by a digit or a dot (an amount in JSON still matches; every character of
+  an amount is escaped in the pattern). Tests only: no product code changed.
+
+### Changed (documentation)
+- **Rule 9 of the block to paste into Claude** (`docs/USING_WITH_CLAUDE.md` and `.fr.md`): the "Raccourcis" zone is a display, Claude
+  calls nothing for it; a key it shows is a default taken from public sources and never checked in the game on 4.10 ("the default key is
+  X, check your Keybindings", never "press X"); nothing about a rebound key, the dark or the lights may be deduced from it.
+- The internal budget of the dashboard page is 392 kB (the page measures 373.0 kB built); `SECURITY.md` no longer says "about 319 kB".
+  The layout of `CLAUDE.md` and `docs/ARCHITECTURE.md` names `layoutOrder.ts`, `calibrationPanel.ts` and the shortcuts modules; the
+  README (en, fr) describes the loss tone, the contextual button and the two full-screen orders, `docs/CAPABILITIES.md` adds the
+  route cards and the fixed messages of the button; `SECURITY.md` has a row for those messages; `docs/ROADMAP.md` is brought up to
+  2.7.0. The example key in the shortcuts section under the block was "R", which the zone never shows (it shows X, H, J and T): it
+  is now "X". A test (`docsAccuracy`) pins rule 9 in both languages.
 
 ## [2.6.0] - 2026-11-04
 

@@ -18,11 +18,12 @@ What the manual already carries, so the pasted block need not repeat it: rule 1 
 (untrusted text), rule 4 (errors), the trade tool choice in rule 3 (the price, planner, history, market status,
 refining, item, marketplace, journal and saved-session tools), the core of rules 6 and 7 (no safety claim, a hidden balance respected, connection state, no second dashboard, never `sc_live_poll`, `sc_live_mark` or `sc_trade_suggest`) and the way to accompany.
 What it does not carry, and the block must keep: the other lines of rule 3 (ships, patches, missions, wiki, game
-log), rule 5, and the details of rules 6 and 7 (what the stream lacks, on foot or seated, the dashboard balance).
+log), rule 5, the details of rules 6 and 7 (what the stream lacks, on foot or seated, the dashboard balance) and rule 9
+(the shortcuts zone: the server's manual says nothing of it).
 
 - Claude Desktop or claude.ai, canary question 1 fails: keep the whole block.
 - Claude Code, or a client where canary question 1 passes: you may drop rules 1, 2 and 4 and the trade lines of
-  rule 3. If you use live telemetry, keep rules 6 and 7.
+  rule 3. If you use live telemetry, keep rules 6, 7 and 9.
 
 ```
 You have the Star Citizen tools from the "sc-copilot" server. Rules:
@@ -124,16 +125,21 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    no figure below 2 runs, never carried from one commodity to another, no cause claimed).
    If the player wants to keep or share a session, sc_session_debrief gives a short report (Markdown by default, about 28,000
    characters at most, older trips cut with a count): with include_balance=false it has no aUEC amount and says so; otherwise it holds the amounts, but the balances at the start and the end stay out unless the player asks (include_start_balance): say what it holds before handing it over, it is meant to be shared. Give it as it is, add no figure, and say the player downloads the full Markdown and CSV from the session bar of the dashboard.
+9. The "Raccourcis" zone of the dashboard is a display: call nothing for it. If the player asks you about a key, these are
+   defaults taken from public sources, never checked in the game on 4.10: say "the default key is X, check your
+   Keybindings", never "press X". Never deduce from it that the player changed a key, that it is dark, or that the
+   lights are on or off.
 ```
 
 ## The dashboard's shortcuts zone: what Claude should and should not say about keys
 
 The live dashboard has a "Raccourcis" zone (see [TELEMETRY.md](TELEMETRY.md#context-shortcuts)) that reminds the player of
 actions that fit the moment (gear out, on foot, hostile lock...). It is a display, built in the page: Claude does not
-call anything for it. If the player asks Claude about a key, treat the keys it shows as defaults taken from public
-sources and never checked in the game on 4.10: say "the default is R, check it in your Keybindings", never "press R".
-The page does not know whether the player rebound a key, whether it is dark, or whether the lights are on (the stream
-cannot tell off from not reported), and Claude should not claim any of them from it either.
+call anything for it. This is rule 9 of the block above, with its reasons. If the player asks Claude about a key, treat the
+keys it shows as defaults taken from public sources and never checked in the game on 4.10 (only four are shown: X, H, J and
+T, each labelled "défaut"): say "the default key is X, check it in your Keybindings", never "press X". The page does not know
+whether the player rebound a key, whether it is dark, or whether the lights are on (the stream cannot tell off from not
+reported), and Claude should not claim any of them from it either.
 
 ## Canary test: are the server instructions honoured?
 

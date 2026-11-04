@@ -227,8 +227,9 @@ short "Read this first" block).
 - **A live dashboard (optional).** With telemetry on, Claude Desktop can show a live dashboard in the conversation
   (`sc_live_dashboard`): the ship, three dials, the alerts of the moment (shields cut in quantum mode, power lost, hostile
   lock...) and a one-line verdict in a compact view; a cockpit with dials, a compass, a power diagram, warning lights,
-  weapons, pilot vitals and one chronology in full screen. Only the most recent dashboard calls the game's data; the
-  older ones follow it. Every value shows its age, nothing is invented, the aUEC balance is shown unless you hide it ("Masquer le solde", or `SC_BALANCE=hidden` to start hidden),
+  weapons, pilot vitals and one chronology in full screen, whose sections come in a flight order (instruments first)
+  or a commerce order (the commerce card first) according to where you are, with a button "Ordre" to force one. Only
+  the most recent dashboard calls the game's data; the older ones follow it. Every value shows its age, nothing is invented, the aUEC balance is shown unless you hide it ("Masquer le solde", or `SC_BALANCE=hidden` to start hidden),
   and nothing is sent to the game. The speed dial uses the ship's limits from the Star Citizen Wiki when exactly one
   sheet fits the ship (labelled "wiki"), and says so when it keeps its own scale. Claude Code does not display it. See
   [docs/TELEMETRY.md](docs/TELEMETRY.md#live-dashboard). **Unverified:** the layout was tested in a browser against
@@ -240,8 +241,9 @@ short "Read this first" block).
   claims the lights are off or that it is dark, and a display only. See
   [docs/TELEMETRY.md](docs/TELEMETRY.md#context-shortcuts).
 - **Ship losses (in that dashboard, needs the game log).** When your ship is destroyed with you aboard, the alerts say
-  so, the commerce card marks the run it interrupted, and the saved session and its report keep it, with the cargo
-  presumed lost (SCU and aUEC paid, not the value). The value lost, the insurance and the killer are not in
+  so as the gravest event of the page (a "fatal" tone for 3 minutes, then the normal order), the commerce card marks the
+  run it interrupted, the "Demander à Claude" zone offers an "Analyser la perte" button, and the saved session and its report keep it,
+  with the cargo presumed lost (SCU and aUEC paid, not the value). The value lost, the insurance and the killer are not in
   `Game.log` and are shown as "non journalisés". See [docs/CAPABILITIES.md](docs/CAPABILITIES.md).
 - **A transport ledger (optional, needs the game log).** In that dashboard, the contracts of the session with their
   pickup and drop-off steps (when the log carries them: absent from the build 4.10 logs of the reference install) and, once you show the balance, the raw balance change over each completed contract; the

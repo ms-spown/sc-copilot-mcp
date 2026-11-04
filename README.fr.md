@@ -242,7 +242,8 @@ l'activer** : c'est une fonction non documentée du jeu, et le risque est le vô
   de bord en direct dans la conversation (`sc_live_dashboard`) : le vaisseau, trois cadrans, les alertes du moment (boucliers
   coupés en mode quantique, énergie perdue, verrouillage hostile...) et un verdict en une ligne en vue compacte ; un
   cockpit avec cadrans, boussole, schéma d'alimentation, voyants, armes, constantes du pilote et une seule
-  chronologie en plein écran. Seul le tableau de bord le plus récent interroge les données ; les plus anciens le
+  chronologie en plein écran, dont les sections se présentent dans un ordre « vol » (les instruments d'abord) ou
+  « commerce » (la carte de commerce d'abord) selon l'endroit où vous êtes, avec un bouton « Ordre » pour en imposer un. Seul le tableau de bord le plus récent interroge les données ; les plus anciens le
   suivent. Chaque valeur indique son âge, rien n'est inventé, le solde aUEC est affiché sauf si vous le masquez (« Masquer le solde », ou `SC_BALANCE=hidden` pour démarrer masqué),
   et rien n'est envoyé au jeu. Le cadran de vitesse utilise les limites du vaisseau prises sur le Star Citizen Wiki
   quand une seule fiche correspond au vaisseau (étiquetée « wiki »), et le dit quand il garde sa propre échelle. Claude
@@ -256,8 +257,9 @@ l'activer** : c'est une fonction non documentée du jeu, et le risque est le vô
   4.10 ; les autres actions n'ont pas de touche. Elle ne prétend jamais que les phares sont éteints ni qu'il fait
   sombre, et c'est un simple affichage. Voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#raccourcis-selon-le-contexte).
 - **Pertes de vaisseau (dans ce tableau de bord, nécessite le journal du jeu).** Quand votre vaisseau est détruit avec
-  vous à bord, les alertes le disent, la carte de commerce marque le trajet qu'il a interrompu, et la session enregistrée
-  et son rapport le gardent, avec la cargaison présumée perdue (SCU et aUEC payés, pas la valeur). La valeur perdue,
+  vous à bord, les alertes le disent comme l'événement le plus grave de la page (un ton « fatal » pendant 3 minutes, puis
+  l'ordre habituel), la carte de commerce marque le trajet qu'il a interrompu, la zone « Demander à Claude » propose
+  le bouton « Analyser la perte », et la session enregistrée et son rapport le gardent, avec la cargaison présumée perdue (SCU et aUEC payés, pas la valeur). La valeur perdue,
   l'assurance et le responsable ne sont pas dans `Game.log` et sont affichés « non journalisés ». Voir
   [docs/CAPABILITIES.md](docs/CAPABILITIES.md).
 - **Un carnet de transport (optionnel, il faut le journal de jeu).** Dans ce tableau de bord, les contrats de la
