@@ -501,7 +501,7 @@ seule ligne tant qu'un contrat est en cours (« Contrat en cours : titre, étape
   `mesure_brute` avec `mixed_flows_possible: true`, et ce n'est pas un bénéfice net. Si la télémétrie ne tournait pas
   ou avait une coupure à l'un des deux instants, le gain est inconnu (jamais zéro). Quand deux contrats se
   chevauchent, chaque chiffre contient aussi la récompense de l'autre et le signale ; le total compte le
-  chevauchement une seule fois. Le rythme (aUEC par heure) demande au moins deux minutes de contrat. Le tableau de
+  chevauchement une seule fois. Le rythme (aUEC par heure) demande au moins deux minutes de contrat. L'historique des
   bord doit être ouvert (la télémétrie ne lit que pendant qu'une View interroge) pour que l'historique existe.
 - **Prévu et récompense mesurée.** Si Claude a passé un `plan` de route à l'ouverture du tableau de bord, le panneau
   place le profit prévu (avant frais) à côté de la « récompense mesurée » du dernier contrat terminé : c'est la
@@ -647,13 +647,136 @@ calme ; avant le premier clic, rien n'est demandé.
 - **Non vérifié.** La limite de temps de l'hôte pour un appel d'outil (la page attend 32 s), le comportement des
   boutons dans Claude Desktop et la qualité de l'heuristique face à la piraterie réelle.
 
+## Sessions enregistrées
+
+Le tableau de bord fonctionne **par session**, et une session est enregistrée. Une session est une période de jeu :
+quand elle a commencé, le solde à son début et à sa dernière observation, les trajets faits et ce qu'ils ont rapporté,
+le temps pendant lequel le jeu a été vu en marche. Vous la retrouvez depuis n'importe quelle conversation, après un
+plantage du jeu et après un redémarrage du PC.
+
+- **Pourquoi un fichier côté serveur et pas le `localStorage` du navigateur.** Le `localStorage` appartient à une origine
+  de page : chaque conversation a la sienne, donc deux conversations ne verraient pas la même session ; l'hôte peut le
+  vider à tout moment ; et les outils du modèle ne peuvent pas le lire. Un petit fichier JSON écrit par ce serveur est
+  partagé par toutes les conversations et tous les processus du serveur, survit à l'hôte, et il est lu de la même façon
+  par les outils et par le tableau de bord. La page ne garde rien dans le stockage du navigateur.
+- **Où.** `sessions.json` dans le dossier de données de l'utilisateur (Windows : `%LOCALAPPDATA%\sc-copilot-mcp\data`).
+  `SCMCP_SESSIONS_FILE` le déplace ; `SCMCP_DATA_DIR` déplace le dossier.
+- **Quand il existe.** Seulement avec `SC_TELEMETRY=on`. Télémétrie désactivée, rien n'est créé, lu ni surveillé.
+  `SC_SESSIONS=off` (ou `0`, `false`, `no`) désactive les sessions tout en gardant la télémétrie : aucun fichier n'est
+  créé ni lu, et les outils de session et la barre disparaissent.
+- **Pour l'effacer.** Arrêtez Claude Desktop (ou mettez `SC_SESSIONS=off`), puis supprimez `sessions.json`. Les fichiers à
+  côté (`sessions.json.corrupt-...`, `.bak-...`) sont des copies gardées quand un fichier était illisible ; supprimez-les
+  aussi si vous le souhaitez. Le fichier est du JSON simple : vous pouvez le lire.
+- **Un changement de comportement assumé.** Le solde de départ ne peut pas être retrouvé dans Game.log : pour le capter,
+  le serveur doit surveiller dès le lancement du jeu. Avec les sessions actives, un petit gestionnaire garde le lecteur
+  de télémétrie en vie **tant que le jeu est supposé tourner** (Game.log a été écrit dans les cinq dernières minutes et
+  n'affiche pas la ligne de fermeture), au lieu de l'arrêter cinq minutes après la dernière requête. Quand le jeu est
+  parti, il cesse de solliciter le lecteur, qui s'éteint alors comme avant. Sans le journal du jeu (`SC_INSTALL_DIR` ou
+  `SC_GAME_LOG_PATH`), le serveur ne **sonde pas** le port sur une minuterie : il n'enregistre que ce qu'un tableau de
+  bord ou un outil demande, et le solde de départ est alors « le premier vu ». Tout reste local et sur option.
+
+### Vie d'une session
+
+- **Elle démarre** quand le jeu est vu en marche et qu'il n'y a pas de session, ou que la dernière est silencieuse
+  depuis plus de 3 heures (`SC_SESSION_GAP_HOURS`, de 0,25 à 48) ; quand vous appuyez sur **Nouvelle session** (ou
+  appelez `sc_session_new`) ; et quand le tableau de bord s'ouvre après une telle coupure (une session vide attend le
+  jeu, et une session vide est renouvelée, jamais empilée).
+- **Elle reprend** quand le jeu est revu dans le délai, que le jeu ait été fermé proprement ou non. La coupure est notée :
+  `game_closed` si le jeu a écrit sa ligne de fermeture, `unclean` s'il n'y a pas de marqueur de fin (plantage,
+  redémarrage du PC, ou serveur arrêté). Rien n'est inventé sur ce qui s'est passé entre-temps.
+- **Elle se termine** quand vous la terminez (**Terminer**, ou `sc_session_end` : elle n'est alors pas reprise, et la
+  suivante démarre quand le jeu est vu repartir à neuf), quand une nouvelle démarre, ou quand le délai est dépassé
+  (close à sa dernière observation).
+- Le temps est compté d'après ce qui a été vu : le **temps actif** est le temps où le jeu a été vu en marche ; une
+  coupure n'ajoute rien.
+
+### Ce qui est enregistré, ce qu'un plantage fait perdre
+
+Enregistré, par session : identifiant et numéro, heures de début et de fin, le solde au début (avec sa fiabilité :
+`game_start` quand le serveur a vu le flux commencer, `first_seen` quand il a commencé à surveiller plus tard,
+`new_session`, `late`) et à la dernière observation, la version et le canal du jeu, le temps actif, les coupures, la
+note que vous avez écrite, et les trajets (heure de fin, un libellé, des marchandises et des lieux nettoyés et bornés,
+SCU, coût, revenu, marge brute ou résultat mesuré, profit prévu). **Jamais enregistré :** les trames, les lignes brutes
+du journal, votre pseudo, votre identifiant de compte, les adresses IP, les GUID de joueurs ou de sessions du jeu, les
+identifiants de mission (la clé d'un trajet est un hachage). Aucune donnée de session n'est jamais envoyée sur un
+réseau, et le suivi des sessions ne fait aucune requête vers aucun hôte.
+
+Chaque changement est écrit aussitôt (un trajet, un solde de départ, une nouvelle session, une coupure) ; la seule chose
+limitée est l'horloge « vu pour la dernière fois », écrite au plus toutes les 15 secondes. Un plantage ou une coupure de
+courant fait donc perdre **au plus les 15 dernières secondes d'horloge**, jamais un trajet déjà écrit. L'écriture passe
+par un fichier temporaire, forcé sur le disque, puis renommé sur le fichier sous un verrou : le fichier est toujours
+l'ancienne version ou la nouvelle. Deux processus du serveur (Claude Desktop peut en lancer deux) lisent le fichier le plus
+récent sous le verrou et y ajoutent : aucun trajet n'est perdu et le temps n'est pas compté deux fois. Un fichier vide,
+qui n'est pas du JSON, trop gros ou d'une autre forme est **mis de côté** (renommé `sessions.json.corrupt-<time>` ; seules les trois
+copies les plus récentes sont gardées, les plus anciennes sont supprimées) et le serveur repart propre ; un fichier d'une **version plus récente** n'est jamais écrit (les
+sessions vivent alors en mémoire seulement et la réponse le dit). La taille est bornée EN OCTETS : le fichier est gardé sous
+environ 3 Mo (le lecteur en accepte jusqu'à 16, donc un fichier écrit par le serveur est toujours relu) ; quand une écriture
+le dépasserait, les **sessions les plus anciennes sont abandonnées** et comptées (`history_trimmed` dans
+`sc_session_stats`), la plus récente jamais ; il y a aussi au plus 200 sessions et 500 trajets par session. Le fichier est
+créé pour le propriétaire seul (mode 0600 ; sous Windows, l'ACL de votre dossier de profil s'applique, c'est elle qui le
+protège). Si le disque refuse une écriture (disque plein, par exemple), le contenu reste en mémoire et remplace l'ancien
+fichier tant qu'aucune écriture ne réussit ; `sc_session_new` et `sc_session_end` le disent alors (`persistence`). Le
+verrou est rafraîchi tant qu'il est tenu, retiré seulement par son propriétaire, et un verrou laissé par un plantage est
+repris après 5 secondes (un changement attend jusqu'à 8 s) ; les fichiers temporaires orphelins de plus d'une minute sont
+balayés. Avant « Nouvelle session », « Terminer » et un arrêt propre, le serveur relit le journal du jeu aussitôt pour
+garder le dernier trajet (un trajet dont le résultat se règle encore est gardé avec un résultat inconnu). Un verrou mort est repris par un
+seul processus à la fois (par un fichier de reprise, sans vérification sur un chemin avant d'agir dessus) : plusieurs vrais
+processus démarrant ensemble sur un verrou mort ne perdent rien. Une cargaison de la carte de commerce qui grandit après
+son enregistrement (une vente tardive) remplace son trajet, elle n'est jamais enregistrée deux fois.
+
+### Trajets, résultats et statistiques
+
+Un trajet est un **contrat terminé** du carnet de transport (son résultat est la variation du solde mesurée autour de
+lui, et reste inconnu si deux contrats se chevauchaient ou si le solde n'a pas été vu) ou une **cargaison
+terminée** de la carte de commerce (son modèle, `src/dashboard/tradeRun.ts`, est l'unique appariement des achats et des
+ventes du journal ; le trajet garde son coût, son chiffre d'affaires, sa **marge brute**, ses frais et son **net**, tels
+que ce modèle les a mesurés ou calculés, et le profit prévu quand le modèle a rattaché le plan à la cargaison). La
+variation du solde d'un contrat qui chevauche une cargaison est écartée des totaux (elle contient déjà les ventes de la
+cargaison), et la session montre le net mesuré et la marge brute séparément. Un trajet n'est enregistré qu'une fois son résultat réglé et n'est jamais recalculé ensuite.
+
+Les chiffres par session : trajets, temps actif, trajets par heure, minutes par trajet (estimation), résultat (sur UNE
+base : la somme du résultat de chaque trajet, qui est son net quand le modèle de commerce en a mesuré ou calculé un et sinon
+la marge brute de sa cargaison, sinon la variation du solde, et cela dit lequel ; le net mesuré et la marge brute sont
+montrés à part, et la variation du solde d'un contrat qui chevauchait une cargaison est écartée pour que les ventes de la
+cargaison soient comptées une fois), résultat par heure (à partir de 10
+minutes de temps actif), meilleur trajet, et efficacité face au plan quand Claude en a passé un avec le tableau de bord.
+Entre sessions : totaux, moyenne par heure, tendance (les dernières sessions face aux précédentes, seuil de 10 %),
+meilleure et moins bonne session, meilleurs trajets et marchandises quand ils sont connus. Un chiffre qu'on ne peut pas
+établir vaut `null`, jamais zéro. Ce sont tous des mesures brutes : le solde bouge aussi avec les achats, les amendes
+et les réparations.
+
+### Dans le tableau de bord et dans les outils
+
+- **La barre** en haut du tableau de bord montre la session (numéro, état, depuis quand, temps actif), puis les chiffres
+  qui comptent d'abord : solde affiché, le résultat, le rythme par heure, les trajets et le temps ; solde masqué, les
+  trajets et le temps. Elle a **Nouvelle session** (deux clics, pour éviter un faux geste), **Sessions** (les sessions
+  passées avec leurs chiffres clés, les statistiques entre sessions, une session en détail, et **Terminer la session**).
+  Deux tableaux de bord de deux conversations montrent la même session, car elle vient du serveur.
+- **À l'ouverture**, le tableau de bord se rattache à la dernière session, sauf coupure de plus que le délai : une
+  nouvelle est alors créée.
+- **Outils** (profil `local` ; les trois premiers aussi dans `trade`) : `sc_session_current` (la session jusqu'ici, le
+  dernier lieu et les dernières marchandises nommés par le journal, les derniers trajets : ce qu'il faut à Claude pour
+  vous accompagner et proposer la prochaine route), `sc_session_list`, `sc_session_stats`, `sc_session_new`,
+  `sc_session_end`. Les deux derniers n'écrivent que le fichier du serveur. Le prompt `trade_copilot` les enchaîne avec les
+  outils de routes UEX.
+- **Confidentialité du solde.** Tout chiffre en aUEC (soldes, résultats, chiffre d'affaires, marge brute, rythmes) est
+  retenu au modèle sauf appel avec `include_balance` (Claude vous demande d'abord), et n'est dessiné dans le tableau de
+  bord, envoyé dans son interrogation et entre tableaux de bord qu'après votre clic sur « Afficher le solde ». Les
+  comptes, les durées et les noms de lieux ne sont pas retenus.
+- **Non vérifié dans le vrai jeu :** toute la fonction a été construite contre de faux jeux et des journaux inventés. La
+  fiabilité du solde de départ, la détection du jeu en marche d'après la date du journal et la reprise après un vrai
+  plantage n'ont pas été observées.
+
 ## Confidentialité
 
 - Le flux est **non chiffré et lisible par n'importe quel programme de votre PC** tant qu'il est actif. Il est lié à
   la boucle locale, il n'est donc pas joignable depuis le réseau.
 - Il contient votre santé, votre vaisseau et votre **solde aUEC**. Il ne contient pas votre position.
 - Ce serveur ne journalise jamais les trames, ne les écrit jamais sur disque et ne les envoie jamais sur un réseau.
-  Ses diagnostics ne contiennent que des numéros de champs.
+  Ses diagnostics ne contiennent que des numéros de champs. La seule chose qu'il écrit à partir de ces données est
+  votre propre fichier de résumés de sessions (voir [Sessions enregistrées](#sessions-enregistrées)) : des résumés qui
+  incluent des soldes, par votre décision explicite, jamais des trames, et aucune donnée de session n'est envoyée sur un réseau.
+  `SC_SESSIONS=off` le désactive.
 - **Les résultats des outils font partie de votre conversation avec Claude**, qui est envoyée à Anthropic. Pour cette
   raison, le solde est retenu sauf si l'outil est appelé avec `include_balance`, et Claude a pour consigne de vous
   demander d'abord. Ce que vous laissez Claude lire est ce qui quitte votre machine.

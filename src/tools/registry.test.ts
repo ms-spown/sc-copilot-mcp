@@ -74,7 +74,11 @@ describe("tool surface (non-regression)", () => {
   it("keeps every tool name and input schema as frozen in the golden file", () => {
     // Telemetry on (it never connects without a call) and a client that renders Views: the optional tools are
     // part of the frozen surface, and so is the _meta of the tools that open or serve a View.
-    const listed = registryWith({ telemetry: createTelemetry({ enabled: true }) })
+    // A stub manager makes the five session tools part of the frozen surface (they are listed only when it is enabled).
+    const listed = registryWith({
+      telemetry: createTelemetry({ enabled: true }),
+      sessions: { enabled: true } as never,
+    })
       .list({ ui: true })
       .map(({ name, inputSchema, _meta }) => ({ name, inputSchema, ...(_meta ? { _meta } : {}) }))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -121,9 +125,9 @@ describe("scoping: SCMCP_TOOLS, SCMCP_PROFILES", () => {
       .sort();
 
   it("advertises everything by default, except the optional tools whose feature is off", () => {
-    // Live telemetry is off by default: sc_live_state, sc_live_events and the three dashboard tools are not
-    // listed (sc_live_status is).
-    expect(names({})).toHaveLength(allTools(clientsWith()).length - 6);
+    // Live telemetry is off by default: sc_live_state, sc_live_events, the four dashboard tools and the five
+    // session tools are not listed (sc_live_status is).
+    expect(names({})).toHaveLength(allTools(clientsWith()).length - 11);
     expect(names({})).toContain("sc_live_status");
     expect(names({})).not.toContain("sc_live_state");
   });

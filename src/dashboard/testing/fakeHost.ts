@@ -38,6 +38,8 @@ export interface HostLog {
   marks: string[];
   /** The arguments of every sc_trade_suggest call, in order. */
   suggests: any[];
+  /** Calls of tools other than the poll and the marker (the session tools), in order. */
+  tools: { name: string; args: any }[];
 }
 
 const LIGHT_VARS: Record<string, string> = {
@@ -76,9 +78,14 @@ export function createFakeHost(options: HostOptions) {
     modeRequests: [],
     marks: [],
     suggests: [],
+    tools: [],
   };
   /** Set by a test to change what the next polls answer. */
-  const overrides: { poll?: (base: any) => any } = {};
+  const overrides: {
+    poll?: (base: any, includeBalance: boolean) => any;
+    /** Answers a call of any other tool with its structured content (an Error is an isError answer). */
+    tool?: (name: string, args: any) => Record<string, unknown> | Error;
+  } = {};
 
   const hostContext = (theme: "light" | "dark") => ({
     theme,
@@ -141,7 +148,7 @@ export function createFakeHost(options: HostOptions) {
                     ...(a.have && typeof a.have === "object" ? { have: a.have } : {}),
                   },
             );
-            const structuredContent = overrides.poll ? overrides.poll(base) : base;
+            const structuredContent = overrides.poll ? overrides.poll(base, include) : base;
             log.polls.push({
               includeBalance: include,
               at: nowMs,
@@ -174,6 +181,17 @@ export function createFakeHost(options: HostOptions) {
                 structuredContent: out,
               });
             });
+          } else if (overrides.tool && String(params.name).startsWith("sc_session_")) {
+            log.tools.push({ name: params.name, args: params.arguments ?? {} });
+            const out = overrides.tool(params.name, params.arguments ?? {});
+            if (out instanceof Error) {
+              respond(id, { content: [{ type: "text", text: out.message }], isError: true });
+            } else {
+              respond(id, {
+                content: [{ type: "text", text: "ok" }],
+                structuredContent: out,
+              });
+            }
           } else {
             deliver({ jsonrpc: "2.0", id, error: { code: -32602, message: "unknown tool" } });
           }

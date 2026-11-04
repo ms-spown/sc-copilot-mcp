@@ -480,7 +480,7 @@ runs ("Contrat en cours : title, step 2/3").
   `mixed_flows_possible: true`; it is not a net profit. If the telemetry was not running or had a gap at one of the
   two instants, the gain is unknown (never zero). When two contracts overlap, each figure also holds the other's
   reward and is flagged; the total counts the overlap once. The pace (aUEC per hour) needs at least two minutes of
-  contract time. The dashboard has to be open (the telemetry reads only while a View polls) for the history to exist.
+  contract time. The balance history is in memory: with saved sessions on, the server keeps the reader alive while the game runs (not only while a View polls) and saves the settled result of each trip in the session file; without them, the dashboard has to be open for the history to exist.
 - **Planned and measured contract reward.** If Claude passed a route `plan` when it opened the dashboard, the panel puts
   the planned profit (before fees) next to the "récompense mesurée" of the latest completed contract: the balance change
   over that contract, so the reward minus what the contract cost, not a profit. It cannot check that the contract is the
@@ -618,13 +618,124 @@ nothing is asked.
 - **Not verified.** The host's own time limit for a tool call (the page waits 32 s), the behaviour of the buttons in
   Claude Desktop, and the quality of the heuristic against real piracy.
 
+## Saved sessions
+
+The dashboard works **by session**, and a session is saved. A session is a play period: when it began, the balance at
+its start and at its last sighting, the trips made and what they earned, the time the game was seen running. You find
+it again from any conversation, after a game crash, and after a reboot of the PC.
+
+- **Why a file on the server and not the browser's `localStorage`.** `localStorage` belongs to one page origin: each
+  conversation has its own, so two chats would not see the same session; it can be cleared by the host at any time; and
+  the model's tools cannot read it. A small JSON file written by this server is shared by every conversation and every
+  server process, survives the host, and is read by the tools and the dashboard alike. The page keeps nothing in the
+  browser's storage.
+- **Where.** `sessions.json` in the per-user data folder (Windows: `%LOCALAPPDATA%\sc-copilot-mcp\data`).
+  `SCMCP_SESSIONS_FILE` moves it; `SCMCP_DATA_DIR` moves the folder.
+- **When it exists.** Only with `SC_TELEMETRY=on`. With telemetry off nothing is created, read or watched.
+  `SC_SESSIONS=off` (or `0`, `false`, `no`) turns the sessions off while telemetry stays on: no file is created or read,
+  and the session tools and the bar disappear.
+- **To wipe it.** Stop Claude Desktop (or set `SC_SESSIONS=off`), then delete `sessions.json`. Files next to it
+  (`sessions.json.corrupt-...`, `.bak-...`) are copies kept when a file was unreadable; delete them too if you want.
+  The file is plain JSON: you can read it.
+- **A deliberate change of behaviour.** The starting balance cannot be recovered from Game.log, so to capture it the
+  server must be watching when the game starts. With sessions on, a small manager keeps the telemetry reader alive
+  **while the game is believed to be running** (Game.log was written in the last five minutes and does not show the
+  quit line), instead of stopping it five minutes after the last request. When the game is gone it stops touching the
+  reader, which then idles out as before. Without the game log (`SC_INSTALL_DIR` or `SC_GAME_LOG_PATH`) the server does
+  **not** probe the port on a timer: it only records what a dashboard or a tool asks for, and the start balance is then
+  "the first one seen". Everything stays local and opt-in.
+
+### Life of a session
+
+- **It starts** when the game is seen running and there is no session, or the last one has been quiet for more than
+  3 hours (`SC_SESSION_GAP_HOURS`, 0.25 to 48); when you press **Nouvelle session** (or call `sc_session_new`); and when
+  the dashboard is opened after such a break (an empty session waits for the game, and an empty one is renewed, never
+  piled up).
+- **It resumes** when the game is seen again within the gap, whether the game was closed cleanly or not. The break is
+  written down: `game_closed` if the game wrote its quit line, `unclean` if there was no end marker (crash, reboot of the
+  PC, or this server was not running). Nothing is invented about what happened meanwhile.
+- **It ends** when you end it (**Terminer**, or `sc_session_end`: it is then not resumed, and the next session starts
+  when the game is seen starting afresh), when a new one starts, or when the gap is exceeded (closed at its last
+  sighting).
+- Time is counted from what was seen: **active time** is the time the game was seen running; a gap adds nothing.
+
+### What is stored, what a crash loses
+
+Stored, per session: id and number, start and end time, the balance at the start (with how reliable it is:
+`game_start` when the server saw the stream begin, `first_seen` when it started watching later, `new_session`,
+`late`) and at the last sighting, the game version and channel, active time, the breaks, the note you wrote, and the
+trips (end time, a label and goods and places cleaned and capped, SCU, cost, revenue, gross margin or measured result,
+planned profit). **Never stored:** frames, raw log lines, your handle, your account id, IP addresses, GUIDs of players or
+game sessions, mission identifiers (a trip's key is a hash). No session data is ever sent over a network, and session tracking makes no request to any host.
+
+Every change is written at once (a trip, a start balance, a new session, a break); the only thing throttled is the
+"last seen" clock, written at most every 15 seconds. A crash or a power cut therefore loses **at most the last 15
+seconds of clock**, never a trip that was written. Writes go to a temporary file, are flushed, then renamed over the
+file under a lock file, so the file is always the old version or the new one. Two server processes (Claude Desktop can
+start two) read the freshest file under the lock and add to it: no trip is lost and time is not counted twice. A file
+that is empty, not JSON, too big or of another shape is **set aside** (renamed `sessions.json.corrupt-<time>`; only the three newest such copies are kept, older ones are deleted)
+and the server starts clean; a file from a **newer version** is never written (sessions then live in memory only
+and the answer says so). The size is bounded IN BYTES: the file is kept under about 3 MB (the reader accepts up to 16 MB, so a file the server
+wrote is always read back); when a write would pass it the **oldest sessions are dropped** and counted
+(`history_trimmed` in `sc_session_stats`), the newest is never dropped; there are also at most 200 sessions and 500 trips
+per session. The file is created for the owner only (mode 0600; on Windows the ACL of your user profile folder applies,
+which is what protects it). If the disk refuses a write (for example when it is full), the content stays in memory and is
+used in place of the older file until a write succeeds; `sc_session_new` and `sc_session_end` then say so (`persistence`).
+The lock is touched while held, removed only by its owner, and a lock left by a crash is taken over after 5 seconds
+(a change waits up to 8 s); orphan temporary files older than a minute are swept. Before "Nouvelle session", "Terminer"
+and a clean shutdown the server re-reads the game log at once so that the last trip is kept (a trip whose result is still
+settling is kept with an unknown result). A dead lock is taken over by one process at a time (through a takeover file,
+with no check on a path before acting on it): several real processes starting together on a dead lock lose nothing. A run
+of the commerce card that grows after it was saved (a late sale) replaces its trip, it is never stored twice.
+
+### Trips, results and statistics
+
+A trip is a **completed contract** of the transport ledger (its result is the balance change measured around it, and
+stays unknown when two contracts overlapped or the balance was not seen) or a **completed trade run** of the commerce card
+(its model, `src/dashboard/tradeRun.ts`, is the one pairing of the journal's purchases and sales; the trip keeps its
+cost, turnover, **gross margin**, fees and **net**, each as that model measured or computed it, and the plan's profit
+when the model matched the plan to the run). A contract's balance change that overlaps a trade run is left out of the
+totals (it already holds the run's sales), and the session shows the measured net and the gross margin separately. A trip is stored only once its result is
+settled and is never recomputed later.
+
+The figures per session: trips, active time, trips per hour, minutes per trip (an estimate), result (on ONE basis: the sum of each
+trip's result, which is its net when the commerce model measured or computed one and else the gross margin of its cargo run,
+else the change of the balance, and it says which; the measured net and the gross margin are shown apart, and a contract's
+balance change that overlapped a cargo run is left out so that the run's sales are counted once), result per hour (from 10 minutes of active
+time), best trip, and efficiency against the plan when Claude passed one with the dashboard. Across sessions: totals,
+average per hour, trend (the last sessions against the ones before, 10 percent threshold), best and worst session, best
+routes and goods when known. A figure that cannot be worked out is `null`, never zero. All of them are raw measures: the
+balance also moves with purchases, fines and repairs.
+
+### In the dashboard and in the tools
+
+- **The bar** at the top of the dashboard shows the session (number, state, since when, active time), then the figures
+  that matter first: with the balance shown, the result, the rate per hour, the trips and the time; with the balance
+  hidden, the trips and the time. It has **Nouvelle session** (two clicks, to avoid a slip), **Sessions** (past
+  sessions with their key numbers, statistics across them, one session in detail, and **Terminer la session**). Two
+  dashboards of two conversations show the same session, because it comes from the server.
+- **When it opens**, the dashboard attaches to the last session unless there was a break of more than the gap, in which
+  case a new one is made.
+- **Tools** (`local` profile; the first three also in `trade`): `sc_session_current` (the session so far, the last place
+  and goods the log named, the latest trips: what Claude needs to accompany you and propose the next run),
+  `sc_session_list`, `sc_session_stats`, `sc_session_new`, `sc_session_end`. The last two write only the server's own file.
+  The prompt `trade_copilot` chains them with the UEX route tools.
+- **Balance privacy.** Every aUEC figure (balances, results, turnover, gross margin, rates) is withheld from the model
+  unless the tool is called with `include_balance` (Claude asks you first), and is drawn in the dashboard, and
+  sent in its poll and between dashboards, only after you click "Afficher le solde". Counts, times and place names are
+  not withheld.
+- **Not verified in the real game:** the whole feature was built against fake games and invented logs. The start balance
+  quality, the game-running detection from the log's date and the resume after a real crash have not been observed.
+
 ## Privacy
 
 - The stream is **unencrypted and readable by any program on your PC** while it is on. It is bound to loopback, so
   it is not reachable from the network.
 - It contains your health, your ship and your **aUEC balance**. It does not contain your position.
 - This server never logs frames, never writes them to disk and never sends them over a network. Its diagnostics
-  contain field numbers only.
+  contain field numbers only. The one thing it writes from this data is your own session summary file
+  (see [Saved sessions](#saved-sessions)): summaries including balances, by your explicit decision, never frames, and
+  no session data is sent over a network. `SC_SESSIONS=off` turns it off.
 - **Tool results are part of your conversation with Claude**, which goes to Anthropic. For that reason the balance
   is withheld unless the tool is called with `include_balance`, and Claude is told to ask you first. What you let
   Claude read is what leaves your machine.

@@ -550,6 +550,30 @@ describe("Feature: the tool, as the registry lists and runs it", () => {
     expect(plan).toHaveBeenCalledTimes(1);
   });
 
+  it("Given an option is applied, Then the plan reaches the saved session too (it marks the trip that follows)", async () => {
+    const setPlan = vi.fn();
+    const tools = dashboardTools(
+      {
+        telemetry: telemetry(true),
+        uexClient: empty,
+        scwClient: empty,
+        sessions: { setPlan } as any,
+      },
+      { plan: vi.fn(async () => fakeResult()), now: () => 5_000_000 },
+    );
+    const registry = createRegistry(tools);
+    const found: any = await registry.call("sc_trade_suggest", {
+      action: "search",
+      cargo_scu: 100,
+      use_ship: false,
+    });
+    const id = found.structuredContent.options[0].id;
+    const applied: any = await registry.call("sc_trade_suggest", { action: "apply", id });
+    expect(applied.structuredContent.state).toBe("applied");
+    expect(setPlan).toHaveBeenCalledTimes(1);
+    expect(setPlan.mock.calls[0]![0]).toMatchObject({ commodity: "Laranite 0", scu: 100 });
+  });
+
   it("Given an invalid input, Then it is an error result and the planner is not asked", async () => {
     const { registry, plan } = build(true);
     const r: any = await registry.call("sc_trade_suggest", { action: "search", budget: "lots" });

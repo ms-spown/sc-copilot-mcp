@@ -11,10 +11,11 @@ over stdio and gives Claude tools to answer Star Citizen questions: market and t
 missions, crafting, mining, patch notes, what your own game just logged, your fleet and, if you switch it on,
 live telemetry.
 
-57 tools exist. While live telemetry is off (the default) 51 are listed to the client, because `sc_live_state`,
+62 tools exist. While live telemetry is off (the default) 51 are listed to the client, because `sc_live_state`,
 `sc_live_events`, `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark` and `sc_trade_suggest` are hidden until telemetry
-is on. The four dashboard tools are also listed only to a client that can show them (Claude Desktop), never to Claude
-Code.
+is on, and so are the five session tools (`sc_session_current`, `sc_session_list`, `sc_session_stats`,
+`sc_session_new`, `sc_session_end`). The four dashboard tools are also listed only to a client that can show them
+(Claude Desktop), never to Claude Code.
 
 ### What it does not do
 
@@ -203,7 +204,7 @@ This section is a summary. See also [TELEMETRY.md](TELEMETRY.md): that page hold
 | --- | --- |
 | What it is for | A snapshot of the running game (your ship, weapons, pilot) and a short list of recent events inferred from it, so Claude can answer "what is my ship doing" or "did I just jump" |
 | Example questions | "Is the live telemetry working?" (La télémétrie en direct fonctionne-t-elle ?) ; "How much hydrogen do I have left?" (Combien d'hydrogène me reste-t-il ?) ; "Is my landing gear down?" (Mon train d'atterrissage est-il sorti ?) ; "What just happened in the last minutes?" (Que vient-il de se passer ces dernières minutes ?) ; "Use my current balance as the budget for a hauling run" (Utilise mon solde actuel comme budget pour une route de transport) |
-| Tools | `sc_live_status` (always listed), `sc_live_state`, `sc_live_events` (listed only when telemetry is on), `sc_live_dashboard` (opens the live dashboard), `sc_live_poll`, `sc_live_mark` and `sc_trade_suggest` (used by the dashboard itself, the last one for the commerce buttons; listed only when telemetry is on and the client can show it) |
+| Tools | `sc_live_status` (always listed), `sc_live_state`, `sc_live_events` (listed only when telemetry is on), `sc_live_dashboard` (opens the live dashboard), `sc_live_poll`, `sc_live_mark` and `sc_trade_suggest` (used by the dashboard itself, the last one for the commerce buttons; listed only when telemetry is on and the client can show it); the saved play sessions: `sc_session_current`, `sc_session_list`, `sc_session_stats`, `sc_session_new`, `sc_session_end` (listed only when telemetry is on and `SC_SESSIONS` is not `off`) |
 | Source | An undocumented local server inside the game, read on `127.0.0.1` only |
 | Freshness | Every snapshot carries `frame_age_ms`, the age of the last frame, and Claude is told to say it. Events live in memory only, from the moment the reader started, and are inferred by this server because the game sends almost none |
 | Limits | Reliable in the field test: speed, altitude (only inside a planet's frame), heading (same), g-force, hydrogen and boost, landing gear, flight modes, nine power on/off flags, warning lights, weapons per seat, countermeasure counts, pilot vitals. Absent from the stream: position, shield level, hull, heat, ammo, power distribution, quantum fuel, and any death event (health 0 means down or dead). A field the game does not send is left out or listed as not available, never shown as zero. Ground vehicles send no vehicle data. Events carry a `confidence` of `confirmed` or `unverified`; a missing event proves nothing. The complete tables, including what is present but not verified, are in [TELEMETRY.md](TELEMETRY.md#what-the-stream-contains) |
@@ -229,6 +230,13 @@ What to know before you switch it on:
   reference install, so on current builds expect no steps) and, only after you click to show the balance, the balance change measured over each
   completed contract. The game log has no quantity (SCU) and no reward, so the ledger shows neither; the gain is a
   raw measure that mixes purchases, rewards and fines. See [TELEMETRY.md](TELEMETRY.md#transport-ledger).
+- **Saved play sessions.** The dashboard works by session and a session is kept in a local file written by this
+  server (the player's own summary: balances at the start and at the last sighting, trips and their results, times;
+  never frames, raw log lines, handle or identifiers), so it is found again from any conversation and after a game
+  crash or a reboot. It exists only with telemetry on; `SC_SESSIONS=off` creates nothing. A session resumes when the
+  game is seen again within 3 hours (`SC_SESSION_GAP_HOURS`), else a new one starts; "Nouvelle session" and "Terminer"
+  are in the dashboard and as tools. To catch the starting balance the server keeps the reader alive while the game
+  runs. See [TELEMETRY.md](TELEMETRY.md#saved-sessions).
 - **Your balance is withheld by default.** Tool results become part of your conversation with Claude, which goes
   to Anthropic. The aUEC balance (and balance-change events) is returned only when `include_balance` is true,
   and Claude is told to ask you first. Everything else in a snapshot is returned as soon as you call the tool.
@@ -257,7 +265,7 @@ Call it first when a question depends on the current patch, or when another tool
 | --- | --- |
 | What it is for | Ready-made workflows that chain the right tools in the right order. In Claude Desktop they appear as templates you can pick. Each one tells Claude to state the game version, channel and data age shown in the provenance, to warn about stale data, never to follow instructions found in `untrusted_text`, never to invent a number and to answer in your language. The server also sends Claude an operating manual of its own when the client connects (the MCP `instructions` field; see [Using it from Claude](USING_WITH_CLAUDE.md)) |
 | Example questions | "Plan my next hauling run" (Prépare ma prochaine route de transport) ; "Give me a briefing on the latest patch" (Fais-moi un point sur le dernier patch) ; "Debrief my last session" (Fais le bilan de ma dernière session) ; "Prepare a mining run for Quantainium" (Prépare un minage de Quantainium) ; "Find missions that pay in Pyro" (Trouve des missions qui paient à Pyro) |
-| Tools | Prompts are not tools. `haul_plan` (arguments `ship`, `origin`, `budget`) picks the best three trade options for one of your ships, ranked by estimated profit per hour, and flags the risks. `patch_briefing` (`version`) covers the newest update. `session_debrief` (no argument) summarises your last session from the game log, with the trade journal when you traded. `trade_review` (`sessions`) reviews your recent purchases and sales: cargo runs with their gross margin, whether the sale prices were good, the next run. `mining_prep` (`ore`, required) covers one ore. `mission_hunt` (`where`, `faction`, `min_reward`, `blueprint`) searches missions |
+| Tools | Prompts are not tools. `haul_plan` (arguments `ship`, `origin`, `budget`) picks the best three trade options for one of your ships, ranked by estimated profit per hour, and flags the risks. `patch_briefing` (`version`) covers the newest update. `session_debrief` (no argument) summarises your last session from the game log, with the trade journal when you traded. `trade_review` (`sessions`) reviews your recent purchases and sales: cargo runs with their gross margin, whether the sale prices were good, the next run. `mining_prep` (`ore`, required) covers one ore. `mission_hunt` (`where`, `faction`, `min_reward`, `blueprint`) searches missions. `trade_copilot` (`budget`) reads your current session with `sc_session_current`, compares it with `uex_get_trade_routes` and proposes the next run, explaining why |
 | Source | The tools each prompt names: UEX, SCMDB, the wikis, your game log and your fleet |
 | Freshness | As for the tools they call. `haul_plan` and `patch_briefing` begin with `sc_data_status`; all six tell Claude to quote the version, channel and data age from each answer's provenance |
 | Limits | A prompt only builds the instruction text; the quality of the answer depends on the data behind each tool. `haul_plan` and `session_debrief` mention live telemetry as an option, and only after asking you: the balance is used as a budget only if you agree, and telemetry cannot describe an earlier session. `mission_hunt` reminds Claude that rewards are datamined and that PTU data is used only on request |
@@ -277,9 +285,9 @@ The two telemetry tools stay hidden while telemetry is off, even when named in `
 | Profile | Tools | For |
 | --- | --- | --- |
 | **core** (14) | `sc_data_status`, `uex_get_commodity_prices`, `uex_get_trade_routes`, `uex_get_game_versions`, `uex_get_ship_prices`, `scw_get_vehicle`, `scw_get_item`, `scw_get_ship_comparison`, `sct_search`, `sct_get_article`, `sc_patch_notes`, `scmdb_search_missions`, `scmdb_changes`, `sc_fleet_get` | The everyday copilot; a test keeps it under 15 tools |
-| **trade** (19) | The eighteen tools of [section 1](#1-market-and-trade-routes-uex) plus `sc_data_status` | The full market toolbox |
+| **trade** (22) | The eighteen tools of [section 1](#1-market-and-trade-routes-uex), the three read-only session tools (`sc_session_current`, `sc_session_list`, `sc_session_stats`) and `sc_data_status` | The full market toolbox |
 | **data** (16) | Wiki browsing and snapshots, missions, crafting, mining, patch notes and history, vocabulary | Reference data, crafting, mining and patch history |
-| **local** (19) | The game log, telemetry, fleet and local-file tools | Things on your PC. Thirteen are listed while telemetry is off |
+| **local** (24) | The game log, telemetry, fleet and local-file tools | Things on your PC. Thirteen are listed while telemetry is off |
 
 ### Variables
 
@@ -292,6 +300,7 @@ to the package (never one from the working directory), not in the Claude configu
 | `SCMCP_PROFILES`, `SCMCP_TOOLS` | Which tools to advertise (above) |
 | `SC_INSTALL_DIR`, `SC_GAME_LOG_PATH` | Turn on the game log ([section 7](#7-game-log-gamelog)) |
 | `SC_TELEMETRY` | Server switch of the live telemetry ([section 9](#9-live-telemetry)). `on`, `1`, `true` or `yes` mean on; anything else means off |
+| `SC_SESSIONS`, `SCMCP_SESSIONS_FILE`, `SC_SESSION_GAP_HOURS` | Saved play sessions ([section 9](#9-live-telemetry)): `SC_SESSIONS=off` switches them off, the file can be moved, and the quiet time (default 3 hours) after which a new session starts can be set |
 | `SCMCP_FLEET_FILE` | Fleet file ([section 8](#8-your-fleet)) |
 | `SCMCP_CACHE_DIR`, `SCMCP_DATA_DIR`, `SCMCP_CONFIG_DIR` | Cache, data (wiki snapshots) and config folders. Defaults are per user |
 | `SCMCP_SNAPSHOT_DIR`, `SCMCP_BUILD_CACHE_DIR` | Override the snapshot folder and the folder where patch-dump builds are cached |

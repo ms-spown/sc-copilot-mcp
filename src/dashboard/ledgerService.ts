@@ -183,6 +183,18 @@ export class LedgerService {
     return this.current.status === "ok" ? this.journal : undefined;
   }
 
+  /**
+   * Looks at the log NOW, whatever the refresh interval, and resolves when that look is done (the session manager, before
+   * it closes a session). Still one `stat`, and a read only if the file's date changed.
+   */
+  async refreshNow(): Promise<void> {
+    if (!this.source || !this.source.configured) return;
+    if (this.inFlight) await this.inFlight;
+    this.lastLookAt = null;
+    this.maybeRefresh();
+    if (this.inFlight) await this.inFlight;
+  }
+
   /** Resolves when the refresh in flight (if any) is done. For tests. */
   async settled(): Promise<void> {
     if (this.inFlight) await this.inFlight;
