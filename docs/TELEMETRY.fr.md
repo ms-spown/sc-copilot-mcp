@@ -958,8 +958,9 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   dit que les montants sont retenus ; le meilleur trajet, l'efficacité face au plan, la fiabilité des routes et les méthodes des
   trajets sont retenus avec eux. Le solde de départ et celui du dernier relevé n'y figurent jamais, même avec les montants, sauf si
   vous activez aussi **Soldes de départ et final** (`include_start_balance` ; à chaque usage, jamais retenu, ignoré sans
-  `include_balance`). Aucun pseudo, identifiant de compte, adresse, GUID, ligne brute du journal ni chemin n'y figure ; les
-  libellés et votre note sont nettoyés à nouveau, bornés et échappés (ni HTML, ni lien, ni tableau cassé). Une longue session
+  `include_balance`). Le serveur n'enregistre aucun pseudo, identifiant de compte, adresse, GUID, ligne brute du journal ni
+  chemin, mais les libellés des trajets et votre note sont vos mots et ceux du jeu : ils sont nettoyés à nouveau, bornés et
+  échappés (ni HTML, ni lien, ni tableau cassé), **mais pas contrôlés sur ce qu'ils disent** : relisez le bilan avant de le partager. Une longue session
   reste bornée : le tableau Markdown montre les 100 derniers trajets et dit combien il en laisse de côté ; le CSV garde jusqu'à
   500 lignes. Le texte est construit à la demande, gardé dans la page le temps de le regarder, et jeté quand vous masquez le
   solde, quittez la session ou fermez le menu ; il n'est jamais enregistré ni envoyé ailleurs par le serveur.

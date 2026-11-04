@@ -192,7 +192,7 @@ describe("Feature: the report reaches the model whole, and only with the amounts
     expect(text).not.toContain("[truncated");
     expect(md).toContain("# Bilan de la session 1");
     expect(md).toContain("## Lecture");
-    expect(md).toContain("Aucun pseudo, identifiant de compte");
+    expect(md).toContain("Le serveur n’enregistre aucun pseudo, identifiant de compte");
     expect(md.length).toBeGreaterThan(1500);
     expect(data.data.money_included).toBe(false);
     expect(data.data.balances_included).toBe(false);

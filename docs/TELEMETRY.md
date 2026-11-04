@@ -900,9 +900,10 @@ compares what the plan promised with what you really got (`src/providers/session
   dashboard's choice) or `include_balance` is true. Otherwise it is the non-monetary report (counts, durations, SCU, labels) and
   says amounts are withheld; the best trip, the plan efficiency, the route reliability and the trips' methods are withheld with
   them. The balance at the start and at the last sighting never appear, even with amounts, unless you also switch on
-  **Soldes de départ et final** (`include_start_balance`; per use, never remembered, ignored without `include_balance`). No
-  handle, account id, address, GUID, raw log line or path is in it; the labels and your note are cleaned again, bounded and
-  escaped (no HTML, no link, no table break). A long session stays bounded: the Markdown table shows the newest 100 trips and says
+  **Soldes de départ et final** (`include_start_balance`; per use, never remembered, ignored without `include_balance`). The
+  server stores no handle, account id, address, GUID, raw log line or path, but the labels of the trips and your note are your
+  own and the game's own wording: they are cleaned again, bounded and escaped (no HTML, no link, no table break), **not
+  checked for what they say**, so read the report before you share it. A long session stays bounded: the Markdown table shows the newest 100 trips and says
   how many it left out; the CSV keeps up to 500 rows. The text is built on request, held in the page only while you look at it, and is
   dropped when you hide the balance, leave the session or close the menu; it is never stored and never sent anywhere by the server.
 - **Balance privacy.** Every aUEC figure (balances, results, turnover, gross margin, rates) is withheld from the model

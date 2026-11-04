@@ -24,8 +24,8 @@ import { LABEL_MAX, MAX_TRIPS, NOTE_MAX, PLACE_MAX, type Session, type Trip } fr
  * route reliability (its confidence comes from the spread of the ratios). The start and last balance never appear unless
  * `includeBalances` is set too (a separate, explicit choice: the export is meant to be shared).
  *
- * No handle, account id, address, GUID, raw log line or path exists in the sessions (see types.ts); the free text that does
- * (labels, places, the note) is cleaned again here (invisible and direction-changing characters out, one line, bounded),
+ * The server stores no handle, account id, address, GUID, raw log line or path (see types.ts); but the free text it does keep
+ * (labels, places, the note) is the player's or the game's own wording, so its CONTENT is not policed: it is cleaned again here (invisible and direction-changing characters out, one line, bounded),
  * escaped for Markdown and neutralised for spreadsheets (CSV injection). Honest by design: an unknown figure stays
  * unknown (never 0), an estimate says so, and nothing is extrapolated (no trend).
  */
@@ -92,20 +92,23 @@ export function debriefText(value: unknown, max: number): string {
 }
 
 /**
- * Free text for a Markdown line or table cell: HTML and Markdown syntax made literal. `<`, `>` and `&` become entities
- * (no HTML can be written), the characters that open emphasis, code, links, strikethrough, headings or a table cell are
+ * Free text for a Markdown line or table cell: HTML and Markdown syntax made literal. `<` and `>` become entities, and so
+ * does an `&` that could start one (no HTML can be written), the characters that open emphasis, code, links, strikethrough, headings or a table cell are
  * backslash-escaped, and the three shapes that renderers turn into links on their own (a scheme, an address, www.) are
  * broken. The text is already one line (see debriefText).
  */
 export function markdownText(value: unknown, max: number): string {
-  return debriefText(value, max)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/[\\`*_[\]|~#]/g, (c) => "\\" + c)
-    .replace(/:(?=\/\/)/g, "\\:")
-    .replace(/@/g, "\\@")
-    .replace(/\bwww\./gi, (m) => m.slice(0, 3) + "\\.");
+  return (
+    debriefText(value, max)
+      // Only an ampersand that could open an entity needs escaping ("R&R" stays as written for a plain-text reader).
+      .replace(/&(?=#?\w+;)/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/[\\`*_[\]|~#]/g, (c) => "\\" + c)
+      .replace(/:(?=\/\/)/g, "\\:")
+      .replace(/@/g, "\\@")
+      .replace(/\bwww\./gi, (m) => m.slice(0, 3) + "\\.")
+  );
 }
 
 /**
@@ -902,7 +905,7 @@ export function buildDebrief(sessions: readonly Session[], options: DebriefOptio
       "- Ce bilan ne contient aucun montant en aUEC : afficher le solde dans le tableau de bord, ou autoriser include_balance, pour l’obtenir avec les chiffres d’argent.",
     );
   md.push(
-    "- Aucun pseudo, identifiant de compte, adresse, ligne brute du journal ni chemin de fichier n’y figure.",
+    "- Le serveur n’enregistre aucun pseudo, identifiant de compte, adresse, GUID, ligne brute du journal ni chemin ; les libellés des trajets et la note du joueur sont repris tels que saisis, après nettoyage, et leur contenu n’est pas contrôlé : relis-les avant de partager.",
   );
 
   const truncated = shown.length < allRows.length || csvRows.length < allRows.length;

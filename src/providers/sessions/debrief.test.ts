@@ -328,19 +328,23 @@ describe("Feature: privacy, the matrix of the balance and the start balance", ()
 });
 
 describe("Feature: nothing identifying is exported", () => {
-  it("Given text that looks like a handle, an address, a path or a log line, Then only the cleaned label survives, bounded", () => {
+  it("Given free text, Then it is cleaned, capped and escaped, and the footer says its content is not checked", () => {
     const s = richSession(1, {
       note: "x".repeat(2000),
       game_version: "4.10 ".repeat(40),
     });
-    s.trips[0]!.label = "C:\\Users\\Marc\\AppData\\Game.log " + "A".repeat(500);
+    s.trips[0]!.label = "C:\\Users\\Someone\\AppData\\Game.log\u202e " + "A".repeat(500);
     const d = buildDebrief([s], { includeMoney: true });
     // the schema caps the note (500) and the label (80); the formatter caps again on its own
     expect(d.markdown.length).toBeLessThan(30_000);
     expect(d.markdown.split("\n").every((l) => l.length < 3000)).toBe(true);
     expect(d.markdown).not.toContain("A".repeat(81));
     expect(d.markdown).not.toContain("x".repeat(501));
-    expect(d.markdown).toContain("Aucun pseudo, identifiant de compte");
+    expect(d.markdown).not.toContain("\u202e");
+    // escaped, not removed: the server does not police the content, and the footer says so
+    expect(d.markdown).toContain("C:\\\\Users\\\\Someone");
+    expect(d.markdown).toContain("Le serveur n’enregistre aucun pseudo, identifiant de compte");
+    expect(d.markdown).toContain("leur contenu n’est pas contrôlé : relis-les avant de partager");
   });
 });
 
@@ -468,7 +472,8 @@ describe("Feature: hostile text, the Markdown", () => {
 
   it("Given the helpers, Then they behave on their own", () => {
     expect(markdownText("a|b", 80)).toBe("a\\|b");
-    expect(markdownText("<b>&", 80)).toBe("&lt;b&gt;&amp;");
+    expect(markdownText("<b>&", 80)).toBe("&lt;b&gt;&");
+    expect(markdownText("R&R &amp; &#65;", 80)).toBe("R&R &amp;amp; &amp;\\#65;");
     expect(markdownText(42 as unknown, 80)).toBe("");
     expect(debriefText("a\u202Eb\nc", 80)).toBe("ab c");
     expect(debriefText("😀😀😀", 2)).toBe("😀😀");
