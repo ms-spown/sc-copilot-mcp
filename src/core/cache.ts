@@ -67,6 +67,7 @@ let pruned = false;
 export function configureDiskCache(dir: string | null | undefined): void {
   diskDir = dir;
   pruned = false;
+  writesSincePrune = 0;
 }
 
 function diskPath(key: string): string | null {
@@ -75,9 +76,17 @@ function diskPath(key: string): string | null {
   return path.join(dir, `${createHash("sha256").update(key).digest("hex")}.json`);
 }
 
+/** The folder is checked at the first write of a run, then again every this many writes (a long-lived server keeps writing). */
+const PRUNE_EVERY_WRITES = 50;
+let writesSincePrune = 0;
+let pruning = false;
+
 async function pruneDisk(dir: string): Promise<void> {
-  if (pruned) return;
+  writesSincePrune += 1;
+  if (pruning || (pruned && writesSincePrune < PRUNE_EVERY_WRITES)) return;
   pruned = true;
+  pruning = true;
+  writesSincePrune = 0;
   try {
     const names = (await fs.readdir(dir)).filter((n) => n.endsWith(".json"));
     if (names.length <= MAX_DISK_FILES) return;
@@ -90,6 +99,8 @@ async function pruneDisk(dir: string): Promise<void> {
     }
   } catch {
     // Pruning is housekeeping; never let it break a request.
+  } finally {
+    pruning = false;
   }
 }
 

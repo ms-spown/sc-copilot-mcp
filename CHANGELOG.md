@@ -82,7 +82,8 @@ versions follow [Semantic Versioning](https://semver.org/).
   shared by its retries; it fails as a timeout and a good disk copy may answer.
 - **Growth is bounded (audit F4).** Parsed SCMDB files: 16 at most and 160 MB of JSON text, least recently used first. Memory
   cache: 96 MB of JSON text besides the 300 entries. SCMDB cache folder: the files of the newest 3 commits. Dump cache
-  folder: 60 files and 400 MB. Only files named like the server's own are pruned.
+  folder: 60 files and 400 MB. The HTTP disk cache is checked every 50 writes, not only at the first one of a run. Only
+  files named like the server's own are pruned.
 - A symbolic link or junction named `Game.log` is followed only to a file that is itself called `*.log` (audit F7).
   `SAFE_NAME` of SCMDB no longer accepts `.` and `..` as a file name (audit F13).
 

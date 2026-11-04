@@ -49,6 +49,13 @@ const NOT_OURS = [
   "other.json",
   "sessions.json.backup",
   "fleet.json",
+  // Not the stamps the store writes (an ISO time with ":" and "." turned into "-"): somebody else's names.
+  "sessions.json.bak-final",
+  "sessions.json.bak-2026",
+  "sessions.json.corrupt-old",
+  "sessions.json.bak-2026-11-04T08-00-00-000Z.txt",
+  "sessions.json.v1.bak.old",
+  "sessions.json.12.tmp.keep",
 ];
 
 describe("Feature: planWipe lists what belongs to the session file", () => {
@@ -157,6 +164,23 @@ describe("Feature: it refuses a path that does not look like the sessions file",
     const plan = await planWipe(path.join(dir, "mine.json"));
     expect(plan.refused).toBeUndefined();
     expect(plan.files.map((f) => f.name).sort()).toEqual(["mine.json", "mine.json.v1.bak"]);
+  });
+
+  it("Given a custom name whose main file is gone, Then it is refused (nothing shows the name is a sessions file)", async () => {
+    write("report.json.bak-final");
+    write("report.json.v1.bak");
+    const plan = await planWipe(path.join(dir, "report.json"));
+    expect(plan.refused).toMatch(/not there|no such|cannot be recognised|does not exist/i);
+    expect(plan.files).toEqual([]);
+    expect(left()).toEqual(["report.json.bak-final", "report.json.v1.bak"]);
+  });
+
+  it("Given the default name and only copies left, Then the copies are wiped", async () => {
+    write("sessions.json.v1.bak");
+    write("sessions.json.bak-2026-11-04T08-00-00-000Z");
+    const plan = await planWipe(file);
+    expect(plan.refused).toBeUndefined();
+    expect(plan.files).toHaveLength(2);
   });
 
   it("Given the default name with damaged content, Then it is still wiped (a corrupt copy is the case for wiping)", async () => {

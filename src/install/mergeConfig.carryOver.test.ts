@@ -83,6 +83,38 @@ describe("Feature: planMerge keeps every env key of the existing entry", () => {
   });
 });
 
+describe("Feature: a kept log file setting that would hide a newly passed log folder is said", () => {
+  // The server prefers SC_GAME_LOG_PATH (a file) to SC_INSTALL_DIR (a folder): the kept one wins.
+  const withFile = JSON.stringify({
+    mcpServers: {
+      [NAME]: { command: "node", args: ["a"], env: { SC_GAME_LOG_PATH: "D:\\old\\Game.log" } },
+    },
+  });
+  const asked: ServerEntry = { ...fresh, env: { SC_INSTALL_DIR: "E:\\New\\LIVE" } };
+
+  it("Given a kept SC_GAME_LOG_PATH and a new --install-dir, Then the plan warns, by name and without values", () => {
+    const plan = planMerge(withFile, NAME, asked, DEFAULTS);
+    expect(plan.warnings).toHaveLength(1);
+    expect(plan.warnings[0]).toMatch(/SC_GAME_LOG_PATH.*SC_INSTALL_DIR/);
+    const shown = describePlan(plan, NAME);
+    expect(shown).toContain(plan.warnings[0]);
+    expect(shown).not.toContain("D:\\\\old"); // the kept value stays hidden
+  });
+
+  it("Given both asked on the command line, Then there is nothing to warn about", () => {
+    const both: ServerEntry = {
+      ...fresh,
+      env: { SC_INSTALL_DIR: "E:\\New\\LIVE", SC_GAME_LOG_PATH: "E:\\New\\LIVE\\Game.log" },
+    };
+    expect(planMerge(withFile, NAME, both, DEFAULTS).warnings).toEqual([]);
+  });
+
+  it("Given no log setting asked, Then there is no warning", () => {
+    expect(planMerge(withFile, NAME, fresh, DEFAULTS).warnings).toEqual([]);
+    expect(planMerge(installed, NAME, fresh, DEFAULTS).warnings).toEqual([]);
+  });
+});
+
 describe("Feature: the preview names the kept keys and never shows their values", () => {
   const shown = describePlan(planMerge(installed, NAME, fresh, DEFAULTS), NAME);
 

@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cacheStats,
   clearCache,
@@ -24,6 +27,27 @@ beforeEach(() => {
   clearCache();
   configureDiskCache(null);
   configureMemoryCache(undefined);
+});
+
+describe("Feature: the HTTP disk cache is pruned all along the life of the server, not once", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-diskprune-"));
+    configureDiskCache(dir);
+  });
+  afterEach(() => {
+    configureDiskCache(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("Given 700 different questions in one run, Then the folder never holds much more than its limit of 400 files", async () => {
+    const c = client(10);
+    for (let i = 0; i < 700; i++) await fetchWithCache(c, `/question-${i}`);
+    // Pruned every 50 writes down to 350: at most 400 + 50 files between two prunings.
+    const files = fs.readdirSync(dir).filter((n) => n.endsWith(".json"));
+    expect(files.length).toBeLessThanOrEqual(450);
+    expect(files.length).toBeGreaterThan(300); // not emptied either
+  });
 });
 
 describe("Feature: a byte budget on the memory cache", () => {

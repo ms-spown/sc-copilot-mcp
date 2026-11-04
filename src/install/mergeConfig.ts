@@ -26,6 +26,8 @@ export interface MergePlan {
   otherServers: number;
   /** Names (never values) of the env keys of the existing entry that are kept as they are. */
   keptEnvKeys: string[];
+  /** Things worth knowing before writing (names only, never a value). */
+  warnings: string[];
 }
 
 export class ConfigError extends Error {}
@@ -98,6 +100,16 @@ export function planMerge(
   for (const [key, value] of Object.entries(defaults)) if (!(key in env)) env[key] = value;
   for (const [key, value] of Object.entries(entry.env)) env[key] = value;
   const keptEnvKeys = Object.keys(previousEnv).filter((k) => !(k in entry.env));
+  // The server reads SC_GAME_LOG_PATH (a file) before SC_INSTALL_DIR (a folder): a kept file setting hides a folder
+  // the caller has just passed.
+  const warnings =
+    "SC_INSTALL_DIR" in entry.env &&
+    !("SC_GAME_LOG_PATH" in entry.env) &&
+    keptEnvKeys.includes("SC_GAME_LOG_PATH")
+      ? [
+          "SC_GAME_LOG_PATH is kept from the existing entry and takes precedence over the SC_INSTALL_DIR you passed, so the log folder does not change. Pass --game-log too, or edit that key by hand.",
+        ]
+      : [];
   const finalEntry: ServerEntry = { ...entry, env };
 
   const merged = { ...config, mcpServers: { ...existing, [name]: finalEntry } };
@@ -115,6 +127,7 @@ export function planMerge(
     text: action === "unchanged" ? null : mergedText(rawConfig, name, finalEntry, merged),
     otherServers: Object.keys(existing).filter((k) => k !== name).length,
     keptEnvKeys,
+    warnings,
   };
 }
 
@@ -292,6 +305,7 @@ export function describePlan(plan: MergePlan, name: string): string {
     ...(plan.keptEnvKeys.length
       ? [`Env keys of the existing entry kept as they are: ${plan.keptEnvKeys.join(", ")}`]
       : []),
+    ...plan.warnings.map((w) => `Warning: ${w}`),
     "",
     "Entry that would be written:",
     ...JSON.stringify({ [name]: shownEntry }, null, 2)

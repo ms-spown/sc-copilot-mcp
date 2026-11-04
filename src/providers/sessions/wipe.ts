@@ -34,7 +34,8 @@ export interface WipePlan {
   refused?: string;
 }
 
-const STAMP = "[0-9A-Za-z-]{1,40}";
+/** The time the store puts in a copy's name: an ISO time with ":" and "." turned into "-" (2026-11-04T08-00-00-000Z). */
+const STAMP = "\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}-\\d{3}Z";
 
 /** Which kind of leftover `name` is for the session file called `base`, or null when it is none of them. */
 function kindOf(name: string, base: string): WipeKind | null {
@@ -45,7 +46,7 @@ function kindOf(name: string, base: string): WipeKind | null {
   if (new RegExp(`^\\.bak-${STAMP}$`).test(rest)) return "backup";
   if (new RegExp(`^\\.corrupt-${STAMP}$`).test(rest)) return "corrupt";
   if (rest === ".lock") return "lock";
-  if (/^\.\d{1,10}(\.[0-9a-f]{1,16})?\.tmp$/.test(rest)) return "tmp";
+  if (/^\.\d{1,10}(\.[0-9a-f]{8})?\.tmp$/.test(rest)) return "tmp";
   return null;
 }
 
@@ -89,6 +90,11 @@ export async function planWipe(file: string, deps: { now?: () => number } = {}):
   }
   // The default name is ours by definition, even if its content is damaged (that is a case for wiping). A custom
   // name (SCMCP_SESSIONS_FILE) must hold what the store writes, or the variable points at someone else's file.
+  if (!mainStat && base !== DEFAULT_NAME) {
+    return refuse(
+      `${base} is not there, and nothing else shows that this name belongs to the sessions file, so no copy next to it was touched. Check SCMCP_SESSIONS_FILE.`,
+    );
+  }
   if (mainStat && base !== DEFAULT_NAME) {
     let ok = false;
     if (mainStat.size <= MAX_LOOK_BYTES) {

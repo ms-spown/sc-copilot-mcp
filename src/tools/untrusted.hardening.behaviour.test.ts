@@ -427,8 +427,9 @@ describe("Guard: text from the local Game.log and the user's dataset files is fe
     }
   });
 
-  it("Given a dataset file whose names carry a payload, Then the local dataset tools are untrusted_text", async () => {
-    // The tools read SCMCP_GAME_DATA_DIR through the provider; the declaration is what this checks.
+  it("The local dataset tools are declared untrusted_text (declaration only: nothing is planted)", async () => {
+    // GAME_DATA_DIR is read from the environment when the provider module loads, so a test cannot point it at a fixture
+    // folder; the declaration is all this can check.
     for (const name of ["sc_local_datasets", "sc_search_local", "sc_read_local_collection"]) {
       expect(CATALOG[name].trust, name).toBe("untrusted_text");
     }

@@ -180,7 +180,7 @@ export function createGuardedClient(options: GuardedClientOptions): AxiosInstanc
     // timeout without a response, which the cache treats as an outage and never retries.
     if (config.__deadline?.aborted) {
       throw new AxiosError(
-        `Request exceeded its ${Math.round(deadlineMs / 1000)} s total deadline`,
+        `Request exceeded its ${Math.round(deadlineMs / 100) / 10} s total deadline`,
         AxiosError.ECONNABORTED,
         config,
         error.request,
