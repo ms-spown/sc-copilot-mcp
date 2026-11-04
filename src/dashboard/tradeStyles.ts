@@ -100,6 +100,13 @@ export const TRADE_CSS = `
 .tr-more { padding: var(--sp-3) var(--sp-4); background: var(--sc-bg3); border-radius: var(--r-m); }
 .tr-more-sum { cursor: pointer; color: var(--sc-text2); font-size: var(--fs-s); }
 .tr-more-sum:focus-visible { outline: 2px solid var(--sc-ring); outline-offset: 2px; }
+/* the last run known outside the session: muted and folded, so that it never reads as a result of the session */
+.tr-last { padding: var(--sp-2) var(--sp-4); border: 1px dashed var(--sc-border); border-radius: var(--r-m); }
+.tr-last-sum { cursor: pointer; color: var(--sc-text2); font-size: var(--fs-s); }
+.tr-last-sum:focus-visible { outline: 2px solid var(--sc-ring); outline-offset: 2px; }
+.tr-last-body { display: flex; flex-direction: column; gap: var(--sp-1); color: var(--sc-text2); font-size: var(--fs-s); }
+.tr-last-body p { margin: var(--sp-2) 0 0; }
+.tr-line[data-past="1"] { background: transparent; color: var(--sc-text3); font-weight: 400; border: 1px dashed var(--sc-border); }
 .tr-assumptions, .tr-history { margin: 0; padding-left: 18px; color: var(--sc-text2); font-size: var(--fs-s); }
 .tr-more-body .sub-title:first-child { margin-top: var(--sp-3); }
 [data-grey="1"] .trade { opacity: 0.5; filter: grayscale(1); }

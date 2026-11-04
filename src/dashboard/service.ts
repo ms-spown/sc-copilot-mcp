@@ -1,6 +1,7 @@
 import type { ConnectionInfo } from "../providers/gamelog/connectionState.js";
 import type { SessionManager } from "../providers/sessions/manager.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
+import { buildAccountBalance } from "./accountBalance.js";
 import { POLL_CACHE_MS, POLL_EVENT_COUNT } from "./constants.js";
 import { buildHealth, type HealthStatic } from "./health.js";
 import { buildLedgerPayload, EMPTY_LEDGER, type PlanForLedger } from "./ledger.js";
@@ -166,6 +167,16 @@ export class DashboardService {
     const sessions = this.sessions?.enabled
       ? await this.sessions.bar(includeBalance).catch(() => undefined)
       : undefined;
+    // The account reminder is an aUEC figure: built ONLY for the answer that asked for the balance. A failure leaves it out.
+    const account = includeBalance
+      ? buildAccountBalance({
+          status,
+          snapshot,
+          saved: await this.savedBalance(),
+          connection,
+          nowMs,
+        })
+      : undefined;
     // What is wired, from facts already in hand: the hint the telemetry service holds, the connection tracker's answer
     // (null: the log cannot be followed) and the session bar. No read of its own.
     const health = this.health
@@ -188,6 +199,7 @@ export class DashboardService {
       ledger,
       ...(connection ? { connection } : {}),
       ...(sessions ? { sessions } : {}),
+      ...(account ? { account } : {}),
       events: recent.events,
       lastSeq: recent.last_seq,
       sessionEvents,
@@ -196,6 +208,15 @@ export class DashboardService {
       nowMs,
     });
     return boundPoll(answer);
+  }
+
+  /** The newest balance a saved session holds (the local sessions file); null when sessions are off or it cannot be read. */
+  private async savedBalance() {
+    try {
+      return this.sessions?.enabled ? await this.sessions.savedBalance() : null;
+    } catch {
+      return null;
+    }
   }
 
   /** The ledger as last computed (never waits for the log), with balance figures only when asked. */

@@ -400,8 +400,18 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       },
       "mini",
     );
+    // The account balance, a permanent reminder in the header (viewLogic.accountInfo): the one balance zone of the page. It
+    // carries the show/hide control, so the header holds both, in the compact view and in full screen.
+    R.acct = el("div", "acct");
+    R.acct.setAttribute("role", "group");
+    R.acct.setAttribute("aria-label", "Solde du compte");
+    R.acctLabel = el("span", "acct-label", "Solde");
+    R.acctValue = el("span", "acct-value", "••••••");
+    R.acctNote = el("span", "acct-note", "");
+    R.btnBalance = button("Afficher le solde", () => toggleBalance(), "mini");
+    add(R.acct, R.acctLabel, R.acctValue, R.acctNote, R.btnBalance);
     add(R.topActions, R.age, R.btnAnalyse, R.health.help, R.btnOrder, R.btnMode);
-    add(R.top, R.status, R.verdict, R.topActions);
+    add(R.top, R.status, R.verdict, R.acct, R.topActions);
     R.toastTop = el("div", "toast toast-top", "");
     R.toastTop.setAttribute("aria-hidden", "true");
 
@@ -480,11 +490,6 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     ]);
     R.iDials = el("div", "dials");
     add(R.iDials, R.iSpeed.root, R.iHydrogen.root, R.iHealth.root);
-    R.iBalance = el("div", "balance-row");
-    R.iBalanceLabel = el("span", "balance-label", "Solde");
-    R.iBalanceValue = el("span", "balance-value", "••••••");
-    R.btnBalance = button("Afficher le solde", () => toggleBalance(), "mini");
-    add(R.iBalance, R.iBalanceLabel, R.iBalanceValue, R.btnBalance);
     add(R.inline, R.iDials);
 
     // ---------------------------------------------------------------- cockpit
@@ -995,7 +1000,6 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.ctx,
       R.shortcuts.root,
       R.sessions.root,
-      R.iBalance,
       R.health.root,
       R.ledger.line,
       R.trade.line,
@@ -1172,7 +1176,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     }
     if (info.id !== lastStreamId) {
       lastStreamId = info.id;
-      if (info.id !== "init") setText(R.sr, info.label + (info.detail ? " : " + info.detail : ""));
+      if (info.id !== "init") say(info.label + (info.detail ? " : " + info.detail : ""));
     }
     const needsNotice = !live && info.id !== "init";
     show(R.notice, needsNotice || retired);
@@ -1313,13 +1317,27 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       known: hp.known,
       sub: hp.zero ? "à terre ou mort" : "",
     });
-    const bal = balanceInfo(view.poll);
-    setText(
-      R.iBalanceValue,
-      bal ? L.fmtAuec(bal.uec) + "\u00a0aUEC" : showBalance ? "—" : "••••••",
-    );
-    setText(R.btnBalance, showBalance ? "Masquer le solde" : "Afficher le solde");
     void now;
+  }
+
+  /** The permanent "Solde" reminder of the header and its show/hide control. */
+  let lastAcctKind = "";
+  function renderAccount(now: number) {
+    const info = L.accountInfo(view.poll, showBalance, now);
+    setText(R.acctValue, info.text);
+    // The dots of a hidden balance mean nothing to a screen reader: the note ("masqué") says it.
+    setAttr(R.acctValue, "aria-hidden", info.kind === "hidden" ? "true" : "false");
+    setText(R.acctNote, info.note);
+    show(R.acctNote, info.note !== "");
+    setAttr(R.acct, "data-kind", info.kind);
+    setTip(R.acctNote, info.tip, true);
+    setText(R.btnBalance, showBalance ? "Masquer le solde" : "Afficher le solde");
+    if (info.kind !== lastAcctKind) {
+      // Not at the start ("wait"), not for a change that is only the first answer.
+      const settled = lastAcctKind !== "" && lastAcctKind !== "wait";
+      if (settled && info.kind !== "wait" && info.speak) say(info.speak);
+      lastAcctKind = info.kind;
+    }
   }
 
   function setRow(r: any, text: string, level?: string) {
@@ -1770,7 +1788,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       if (want !== cur) {
         tradeFoldUser = null;
         // Said once, through the page's existing status region (no region added); the button already speaks for a press.
-        if (!byHand) setText(R.sr, "Ordre : " + (want === "flight" ? "vol" : "commerce"));
+        if (!byHand) say("Ordre : " + (want === "flight" ? "vol" : "commerce"));
       }
     }
   }
@@ -1804,7 +1822,18 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     setAttr(R.tfoldBtn, "aria-expanded", open ? "true" : "false");
   }
 
+  // The page's one status region (R.sr). Several things can change in one render: they are said together, never one over the other.
+  let renderSeq = 0;
+  let saidAt = -1;
+  let saidText = "";
+  function say(text: string) {
+    saidText = saidAt === renderSeq ? saidText + ". " + text : text;
+    setText(R.sr, saidText);
+    saidAt = renderSeq;
+  }
+
   function render() {
+    renderSeq++;
     const now = clock();
     // A route plan built from the balance (its quantity and profit give the budget away) does not outlive the balance
     // being shown: hidden again, it is dropped here, whichever way the balance was hidden.
@@ -1841,6 +1870,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const info = renderStatus(now, conds, refusal);
     streamLive = !info.grey;
     syncOrder(info, now);
+    // Said after the stream state and the order, which share the region: a change of the reading's kind is added to them.
+    renderAccount(now);
     renderContext(now);
     R.shortcuts.render(view.poll, {
       grey: info.grey,
@@ -1864,13 +1895,25 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const calibration = showBalance
       ? L.calibrationFromLedger(L, view.poll && view.poll.ledger)
       : null;
+    // The runs of the journal that are not of the play session are kept apart by the card (tradeSplitBySession). The net
+    // taken apart change by change belongs to the card's own run: with an older newest run it is not shown at all.
+    const scope = L.tradeSessionScope(view.poll);
+    const conn = view.poll && view.poll.connection ? view.poll.connection.state : null;
+    const sessionTrade = L.tradeSplitBySession(tradeLedger ? tradeLedger.trade : null, scope, now);
+    const newestIsOlder =
+      !!tradeLedger &&
+      !!tradeLedger.trade &&
+      sessionTrade.past.length > 0 &&
+      sessionTrade.trade.runs[0] !== tradeLedger.trade.runs[0];
+    const decomposition = newestIsOlder ? null : moved.decomposition;
     R.trade.render({
       calibration,
+      scope,
       trade: tradeLedger?.trade ?? null,
       ledgerStatus: tradeLedger ? tradeLedger.status : null,
       plan: view.plan,
       planAt: view.planAt,
-      conn: view.poll && view.poll.connection ? view.poll.connection.state : null,
+      conn,
       showBalance,
       fullscreen: displayMode === "fullscreen",
       flightLine: flightOn(),
@@ -1878,12 +1921,12 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       baseline: L.baselineLabel(view.poll),
       now,
       actionsEnabled: actionsOn,
-      decomposition: moved.decomposition,
+      decomposition,
       movements: R.movements,
     });
     R.movements.render({
       section: moved.section,
-      decomposition: moved.decomposition,
+      decomposition,
       showBalance,
       fullscreen: displayMode === "fullscreen",
     });
@@ -2086,6 +2129,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     view = Object.assign({}, view, {
       poll: Object.assign({}, view.poll, {
         balance: undefined,
+        account: undefined,
         ledger: L.ledgerStripBalance(view.poll.ledger),
         sessions: L.sessionBarStripBalance(view.poll.sessions),
       }),
@@ -2236,6 +2280,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
         poll: view.poll
           ? Object.assign({}, view.poll, {
               balance: undefined,
+              account: undefined,
               ledger: L.ledgerStripBalance(view.poll.ledger),
               sessions: L.sessionBarStripBalance(view.poll.sessions),
             })

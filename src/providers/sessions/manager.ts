@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { cleanLabel } from "../../core/untrusted.js";
+import { newestSavedBalance, type SavedBalance } from "../../dashboard/accountBalance.js";
 import type { LedgerService } from "../../dashboard/ledgerService.js";
 import type { TradePlan } from "../../dashboard/tradeRun.js";
 import type { ConnectionInfo } from "../gamelog/connectionState.js";
@@ -569,6 +570,15 @@ export class SessionManager {
           })
         : null,
     });
+  }
+
+  /**
+   * The newest balance any saved session holds, with when it was read (the account reminder of the dashboard, which does
+   * not depend on the current session). Read-only. Called ONLY for a poll that asked for the balance. null when none.
+   */
+  async savedBalance(): Promise<SavedBalance | null> {
+    if (!this.enabled) return null;
+    return newestSavedBalance((await this.deps.store.read()).sessions);
   }
 
   private calibrationMemo: { key: string; report: CalibrationReport } | null = null;

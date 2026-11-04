@@ -1096,6 +1096,82 @@ export function baselineLabel(poll: any): string {
   return "depuis le démarrage du lecteur";
 }
 
+/** How long ago a reading was taken, for the account reminder: "il y a 15 h". Null when the time is not usable. */
+export function accountAgo(ms: number | null | undefined): string | null {
+  if (typeof ms !== "number" || !Number.isFinite(ms)) return null;
+  // A reading "in the future" (the two clocks differ a little) is as good as a fresh one.
+  const age = ms < 0 ? 0 : ms;
+  const minutes = Math.floor(age / 60000);
+  if (minutes < 1) return "il y a moins d’1\u00a0min";
+  if (minutes < 60) return "il y a " + minutes + "\u00a0min";
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return "il y a " + hours + "\u00a0h";
+  return "il y a " + Math.floor(hours / 24) + "\u00a0j";
+}
+
+/**
+ * What the permanent "Solde" reminder of the header says. It is the account balance, whatever the session is (the poll's
+ * `account`, built by the server only for an answer that asked for the balance). Nothing is invented: a reading that is not
+ * live says so with its age, and no reading says why. While the player hides the balance there is no amount and no
+ * `account` is read at all.
+ *   kind  hidden | wait | live | last_known | unknown (the screen reader is told when it changes, never at each poll)
+ */
+export function accountInfo(poll: any, showBalance: boolean, now: number): any {
+  if (!showBalance) {
+    return { kind: "hidden", text: "••••••", note: "masqué", tip: "", speak: "Solde masqué" };
+  }
+  if (!poll) return { kind: "wait", text: "—", note: "", tip: "", speak: "" };
+  // A server that sends no `account` (an older one) still gives the live reading as `balance` while the stream is live.
+  const a =
+    poll.account ||
+    (poll.balance && poll.state === "live" ? { source: "live", uec: poll.balance.uec } : null);
+  // The balance was just shown again and the answer in hand was asked without it: wait for the next one, say nothing yet.
+  if (!a && poll.state !== "off") return { kind: "wait", text: "—", note: "", tip: "", speak: "" };
+  const usable =
+    a &&
+    typeof a === "object" &&
+    (typeof a.uec === "number"
+      ? Number.isFinite(a.uec)
+      : typeof a.uec === "string" && /^-?\d{1,20}$/.test(a.uec));
+  if (usable && a.source === "live") {
+    return {
+      kind: "live",
+      text: fmtAuec(a.uec) + "\u00a0aUEC",
+      note: "",
+      tip: "Relevé en direct du jeu.",
+      speak: "Solde en direct",
+    };
+  }
+  if (usable && a.source === "last_known") {
+    const at = typeof a.at === "string" ? Date.parse(a.at) : NaN;
+    const ago = accountAgo(Number.isFinite(at) ? now - at : null);
+    return {
+      kind: "last_known",
+      text: fmtAuec(a.uec) + "\u00a0aUEC",
+      note: "dernier solde connu" + (ago ? " · " + ago : ""),
+      tip:
+        a.from === "session"
+          ? "Dernier solde enregistré avec une session de jeu : le jeu ne le donne pas en ce moment."
+          : "Dernier relevé du flux du jeu, gardé en mémoire : le jeu ne le donne plus.",
+      speak: "Solde : dernier solde connu",
+    };
+  }
+  // No reading: the poll's own state tells telemetry off; the server tells a closed game or a game that gave no balance.
+  let why = "aucun relevé pour l’instant";
+  if (poll.state === "off") why = "télémétrie non activée";
+  else if (a && a.reason === "game_closed") why = "jeu fermé";
+  return {
+    kind: "unknown",
+    text: "Solde inconnu",
+    note: why,
+    tip:
+      poll.state === "off"
+        ? "La télémétrie du jeu est coupée sur le serveur (SC_TELEMETRY) : aucun solde n’est lu."
+        : "Aucun solde n’a été relevé, ni en direct ni dans une session enregistrée.",
+    speak: "Solde inconnu : " + why,
+  };
+}
+
 // ---------------------------------------------------------------------------------------------
 // Sparkline
 // ---------------------------------------------------------------------------------------------
@@ -1417,6 +1493,8 @@ export function sharablePoll(poll: any): any {
   if (!poll || typeof poll !== "object") return null;
   const out: any = Object.assign({}, poll);
   delete out.balance;
+  // The account reminder is an aUEC figure too: it never travels between Views (each one polls for its own).
+  delete out.account;
   delete out.hash;
   delete out.unchanged;
   out.events = (Array.isArray(poll.events) ? poll.events : []).filter(
@@ -2345,6 +2423,8 @@ export const VIEW_FUNCTIONS = [
   estimateText,
   sessionRate,
   baselineLabel,
+  accountAgo,
+  accountInfo,
   sparkPoints,
   cleanPlan,
   actionMessage,
