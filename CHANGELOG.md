@@ -41,7 +41,10 @@ versions follow [Semantic Versioning](https://semver.org/).
   tag and what it gives: "Si tu refais ce trajet ≈ X aUEC (prévu Y × Z %)"). Rules: under 3 runs the card gives their number
   and nothing else; the ratio is applied to the first leg's profit only (a card of two legs says "1er tronçon" and gives no
   round-trip figure; an hourly figure only for a card of one leg); a huge gap is worded, not printed; the fold "Comment lire
-  ça" says the ratio is censored to about 50 % to 200 % and is not the measured mean over today's estimate. Shown only with the
+  ça" says that runs tied by prices are censored to about 50 % to 200 % (a link by name has no such bound) and that the ratio is
+  not the measured mean over today's estimate. On the gross basis the sentence writes the real decomposition ("prévu × ratio,
+  moins les frais habituels ≈ F"); the "mesuré" cell counts the runs its mean is over; a ratio not above zero or above 500 %
+  reads "écart très élevé" with nothing applied, and when nothing is applied the sentence gives the one true reason. Shown only with the
   balance, and emptied (hidden nodes and attributes included) when it is hidden again.
 - **The tile "Si tu refais ce trajet" follows the same minimum.** It used to give a coefficient from 2 runs while the route cards
   need 3; both now go through one function (`calibrationApply`): no coefficient under 3 runs behind the figure in use (the net

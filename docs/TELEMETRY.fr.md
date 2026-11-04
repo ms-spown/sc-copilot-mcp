@@ -1067,7 +1067,7 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   plan est d'abord ramené à la quantité réellement transportée quand la quantité du plan est connue et diffère de plus de
   2 % (une soute à moitié pleine n'est pas un mauvais prix) ; une cargaison qui a transporté moins d'un quart ou plus de
   quatre fois la quantité prévue est écartée. Un plan inférieur à 1 000 aUEC, ou aux frais de la cargaison, est ignoré (un
-  ratio sur quelques aUEC n'est que du bruit), et un ratio au-dessus de 500 % est affiché « écart très élevé », jamais
+  ratio sur quelques aUEC n'est que du bruit), et un ratio qui n'est pas au-dessus de zéro ou qui dépasse 500 % est affiché « écart très élevé », jamais
   comme un pourcentage. Le ratio typique est groupé (somme du réalisé sur somme du prévu), avec à côté la médiane, le
   minimum et le maximum des ratios par cargaison. Ce n'est pas l'efficacité des sessions (`money.plan.efficiency`) : celle-ci
   est le résultat mesuré (net, sinon marge brute) sur le plan tel que prévu, alors que la calibration compare la marge
@@ -1092,8 +1092,8 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   chiffres de session comptent aussi ces trajets (`price_linked_trips` dans `money.plan`, dans les meilleures marchandises et
   routes), et leur libellé se termine par « (lien par prix) ». Pour avoir deux cargaisons d'une route, appliquez son plan
   deux fois. **Biais de sélection :** comme une cargaison doit avoir une marge unitaire entre la moitié et le double de celle
-  du plan pour être rattachée, une cargaison qui rend 30 % du plan n'est jamais rattachée ni comptée : les ratios calibrés
-  sont censurés à environ 50 % à 200 %, donc la calibration ne peut pas montrer qu'une route rend vraiment 20 % du plan (de
+  du plan pour être rattachée, une cargaison qui rend 30 % du plan n'est jamais rattachée ni comptée : les ratios des cargaisons
+  rattachées par les prix (tous les plans réels aujourd'hui) sont censurés à environ 50 % à 200 % (un lien par le nom n'aurait pas cette borne), donc la calibration ne peut pas montrer qu'une route rend vraiment 20 % du plan (de
   telles cargaisons sont simplement absentes). Quand la confiance est tenue à `medium` pour cette raison, la carte le dit
   dans le repli « Comment lire ça » sous la ligne (du texte écrit, à un clic), pas seulement dans l'infobulle.
 - **Confiance** (`none`, `low`, `medium`, `high`). `none` sous 2 cargaisons : aucun chiffre, seulement le nombre. `low` avec
@@ -1117,10 +1117,14 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   outils gardent leur minimum de 2 trajets). Le ratio s'applique au profit du PREMIER tronçon seulement, ce que « Appliquer
   comme plan » enregistre et donc ce à quoi les trajets ont été comparés : une carte à deux tronçons dit « Si tu refais le 1er
   tronçon » et ne donne aucun chiffre d'aller-retour ; un chiffre par heure n'est appliqué qu'à une carte d'un seul tronçon,
-  comme le trajet appliqué sur le cycle estimé. Un ratio au-dessus de 500 % est écrit « écart très élevé », pas affiché, et
-  rien ne lui est appliqué. La moyenne réalisée sur la moyenne prévue donne le ratio ; ce n'est PAS le mesuré divisé par
-  l'estimation d'aujourd'hui (le repli le dit). Le repli « Comment lire ça » dit aussi que le ratio est censuré à environ
-  50 % à 200 % (voir le biais de sélection ci-dessus). Le bloc n'existe que tant que le solde est affiché et il est vidé, pas
+  comme le trajet appliqué sur le cycle estimé. Sur la base brute, la phrase écrit la vraie décomposition (« prévu × ratio,
+  moins les frais habituels ≈ F »). La cellule « mesuré » compte les trajets sur lesquels porte sa moyenne (tous sur la base
+  brute, ceux du net sur la base nette) ; sur une carte à deux tronçons, elle et le ratio disent « 1er tronçon » à côté du
+  total. Un ratio qui n'est pas au-dessus de zéro ou qui dépasse 500 % est écrit « écart très élevé », pas affiché, et rien
+  ne lui est appliqué ; quand rien n'est appliqué, la phrase donne la seule vraie raison (trop peu de trajets avec frais
+  connus, un net trop éloigné du plan, pas de chiffre d'affaires prévu). La moyenne réalisée sur la moyenne prévue donne le ratio ; ce n'est PAS le mesuré divisé par
+  l'estimation d'aujourd'hui (le repli le dit). Le repli « Comment lire ça » dit aussi que les cargaisons rattachées par les prix sont censurées à
+  environ 50 % à 200 % et qu'un lien par le nom n'a pas cette borne (voir le biais de sélection ci-dessus). Le bloc n'existe que tant que le solde est affiché et il est vidé, pas
   seulement caché, quand on le masque de nouveau. La tuile « Si tu refais ce
   trajet » de la carte de commerce, qui préfère le chiffre calibré quand le plan en cours a un groupe de 3 cargaisons ou
   plus ; une phrase dans les instructions du serveur et dans le prompt `trade_copilot` pour que Claude la cite avec son

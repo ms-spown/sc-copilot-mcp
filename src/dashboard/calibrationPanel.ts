@@ -42,12 +42,17 @@ export function calibrationKey(value: unknown): string {
 
 /** "78 %" (a no-break space before the sign). */
 export function calibrationPct(ratio: number): string {
-  return Math.round(ratio * 100) + "\u00a0%";
+  const p = Math.round(ratio * 100);
+  return (p < 0 ? String.fromCharCode(0x2212) : "") + Math.abs(p) + "\u00a0%";
 }
 
-/** A ratio this far from 1 (500 %) is shown as "écart très élevé", never as a number: it rests on a tiny plan. */
+/**
+ * A ratio that is not above zero, or above 500 %, is shown as "écart très élevé", never as a number, and nothing is applied
+ * to it: it rests on a tiny plan, or the runs lost money (a link by prices keeps a ratio between about 50 % and 200 %, a
+ * link by name has no bound).
+ */
 export function calibrationHuge(ratio: unknown): boolean {
-  return typeof ratio === "number" && Math.abs(ratio) > 5;
+  return typeof ratio === "number" && (ratio <= 0 || ratio > 5);
 }
 
 export function calibrationWord(confidence: string): string {
@@ -193,6 +198,8 @@ export function calibrationExpected(
     return {
       auec: Math.round(plannedProfit * group.gross_ratio - group.fee_rate * plannedTurnover),
       basis: "gross_ratio_minus_fees",
+      // the usual fees on the planned turnover, as subtracted above (so a card can write the real decomposition)
+      fees: Math.round(group.fee_rate * plannedTurnover),
       ratio: group.gross_ratio,
       n: Math.min(group.n, group.fee_n),
       confidence: conf,
@@ -407,6 +414,8 @@ export function calibrationCompare(L: any, calib: any, o: any): any {
   const who = calibrationWho(hit.scope, g.goods_unverified === true);
   const money = (v: number) => "≈ " + L.fmtAuec(v, true);
   const unit = "\xa0aUEC";
+  // The measured side and the ratio are those of the FIRST leg: a card of two legs says so beside the total it shows.
+  const scopeWord = multi ? "1er tronçon (" + leg.commodity + ") · " : "";
   const out: any = {
     mode: "count",
     scope: hit.scope,
@@ -419,7 +428,8 @@ export function calibrationCompare(L: any, calib: any, o: any): any {
     measLabel: "Mesuré",
     measValue: g.n + " trajets",
     measUnit: "",
-    measSub: who + " · pas assez pour un ratio (" + cfg.minRatioRuns + " trajets minimum)",
+    measSub:
+      scopeWord + who + " · pas assez pour un ratio (" + cfg.minRatioRuns + " trajets minimum)",
     ratioValue: "",
     ratioSub: "",
     fill: -1,
@@ -428,7 +438,7 @@ export function calibrationCompare(L: any, calib: any, o: any): any {
     tag: "",
     hint: "",
     reading:
-      "Estimé : le calcul du planificateur sur les prix UEX (relevés de la communauté), jamais une promesse. Mesuré : la moyenne de tes trajets enregistrés, chacun avec son plan. Le ratio compare chaque trajet au prévu de CE trajet-là, ramené à la quantité transportée : ce n’est pas le mesuré divisé par l’estimation d’aujourd’hui. Il reste entre ≈ 50 % et ≈ 200 % par construction : un trajet qui rend moins de la moitié (ou plus du double) du prévu n’est pas rattaché au plan, donc absent." +
+      "Estimé : le calcul du planificateur sur les prix UEX (relevés de la communauté), jamais une promesse. Mesuré : la moyenne de tes trajets enregistrés, chacun avec son plan. Le ratio compare chaque trajet au prévu de CE trajet-là, ramené à la quantité transportée : ce n’est pas le mesuré divisé par l’estimation d’aujourd’hui. Un trajet rattaché à son plan par la ressemblance des prix ne l’est que si sa marge unitaire est entre la moitié et le double de celle du plan : ceux qui rendent moins ou plus sont absents, donc le ratio de ces trajets reste entre ≈ 50 % et ≈ 200 % (un lien par le nom n’a pas cette borne). Un ratio négatif, nul ou au-dessus de 500 % se lit « écart très élevé » et n’est appliqué à rien." +
       calibrationMoreTail(g, multi),
   };
   if (g.n < cfg.minRatioRuns) return out;
@@ -438,34 +448,51 @@ export function calibrationCompare(L: any, calib: any, o: any): any {
   const e = legProfit > 0 ? calibrationApply(g, legProfit, leg.sell_price * leg.scu) : null;
   const net = !!e && e.basis === "net_ratio";
   const ratio = e ? e.ratio : g.gross_ratio;
-  const n = e ? e.n : g.n;
+  // The runs the shown mean is over (the net's runs, else all of them): the confidence tag keeps the runs behind the ratio used.
+  const runs = net ? g.net_n : g.n;
   const confidence = e ? e.confidence : g.confidence;
   const mean = net ? g.net_avg_auec : g.gross_avg_auec;
   const planned = net ? g.net_planned_avg_auec : g.gross_planned_avg_auec;
   out.mode = "ratio";
-  out.measLabel = "Mesuré · " + n + " trajets";
+  out.measLabel = "Mesuré · " + runs + " trajets";
   if (typeof mean === "number") {
     out.measValue = money(mean);
     out.measUnit = "aUEC par trajet, en moyenne";
   } else {
-    out.measValue = n + " trajets";
+    out.measValue = runs + " trajets";
     out.measUnit = "";
   }
   out.measSub =
+    scopeWord +
     who +
     " · " +
     (net ? "résultat net" : "marge brute, avant frais") +
     (typeof planned === "number" ? " · prévu alors " + money(planned) + unit : "");
-  out.tag = calibrationTag(confidence, n);
+  out.tag = calibrationTag(confidence, e ? e.n : g.n);
   out.hint = calibrationHint(g, confidence);
   out.caution = calibrationCaution(g);
   const huge = calibrationHuge(ratio);
   out.ratioValue = huge ? "écart très élevé" : calibrationPct(ratio);
-  out.ratioSub = (net ? "sur le net" : "sur la marge brute") + " · réalisé ÷ prévu";
+  out.ratioSub = scopeWord + (net ? "sur le net" : "sur la marge brute") + " · réalisé ÷ prévu";
   out.fill = huge ? -1 : Math.round(Math.min(2, Math.max(0, ratio)) * 50);
   if (e && !huge) {
+    // On the gross basis the figure is planned × ratio LESS the usual fees: the sentence says so, with the amount taken off.
     const sum =
-      money(e.auec) + unit + " (prévu " + money(legProfit) + " × " + calibrationPct(e.ratio) + ")";
+      money(e.auec) +
+      unit +
+      " (prévu " +
+      money(legProfit) +
+      " × " +
+      calibrationPct(e.ratio) +
+      (net
+        ? ""
+        : ", moins les frais habituels ≈ " +
+          L.fmtAuec(e.fees) +
+          unit +
+          ", à " +
+          calibrationPct(g.fee_rate) +
+          " du chiffre d’affaires prévu") +
+      ")";
     if (multi) {
       out.apply =
         "Si tu refais le 1er tronçon (" +
@@ -484,14 +511,19 @@ export function calibrationCompare(L: any, calib: any, o: any): any {
         (hour === null ? "" : ", soit " + money(hour) + unit + " par heure") +
         ".";
     }
-    if (!net)
-      out.apply +=
-        " Frais habituels déjà déduits (" + calibrationPct(g.fee_rate) + " du chiffre d’affaires).";
   } else if (!e && !huge && legProfit > 0) {
+    // Nothing is applied: say the one reason that is true.
+    const turnover = leg.sell_price * leg.scu;
+    const netRuns = g.net_n >= cfg.minRatioRuns && typeof g.net_ratio === "number";
+    const feeRuns = g.fee_n >= cfg.minRatioRuns && typeof g.fee_rate === "number";
     out.apply =
-      "Pas assez de trajets avec frais connus pour chiffrer le net (" +
-      cfg.minRatioRuns +
-      " minimum) : aucun chiffre appliqué.";
+      netRuns && calibrationHuge(g.net_ratio) && !(feeRuns && turnover > 0)
+        ? "Le net de tes trajets s’écarte trop du prévu (écart très élevé) : aucun chiffre appliqué."
+        : feeRuns && !(turnover > 0)
+          ? "Chiffre d’affaires prévu inconnu : les frais habituels ne peuvent pas être déduits, aucun chiffre appliqué."
+          : "Pas assez de trajets avec frais connus pour chiffrer le net (" +
+            cfg.minRatioRuns +
+            " minimum) : aucun chiffre appliqué.";
   }
   return out;
 }

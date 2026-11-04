@@ -10,9 +10,11 @@ import {
   calibrationCompare,
   calibrationExpected,
   calibrationFromLedger,
+  calibrationHuge,
   calibrationLine,
   calibrationNextTile,
   calibrationNormalize,
+  calibrationPct,
   calibrationPick,
 } from "./calibrationPanel.js";
 import { boundLedger, buildLedgerPayload, EMPTY_LEDGER } from "./ledger.js";
@@ -36,6 +38,7 @@ import {
 } from "./testing/pageHarness.js";
 import { Scenario } from "./testing/scenario.js";
 import { specsSamples } from "./testing/specsFixtures.js";
+import { suggestAnswer } from "./testing/suggestFixtures.js";
 import { tradeBalanceAt, tradeLedger } from "./testing/tradeScenario.js";
 
 /**
@@ -399,9 +402,11 @@ describe("Feature: the three values of a route card (calibrationCompare)", () =>
     expect(m.measSub).toContain("marge brute, avant frais");
     expect(m.ratioSub).toContain("sur la marge brute");
     expect(NBSP_FREE(m.apply)).toContain("≈ +13 575 aUEC");
+    // 59 500 x 90 % less 5 % of (1599 x 500): the sentence writes the real decomposition, with the fees taken off
     expect(NBSP_FREE(m.apply)).toContain(
-      "Frais habituels déjà déduits (5 % du chiffre d’affaires)",
+      "(prévu ≈ +59 500 × 90 %, moins les frais habituels ≈ 39 975 aUEC, à 5 % du chiffre d’affaires prévu)",
     );
+    expect(NBSP_FREE(m.apply)).not.toContain("déjà déduits");
     expect(m.tag).toBe("estimé · 3 trajets · confiance faible");
   });
 
@@ -455,6 +460,94 @@ describe("Feature: the three values of a route card (calibrationCompare)", () =>
     expect(NBSP_FREE(old.ratioValue)).toBe("76 %");
   });
 
+  it("Given the gross-less-fees basis, Then the sentence writes the real decomposition (planned 100 000, 90 %, fees 5 % of 500 000 = 65 000, not 'prévu × 90 %')", () => {
+    const m = cmp(
+      calibOf({ n: 5, net_n: 0, net_ratio: null, gross_ratio: 0.9, fee_rate: 0.05, fee_n: 5 }),
+      option([leg({ profit_per_scu: 100, scu: 1000, sell_price: 500 })], { cycle_minutes: null }),
+    );
+    expect(NBSP_FREE(m.apply)).toBe(
+      "Si tu refais ce trajet ≈ +65 000 aUEC (prévu ≈ +100 000 × 90 %, moins les frais habituels ≈ 25 000 aUEC, à 5 % du chiffre d’affaires prévu).",
+    );
+    // the net basis has no fees to take off and says nothing of them
+    const net = cmp(calibOf({}), option([leg()]));
+    expect(NBSP_FREE(net.apply)).not.toContain("frais habituels");
+  });
+
+  it("Given eight runs, a net on two and fees on three, Then the measured cell counts the eight runs the gross mean is over, and the tag the three behind the fees", () => {
+    const m = cmp(calibOf({ n: 8, net_n: 2, fee_n: 3, confidence: "medium" }), option([leg()]));
+    expect(m.measLabel).toBe("Mesuré · 8 trajets");
+    expect(m.measSub).toContain("marge brute, avant frais");
+    expect(NBSP_FREE(m.measValue)).toBe("≈ +91 337");
+    expect(m.tag).toBe("estimé · 3 trajets · confiance faible");
+    // on the net basis the cell counts the net's runs
+    const net = cmp(calibOf({ n: 8, net_n: 5, fee_n: 3 }), option([leg()]));
+    expect(net.measLabel).toBe("Mesuré · 5 trajets");
+    expect(NBSP_FREE(net.measValue)).toBe("≈ +94 411");
+  });
+
+  it("Given a ratio that is not above zero or is above 500 %, Then it reads 'écart très élevé', with no bar and no applied value; the minus sign is U+2212", () => {
+    const minus = String.fromCharCode(0x2212);
+    const nbsp = String.fromCharCode(0xa0);
+    for (const bad of [0, -0.3, 5.01, 6]) expect(calibrationHuge(bad)).toBe(true);
+    for (const ok of [0.01, 0.5, 1, 5]) expect(calibrationHuge(ok)).toBe(false);
+    expect(calibrationPct(-0.2)).toBe(minus + "20" + nbsp + "%");
+    expect(calibrationPct(0.74)).toBe("74" + nbsp + "%");
+    for (const ratio of [-0.4, 0, 6]) {
+      const m = cmp(calibOf({ gross_ratio: ratio, net_ratio: ratio }), option([leg()]));
+      expect(m.ratioValue).toBe("écart très élevé");
+      expect(m.fill).toBe(-1);
+      expect(m.apply).not.toMatch(/\+\d/);
+      // the tile and the tools do not lean on it either
+      expect(
+        calibrationExpected(
+          calibOf({ gross_ratio: ratio, net_ratio: ratio }).groups[0],
+          100_000,
+          300_000,
+        ),
+      ).toBeNull();
+    }
+    // a range that dips below zero is written with the one minus sign, never a hyphen
+    const wild = cmp(
+      calibOf({ high_variance: true, gross_min: -0.2, gross_max: 1.1, confidence: "low" }),
+      option([leg()]),
+    );
+    expect(wild.caution).toContain(minus + "20" + nbsp + "%");
+    expect(wild.caution).not.toMatch(/-\d/);
+  });
+
+  it("Given a card of two legs, Then the measured cell and the ratio say '1er tronçon' beside the total they sit next to; a one-leg card does not", () => {
+    const two = cmp(calibOf({}), option([leg(), leg({ commodity: "Medical Supplies", scu: 120 })]));
+    expect(two.measSub.startsWith("1er tronçon (Laranite) · de cette marchandise")).toBe(true);
+    expect(two.ratioSub.startsWith("1er tronçon (Laranite) · sur le net")).toBe(true);
+    expect(two.estUnit).toBe("aUEC pour les 2 tronçons");
+    const count = cmp(calibOf({ n: 2 }), option([leg(), leg()]));
+    expect(count.measSub.startsWith("1er tronçon (Laranite) · ")).toBe(true);
+    const one = cmp(calibOf({}), option([leg()]));
+    expect(JSON.stringify([one.measSub, one.ratioSub, one.apply])).not.toContain("tronçon");
+  });
+
+  it("Given nothing can be applied, Then the sentence gives the one reason that is true", () => {
+    // too few runs with fees (and a net on fewer than three)
+    const few = cmp(calibOf({ n: 5, net_n: 2, fee_n: 2 }), option([leg()]));
+    expect(few.apply).toBe(
+      "Pas assez de trajets avec frais connus pour chiffrer le net (3 minimum) : aucun chiffre appliqué.",
+    );
+    // a net so far from the plan that it is not used, and fees on too few runs to replace it
+    const hugeNet = cmp(calibOf({ n: 5, net_n: 3, net_ratio: 6, fee_n: 2 }), option([leg()]));
+    expect(hugeNet.apply).toBe(
+      "Le net de tes trajets s’écarte trop du prévu (écart très élevé) : aucun chiffre appliqué.",
+    );
+    // fees known on enough runs but no planned turnover to take them from
+    const noTurnover = cmp(
+      calibOf({ n: 5, net_n: 0, net_ratio: null, fee_n: 3 }),
+      option([leg({ sell_price: 0 })]),
+    );
+    expect(noTurnover.apply).toBe(
+      "Chiffre d’affaires prévu inconnu : les frais habituels ne peuvent pas être déduits, aucun chiffre appliqué.",
+    );
+    for (const m of [few, hugeNet, noTurnover]) expect(m.apply).not.toMatch(/\+\d/);
+  });
+
   it("Given no group for the goods of the first leg, or no calibration, or no leg, Then nothing", () => {
     expect(cmp(calibOf({}), option([leg({ commodity: "Agricium" })]))).toBeNull();
     expect(cmp(calibOf({}), option([leg({ commodity: "Lara" })]))).toBeNull();
@@ -465,7 +558,11 @@ describe("Feature: the three values of a route card (calibrationCompare)", () =>
 
   it("Given any group, Then the fold always says the ratio is censored, and the price link when the goods are unverified", () => {
     const plain = cmp(calibOf({}), option([leg()]));
-    expect(plain.reading).toContain("Il reste entre ≈ 50 % et ≈ 200 % par construction");
+    expect(plain.reading).toContain(
+      "rattaché à son plan par la ressemblance des prix ne l’est que si sa marge unitaire est entre la moitié et le double de celle du plan",
+    );
+    expect(plain.reading).toContain("(un lien par le nom n’a pas cette borne)");
+    expect(plain.reading).not.toContain("par construction");
     expect(plain.reading).not.toContain("lien par prix");
     const unverified = cmp(
       calibOf({ goods_unverified: true, confidence_capped: true }),
@@ -696,7 +793,14 @@ const PLAN = {
   sell_unit_price: 457,
 };
 
-async function page(opts: { always?: boolean; plan?: boolean; section?: CalibrationSection } = {}) {
+async function page(
+  opts: {
+    always?: boolean;
+    plan?: boolean;
+    section?: CalibrationSection;
+    suggest?: (args: any) => unknown | Promise<unknown>;
+  } = {},
+) {
   const scenario = new Scenario();
   scenario.specs = specsSamples(scenario.now).ready;
   scenario.uec = tradeBalanceAt;
@@ -707,7 +811,7 @@ async function page(opts: { always?: boolean; plan?: boolean; section?: Calibrat
       ? ({ ...base, calibration: opts.section ?? SECTION } as any)
       : base;
   };
-  const w = await startPage({ scenario });
+  const w = await startPage({ scenario, ...(opts.suggest ? { suggest: opts.suggest } : {}) });
   if (opts.plan) {
     w.fromHost({
       jsonrpc: "2.0",
@@ -877,7 +981,8 @@ describe("Feature: estimated, measured and ratio side by side on a route card, i
     expect(card).not.toContain("D’après tes");
     // the fold is there and says what the ceiling is
     expect(card).toContain("Comment lire ça");
-    expect(card).toContain("Il reste entre ≈ 50 % et ≈ 200 % par construction");
+    expect(card).toContain("le ratio de ces trajets reste entre ≈ 50 % et ≈ 200 %");
+    expect(card).toContain("(un lien par le nom n’a pas cette borne)");
     expect(card).toContain("ce n’est pas le mesuré divisé par l’estimation d’aujourd’hui");
     expect(card).toContain("pas un chiffre pour l’aller-retour");
   });
@@ -911,11 +1016,11 @@ describe("Feature: estimated, measured and ratio side by side on a route card, i
     expect(card).toContain("Mesuré");
     expect(card).toContain("2 trajets");
     expect(card).toContain(
-      "similaires (marchandise non vérifiée) · pas assez pour un ratio (3 trajets minimum)",
+      "1er tronçon (Gold) · similaires (marchandise non vérifiée) · pas assez pour un ratio (3 trajets minimum)",
     );
     expect(card).not.toContain("Réalisé ÷ prévu");
-    // no ratio of any kind (the fold only names the 50 % and 200 % ceiling)
-    expect(card.replace(/≈ 50 % et ≈ 200 %/, "")).not.toMatch(/\d\s?%/);
+    // no ratio of any kind (the fold only names the 50 %, 200 % and 500 % bounds)
+    expect(card.replace(/≈ 50 % et ≈ 200 %|500 %/g, "")).not.toMatch(/\d\s?%/);
     expect(card).not.toContain("Si tu refais");
     expect(card).not.toContain("estimé ·");
     expect(card).not.toContain(" aUEC par trajet, en moyenne");
@@ -933,8 +1038,10 @@ describe("Feature: estimated, measured and ratio side by side on a route card, i
     expect(card).toContain("90 %");
     // 59 500 x 0.9 less 5 % of 1599 x 500 = 13 575; over 52 minutes, 15 663 an hour
     expect(card).toContain(
-      "Si tu refais ce trajet ≈ +13 575 aUEC (prévu ≈ +59 500 × 90 %), soit ≈ +15 663 aUEC par heure. Frais habituels déjà déduits (5 % du chiffre d’affaires).",
+      "Si tu refais ce trajet ≈ +13 575 aUEC (prévu ≈ +59 500 × 90 %, moins les frais habituels ≈ 39 975 aUEC, à 5 % du chiffre d’affaires prévu), soit ≈ +15 663 aUEC par heure.",
     );
+    // the decomposition is true: 59 500 x 90 % - 39 975 = 13 575 (it is not "prévu × 90 %" alone)
+    expect(Math.round(59_500 * 0.9) - 39_975).toBe(13_575);
     expect(card).toContain("estimé · 3 trajets · confiance faible");
     expect(card).toContain("Peu de trajets : indicatif seulement.");
   });
@@ -1017,6 +1124,43 @@ describe("Feature: estimated, measured and ratio side by side on a route card, i
         expect(t.attrs["data-tip"] ?? "").toBe("");
         expect(t.attrs["tabindex"] ?? "-1").toBe("-1");
       }
+  });
+
+  it("Given cards filled and then no longer used (results hidden while a search runs, then fewer cards), Then the block of every one is emptied, hidden nodes included, before the balance is even hidden", async () => {
+    let mode: "ok" | "hold" = "ok";
+    let release: () => void = () => {};
+    const w = await page({
+      section: CARD_SECTION,
+      suggest: (args: any) => {
+        if (args.action !== "search" || mode === "ok") return suggestAnswer(args);
+        return new Promise((resolve) => {
+          release = () => resolve(suggestAnswer(args, { variant: "empty" }));
+        });
+      },
+    });
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(3 * SECOND);
+    findButton(w.root, "Plus rentable").click();
+    await w.advance(300);
+    expect(leaks(everything(w)).length).toBeGreaterThan(8);
+    // a new search is running: the results are not shown, and nothing of the runs stays in them
+    mode = "hold";
+    findButton(w.root, "Plus rapide").click();
+    await w.advance(300);
+    expect(findAll(w.root, (n) => n.className === "ta-calib" && isShown(n))).toEqual([]);
+    expect(leaks(everything(w))).toEqual([]);
+    expect(blockWords(w)).not.toMatch(/\d/);
+    // the answer has no route: every card is unused
+    release();
+    await w.advance(300);
+    expect(cardsOf(w)).toEqual([]);
+    expect(leaks(everything(w))).toEqual([]);
+    expect(blockWords(w)).not.toMatch(/\d/);
+    // and hiding the balance afterwards leaves nothing either
+    findButton(w.root, "Masquer").click();
+    await w.advance(3 * SECOND);
+    expect(leaks(everything(w))).toEqual([]);
+    expect(blockWords(w)).not.toMatch(/\d/);
   });
 
   it("Given a bubble open on a confidence tag, When the balance is hidden again, Then the tag loses its tip and the bubble closes", async () => {

@@ -1007,8 +1007,8 @@ compares what the plan promised with what you really got (`src/providers/session
   that information is left out too); and the fees over the turnover. The plan is first scaled to the quantity really moved
   when the plan's quantity is known and differs by more than 2 % (a half-loaded hold is not a bad price); a run that moved
   less than a quarter or more than four times the planned quantity is left out. A plan under 1 000 aUEC, or under the run's
-  own fees, is ignored (a ratio over a few aUEC is noise), and a ratio above 500 % is shown as "écart très élevé", never as
-  a percentage. The typical ratio is pooled (sum realised over sum planned), with the median, the minimum and the maximum of
+  own fees, is ignored (a ratio over a few aUEC is noise), and a ratio that is not above zero or is above 500 % is shown as "écart très élevé", never
+  as a percentage. The typical ratio is pooled (sum realised over sum planned), with the median, the minimum and the maximum of
   the per-run ratios beside it. It is not the efficiency figure of the sessions (`money.plan.efficiency`): that one is the
   measured result (net, else gross margin) over the plan as planned, while the calibration compares the gross margin with
   the plan rescaled to the quantity moved, so the two can differ on purpose.
@@ -1029,8 +1029,8 @@ compares what the plan promised with what you really got (`src/providers/session
   the fold "Comment lire ça", and the confidence is never `high`, with the reason in the tag's title. The session figures count such
   trips too (`price_linked_trips` in `money.plan`, in the best goods and routes), and their label ends with "(lien par prix)".
   To have two runs of a route, apply its plan twice. **Selection bias:** because a run must have a unit margin between half and
-  twice the plan's to be tied, a run that yields 30 % of the plan is never tied and never counted: the calibrated ratios are
-  censored to about 50 % to 200 %, so the calibration cannot show that a route really yields 20 % of the plan (such runs are
+  twice the plan's to be tied, a run that yields 30 % of the plan is never tied and never counted: the ratios of runs tied
+  by prices (every real plan today) are censored to about 50 % to 200 % (a link by name would have no such bound), so the calibration cannot show that a route really yields 20 % of the plan (such runs are
   simply absent). When the confidence is held at `medium` for that reason the card says so in the fold "Comment lire ça" under the line (written text, one click away), not in the tooltip alone.
 - **Confidence** (`none`, `low`, `medium`, `high`). `none` below 2 runs: no figure at all, only the count. `low` with 2
   or 3 runs, a spread above 0.6 (maximum minus minimum of the per-run ratios, in points of the plan) or a newest run older
@@ -1051,9 +1051,13 @@ compares what the plan promised with what you really got (`src/providers/session
   keep their 2-run minimum). The ratio is applied to the profit of the FIRST leg only, which is what "apply as
   plan" stores and so what the runs were compared with: a card with two legs says "Si tu refais le 1er tronçon" and gives no
   figure for the round trip; an hourly figure is applied only to a card of one leg, as the applied trip over the estimated
-  cycle. A ratio above 500 % is worded "écart très élevé", not printed, and nothing is applied to it. The mean over the
+  cycle. On the gross basis the sentence writes the real decomposition ("prévu × ratio, moins les frais habituels ≈ F"). The
+  "mesuré" cell counts the runs its mean is over (all runs on the gross basis, the net's runs on the net basis); on a card of
+  two legs it and the ratio say "1er tronçon" beside the total they sit next to. A ratio that is not above zero or is above
+  500 % is worded "écart très élevé", not printed, and nothing is applied to it; when nothing is applied, the sentence gives the
+  one true reason (too few runs with known fees, a net too far from the plan, no planned turnover). The mean over the
   planned mean is the ratio; it is NOT the measured mean divided by today's estimate (the fold says so). The fold "Comment
-  lire ça" also says the ratio is censored to about 50 % to 200 % (see the selection bias above). The block exists only while
+  lire ça" also says that runs tied by prices are censored to about 50 % to 200 %, and that a link by name has no such bound (see the selection bias above). The block exists only while
   the balance is shown and is emptied, not just hidden, when it is hidden again. The tile "Si tu refais ce trajet" of the commerce card, which prefers the calibrated
   figure when the plan in force has a group of 3 runs or more; one sentence in the server instructions and in the prompt
   `trade_copilot` so that Claude quotes it with its number of runs.

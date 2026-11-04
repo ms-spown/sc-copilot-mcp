@@ -1278,10 +1278,19 @@ export function tradeActionsPanel(doc: any, L: any): any {
     setText(c.calibMoreText, on ? m.reading : "");
   }
 
+  function clearCompare(c: any) {
+    show(c.calib, false);
+    paintCompare(c, null);
+  }
+
   function fillCard(c: any, o: any, objective: string, rank: string, hero: boolean) {
     c.option = o;
     show(c.root, !!o);
-    if (!o) return;
+    if (!o) {
+      // A card that is no longer used keeps nothing of the player's runs, hidden nodes included.
+      clearCompare(c);
+      return;
+    }
     const m = tradeCardModel(L, o, objective);
     setAttr(c.root, "data-hero", hero ? "1" : "0");
     setAttr(c.root, "data-estimate", o.estimate ? "1" : "0");
@@ -1494,6 +1503,11 @@ export function tradeActionsPanel(doc: any, L: any): any {
     const res = S.phase === "loading" ? null : S.result;
     const showRes = !!res && S.phase !== "problem";
     show(results, showRes);
+    // Results that are not shown (loading, a problem, cleared with the balance) keep nothing of the player's runs.
+    if (!showRes) {
+      for (const c of cards) clearCompare(c);
+      for (const c of chainCards) clearCompare(c);
+    }
     if (res && showRes) {
       for (let i = 0; i < cards.length; i++) {
         fillCard(cards[i], res.options[i] || null, S.resultObjective, String(i + 1), i === 0);
@@ -1518,6 +1532,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
     const nx = S.next;
     const showNext = nx.phase === "loading" || nx.phase === "ok" || nx.phase === "none";
     show(nextBox, showNext);
+    if (!showNext) clearCompare(nextCard);
     if (showNext) {
       setText(nextFrom, nx.origin ? "Depuis " + nx.origin : "");
       const first = nx.result && nx.result.options.length > 0 ? nx.result.options[0] : null;
