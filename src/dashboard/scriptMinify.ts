@@ -171,9 +171,11 @@ export function minifyScript(src: string): string {
   /** Would `text`, written right after what is written, form `<!--` or `-->` with the characters before it? */
   const formsHtmlComment = (text: string): boolean => {
     const joined = tail + text.slice(0, 3);
-    for (const m of joined.matchAll(/<!--|-->/g)) {
-      const at = m.index ?? 0;
-      if (at < tail.length && at + m[0].length > tail.length) return true;
+    for (const pattern of ["<!--", "-->"]) {
+      // a match that starts in what is written and ends in `text`
+      for (let at = Math.max(0, tail.length - pattern.length + 1); at < tail.length; at += 1) {
+        if (joined.startsWith(pattern, at)) return true;
+      }
     }
     return false;
   };
