@@ -1,4 +1,5 @@
 import type { ConnectionInfo } from "../providers/gamelog/connectionState.js";
+import type { SessionManager } from "../providers/sessions/manager.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
 import { POLL_CACHE_MS, POLL_EVENT_COUNT } from "./constants.js";
 import { buildLedgerPayload, EMPTY_LEDGER, type PlanForLedger } from "./ledger.js";
@@ -20,7 +21,9 @@ import type { TradeSource } from "./tradeRun.js";
 /**
  * The server side of the live dashboard: one poll answer shared by every View, and the session markers.
  *
- * - Everything is in memory. Nothing is written to disk, no frame is kept.
+ * - The poll itself keeps everything in memory and no frame is kept. With sessions on (SC_TELEMETRY=on and SC_SESSIONS
+ *   not off) the session manager (providers/sessions) keeps the player's session SUMMARIES in a local file; this class
+ *   only asks it for the session bar. The "start"/"end" markers below are separate, in-memory flight counters.
  * - The poll never starts the reader while telemetry is off: it answers `off` without calling the service.
  * - The answer is cached for POLL_CACHE_MS and in-flight requests are shared, so N Views cost one read. The cache
  *   key is `include_balance`, so a balance is never handed to a View that did not ask for it. What each View
@@ -59,6 +62,8 @@ export class DashboardService {
     private readonly ledger?: LedgerService,
     /** The trade journal of the game log (providers/gamelog/trade.ts), as the ledger reads it. Absent: no `trade` section. */
     private readonly trades?: TradeSource,
+    /** The saved play sessions. Absent: no `sessions` in the answer, and the markers stay in memory only. */
+    private readonly sessions?: SessionManager,
   ) {}
 
   get enabled(): boolean {
@@ -117,12 +122,17 @@ export class DashboardService {
     const ledger = await this.ledgerPayload(telemetry, includeBalance, nowMs);
     // A failed log read must never break the poll: the connection is then simply not reported.
     const connection = await this.connection?.current().catch(() => null);
+    // The bar carries no aUEC figure unless THIS answer is the one with the balance. A failure only leaves it out.
+    const sessions = this.sessions?.enabled
+      ? await this.sessions.bar(includeBalance).catch(() => undefined)
+      : undefined;
     const answer = buildPoll({
       status,
       snapshot,
       ...(specs ? { specs } : {}),
       ledger,
       ...(connection ? { connection } : {}),
+      ...(sessions ? { sessions } : {}),
       events: recent.events,
       lastSeq: recent.last_seq,
       sessionEvents,
@@ -185,6 +195,8 @@ export class DashboardService {
         endSeq: null,
       };
       push("start");
+      // These markers are the View's own flight counters (memory only). They are NOT the saved play session: that one
+      // starts and ends through its bar (two clicks) or sc_session_new / sc_session_end, never through a marker.
       return done(true, "Session started: counters and the balance change restart from now.");
     }
     if (action === "end") {

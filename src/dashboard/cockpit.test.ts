@@ -135,17 +135,17 @@ describe("Feature: the confirmation of a button appears next to the buttons and 
 describe("Feature: one chronology with filters", () => {
   it("Given events and a marker, Then 'Alertes' keeps the alerts and 'Mes marqueurs' the markers", async () => {
     const w = await cockpit(30);
-    findButton(w.root, "Début de session").click();
+    findButton(w.root, "Début des compteurs").click();
     await w.advance(72 * SECOND);
     const list = () => visibleText(findAll(w.root, (n) => n.attrs["data-w"] === "events")[0]!);
-    expect(list()).toContain("Début de session");
+    expect(list()).toContain("Début des compteurs");
     expect(list()).toContain("Touché");
     findButton(w.root, "Alertes").click();
     expect(list()).not.toContain("Posé");
-    expect(list()).not.toContain("Début de session");
+    expect(list()).not.toContain("Début des compteurs");
     expect(list()).toMatch(/Boucliers tombés|Touché|Verrouillage/);
     findButton(w.root, "Mes marqueurs").click();
-    expect(list()).toContain("Début de session");
+    expect(list()).toContain("Début des compteurs");
     expect(list()).not.toContain("Touché");
     expect(findButton(w.root, "Mes marqueurs").attrs["aria-pressed"]).toBe("true");
   });
@@ -153,7 +153,7 @@ describe("Feature: one chronology with filters", () => {
   it("Given no session marker, Then the session card says how to start one instead of listing dashes", async () => {
     const w = await cockpit(30);
     const text = visibleText(w.root);
-    expect(text).toContain("Appuie sur « Début de session »");
+    expect(text).toContain("Appuie sur « Début des compteurs »");
     expect(text).not.toContain("Atterrissages");
   });
 });

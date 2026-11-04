@@ -84,6 +84,32 @@ versions follow [Semantic Versioning](https://semver.org/).
   `marketplace_averages` is not used.
 - Trade profile: 12 tools to 16. No fuel price tool: UEX's fuel prices are too old to rank refuel stops (median 43
   days; reasons in docs/CAPABILITIES.md).
+- **Saved play sessions** (`sc_session_current`, `sc_session_list`, `sc_session_stats`, `sc_session_new`,
+  `sc_session_end`; prompt `trade_copilot`; a session bar in the dashboard). The dashboard now works by session, and a
+  session is kept in a local file written by this server (`sessions.json` in the per-user data folder,
+  `SCMCP_SESSIONS_FILE` to move it), not in the browser: it is found again from any conversation, after a game crash
+  and after a reboot. A session holds the balance at its start and at its last sighting, the trips (completed contracts
+  of the transport ledger and completed trade runs of the dashboard's commerce model: cost, turnover, gross margin, fees and net, one pairing), the
+  active time and the breaks. It resumes when the game is seen again within 3 hours (`SC_SESSION_GAP_HOURS`), else a
+  new one starts; "Nouvelle session" and "Terminer" are in the bar and as tools. Statistics per session and across
+  sessions (rate per hour, trend, best and worst session, best routes and goods, efficiency against the plan); an
+  unknown figure is `null`, never zero; the result is on one basis (each trip's net, else its cargo run's gross margin) and a
+  contract's balance change that overlapped a cargo run is left out so the run's sales count once. Writes are atomic,
+  flushed, serialised by a lock file across server processes (owner token, touched while held, a crash's lock taken over
+  after 5 s), bounded in BYTES (about 3 MB, the oldest sessions dropped first, far below the 16 MB the reader accepts),
+  created 0600, kept in memory over the older file when the disk refuses a write (and said by `sc_session_new` /
+  `sc_session_end`), and a bad file is set aside; a file from a newer version is never touched. The View's old flight
+  counters are renamed "Compteurs de vol" and no longer touch the saved session. Before "Nouvelle session", "Terminer" and a
+  clean shutdown the log is re-read at once so the last trip is kept. A game launched without the telemetry setting never
+  gets a reader from the manager. Only with `SC_TELEMETRY=on`;
+  `SC_SESSIONS=off` creates and reads nothing. **Amended rule, by the user's explicit decision:** session summaries,
+  including balances and per-trip results, are now written to that one local file; frames, raw log lines, the handle,
+  account ids, IPs and GUIDs are still never stored and no session data is sent over a network (session tracking makes no request) (CLAUDE.md, SECURITY.md,
+  docs/TELEMETRY.md). Every aUEC figure still reaches the model, the dashboard poll and the channel between Views only
+  with `include_balance` or the player's "show balance" choice. **Deliberate change of behaviour:** to capture the
+  starting balance the server now keeps the telemetry reader alive while the game is believed to run (Game.log written
+  in the last five minutes), instead of stopping it five minutes after the last request; without the game log it does
+  not probe the port. Not verified in the real game.
 - **Trade journal from the game log** (`sc_trade_journal`, profile `local`, read-only, off with the log). Per play
   session, newest first: every shop purchase and sale (`SendShopBuyRequest`, `SendStandardItemBuyRequest`,
   `SendShopSellRequest`) and cargo-kiosk purchase and sale (`SendCommodityBuyRequest` in cSCU, converted to SCU;

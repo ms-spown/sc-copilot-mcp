@@ -14,6 +14,9 @@
 //                 transport=story|off|loading|unreadable|empty|none   (the transport ledger; story by default, none = no field)
 //                 fw=<px>  (width of the frame in full screen, to see a narrow host at 360 px in a window that cannot be that narrow)
 //                 conn=disconnected|menu|closed|online  (the connection read from Game.log)
+//                 sessions=story|empty|off|stale|ended|readonly|gross|none  (the saved play session bar; story by default; the
+//                 figures are invented, see src/dashboard/testing/sessionScenario.ts)
+//                 menu=1|detail  (opens the "Sessions" menu, or the detail of session 2, after the page has loaded)
 //                 specs=ready|unknown|ambiguous|pending|error|none  (the ship sheet from the wiki; default ready; the figures
 //                 are synthetic, see src/dashboard/testing/specsFixtures.ts; the story's ship is always the same Cutter)
 import http from "node:http";
@@ -57,6 +60,7 @@ import { Scenario } from "/dist/dashboard/testing/scenario.js";
 import { createFakeHost } from "/dist/dashboard/testing/fakeHost.js";
 import { transportLedger } from "/dist/dashboard/testing/ledgerScenario.js";
 import { specsSamples } from "/dist/dashboard/testing/specsFixtures.js";
+import { sessionBar, sessionToolAnswer } from "/dist/dashboard/testing/sessionScenario.js";
 import { tradeBalanceAt, tradeLedger } from "/dist/dashboard/testing/tradeScenario.js";
 const q = new URLSearchParams(location.search);
 const seek = Number(q.get("t") ?? 0);
@@ -103,6 +107,12 @@ const transport = q.get("transport") ?? "story";
 if (transport !== "none") {
   const plan = q.get("plan") ? { expected_profit_auec: 150000 } : undefined;
   scenario.ledger = (include, nowMs) => transportLedger(nowMs, scenario.epoch, include, transport, plan);
+}
+// The saved play session bar and the session tools: invented sessions, the real shapes of the server's answers.
+const sess = q.get("sessions") ?? "story";
+if (sess !== "none") {
+  host.overrides.poll = (base, include) => ({ ...base, sessions: sessionBar(scenario.now, include, sess) });
+  host.overrides.tool = (name, args) => sessionToolAnswer(name, args, scenario.now);
 }
 // trade=...: the commerce card. The made-up stream carries the balance of the trade story, and the ledger holds the
 // trade section that the real model builds from invented transactions.
@@ -151,6 +161,17 @@ if (q.get("balance")) frame.addEventListener("load", () => setTimeout(() => {
   const b = [...frame.contentDocument.querySelectorAll("button")].find((x) => x.textContent === "Afficher le solde");
   if (b) b.click();
 }, 1200));
+// menu=1: press "Sessions" in the page; menu=detail: then open session 2.
+if (q.get("menu")) frame.addEventListener("load", () => {
+  setTimeout(() => {
+    const b = [...frame.contentDocument.querySelectorAll("button")].find((x) => x.textContent.startsWith("Sessions"));
+    if (b) b.click();
+  }, 1800);
+  if (q.get("menu") === "detail") setTimeout(() => {
+    const r = [...frame.contentDocument.querySelectorAll("button")].find((x) => (x.getAttribute("aria-label") || "").startsWith("Ouvrir la session 2"));
+    if (r) r.click();
+  }, 2600);
+});
 if (q.get("scroll")) frame.addEventListener("load", () => setTimeout(() => frame.contentWindow.scrollTo(0, Number(q.get("scroll"))), 1500));
 frame.src = "/view.html";
 setInterval(() => { $("clock").textContent = "histoire : " + Math.round(scenario.t / 1000) + " s"; }, 500);

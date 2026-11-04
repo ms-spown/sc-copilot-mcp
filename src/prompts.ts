@@ -49,6 +49,29 @@ export const PROMPTS: PromptDefinition[] = [
         .join("\n"),
   },
   {
+    name: "trade_copilot",
+    title: "Trade copilot for my session",
+    description:
+      "Read my current play session, compare it with live UEX routes, and propose the next run with the reasoning in plain words.",
+    arguments: [
+      {
+        name: "budget",
+        description: "Credits (aUEC) I can spend; default: ask me before using my balance",
+      },
+    ],
+    render: (a) =>
+      [
+        "Be my trade copilot for the Star Citizen session I am playing now.",
+        given("Budget in aUEC", a.budget),
+        "Steps, in this order: 1) sc_session_current WITHOUT include_balance: the session so far (trips, active time), the last place and goods the log named (an estimate, not a position) and my latest trips. If it says sessions are off or there is no session, say so in one sentence and stop (the player enables them with SC_TELEMETRY=on; SC_SESSIONS=off disables them). 2) Ask me whether you may read my money figures; only if I agree, call it again with include_balance true and say they come from the game's telemetry and my session file. Never read them without asking. 3) uex_plan_trade from the last known place (ask me if it is unknown) with my ship (sc_live_state or sc_fleet_get) and my budget if I gave one or agreed to use my balance; it ranks options by ESTIMATED profit per hour (uex_get_trade_routes shows one commodity or origin). 4) For the top options: uex_get_market_status and uex_get_price_history at the sell terminal; demote an option these checks undermine, and say why.",
+        "Answer: one main option and up to two alternatives. For each: what to buy and where, where to sell, SCU, cost, profit per run and per hour, then why it fits where I am and how my session is going (trips so far, time per trip, result per hour only if I agreed to the money figures), and the risks (few price reports, old prices, shortage, a profit that looks too good, illegal cargo). Say which numbers are MEASURED (balance change, trips counted from the log) and which are ESTIMATES (expected profit, profit per hour, the last place, time per trip). The safety field is a heuristic: never call a route safe. End with the next action: go with the main option, or re-run with another origin, ship or budget; offer to open sc_live_dashboard with the chosen route as the plan so the session compares planned and measured profit (never a second dashboard if one is open).",
+        "To look back: sc_session_list and sc_session_stats (best routes, trend, efficiency against the plan). Start or end a session (sc_session_new, sc_session_end) only if I ask.",
+        RULES,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+  },
+  {
     name: "patch_briefing",
     title: "Briefing on the latest patch",
     description:

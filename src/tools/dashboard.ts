@@ -13,6 +13,7 @@ import type { GameLog } from "../providers/gamelog/reader.js";
 import { ShipSpecsResolver } from "../dashboard/specs.js";
 import type { HttpClient } from "../core/http.js";
 import type { ConnectionTracker } from "../providers/gamelog/connection.js";
+import type { SessionManager } from "../providers/sessions/manager.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
 import { NOT_IN_STREAM } from "../providers/telemetry/normalize.js";
 import type { ResourceDefinition, ToolDefinition, ToolResult } from "./types.js";
@@ -64,14 +65,18 @@ export function dashboardTools({
   scwClient,
   connection,
   gameLog,
+  sessions,
 }: {
   telemetry?: Telemetry;
   scwClient?: HttpClient;
   connection?: ConnectionTracker;
   gameLog?: GameLog;
+  sessions?: SessionManager;
 }): ToolDefinition[] {
   // The game log only serves the transport ledger: read-only, opt-in, refreshed at most every 5 s in the background.
-  const ledger = gameLog ? new LedgerService(ledgerLogFrom(gameLog)) : undefined;
+  // With saved sessions on, the session manager owns the ONE ledger reader and the dashboard shares it.
+  const ledger =
+    sessions?.ledger ?? (gameLog ? new LedgerService(ledgerLogFrom(gameLog)) : undefined);
   // The wiki client only serves the ship sheet lookup (background, one search per ship, never while telemetry is off).
   const service = new DashboardService(
     telemetry,
@@ -81,6 +86,7 @@ export function dashboardTools({
     ledger,
     // The trade journal of the same log reads (providers/gamelog/trade.ts), for the commerce card.
     ledger ? () => ledger.trades() : undefined,
+    sessions,
   );
   const enabled = () => telemetry?.enabled === true;
 
@@ -150,6 +156,7 @@ export function dashboardTools({
         const clean = parsePlan(plan);
         // Memory only: lets the transport ledger put the planned profit next to the measured one.
         service.setPlan(clean);
+        sessions?.setPlan(clean);
         return {
           content: [
             {
@@ -237,7 +244,7 @@ export function dashboardTools({
     {
       name: "sc_live_mark",
       description:
-        "For the dashboard View only, not for the model: sets a session marker (start, end) or restarts the balance change, in this server's memory. Nothing is written to disk and nothing is sent to the game. Start also resets the session counters. Does nothing while telemetry is off.",
+        "For the dashboard View only, not for the model: sets a session marker (start, end) or restarts the balance change. They drive the View's own flight counters and balance restart, in this server's memory; they do NOT start or end the saved play session (that is sc_session_new and sc_session_end). Nothing is written to disk and nothing is sent to the game. Start also resets the counters. Does nothing while telemetry is off.",
       inputSchema: {
         type: "object",
         properties: {
