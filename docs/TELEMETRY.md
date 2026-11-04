@@ -730,7 +730,8 @@ it again from any conversation, after a game crash, and after a reboot of the PC
   `SC_SESSIONS=off` (or `0`, `false`, `no`) turns the sessions off while telemetry stays on: no file is created or read,
   and the session tools and the bar disappear.
 - **To wipe it.** Stop Claude Desktop (or set `SC_SESSIONS=off`), then delete `sessions.json`. Files next to it
-  (`sessions.json.corrupt-...`, `.bak-...`) are copies kept when a file was unreadable; delete them too if you want.
+  (`sessions.json.v1.bak`, `sessions.json.corrupt-...`, `.bak-...`) are copies of older or unreadable files and hold the
+  same balances: delete all of them to wipe the data.
   The file is plain JSON: you can read it.
 - **A deliberate change of behaviour.** The starting balance cannot be recovered from Game.log, so to capture it the
   server must be watching when the game starts. With sessions on, a small manager keeps the telemetry reader alive
@@ -836,7 +837,10 @@ compares what the plan promised with what you really got (`src/providers/session
   and the tile say "marchandise non vérifiée (lien par prix)" and "qui ressemblent au plan" instead of "de cette
   marchandise", and the confidence is never `high`, with the reason in the tag's title. The session figures count such
   trips too (`price_linked_trips` in `money.plan`, in the best goods and routes), and their label ends with "(lien par prix)".
-  To have two runs of a route, apply its plan twice.
+  To have two runs of a route, apply its plan twice. **Selection bias:** because a run must have a unit margin between half and
+  twice the plan's to be tied, a run that yields 30 % of the plan is never tied and never counted: the calibrated ratios are
+  censored to about 50 % to 200 %, so the calibration cannot show that a route really yields 20 % of the plan (such runs are
+  simply absent). When the confidence is held at `medium` for that reason the line says so in its visible text.
 - **Confidence** (`none`, `low`, `medium`, `high`). `none` below 2 runs: no figure at all, only the count. `low` with 2
   or 3 runs, a spread above 0.6 (maximum minus minimum of the per-run ratios, in points of the plan) or a newest run older
   than 21 days. `medium` with 4 to 7 runs. `high` only with 8 runs, a spread of at most 0.3, fresh runs and goods tied by

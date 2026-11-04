@@ -768,8 +768,8 @@ plantage du jeu et après un redémarrage du PC.
   `SC_SESSIONS=off` (ou `0`, `false`, `no`) désactive les sessions tout en gardant la télémétrie : aucun fichier n'est
   créé ni lu, et les outils de session et la barre disparaissent.
 - **Pour l'effacer.** Arrêtez Claude Desktop (ou mettez `SC_SESSIONS=off`), puis supprimez `sessions.json`. Les fichiers à
-  côté (`sessions.json.corrupt-...`, `.bak-...`) sont des copies gardées quand un fichier était illisible ; supprimez-les
-  aussi si vous le souhaitez. Le fichier est du JSON simple : vous pouvez le lire.
+  côté (`sessions.json.v1.bak`, `sessions.json.corrupt-...`, `.bak-...`) sont des copies d'anciens fichiers ou de fichiers
+  illisibles et contiennent les mêmes soldes : supprimez-les tous pour effacer les données. Le fichier est du JSON simple : vous pouvez le lire.
 - **Un changement de comportement assumé.** Le solde de départ ne peut pas être retrouvé dans Game.log : pour le capter,
   le serveur doit surveiller dès le lancement du jeu. Avec les sessions actives, un petit gestionnaire garde le lecteur
   de télémétrie en vie **tant que le jeu est supposé tourner** (Game.log a été écrit dans les cinq dernières minutes et
@@ -887,7 +887,11 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   au lieu de « de cette marchandise », et la confiance n'est jamais `high`, avec la raison dans le titre de l'étiquette. Les
   chiffres de session comptent aussi ces trajets (`price_linked_trips` dans `money.plan`, dans les meilleures marchandises et
   routes), et leur libellé se termine par « (lien par prix) ». Pour avoir deux cargaisons d'une route, appliquez son plan
-  deux fois.
+  deux fois. **Biais de sélection :** comme une cargaison doit avoir une marge unitaire entre la moitié et le double de celle
+  du plan pour être rattachée, une cargaison qui rend 30 % du plan n'est jamais rattachée ni comptée : les ratios calibrés
+  sont censurés à environ 50 % à 200 %, donc la calibration ne peut pas montrer qu'une route rend vraiment 20 % du plan (de
+  telles cargaisons sont simplement absentes). Quand la confiance est tenue à `medium` pour cette raison, la ligne le dit
+  dans son texte visible.
 - **Confiance** (`none`, `low`, `medium`, `high`). `none` sous 2 cargaisons : aucun chiffre, seulement le nombre. `low` avec
   2 ou 3 cargaisons, un écart supérieur à 0,6 (maximum moins minimum des ratios par cargaison, en points du plan) ou une
   dernière cargaison de plus de 21 jours. `medium` avec 4 à 7 cargaisons. `high` seulement avec 8 cargaisons, un écart d'au

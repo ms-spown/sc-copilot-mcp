@@ -85,6 +85,7 @@ export function calibrationGroupNormalize(L: any, raw: any): any {
     net_n: count(raw.net_n),
     net_excluded: count(raw.net_excluded),
     goods_unverified: raw.goods_unverified === true,
+    confidence_capped: raw.confidence_capped === true,
     net_confidence: L.ledgerOneOf(raw.net_confidence, confs, "low"),
     fee_rate: calibrationRatio(L, raw.fee_rate),
     fee_n: count(raw.fee_n),
@@ -246,6 +247,10 @@ export function calibrationLine(
   text += ".";
   const caution = calibrationCaution(g);
   if (caution !== "") text += " " + caution[0]!.toUpperCase() + caution.slice(1) + ".";
+  // The ceiling, said in the visible text (not only in the tag's title): the cap and what the link leaves out.
+  if (g.confidence_capped === true)
+    text +=
+      " Confiance plafonnée à « moyenne » : plan rattaché par les prix, et les trajets qui rendent moins de la moitié du prévu ne sont pas rattachés, donc absents de ce chiffre.";
   if (typeof legs === "number" && legs > 1)
     text += " Ligne calculée pour le premier tronçon seulement.";
   return {

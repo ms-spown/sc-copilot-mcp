@@ -131,6 +131,17 @@ describe("Feature: unverified goods are said where the figure is shown", () => {
   });
 });
 
+describe("Feature: the ceiling is said in the visible text, not only in the tooltip", () => {
+  it("Given a group held at medium by the price link, Then the line says why and what the link leaves out; a group that is not capped says nothing of it", () => {
+    const capped = calib(group({ goods_unverified: true, confidence_capped: true, n: 8 }));
+    const text = NBSP_FREE(calibrationLine(capped, "Laranite", null, null).text);
+    expect(text).toContain("Confiance plafonnée à « moyenne » : plan rattaché par les prix");
+    expect(text).toContain("moins de la moitié du prévu ne sont pas rattachés");
+    const plain = calib(group({ goods_unverified: true, confidence_capped: false }));
+    expect(calibrationLine(plain, "Laranite", null, null).text).not.toContain("plafonnée");
+  });
+});
+
 describe("Feature: a two-leg card says which leg the line is about", () => {
   it("Given a card with two legs, Then the line ends with that sentence; a one-leg card has none", () => {
     const c = calib(group());

@@ -46,6 +46,10 @@ import type { Session, Trip } from "./types.js";
  * prices (trips.ts `planLinkOf`): a group that rests on such a run says `goods_unverified`, is never labelled `high`,
  * and must never be quoted as if the goods had been checked.
  *
+ * SELECTION BIAS (said plainly): a run is tied to its plan only when its unit margin is within [0.5x, 2x] of the plan's, so
+ * a run that yields 30 % of the plan is never tied and never appears here. The calibrated ratios are therefore censored to
+ * about [0.5, 2]: the calibration cannot show that a route really yields 20 % of the plan.
+ *
  * CONFIDENCE (none / low / medium / high), from the number of runs n and the spread (max minus min of the per-run ratios,
  * in points of the plan):
  *   none   : n < 2. No figure is given at all, only n.
@@ -119,6 +123,8 @@ export interface CalibrationGroup {
   linked_by_prices: number;
   /** True when at least one used run was tied to its plan by prices: never quote the group as verified. */
   goods_unverified: boolean;
+  /** True when the confidence would have been `high` and was held at `medium` because the goods are unverified. */
+  confidence_capped: boolean;
   /** Runs of this group that were left out, by reason. */
   excluded: {
     old: number;
@@ -388,6 +394,7 @@ function groupOf(
     unknown_version: used.filter((u) => u.versionUnknown).length,
     linked_by_prices: byPrices,
     goods_unverified: byPrices > 0,
+    confidence_capped: verdict.reasons.includes("goods_unverified"),
     excluded,
   };
 }

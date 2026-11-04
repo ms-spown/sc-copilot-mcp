@@ -291,6 +291,8 @@ export class CompositeTripSource implements TripSource {
     return {
       trips: parts.flatMap((p) => p.trips),
       context: parts.map((p) => p.context).find((c) => c !== null) ?? null,
+      // Without this the manager sees no distance and the OLDEST candidate wins instead of the closest.
+      plan_distance: Object.assign({}, ...parts.map((p) => p.plan_distance ?? {})),
     };
   }
 }
