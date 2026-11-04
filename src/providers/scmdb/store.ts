@@ -2,6 +2,7 @@ import { z } from "zod";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fetchWithCache, isOutage } from "../../core/cache.js";
+import { pruneGroups } from "../../core/cachePrune.js";
 import type { HttpClient } from "../../core/http.js";
 import { recordFetch, setChannel, setDataDates, setGameVersion } from "../../core/provenance.js";
 import { isRepoName } from "../../core/validate.js";
@@ -80,18 +81,74 @@ export interface ScmdbDeps {
   repo: string;
   cacheDir: () => string;
   now?: () => number;
+  /** Tests only: smaller bounds than SCMDB_LIMITS. */
+  limits?: Partial<typeof SCMDB_LIMITS>;
 }
 
 const REF_TTL_MS = 10 * 60 * 1000;
-const SAFE_NAME = /^[A-Za-z0-9._-]+$/;
+/** A file name from the manifest becomes part of a cache file name: plain characters, and neither "." nor "..". */
+const SAFE_NAME = /^(?!\.{1,2}$)[A-Za-z0-9._-]+$/;
+
+/**
+ * What the store keeps. Every commit of the mirror brings new files (up to 60 MB each): parsed copies stay in memory
+ * only for the most recently used ones, within a budget counted in characters of JSON text (a parsed object takes a few
+ * times that), and the cache folder keeps the files of the newest commits only. A file bigger than the whole budget is
+ * still served; it is then the only parsed copy kept.
+ */
+export const SCMDB_LIMITS = {
+  /** Parsed files kept in memory (one commit holds about a dozen: six kinds for each of the two channels). */
+  maxParsedEntries: 16,
+  /** Characters of JSON text behind the parsed files kept in memory. */
+  maxParsedBytes: 160 * 1024 * 1024,
+  /** Commits whose files stay in the cache folder (older copies are the fallback when the download fails). */
+  keepCommits: 3,
+};
+
+/** The commit part of a cache file name (`<12 hex>__<name>`, or `main-<stamp>__<name>` without a SHA). */
+const commitOf = (fileName: string): string | null =>
+  /^((?:[0-9a-f]{12}|main-[0-9x]+))__[A-Za-z0-9._-]+$/.exec(fileName)?.[1] ?? null;
 
 export class Scmdb {
-  private parsed = new Map<string, unknown>();
+  private parsed = new Map<string, { loaded: Loaded; bytes: number }>();
+  private parsedTotal = 0;
   private ref: { value: string; at: number } | null = null;
+  private limits: typeof SCMDB_LIMITS;
 
   constructor(private deps: ScmdbDeps) {
     if (!isRepoName(deps.repo)) {
       throw new Error(`SCMCP_SCMDB_REPO must look like "owner/name", got "${deps.repo}".`);
+    }
+    this.limits = { ...SCMDB_LIMITS, ...deps.limits };
+  }
+
+  /** How many parsed files are held in memory (tests and diagnostics). */
+  get parsedEntries(): number {
+    return this.parsed.size;
+  }
+
+  /** Characters of JSON text behind them. */
+  get parsedBytes(): number {
+    return this.parsedTotal;
+  }
+
+  /** Keep a parsed file as the most recently used; drop the least recently used ones past the limits. */
+  private remember(key: string, loaded: Loaded, bytes: number): void {
+    const old = this.parsed.get(key);
+    if (old) this.parsedTotal -= old.bytes;
+    this.parsed.delete(key);
+    this.parsed.set(key, { loaded, bytes });
+    this.parsedTotal += bytes;
+    while (
+      this.parsed.size > 1 &&
+      (this.parsed.size > this.limits.maxParsedEntries ||
+        this.parsedTotal > this.limits.maxParsedBytes)
+    ) {
+      const [oldest, entry] = this.parsed.entries().next().value as [
+        string,
+        { loaded: Loaded; bytes: number },
+      ];
+      this.parsed.delete(oldest);
+      this.parsedTotal -= entry.bytes;
     }
   }
 
@@ -189,14 +246,16 @@ export class Scmdb {
     const memoryKey = `${key}|${name}`;
     const file = path.join(this.deps.cacheDir(), "scmdb", `${key}__${name}`);
 
-    const memo = this.parsed.get(memoryKey) as Loaded | undefined;
+    const memo = this.parsed.get(memoryKey);
     if (memo) {
-      recordFetch({ fetchedAt: memo.fetchedAt, cache: "memory" });
-      return memo;
+      this.remember(memoryKey, memo.loaded, memo.bytes); // most recently used
+      recordFetch({ fetchedAt: memo.loaded.fetchedAt, cache: "memory" });
+      return memo.loaded;
     }
 
     const finish = (
       data: unknown,
+      bytes: number,
       fetchedAt: number,
       cache: "network" | "memory",
       stale?: string,
@@ -209,7 +268,7 @@ export class Scmdb {
         );
       }
       const loaded: Loaded = { data, fetchedAt, version, ...(stale ? { stale } : {}) };
-      if (!stale) this.parsed.set(memoryKey, loaded);
+      if (!stale) this.remember(memoryKey, loaded, bytes);
       recordFetch({
         fetchedAt,
         cache: stale ? "stale-disk" : cache,
@@ -223,7 +282,8 @@ export class Scmdb {
       const handle = await fs.open(file, "r");
       try {
         const stat = await handle.stat();
-        return finish(JSON.parse(await handle.readFile("utf8")), stat.mtimeMs, "memory");
+        const text = await handle.readFile("utf8");
+        return finish(JSON.parse(text), text.length, stat.mtimeMs, "memory");
       } finally {
         await handle.close();
       }
@@ -238,12 +298,15 @@ export class Scmdb {
         timeout: 120_000,
         maxContentLength: 60 * 1024 * 1024,
       } as never);
-      const result = finish(response.data, this.now(), "network");
+      const body = JSON.stringify(response.data);
+      const result = finish(response.data, body.length, this.now(), "network");
       try {
         await fs.mkdir(path.dirname(file), { recursive: true });
         const tmp = `${file}.${process.pid}.tmp`;
-        await fs.writeFile(tmp, JSON.stringify(response.data));
+        await fs.writeFile(tmp, body);
         await fs.rename(tmp, file);
+        // The cache folder keeps the newest commits only (the one just written always stays).
+        await pruneGroups(path.dirname(file), commitOf, this.limits.keepCommits, key);
       } catch {
         // A read-only cache folder only costs a re-download next time.
       }
@@ -252,8 +315,10 @@ export class Scmdb {
       if (!isOutage(error)) throw error;
       const older = await this.newestCopy(name);
       if (!older) throw error;
+      const olderText = await fs.readFile(older.file, "utf8");
       return finish(
-        JSON.parse(await fs.readFile(older.file, "utf8")),
+        JSON.parse(olderText),
+        olderText.length,
         older.mtime,
         "memory",
         "the live download failed; serving the last copy kept on disk",

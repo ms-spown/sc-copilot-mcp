@@ -1,0 +1,70 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  cacheStats,
+  clearCache,
+  configureDiskCache,
+  configureMemoryCache,
+  fetchWithCache,
+} from "./cache.js";
+import type { HttpClient } from "./http.js";
+
+/**
+ * Feature: the memory cache is bounded by size as well as by count.
+ * 300 entries of 25 MB (the response cap) would be 7.5 GB; the budget counts the JSON text of what it keeps.
+ */
+
+let counter = 0;
+const client = (pad: number): HttpClient =>
+  ({
+    defaults: { baseURL: `https://bounds-${++counter}.test` },
+    get: vi.fn(async (url: string) => ({ data: { url, pad: "x".repeat(pad) } })),
+  }) as unknown as HttpClient;
+
+beforeEach(() => {
+  clearCache();
+  configureDiskCache(null);
+  configureMemoryCache(undefined);
+});
+
+describe("Feature: a byte budget on the memory cache", () => {
+  it("Given answers of 10 kB and a budget of 35 kB, When ten are fetched, Then at most three stay", async () => {
+    configureMemoryCache({ maxBytes: 35_000 });
+    const c = client(10_000);
+    for (let i = 0; i < 10; i++) await fetchWithCache(c, `/n${i}`);
+    const stats = cacheStats();
+    expect(stats.entries).toBe(3);
+    expect(stats.bytes).toBeLessThanOrEqual(35_000);
+  });
+
+  it("Given the budget, Then it is the OLDEST answers that go, the newest stays and is served from memory", async () => {
+    configureMemoryCache({ maxBytes: 35_000 });
+    const c = client(10_000);
+    for (let i = 0; i < 6; i++) await fetchWithCache(c, `/n${i}`);
+    expect((await fetchWithCache(c, "/n5")).cache).toBe("memory");
+    expect((await fetchWithCache(c, "/n0")).cache).toBe("network");
+  });
+
+  it("Given one answer bigger than the whole budget, Then it is served but not kept in memory", async () => {
+    configureMemoryCache({ maxBytes: 5_000 });
+    const c = client(10_000);
+    const first = await fetchWithCache(c, "/big");
+    expect(first.data.pad).toHaveLength(10_000);
+    expect(cacheStats().entries).toBe(0);
+    expect((await fetchWithCache(c, "/big")).cache).toBe("network");
+  });
+
+  it("Given small answers, Then the count bound still applies", async () => {
+    configureMemoryCache({ maxEntries: 5 });
+    const c = client(10);
+    for (let i = 0; i < 12; i++) await fetchWithCache(c, `/n${i}`);
+    expect(cacheStats().entries).toBe(5);
+  });
+
+  it("Given the defaults, Then the budget is large enough for ordinary use and finite", async () => {
+    const c = client(1_000);
+    for (let i = 0; i < 20; i++) await fetchWithCache(c, `/n${i}`);
+    expect(cacheStats().entries).toBe(20);
+    expect(cacheStats().maxBytes).toBeGreaterThan(10 * 1024 * 1024);
+    expect(Number.isFinite(cacheStats().maxBytes)).toBe(true);
+  });
+});
