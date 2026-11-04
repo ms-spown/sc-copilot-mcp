@@ -106,8 +106,29 @@ versions follow [Semantic Versioning](https://semver.org/).
   requests all paired with a response, 79 cargo requests, 12 cargo errors each within 2 s of its request. The 4.10 cargo
   sale format rests on two lines of one session (3 November 2026); the earlier research note that found no sale after
   March 2025 predates them.
+- **Server `instructions` (trade copilot operating manual).** The MCP `initialize` result now carries a compact
+  manual (`src/instructions.ts`, at most 3 500 characters, ASCII, 3 000 today; the rules that must never be lost come
+  first): honesty (never invent a number, `data_age` against `cache_age`, `[ESTIMATE]` markers, measured against
+  estimated), the live rules (never `sc_live_poll` or `sc_live_mark`, one dashboard, balance only with
+  `include_balance` after asking, never "the game is not running", the `connection` state, telemetry never called
+  safe), which trade tool for which intent (planner, routes, price history, market status, refining, items,
+  marketplace, journal) and how to accompany (one main option and up to two alternatives with the risks, a next step
+  at the end, a debrief from the journal). Tests bound its length, check that it is plain ASCII with no link, that
+  every tool it names exists in the registry, that the critical rules sit in its first 2 000 characters, and that a
+  client receives it. The per-tool descriptions are unchanged (golden and `docs/TOOLS.md` too). Claude Code passes the
+  field to the model; Claude Desktop and claude.ai were reported not to (open issues, November 2026), so the pasted
+  block stays the reliable channel there until the canary test says otherwise.
+- Prompt `trade_review`: recent purchases and sales from the game log (`sc_trade_journal`), the cargo runs with their
+  gross margin (never presented as net), whether the sale prices were good (`uex_get_price_history`), what to change
+  and the next run (`uex_plan_trade`).
+- `docs/USING_WITH_CLAUDE.md` and `.fr.md`: which part of the pasted block the server instructions make redundant, a
+  trade accompaniment line in rule 3, and a canary test (three questions and the expected behaviour) to check in
+  Claude Desktop or Claude Code whether the instructions are honoured.
 
 ### Changed
+- Prompts `haul_plan` and `session_debrief` now say exactly what the answer must contain (a ranked list with the
+  numbers, the assumptions, the estimate markers, one next action) and `session_debrief` reads the trade journal when
+  you traded. Every prompt now ends with "never invent a number" and "answer in the language I write in".
 - The transport ledger's last line is "Récompense mesurée, dernier contrat" (a contract's balance change is the reward
   minus what it cost, not a profit) and the planned line says "avant frais". The ledger payload budget is 26 000
   characters (it also holds the commerce section).

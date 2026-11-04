@@ -37,6 +37,8 @@ src/tools/      one file per group (definition + handler together), catalog.ts (
 src/install/    mergeConfig (pure planning of the Claude Desktop config merge), telemetrySwitch + jsonEdit
                 (npm run telemetry: text-level edit of one key, user variable through an injectable EnvStore)
 src/server.ts   MCP server around a registry (tests connect to it in memory; index.ts adds stdio)
+src/instructions.ts  the `instructions` field sent at initialize: <= 3,500 chars, ASCII, critical rules first, every tool
+                name checked against the registry (tests); edit it, never copy its rules into a tool description
 src/e2e/        protocol-level behaviour tests; src/docs/ generator of docs/TOOLS.md
 scripts/        install-claude-desktop.mjs, check-sources.mjs, mcp-probe.mjs (stale, see CONTRIBUTING)
 ```

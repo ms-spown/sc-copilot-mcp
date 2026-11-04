@@ -35,7 +35,7 @@ touche, n'automatise rien et n'écrit jamais dans le dossier du jeu. Le seul fic
 | Votre vaisseau, en direct (désactivé par défaut) | « Mon train d'atterrissage est-il sorti ? Combien d'hydrogène reste-t-il ? » | `sc_live_status`, `sc_live_state`, `sc_live_dashboard` |
 | Fraîcheur | « Ces données sont-elles à jour ? » | `sc_data_status` |
 
-Cinq prompts prêts à l'emploi les enchaînent pour vous (voir [Prompts](#prompts)). Toutes les capacités, avec leur
+Six prompts prêts à l'emploi les enchaînent pour vous (voir [Prompts](#prompts)). Toutes les capacités, avec leur
 source, leur fraîcheur, leurs limites et leurs prérequis : **[docs/CAPABILITIES.md](docs/CAPABILITIES.md)** (en anglais).
 
 ## Ce que vous obtenez
@@ -150,6 +150,7 @@ données :
 | `haul_plan`       | Les 3 meilleures options de transport pour l'un de vos vaisseaux, classées par profit horaire estimé, avec les risques (peu de relevés, données anciennes, marchés saturés, profit suspect, cargaison illégale) |
 | `patch_briefing`  | Ce que la dernière mise à jour a changé et ce que cela implique pour vous et votre flotte                                                                 |
 | `session_debrief` | Ce que vous avez fait lors de votre dernière session d'après votre journal de jeu, et quoi faire ensuite                                                  |
+| `trade_review`    | Vos achats et ventes récents d'après le journal de jeu : tournées de fret avec leur marge brute, quoi changer, la prochaine tournée |
 | `mining_prep`     | Les statistiques et gisements d'un minerai, le bon laser et les bons modules, et où le vendre                                                             |
 | `mission_hunt`    | Missions par lieu, faction, récompense ou plan (blueprint), et quel vaisseau de votre flotte convient                                                     |
 
@@ -255,7 +256,8 @@ d'atterrissage, alimentation, voyants, santé, faim, soif.
 - [docs/CAPABILITIES.md](docs/CAPABILITIES.md) : tout ce que le serveur sait faire, par besoin
 - [docs/TOOLS.md](docs/TOOLS.md) : chaque outil et chaque paramètre (généré)
 - [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md) : la télémétrie en direct optionnelle, ses données et ses risques
-- [docs/USING_WITH_CLAUDE.fr.md](docs/USING_WITH_CLAUDE.fr.md) : le bloc à coller dans un projet Claude
+- [docs/USING_WITH_CLAUDE.fr.md](docs/USING_WITH_CLAUDE.fr.md) : le bloc à coller dans un projet Claude, ce que le serveur
+  dit déjà à Claude de lui-même, et un test canari pour le vérifier
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
   [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md) et [SECURITY.md](SECURITY.md)

@@ -35,7 +35,7 @@ you point it at, and only if you do.
 | Your ship, live (off by default) | "Is my landing gear down? How much hydrogen is left?" | `sc_live_status`, `sc_live_state`, `sc_live_dashboard` |
 | Freshness | "Is this data current?" | `sc_data_status` |
 
-Five ready-made prompts chain these for you (see [Prompts](#prompts)). Every capability, with its source, its
+Six ready-made prompts chain these for you (see [Prompts](#prompts)). Every capability, with its source, its
 freshness, its limits and what it needs: **[docs/CAPABILITIES.md](docs/CAPABILITIES.md)**.
 
 ## What you get
@@ -145,6 +145,7 @@ the right tools in the right order and telling Claude to state how fresh the dat
 | `haul_plan`       | Best 3 trade options for one of your ships, ranked by estimated profit per hour, with the risks (few reports, old data, saturated markets, too-good profit, illegal cargo) |
 | `patch_briefing`  | What the newest update changed and what it means for you and your fleet                                           |
 | `session_debrief` | What you did in your last session, from your game log, and what to do next                                        |
+| `trade_review`    | Your recent purchases and sales from the game log: cargo runs with their gross margin, what to change, the next run |
 | `mining_prep`     | An ore's stats and locations, the right laser and modules, where to sell it                                       |
 | `mission_hunt`    | Missions by place, faction, reward or blueprint, and which of your ships fits                                     |
 
@@ -237,7 +238,8 @@ health, hunger, thirst.
 - [docs/CAPABILITIES.md](docs/CAPABILITIES.md): everything it can do, need by need
 - [docs/TOOLS.md](docs/TOOLS.md): every tool and parameter (generated)
 - [docs/TELEMETRY.md](docs/TELEMETRY.md): the optional live telemetry, its data and its risks
-- [docs/USING_WITH_CLAUDE.md](docs/USING_WITH_CLAUDE.md): the block to paste into a Claude project
+- [docs/USING_WITH_CLAUDE.md](docs/USING_WITH_CLAUDE.md): the block to paste into a Claude project, what the server
+  already tells Claude by itself, and a canary test to check it
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
   [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md)
