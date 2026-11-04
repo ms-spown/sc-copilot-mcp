@@ -258,6 +258,20 @@ describe("Feature: the player can end a session and start another", () => {
     expect(endCurrent(s, T0 + 2 * MIN).ended).toBe(false);
   });
 
+  it("Given a clock that went backwards, Then a manual end (or a new session) never ends the session before its last sighting", () => {
+    const s = emptyState();
+    observe(s, obs({ now: T0, balance: 1 }), cfg);
+    observe(s, obs({ now: T0 + HEARTBEAT_MS, balance: 1 }), cfg);
+    const last = latest(s)!.last_activity_at;
+    endCurrent(s, T0 - HOUR);
+    expect(latest(s)!.ended_at).toBe(last);
+    const t = emptyState();
+    observe(t, obs({ now: T0, balance: 1 }), cfg);
+    observe(t, obs({ now: T0 + HEARTBEAT_MS, balance: 1 }), cfg);
+    startNew(t, T0 - HOUR, cfg, null);
+    expect(t.sessions[0].ended_at).toBe(t.sessions[0].last_activity_at);
+  });
+
   it("Given a session left for an hour and closed by hand, Then it ends at its last sighting, not at the click", () => {
     const s = emptyState();
     observe(s, obs({ now: T0, balance: 1 }), cfg);

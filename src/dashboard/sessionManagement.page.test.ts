@@ -218,6 +218,43 @@ describe("Feature: the card of a session in progress", () => {
     expect(toolNames(w)).toEqual([]);
   });
 
+  it("Given the question, Then the group and the confirm button are described by its text, so a screen reader reads it", async () => {
+    const { w } = await managed("story");
+    await click(w, "Terminer la session", 100);
+    const q = findAll(w.root, (n) => n.className === "ses-confirm-text")[0]!;
+    const id = q.attrs["id"];
+    expect(id).toBeTruthy();
+    expect(NB(q.textContent)).toContain("Terminer la session 4 (6 trajets) ?");
+    const box = findAll(w.root, (n) => n.className === "ses-confirm")[0]!;
+    expect(box.attrs["aria-describedby"]).toBe(id);
+    expect(button(w, "Confirmer la fin")!.attrs["aria-describedby"]).toBe(id);
+    expect(findAll(w.root, (n) => n.attrs["id"] === id)).toHaveLength(1);
+  });
+
+  it("Given a poll in flight (asked before the end) when the end is confirmed, Then its old answer does not bring the card back to 'en cours'", async () => {
+    const { w, fake } = await managed("story");
+    await click(w, "Terminer la session", 100);
+    // From now on the answers of polls are held: the next poll is asked while the session is still in progress.
+    w.host.hold.on = true;
+    await w.advance(8 * SECOND);
+    expect(w.host.hold.held.length).toBeGreaterThan(0);
+    await click(w, "Confirmer la fin", 200);
+    expect(fake.variant).toBe("ended"); // the server ended it
+    // The old poll answers (session still open): the card must not show it, and the buttons stay away.
+    w.host.releasePolls();
+    await w.advance(200);
+    expect(offered(w, "Terminer la session")).toBe(false);
+    // The fresh poll, asked after the end, answers: the card shows the ended session and keeps it.
+    w.host.hold.on = false;
+    w.host.releasePolls();
+    await w.advance(2 * SECOND);
+    expect(text(w)).toMatch(/Session 4\nterminée /);
+    expect(text(w)).not.toMatch(/Session 4\nen cours/);
+    expect(offered(w, "Nouvelle session")).toBe(true);
+    expect(offered(w, "Terminer la session")).toBe(false);
+    expect(said(w)).toContain("Session 4 terminée");
+  });
+
   it("Given a cancelled question, Then it says so in the live region, the session continues and the focus goes back to the button", async () => {
     const { w, fake } = await managed("story");
     await click(w, "Terminer la session", 100);

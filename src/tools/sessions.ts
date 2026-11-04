@@ -176,7 +176,7 @@ export function sessionTools({
     {
       name: "sc_session_new",
       description:
-        "Starts a new play session now (the player pressed or asked for 'Nouvelle session'): the current one is closed with its numbers kept, the new one starts from the balance just seen. A session that is still empty (waiting for the game) already is the next one: nothing starts (started=false). Writes only this server's own session file; nothing is sent to the game. Use only when the player asks. Optional note (500 characters).",
+        "Starts a new play session now (the player pressed or asked for 'Nouvelle session'): the current one is closed with its numbers kept, the new one starts from the balance just seen. A session that is still empty (waiting for the game) already is the next one: nothing starts (started=false). The answer gives started and closed_session (the number of the session this call closed, or null when it closed none). Writes only this server's own session file; nothing is sent to the game. Use only when the player asks. Optional note (500 characters).",
       inputSchema: {
         type: "object",
         properties: { note: { type: "string", maxLength: 500 } },
@@ -201,7 +201,7 @@ export function sessionTools({
     {
       name: "sc_session_end",
       description:
-        "Ends the current play session now (the player asked to finish it); its numbers stay in the history. The next play period starts a new one once the game is seen starting afresh. A session that is still empty (waiting for the game) has nothing to end and stays open (ok=false, reason=empty). Writes only this server's own session file. Use only when the player asks. Optional note (500 characters).",
+        "Ends the current play session now (the player asked to finish it); its numbers stay in the history. The next play period starts a new one once the game is seen starting afresh. A session that is still empty (waiting for the game) has nothing to end and stays open (ok=false, reason=empty). The answer's reason is ended, empty, already_ended (the last session was already ended) or none (no session yet); it acts on the last session. Writes only this server's own session file. Use only when the player asks. Optional note (500 characters).",
       inputSchema: {
         type: "object",
         properties: { note: { type: "string", maxLength: 500 } },

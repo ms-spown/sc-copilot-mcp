@@ -142,8 +142,11 @@ function retire(
 }
 
 /** When the player closes a session now: at the click if the game was just seen, else at the last sighting. */
-const closeAt = (cur: Session, now: number): number =>
-  now - ms(cur.last_activity_at) > 5 * 60_000 ? ms(cur.last_activity_at) : now;
+const closeAt = (cur: Session, now: number): number => {
+  const last = ms(cur.last_activity_at);
+  // Never before the last sighting: a clock that went backwards must not end a session before something it saw.
+  return Math.max(last, now - last > 5 * 60_000 ? last : now);
+};
 
 /**
  * Does this observation show a new play period after the instant `sinceMs`? The game's own log is the witness when it

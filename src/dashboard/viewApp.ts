@@ -928,7 +928,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       copy: copyText,
       download: downloadText,
       canDownload: canDownload,
-      refresh: () => pollOnce(),
+      refresh: () => pollFresh(),
       say: (text: string) => feedback(text),
       toggleBalance: () => toggleBalance(),
     });
@@ -2034,6 +2034,16 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     })();
     inFlight = run;
     return run;
+  }
+
+  /**
+   * A poll that starts AFTER now: one already in flight was sent before whatever just changed on the server (a session ended or
+   * started), so its answer may be the old state; wait for it, then ask once more.
+   */
+  async function pollFresh() {
+    const stale = inFlight !== null;
+    await pollOnce();
+    if (stale) await pollOnce();
   }
 
   /** A poll that carries the balance or a click: one already in flight was asked without it, so ask again if needed. */

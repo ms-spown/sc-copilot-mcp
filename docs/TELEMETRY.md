@@ -340,8 +340,8 @@ that this server provides and that the client renders next to the chat.
 - **The compact view, in the order of what a glance in flight needs.** The header with the verdict, then the price
   refusal if there is one, the alerts (no row at all while there is none: the verdict says it), the three dials, the
   ship on one small row, the session on ONE line ("Session 4 · 6 trajets · 1 h 28 min", plus the net per hour only
-  while the balance is shown; a real button with `aria-expanded` unfolds the whole card, which keeps **Nouvelle
-  session** as a secondary button), the balance row beside it, then the contract line and "Chercher une route". Measured
+  while the balance is shown; a real button with `aria-expanded` unfolds the whole card, which keeps **Terminer la
+  session** and **Nouvelle session** as secondary buttons, each only when it changes something), the balance row beside it, then the contract line and "Chercher une route". Measured
   in real Chrome on the preview's made-up flight, at 560 px: 691 px high before, 326 px now; at 360 px with a price
   refusal 915 px before, 510 px now. Not verified: how Claude Desktop sizes the inline frame.
 - **What the cockpit shows.** Instruments: a speed dial whose scale is deduced from the speeds seen and says so
@@ -989,7 +989,12 @@ it again from any conversation, after a game crash, and after a reboot of the PC
   the end; when Game.log says nothing, a balance appearing after a silence). A restarted server that only sees its first
   balance late does not count as a new play period. Closing the game is not an end: the session waits and resumes when the
   game is back within the gap (the card says "jeu fermé" in the meantime). The file format is unchanged (no new value for
-  `end_reason`, so an older server still reads it).
+  `end_reason`, so an older server still reads it). An older server (2.7.0) that writes the same `sessions.json` brings back
+  the old behaviours on its own side (an empty session dropped and recreated by the poll, an ended session replaced after
+  the gap); the format stays compatible. Known limit: `sc_session_end` and `sc_session_new` act on the LAST session on the
+  server and take no expected id, so a confirmation that went stale (another dashboard or the game started a newer session
+  in the narrow window between the question and the click) could end the newer session; the message the card shows names
+  the session that was really ended.
 - Time is counted from what was seen: **active time** is the time the game was seen running; a gap adds nothing.
 
 ### What is stored, what a crash loses

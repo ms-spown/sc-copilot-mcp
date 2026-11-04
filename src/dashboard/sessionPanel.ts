@@ -809,8 +809,12 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   confirmBox.setAttribute("role", "group");
   confirmBox.setAttribute("aria-label", "Confirmation");
   const confirmText = el("p", "ses-confirm-text", "");
+  // The question is what the group and the confirm button are described by: a screen reader reads it with them.
+  confirmText.setAttribute("id", "ses-confirm-text");
+  confirmBox.setAttribute("aria-describedby", "ses-confirm-text");
   const confirmRow = el("div", "ses-confirm-row");
   const btnYes = button("Confirmer", () => void run(), "small primary");
+  btnYes.setAttribute("aria-describedby", "ses-confirm-text");
   const btnNo = button("Annuler", () => cancel(), "small");
   add(confirmRow, btnYes, btnNo);
   add(confirmBox, confirmText, confirmRow);

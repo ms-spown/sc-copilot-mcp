@@ -1045,7 +1045,12 @@ plantage du jeu et après un redémarrage du PC.
   qui apparaît après un silence). Un serveur redémarré qui ne voit son premier solde que tard n'est pas une nouvelle
   période de jeu. Fermer le jeu n'est pas une fin : la session attend et reprend quand le jeu revient dans le délai (la
   carte dit « jeu fermé » entre-temps). Le format du fichier ne change pas (pas de nouvelle valeur pour `end_reason` : un
-  ancien serveur le lit toujours).
+  ancien serveur le lit toujours). Un ancien serveur (2.7.0) qui écrit le même `sessions.json` ramène de son côté les anciens
+  comportements (une session vide supprimée puis recréée par l'interrogation, une session terminée remplacée après le
+  délai) ; le format reste compatible. Limite connue : `sc_session_end` et `sc_session_new` agissent sur la DERNIÈRE session
+  du serveur et ne prennent pas d'identifiant attendu, donc une confirmation devenue périmée (un autre tableau de bord ou
+  le jeu a démarré une session plus récente dans la courte fenêtre entre la question et le clic) pourrait terminer la
+  session plus récente ; le message affiché sur la carte nomme la session réellement terminée.
 - Le temps est compté d'après ce qui a été vu : le **temps actif** est le temps où le jeu a été vu en marche ; une
   coupure n'ajoute rien.
 
