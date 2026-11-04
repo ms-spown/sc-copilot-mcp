@@ -13,3 +13,5 @@ export const POLL_CACHE_MS = 500;
 export const POLL_EVENT_COUNT = 30;
 /** Longest text of a plan field. */
 export const PLAN_TEXT_MAX = 60;
+/** Most price points of the "cours" curve a plan may carry. */
+export const PLAN_PRICE_POINTS_MAX = 30;

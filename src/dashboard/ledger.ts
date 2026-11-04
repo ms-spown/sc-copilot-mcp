@@ -2,6 +2,8 @@ import { cleanLabel } from "../core/untrusted.js";
 import { collapseRepeats } from "../providers/gamelog/context.js";
 import type { LogEvent } from "../providers/gamelog/parser.js";
 import type { BalancePoint } from "../providers/telemetry/service.js";
+import { buildTradeSection, type TradePlan, type TradeSection } from "./tradeRun.js";
+import type { Transaction } from "../providers/gamelog/trade.js";
 
 /**
  * The transport ledger: contracts of the current game session (from Game.log) linked to the balance change that
@@ -36,8 +38,8 @@ export const LEDGER_SETTLE_MS = 10_000;
 export const LEDGER_GAP_TOLERANCE_MS = 3_000;
 /** No hourly rate under this much cumulated contract time. */
 export const LEDGER_MIN_RATE_MS = 120_000;
-/** The ledger payload is cut to fit this many characters once serialised. */
-export const LEDGER_BUDGET_CHARS = 20_000;
+/** The ledger payload is cut to fit this many characters once serialised (the trade section has room of its own). */
+export const LEDGER_BUDGET_CHARS = 26_000;
 
 export type ContractState =
   "accepted" | "in_progress" | "completed" | "abandoned" | "failed" | "ended";
@@ -324,19 +326,25 @@ export interface LedgerPayload {
   /** Present only when the poll asked for the balance. */
   balance?: LedgerBalance;
   plan_compare?: LedgerPlanCompare;
+  /**
+   * The commerce section (tradeRun.ts): present only when a trade journal feeds the dashboard. Every amount of aUEC
+   * in it sits under `runs[].money`, built ONLY when the poll asked for the balance.
+   */
+  trade?: TradeSection;
   /** Present only when the payload had to be cut to stay bounded. */
   truncated?: string;
 }
 
-export interface PlanForLedger {
-  expected_profit_auec?: number;
-}
+/** What the ledger and the commerce model take from the plan (dashboard/plan.ts has the full, cleaned one). */
+export type PlanForLedger = TradePlan;
 
 export interface LedgerInput {
   base: LedgerBase;
   history: readonly BalancePoint[];
   includeBalance: boolean;
   plan?: PlanForLedger | undefined;
+  /** The transactions of the trade journal; absent: no journal, no `trade` section. */
+  trades?: readonly Transaction[] | undefined;
   nowMs: number;
 }
 
@@ -480,6 +488,15 @@ export function buildLedgerPayload(input: LedgerInput): LedgerPayload {
     payload.balance = balanceOf(all, gains, history);
     const compare = planCompare(input.plan, all, gains);
     if (compare) payload.plan_compare = compare;
+  }
+  if (input.trades !== undefined) {
+    payload.trade = buildTradeSection({
+      transactions: input.trades,
+      history,
+      includeBalance,
+      plan: input.plan,
+      nowMs,
+    });
   }
   return boundLedger(payload);
 }

@@ -7,6 +7,32 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Commerce card in the live dashboard** ("Commerce"). It replaces the misleading "Prévu / Réalisé" block, which put a
+  planned profit next to a balance change (the change also holds the goods bought, the sales and the fees). A pure model
+  (`src/dashboard/tradeRun.ts`) turns the transactions of a run, the balance history and the plan into: planned profit,
+  turnover, purchase cost, gross margin, price gap, fees, net profit (balance after the last sale minus the balance just
+  before the first purchase), run time, net per hour and an extrapolation with its assumptions, plus the planned profit
+  net of the observed fee rate. Fees are not in the game log: they are measured per side against the balance (a log
+  amount matched with the balance change within a few seconds, labelled "mesuré") and, when that cannot be done, deduced
+  as gross margin minus net and labelled "estimé"; unknown is shown as unknown, never as zero. The card shows the
+  headline numbers (net profit, turnover, fees, the next trip), a waterfall from planned to real, fees per side, pace
+  and projection, and a price curve ("cours") with the target price and the price really obtained; estimated figures are
+  hatched and tagged, measured ones are solid. All amounts of a run are built only when the player shows the balance and
+  never travel on the channel between Views or in a message to the model. The transactions come from the trade journal of the
+  game log (`providers/gamelog/trade.ts`, the one behind `sc_trade_journal`): the ledger's reads (full, then incremental)
+  also keep the commerce lines, and only the completed transactions count, exactly as the journal does (failed and
+  unconfirmed ones are listed on the card, not counted). The dashboard parses nothing of its own. The gross margin follows the journal's own first-in
+  first-out pairing (`pairCargoRuns`); a deduced fee total is refused when it is not a plausible fee (0 to 50 % of the
+  turnover); the net is the variation of the balance and says how much of it the margin and the fees do not explain
+  (a visible warning above 2 % of the turnover); sold stock that was not bought in the run is told; hourly figures
+  rest on an observed cycle or on the run plus an assumed overhead, and "per 4 h of play" waits for two measured runs. Goods are shown by the
+  journal's id (8 characters of the GUID) unless the plan names them; no wiki name lookup yet. A hidden slot for a
+  future action bar (`tradeActions.ts`) is ready at the top of the card.
+- `sc_live_dashboard` plan: `buy_unit_price`, `sell_unit_price`, `est_trip_minutes`, `safety_note`, `price_points` (at
+  most 30), `price_points_for`, `price_points_label`. Cleaned and bounded on the server and again in the page; the
+  dashboard never calls UEX (golden and docs/TOOLS.md regenerated).
+- Preview: `trade=story|estimated|unknown|partial|second|none` and `fw=<px>`.
+
 - **Trade intelligence (UEX), three tools in the `trade` profile.**
   - `uex_plan_trade` ranks one-way routes (from UEX `commodities_routes`), round trips A>B>A and two-leg chains A>B>C
     (the last two computed offline from one cached `commodities_prices_all` call) by estimated profit per hour, per run or by
@@ -80,6 +106,14 @@ versions follow [Semantic Versioning](https://semver.org/).
   requests all paired with a response, 79 cargo requests, 12 cargo errors each within 2 s of its request. The 4.10 cargo
   sale format rests on two lines of one session (3 November 2026); the earlier research note that found no sale after
   March 2025 predates them.
+
+### Changed
+- The transport ledger's last line is "Récompense mesurée, dernier contrat" (a contract's balance change is the reward
+  minus what it cost, not a profit) and the planned line says "avant frais". The ledger payload budget is 26 000
+  characters (it also holds the commerce section).
+
+### Removed
+- `planProgress` (the "Prévu / Réalisé" comparison of the plan card).
 
 ## [2.1.0] - 2026-11-03
 

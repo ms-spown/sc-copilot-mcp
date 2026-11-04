@@ -15,6 +15,7 @@ import {
   type SessionState,
 } from "./poll.js";
 import type { ShipSpecsResolver } from "./specs.js";
+import type { TradeSource } from "./tradeRun.js";
 
 /**
  * The server side of the live dashboard: one poll answer shared by every View, and the session markers.
@@ -56,6 +57,8 @@ export class DashboardService {
     private readonly connection?: { current(): Promise<ConnectionInfo | null> },
     /** The transport ledger's reader (ledgerService.ts). Without one the ledger says it is off. */
     private readonly ledger?: LedgerService,
+    /** The trade journal of the game log (providers/gamelog/trade.ts), as the ledger reads it. Absent: no `trade` section. */
+    private readonly trades?: TradeSource,
   ) {}
 
   get enabled(): boolean {
@@ -135,7 +138,15 @@ export class DashboardService {
     const base = this.ledger ? this.ledger.state() : EMPTY_LEDGER;
     const history =
       includeBalance && telemetry.balanceHistory ? await telemetry.balanceHistory() : [];
-    return buildLedgerPayload({ base, history, includeBalance, plan: this.plan, nowMs });
+    const trades = this.trades ? this.trades() : undefined;
+    return buildLedgerPayload({
+      base,
+      history,
+      includeBalance,
+      plan: this.plan,
+      nowMs,
+      ...(trades ? { trades } : {}),
+    });
   }
 
   /** Session markers. Memory only. Never sent to the game. */

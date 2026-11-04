@@ -209,7 +209,44 @@
             },
             "expected_profit_auec": {
               "type": "number",
-              "description": "Planned profit, in aUEC."
+              "description": "Planned PROFIT in aUEC (sales minus purchases at the planned prices, before any fee). Not a turnover."
+            },
+            "buy_unit_price": {
+              "type": "number",
+              "description": "Planned buying price, aUEC per SCU."
+            },
+            "sell_unit_price": {
+              "type": "number",
+              "description": "Planned selling price, aUEC per SCU."
+            },
+            "est_trip_minutes": {
+              "type": "number",
+              "description": "Estimated trip time of the route, in minutes."
+            },
+            "safety_note": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "price_points": {
+              "type": "array",
+              "maxItems": 30,
+              "items": {
+                "type": "number"
+              },
+              "description": "Recent prices per SCU, oldest first (at most 30), taken from the UEX price tools, for the price curve. The dashboard never calls UEX."
+            },
+            "price_points_for": {
+              "type": "string",
+              "enum": [
+                "buy",
+                "sell"
+              ],
+              "description": "Which price the points are (sell when absent)."
+            },
+            "price_points_label": {
+              "type": "string",
+              "maxLength": 60,
+              "description": "The period of the points in words, for example '7 derniers jours'."
             },
             "note": {
               "type": "string",

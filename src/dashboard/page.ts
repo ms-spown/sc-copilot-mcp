@@ -3,6 +3,9 @@ import { LEDGER_CSS } from "./ledgerStyles.js";
 import { dashboardMain } from "./viewApp.js";
 import { SPECS_VIEW_FUNCTIONS } from "./specsView.js";
 import { SPECS_CSS } from "./specsStyles.js";
+import { TRADE_ACTIONS_VIEW_FUNCTIONS } from "./tradeActions.js";
+import { TRADE_VIEW_FUNCTIONS } from "./tradePanel.js";
+import { TRADE_CSS } from "./tradeStyles.js";
 import { VIEW_FUNCTIONS } from "./viewLogic.js";
 import { VIEW_CSS } from "./viewStyles.js";
 
@@ -19,8 +22,14 @@ const CSP =
 
 export function viewScript(): string {
   // viewLogic.ts first, then the ship sheet module (specsView.ts), then the transport ledger panel
-  // (ledgerPanel.ts): one scope, one object L.
-  const all = [...VIEW_FUNCTIONS, ...SPECS_VIEW_FUNCTIONS, ...LEDGER_VIEW_FUNCTIONS];
+  // (ledgerPanel.ts), the commerce card (tradePanel.ts) and its action bar slot (tradeActions.ts): one scope, one object L.
+  const all = [
+    ...VIEW_FUNCTIONS,
+    ...SPECS_VIEW_FUNCTIONS,
+    ...LEDGER_VIEW_FUNCTIONS,
+    ...TRADE_VIEW_FUNCTIONS,
+    ...TRADE_ACTIONS_VIEW_FUNCTIONS,
+  ];
   const functions = all.map((f) => f.toString()).join("\n");
   const names = all.map((f) => f.name).join(", ");
   return [
@@ -47,7 +56,7 @@ export function dashboardHtml(): string {
     '<meta name="color-scheme" content="light dark">',
     `<meta http-equiv="Content-Security-Policy" content="${CSP}">`,
     "<title>Tableau de bord en direct</title>",
-    `<style>${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}</style>`,
+    `<style>${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}${TRADE_CSS}</style>`,
     "</head>",
     "<body>",
     '<div id="app" data-stream="init" data-mode="inline" data-grey="1"></div>',

@@ -38,6 +38,8 @@ function clients(telemetry?: Telemetry): ToolClients {
   };
 }
 
+// Real loopback sockets: a loaded machine must not turn a slow connect into a failure (waitFor below waits up to 15 s).
+vi.setConfig({ testTimeout: 30_000 });
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   while (cleanup.length) await cleanup.pop()!();
@@ -99,7 +101,7 @@ async function liveWorld() {
   });
   cleanup.push(() => telemetry.stop());
   const world = await connect(clients(telemetry), UI_CAPS);
-  const waitFor = async (check: () => boolean | Promise<boolean>, what: string, ms = 3000) => {
+  const waitFor = async (check: () => boolean | Promise<boolean>, what: string, ms = 15_000) => {
     const end = Date.now() + ms;
     while (Date.now() < end) {
       if (await check()) return;

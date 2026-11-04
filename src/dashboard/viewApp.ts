@@ -793,28 +793,6 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     add(R.sesBalanceBox, R.sesBalance.root, R.sesDelta.root, R.sesRate.root);
     R.sesNote = el("p", "note", "");
     add(cSes.body, R.sesEmpty, R.sesButtons, R.sesRows, R.sesBalanceBox, R.sesNote);
-    // Route plan
-    R.planCard = card("Plan de route");
-    R.planLine = el("p", "plan-line", "");
-    R.planNote = el("p", "plan-note", "");
-    R.planExpected = fact("Prévu");
-    R.planActual = fact("Réalisé");
-    R.planBar = gauge();
-    R.planFill = R.planBar.fill;
-    R.planCargo = el(
-      "p",
-      "note",
-      "Cargaison non mesurée par le jeu : la variation du solde est la seule mesure.",
-    );
-    add(
-      R.planCard.body,
-      R.planLine,
-      R.planNote,
-      R.planExpected.root,
-      R.planActual.root,
-      R.planBar.root,
-      R.planCargo,
-    );
     // One chronology
     const cEv = card("Chronologie");
     R.filter = "all";
@@ -909,13 +887,19 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     }
     add(R.missing, R.missingSummary, R.missingList);
     add(R.colInstr, cCurves.root);
-    add(R.wide, cSes.root, R.planCard.root, cEv.root, cAct.root, R.unverified, R.missing);
+    add(R.wide, cSes.root, cEv.root, cAct.root, R.unverified, R.missing);
 
     // Transport ledger (ledgerPanel.ts): a card in the pilot column, a compact line under the small view
     R.ledger = L.ledgerPanel(doc, L);
     add(R.colPilot, R.ledger.card);
 
-    add(R.full, R.offNote, R.colInstr, R.colShip, R.colPilot, R.wide);
+    // Commerce card (tradePanel.ts): full width at the top of the cockpit, a compact line under the small view.
+    // Its action bar (tradeActions.ts) is a separate component in a slot of the card, hidden until it is built.
+    R.trade = L.tradePanel(doc, L, SVG_NS);
+    R.tradeActions = L.tradeActionsPanel(doc, L);
+    add(R.trade.slot, R.tradeActions.root);
+
+    add(R.full, R.offNote, R.trade.card, R.colInstr, R.colShip, R.colPilot, R.wide);
 
     // Stream state changes are announced here, out of sight: the header already shows them.
     R.sr = el("div", "sr-only", "");
@@ -933,6 +917,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.pinbar,
       R.inline,
       R.ledger.line,
+      R.trade.line,
       R.full,
       R.sr,
     );
@@ -1360,37 +1345,6 @@ export function dashboardMain(win: any, doc: any, L: any): any {
         ? "Le solde mêle achats, récompenses et amendes : la variation n’est pas un bénéfice net."
         : "",
     );
-
-    // Plan
-    const plan = view.plan;
-    show(R.planCard.root, !!plan);
-    if (plan) {
-      const route = [
-        plan.commodity,
-        plan.buy_terminal && plan.sell_terminal
-          ? plan.buy_terminal + " → " + plan.sell_terminal
-          : plan.buy_terminal || plan.sell_terminal,
-      ]
-        .filter(Boolean)
-        .join(" · ");
-      setText(
-        R.planLine,
-        route + (typeof plan.scu === "number" ? " · " + L.fmtNum(plan.scu) + " SCU" : ""),
-      );
-      setText(R.planNote, plan.note || "");
-      const prog = L.planProgress(plan, bal ? bal.delta : null);
-      setRow(
-        R.planExpected,
-        prog.expected !== null ? L.fmtAuec(prog.expected, true) + "\u00a0aUEC" : "—",
-      );
-      setRow(
-        R.planActual,
-        bal && prog.actual !== null ? L.fmtAuec(prog.actual, true) + "\u00a0aUEC" : "solde masqué",
-      );
-      const frac = prog.ratio === null ? null : Math.max(0, Math.min(1, prog.ratio));
-      setGauge(R.planBar, frac, "info");
-      show(R.planBar.root, frac !== null);
-    }
   }
 
   function renderChronology() {
@@ -1464,6 +1418,20 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       showBalance,
       fullscreen: displayMode === "fullscreen",
       now,
+    });
+    // The commerce card: the plan from the model, the commerce section of the ledger, and the balance change only
+    // as a labelled fallback while no trade journal feeds the dashboard.
+    const tradeLedger = L.ledgerNormalize(view.poll && view.poll.ledger);
+    R.tradeActions.render({ enabled: false });
+    show(R.trade.slot, false);
+    R.trade.render({
+      trade: tradeLedger?.trade ?? null,
+      ledgerStatus: tradeLedger ? tradeLedger.status : null,
+      plan: view.plan,
+      showBalance,
+      fullscreen: displayMode === "fullscreen",
+      balance: showBalance && view.poll ? view.poll.balance : null,
+      baseline: L.baselineLabel(view.poll),
     });
     const I = L.instrumentInfo(view.poll, view);
     const sheetIns = view.poll && view.poll.ship && view.poll.ship.instruments;

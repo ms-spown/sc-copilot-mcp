@@ -427,18 +427,11 @@ describe("Feature: estimates are labelled estimates", () => {
     expect(L.trendEstimate(undefined, T0).kind).toBe("none");
   });
 
-  it("Given pace and plan, Then the rate needs two minutes and the plan compares expected with measured", () => {
+  it("Given a pace, Then the rate needs two minutes", () => {
     const since = new Date(T0).toISOString();
     expect(L.sessionRate(1000, since, T0 + 60_000)).toBeNull();
     expect(L.sessionRate(3600, since, T0 + 3_600_000)!.perHour).toBeCloseTo(3600, 5);
     expect(L.sessionRate(null, since, T0 + 3_600_000)).toBeNull();
-    expect(L.planProgress({ expected_profit_auec: 1000 }, 250)).toEqual({
-      expected: 1000,
-      actual: 250,
-      ratio: 0.25,
-    });
-    expect(L.planProgress({}, 250)).toEqual({ expected: null, actual: 250, ratio: null });
-    expect(L.planProgress(null, 1)).toBeNull();
   });
 
   it("Given sparkline points, Then they stay inside their box and a flat line is centred", () => {
