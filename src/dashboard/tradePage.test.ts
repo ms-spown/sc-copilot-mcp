@@ -159,11 +159,13 @@ describe("Feature: no amount without the balance", () => {
   it("Given the small view, Then one line says where the run stands, with an amount only when the balance is shown", async () => {
     const w = await page();
     await w.advance(215 * SECOND);
-    expect(text(w)).toContain("Dernier trajet · LARA : terminé");
+    expect(text(w)).toContain("Dernier trajet · marchandise 5c2e9a41 : terminé");
     expect(text(w)).not.toMatch(AMOUNTS);
     findButton(w.root, "Afficher le solde").click();
     await w.advance(3 * SECOND);
-    expect(text(w)).toContain("Dernier trajet · LARA : bénéfice net +143 000 aUEC (mesuré)");
+    expect(text(w)).toContain(
+      "Dernier trajet · marchandise 5c2e9a41 : bénéfice net +143 000 aUEC (mesuré)",
+    );
   });
 
   it("Given the balance is shown, Then nothing of the run goes to the conversation", async () => {
@@ -285,11 +287,11 @@ describe("Feature: the commerce section on the channel between Views", () => {
     const sent = ledgerStripBalance(rich);
     expect(JSON.stringify(sent)).not.toMatch(AMOUNTS);
     expect(JSON.stringify(sent)).not.toMatch(/"money"|net|fees|turnover/);
-    expect(sent.trade.runs[0].commodity).toBe("LARA");
+    expect(sent.trade.runs[0].commodity).toBe("5c2e9a41");
     const received = ledgerChannelClean(rich);
     expect(JSON.stringify(received)).not.toMatch(AMOUNTS);
     expect(received.trade.runs[0]).toMatchObject({
-      commodity: "LARA",
+      commodity: "5c2e9a41",
       stage: "complete",
       scu_bought: 696,
     });
@@ -329,7 +331,7 @@ describe("Feature: the commerce section on the channel between Views", () => {
     expect(wire.replace(/180000/g, "")).not.toMatch(
       /(?<![\d.])(131504|318072|186568|143000|463000|320000|43568|136432)(?!\d)/,
     );
-    expect(wire).toContain("LARA");
+    expect(wire).toContain("5c2e9a41");
     const t = card(follower);
     expect(t).toContain("Trajet terminé");
     expect(t.replace(/180 000/g, "")).not.toMatch(AMOUNTS);

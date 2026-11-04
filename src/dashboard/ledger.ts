@@ -3,7 +3,7 @@ import { collapseRepeats } from "../providers/gamelog/context.js";
 import type { LogEvent } from "../providers/gamelog/parser.js";
 import type { BalancePoint } from "../providers/telemetry/service.js";
 import { buildTradeSection, type TradePlan, type TradeSection } from "./tradeRun.js";
-import type { TradeTransaction } from "./tradeTypes.js";
+import type { Transaction } from "../providers/gamelog/trade.js";
 
 /**
  * The transport ledger: contracts of the current game session (from Game.log) linked to the balance change that
@@ -344,7 +344,7 @@ export interface LedgerInput {
   includeBalance: boolean;
   plan?: PlanForLedger | undefined;
   /** The transactions of the trade journal; absent: no journal, no `trade` section. */
-  trades?: readonly TradeTransaction[] | undefined;
+  trades?: readonly Transaction[] | undefined;
   nowMs: number;
 }
 

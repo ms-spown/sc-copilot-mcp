@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { BalancePoint } from "../providers/telemetry/service.js";
 import { buildTradeSection, prepareTransactions, reconcileFees, splitRuns } from "./tradeRun.js";
-import type { TradeTransaction } from "./tradeTypes.js";
-import { TRADE_FIGURES as F, tradeHistory, tradeTransactions } from "./testing/tradeScenario.js";
+import type { Transaction } from "../providers/gamelog/trade.js";
+import {
+  AGRICIUM_ID,
+  LARANITE_ID,
+  TRADE_FIGURES as F,
+  tradeHistory,
+  tradeTransactions,
+} from "./testing/tradeScenario.js";
 
 /**
  * Given/When/Then for the commerce model, on the synthetic copy of the player's run: bought 131 504, sold 318 072,
@@ -67,8 +73,18 @@ describe("Feature: what a run really earned", () => {
       { at: BASE + 100_000, uec: 532_000, until: BASE + 200_000 },
     ];
     const t = [
-      { ...txs[0]!, at: new Date(BASE + 9_900).toISOString(), total_auec: 100_000, quantity: 100 },
-      { ...txs[1]!, at: new Date(BASE + 99_900).toISOString(), total_auec: 150_000, quantity: 100 },
+      {
+        ...txs[0]!,
+        time: new Date(BASE + 9_900).toISOString(),
+        total_auec: 100_000,
+        quantity: 100,
+      },
+      {
+        ...txs[1]!,
+        time: new Date(BASE + 99_900).toISOString(),
+        total_auec: 150_000,
+        quantity: 100,
+      },
     ];
     const fees = latest({ transactions: t, history, plan: undefined }).money!.fees;
     expect(fees.buy).toEqual({ auec: 7_000, method: "exact" });
@@ -144,14 +160,14 @@ describe("Feature: the amounts exist only with the balance", () => {
     expect(section.runs[0]).not.toHaveProperty("money");
     // what remains: goods, places, quantities, times, counts
     expect(section.runs[0]).toMatchObject({
-      commodity: "LARA",
+      commodity: LARANITE_ID,
       stage: "complete",
       scu_bought: 696,
       scu_sold: 696,
       buys: 2,
       sells: 2,
-      buy_shops: ["Port Tressler"],
-      sell_shops: ["Area18 TDD"],
+      buy_shops: ["SCShop_Cargo_Tressler"],
+      sell_shops: ["SCShop_Cargo_Area18"],
     });
   });
 
@@ -198,7 +214,11 @@ describe("Feature: the plan, net of the fees observed", () => {
     expect(latest({ plan: { ...PLAN, commodity: "Agricium" } }).money!.plan_match).toBe(
       "non_verifie",
     );
-    expect(latest().money!.plan_match).toBe("ok"); // "LARA" is the start of "Laranite"
+    // The journal names goods by an id only (a GUID prefix): a plan can not be checked against it.
+    expect(latest().money!.plan_match).toBe("non_verifie");
+    // With a name that starts like the plan's (a future name lookup), it is checked.
+    const named = tradeTransactions(BASE).map((x) => ({ ...x, commodity_id: "Laranite" }));
+    expect(latest({ transactions: named }).money!.plan_match).toBe("ok");
   });
 });
 
@@ -218,7 +238,7 @@ describe("Feature: pace and projection", () => {
   it("Given a run under two minutes, Then there is no projection", () => {
     const t = tradeTransactions(BASE).map((x, i) => ({
       ...x,
-      at: new Date(BASE + 20_000 + i * 10_000).toISOString(),
+      time: new Date(BASE + 20_000 + i * 10_000).toISOString(),
     }));
     expect(latest({ transactions: t }).money!.projection).toBeNull();
   });
@@ -268,9 +288,10 @@ describe("Feature: runs that are not clean", () => {
     const t = tradeTransactions(BASE);
     t.push({
       ...t[1]!,
-      at: new Date(BASE + 30_000).toISOString(),
+      time: new Date(BASE + 30_000).toISOString(),
       total_auec: 99_999,
-      outcome: "failed",
+      status: "failed",
+      confidence: "confirmed",
     });
     const r = latest({ transactions: t });
     expect(r.failed).toBe(1);
@@ -278,22 +299,51 @@ describe("Feature: runs that are not clean", () => {
     expect(r.buys).toBe(2);
   });
 
-  it("Given a transaction whose result is unknown, Then it counts but is flagged", () => {
+  it("Given a line the journal could not confirm (even an ambiguous one), Then it is not counted, exactly as the journal does, and is told", () => {
     const t = tradeTransactions(BASE);
-    t[3] = { ...t[3]!, outcome: "unknown" };
-    expect(latest({ transactions: t }).uncertain).toBe(1);
+    t[3] = {
+      ...t[3]!,
+      status: "unconfirmed",
+      confidence: "ambiguous",
+      basis: "error_line_ambiguous",
+    };
+    const r = latest({ transactions: t });
+    expect(r.uncertain).toBe(1);
+    expect(r.sells).toBe(1);
+    expect(r.money!.turnover).toBe(292_480);
+    expect(r.stage).toBe("partial");
+  });
+
+  it("Given a cargo line in another currency, Then it is never added to aUEC", () => {
+    const t = tradeTransactions(BASE);
+    t[0] = { ...t[0]!, currency: "REC" };
+    expect(latest({ transactions: t }).buys).toBe(1);
   });
 
   it("Given items and rubbish, Then items are ignored and rubbish is dropped without an error", () => {
     const t: unknown[] = [
       ...tradeTransactions(BASE),
       { ...tradeTransactions(BASE)[0]!, kind: "item" },
-      { at: "nope", side: "buy", kind: "commodity", total_auec: 5 },
-      { at: new Date(BASE).toISOString(), side: "buy", kind: "commodity", total_auec: -4 },
+      {
+        time: "nope",
+        side: "buy",
+        kind: "commodity",
+        total_auec: 5,
+        currency: "aUEC",
+        status: "completed",
+      },
+      {
+        time: new Date(BASE).toISOString(),
+        side: "buy",
+        kind: "commodity",
+        total_auec: -4,
+        currency: "aUEC",
+        status: "completed",
+      },
       null,
       7,
     ];
-    const r = latest({ transactions: t as TradeTransaction[] });
+    const r = latest({ transactions: t as Transaction[] });
     expect(r.ignored).toBe(1);
     expect(r.money!.turnover).toBe(318_072);
   });
@@ -310,15 +360,15 @@ describe("Feature: runs that are not clean", () => {
 });
 
 describe("Feature: two runs", () => {
-  const second = (): TradeTransaction[] => {
+  const second = (): Transaction[] => {
     const t = tradeTransactions(BASE);
-    const mk = (s: number, side: "buy" | "sell", total: number): TradeTransaction => ({
+    const mk = (s: number, side: "buy" | "sell", total: number): Transaction => ({
       ...t[0]!,
-      at: new Date(BASE + s * 1000).toISOString(),
+      time: new Date(BASE + s * 1000).toISOString(),
       side,
       total_auec: total,
       quantity: 300,
-      commodity: "AGRI",
+      commodity_id: AGRICIUM_ID,
     });
     return [...t, mk(300, "buy", 60_000), mk(330, "sell", 71_000)];
   };
@@ -326,7 +376,7 @@ describe("Feature: two runs", () => {
   it("Given a purchase after a sale, Then it starts a second run, newest first", () => {
     const section = run({ transactions: second() });
     expect(section.runs_total).toBe(2);
-    expect(section.runs.map((r) => r.commodity)).toEqual(["AGRI", "LARA"]);
+    expect(section.runs.map((r) => r.commodity)).toEqual([AGRICIUM_ID, LARANITE_ID]);
     expect(section.runs[1]!.money!.net.auec).toBe(143_000);
     // the plan is for the latest run only
     expect(section.runs[1]!.money!.planned_profit).toBeNull();
@@ -348,7 +398,7 @@ describe("Feature: two runs", () => {
 
   it("Given a long silence, Then it is another run even without a sale in between", () => {
     const t = tradeTransactions(BASE);
-    const late = { ...t[0]!, at: new Date(BASE + 3 * 3_600_000).toISOString() };
+    const late = { ...t[0]!, time: new Date(BASE + 3 * 3_600_000).toISOString() };
     expect(splitRuns(prepareTransactions([...t.slice(0, 2), late]).counted)).toHaveLength(2);
   });
 });

@@ -1,6 +1,6 @@
 import { cleanLabel } from "../core/untrusted.js";
 import type { BalancePoint } from "../providers/telemetry/service.js";
-import type { TradeTransaction } from "./tradeTypes.js";
+import type { Transaction } from "../providers/gamelog/trade.js";
 
 /**
  * The commerce model: from the transactions of a trading run, the balance history and the optional plan, what the
@@ -28,6 +28,9 @@ import type { TradeTransaction } from "./tradeTypes.js";
 // -------------------------------------------------------------------------------------------------
 // Bounds and tolerances
 // -------------------------------------------------------------------------------------------------
+
+/** Where the transactions come from: the trade journal of the game log (providers/gamelog/trade.ts). */
+export type TradeSource = () => readonly Transaction[] | undefined;
 
 /** Transactions kept in memory and examined. */
 export const TRADE_MAX_TRANSACTIONS = 400;
@@ -209,7 +212,7 @@ export const EMPTY_TRADE: TradeSection = { v: 1, source: "none", runs: [], runs_
 
 export interface TradeInput {
   /** Absent: no journal. Present, even empty: the journal exists. */
-  transactions: readonly TradeTransaction[] | undefined;
+  transactions: readonly Transaction[] | undefined;
   history: readonly BalancePoint[];
   includeBalance: boolean;
   plan?: TradePlan | undefined;
@@ -228,12 +231,13 @@ export interface Tx {
   quantity: number | null;
   commodity: string | null;
   shop: string | null;
-  uncertain: boolean;
 }
 
 export interface Prepared {
   counted: Tx[];
   failed: Tx[];
+  /** Lines the journal could not confirm (status unconfirmed, ambiguous ones included): never counted. */
+  unconfirmed: Tx[];
   ignored: number;
 }
 
@@ -241,8 +245,8 @@ const finitePositive = (n: unknown): n is number =>
   typeof n === "number" && Number.isFinite(n) && n > 0 && n <= 1e12;
 
 /** Keeps what is usable, in time order. Anything else is dropped without a word (a transaction can never throw). */
-export function prepareTransactions(raw: readonly TradeTransaction[] | undefined): Prepared {
-  const out: Prepared = { counted: [], failed: [], ignored: 0 };
+export function prepareTransactions(raw: readonly Transaction[] | undefined): Prepared {
+  const out: Prepared = { counted: [], failed: [], unconfirmed: [], ignored: 0 };
   if (!Array.isArray(raw)) return out;
   for (const r of raw.slice(-TRADE_MAX_TRANSACTIONS)) {
     if (!r || typeof r !== "object") continue;
@@ -251,7 +255,9 @@ export function prepareTransactions(raw: readonly TradeTransaction[] | undefined
       continue;
     }
     if (r.side !== "buy" && r.side !== "sell") continue;
-    const t = typeof r.at === "string" ? Date.parse(r.at) : NaN;
+    // The journal states an amount in aUEC for cargo; anything else is never added to aUEC.
+    if (r.currency !== "aUEC") continue;
+    const t = typeof r.time === "string" ? Date.parse(r.time) : NaN;
     if (!Number.isFinite(t) || !finitePositive(r.total_auec)) continue;
     const quantity =
       r.unit === "SCU" &&
@@ -265,14 +271,17 @@ export function prepareTransactions(raw: readonly TradeTransaction[] | undefined
       side: r.side,
       total: Math.round(r.total_auec),
       quantity,
-      commodity: cleanLabel(r.commodity, TRADE_LABEL_MAX),
+      commodity: cleanLabel(r.commodity_id, TRADE_LABEL_MAX),
       shop: cleanLabel(r.shop, TRADE_LABEL_MAX),
-      uncertain: r.outcome === "unknown",
     };
-    (r.outcome === "failed" ? out.failed : out.counted).push(tx);
+    // Exactly as the journal does: only completed lines count; failed and unconfirmed ones are listed, not counted.
+    if (r.status === "completed") out.counted.push(tx);
+    else if (r.status === "failed") out.failed.push(tx);
+    else if (r.status === "unconfirmed") out.unconfirmed.push(tx);
   }
   out.counted.sort((a, b) => a.t - b.t);
   out.failed.sort((a, b) => a.t - b.t);
+  out.unconfirmed.sort((a, b) => a.t - b.t);
   return out;
 }
 
@@ -709,7 +718,9 @@ function viewOf(f: RunFacts, prep: Prepared, money: RunMoney | undefined): Trade
     buys: f.buys.length,
     sells: f.sells.length,
     failed: failedHere.length,
-    uncertain: f.txs.filter((x) => x.uncertain).length,
+    uncertain: prep.unconfirmed.filter(
+      (x) => x.t >= first - TRADE_MATCH_AFTER_MS && x.t <= last + TRADE_MATCH_AFTER_MS,
+    ).length,
     ignored: prep.ignored,
     ...(money ? { money } : {}),
   };

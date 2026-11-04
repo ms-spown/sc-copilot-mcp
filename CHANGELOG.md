@@ -18,9 +18,11 @@ versions follow [Semantic Versioning](https://semver.org/).
   headline numbers (net profit, turnover, fees, the next trip), a waterfall from planned to real, fees per side, pace
   and projection, and a price curve ("cours") with the target price and the price really obtained; estimated figures are
   hatched and tagged, measured ones are solid. All amounts of a run are built only when the player shows the balance and
-  never travel on the channel between Views or in a message to the model. The transactions come from a `TradeTransaction`
-  contract (`src/dashboard/tradeTypes.ts`) through an injected source; the Game.log parser is on `feat/trade-journal` and
-  is not wired yet, so for now the card shows the plan and the balance change under its real name. A hidden slot for a
+  never travel on the channel between Views or in a message to the model. The transactions come from the trade journal of the
+  game log (`providers/gamelog/trade.ts`, the one behind `sc_trade_journal`): the ledger's reads (full, then incremental)
+  also keep the commerce lines, and only the completed transactions count, exactly as the journal does (failed and
+  unconfirmed ones are listed on the card, not counted). The dashboard parses nothing of its own. Goods are shown by the
+  journal's id (8 characters of the GUID) unless the plan names them; no wiki name lookup yet. A hidden slot for a
   future action bar (`tradeActions.ts`) is ready at the top of the card.
 - `sc_live_dashboard` plan: `buy_unit_price`, `sell_unit_price`, `est_trip_minutes`, `safety_note`, `price_points` (at
   most 30), `price_points_for`, `price_points_label`. Cleaned and bounded on the server and again in the page; the

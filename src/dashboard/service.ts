@@ -15,7 +15,7 @@ import {
   type SessionState,
 } from "./poll.js";
 import type { ShipSpecsResolver } from "./specs.js";
-import type { TradeSource } from "./tradeTypes.js";
+import type { TradeSource } from "./tradeRun.js";
 
 /**
  * The server side of the live dashboard: one poll answer shared by every View, and the session markers.
@@ -57,7 +57,7 @@ export class DashboardService {
     private readonly connection?: { current(): Promise<ConnectionInfo | null> },
     /** The transport ledger's reader (ledgerService.ts). Without one the ledger says it is off. */
     private readonly ledger?: LedgerService,
-    /** The trade journal (tradeTypes.ts). Absent in production until the log parser is wired: no `trade` section. */
+    /** The trade journal of the game log (providers/gamelog/trade.ts), as the ledger reads it. Absent: no `trade` section. */
     private readonly trades?: TradeSource,
   ) {}
 

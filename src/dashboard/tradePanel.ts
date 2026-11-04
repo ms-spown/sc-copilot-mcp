@@ -81,10 +81,19 @@ export function tradeNetSource(net: any): string {
   return "estimé";
 }
 
+/**
+ * The journal names goods by an id only (the first 8 characters of the game's GUID): shown as "marchandise 5c2e9a41"
+ * until a name lookup exists. A plan's own name is always preferred.
+ */
+export function tradeGoodsLabel(id: string | null | undefined): string {
+  if (!id) return "";
+  return /^[0-9a-f]{8}$/.test(id) ? "marchandise " + id : id;
+}
+
 /** The route of the plan or of the run, as one line. */
 export function tradeRouteText(plan: any, run: any): string {
   const parts: string[] = [];
-  const goods = (plan && plan.commodity) || (run && run.commodity) || "";
+  const goods = (plan && plan.commodity) || tradeGoodsLabel(run && run.commodity);
   if (goods) parts.push(goods);
   const from = (plan && plan.buy_terminal) || (run && run.buy_shops && run.buy_shops[0]) || "";
   const to = (plan && plan.sell_terminal) || (run && run.sell_shops && run.sell_shops[0]) || "";
@@ -257,7 +266,7 @@ export function tradeLevelY(at: number, h: number): number {
 export function tradeInlineText(L: any, trade: any, showBalance: boolean): string {
   if (!trade || trade.source !== "journal" || trade.runs.length === 0) return "";
   const r = trade.runs[0];
-  const goods = r.commodity || "marchandise";
+  const goods = tradeGoodsLabel(r.commodity) || "marchandise";
   if (r.stage === "complete" && showBalance && r.money && r.money.net.auec !== null) {
     return (
       "Dernier trajet · " +
@@ -550,6 +559,9 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     if (plan && plan.est_trip_minutes)
       metaParts.push("trajet estimé " + plan.est_trip_minutes + " min");
     if (run && run.duration_ms > 0) metaParts.push("durée " + L.formatDuration(run.duration_ms));
+    if (run && run.failed > 0) metaParts.push(run.failed + " échec(s) non compté(s)");
+    if (run && run.uncertain > 0)
+      metaParts.push(run.uncertain + " ligne(s) non confirmée(s) non comptée(s)");
     if (plan && plan.safety_note) metaParts.push(plan.safety_note);
     if (plan && plan.note) metaParts.push(plan.note);
     setText(meta, metaParts.join(" · "));
@@ -682,7 +694,7 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     if (m) {
       if (m.plan_match === "non_verifie")
         flowText =
-          "Le plan est supposé être celui de ce trajet (la marchandise n’est pas la même ou n’est pas comparable). ";
+          "Le plan est supposé être celui de ce trajet : le journal du jeu ne nomme pas les marchandises, impossible de le vérifier. ";
       if (m.price_gap !== null && m.gap_includes_quantity)
         flowText += "La quantité achetée diffère du plan : l’écart mêle prix et quantité. ";
       if (
@@ -932,7 +944,9 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       show(historyItems[i], !!r);
       if (!r) continue;
       const bits = [
-        (r.commodity || "marchandise") + " · " + tradeStageLabel(r.stage).toLowerCase(),
+        (tradeGoodsLabel(r.commodity) || "marchandise") +
+          " · " +
+          tradeStageLabel(r.stage).toLowerCase(),
       ];
       if (r.scu_bought !== null) bits.push(L.fmtNum(r.scu_bought) + "\u00a0SCU");
       if (showBalance && r.money && r.money.net.auec !== null)
@@ -982,6 +996,7 @@ export const TRADE_VIEW_FUNCTIONS = [
   tradeIsEstimate,
   tradeNetReason,
   tradeNetSource,
+  tradeGoodsLabel,
   tradeRouteText,
   tradeWaterfall,
   tradeWaterfallLayout,

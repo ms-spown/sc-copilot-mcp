@@ -5,16 +5,22 @@
  * profit, finished at 463 000. Gross margin 186 568, net +143 000, so 43 568 of fees that the log does not show:
  * 19 468 on the purchases and 24 100 on the sales in this fixture (invented split; the real one is not known).
  *
- * The transactions are what the trade journal will deliver (tradeTypes.ts); the balance history is what the
- * telemetry would have measured. No real log, no real balance, no Node-only module: the browser imports it.
+ * The transactions are NOT hand-built records: invented Game.log lines (in the shapes the parser knows, with a made-up
+ * commodity GUID and shop names) go through the REAL commerce parser and journal (providers/gamelog/trade.ts), so the
+ * model is fed exactly what production feeds it. The balance history is what the telemetry would have measured. No real
+ * log, no real balance, no Node-only module: the browser imports it.
  *
  * Timeline of one loop of the preview (seconds, 600 s long): 6 s balance 320 000; 20 s and 22 s purchases, the loading
  * fee is charged at 22.5 s; 200 s and 202 s sales, fee at 202.5 s; the run is settled 8 s after its last transaction.
  */
+import {
+  buildTradeJournal,
+  parseCommerceText,
+  type Transaction,
+} from "../../providers/gamelog/trade.js";
 import type { BalancePoint } from "../../providers/telemetry/service.js";
 import { buildLedgerPayload, EMPTY_LEDGER, type LedgerPayload } from "../ledger.js";
 import type { PlanForLedger } from "../ledger.js";
-import type { TradeTransaction } from "../tradeTypes.js";
 
 export const TRADE_LOOP_SECONDS = 600;
 
@@ -28,37 +34,68 @@ export const TRADE_FIGURES = {
   planned: 180_000,
 } as const;
 
-const tx = (
+/** Invented commodity GUIDs: the journal's short id is their first 8 characters. */
+export const LARANITE_GUID = "5c2e9a41-1111-4222-8333-444444444444";
+export const AGRICIUM_GUID = "b81d3f07-1111-4222-8333-555555555555";
+export const LARANITE_ID = "5c2e9a41";
+export const AGRICIUM_ID = "b81d3f07";
+
+const OWNER = "[Team_CoreGameplayFeatures][Shops][UI]";
+const IDS = "playerId[1111111111] shopId[2222222]";
+const stamp = (base: number, s: number) => `<${new Date(base + s * 1000).toISOString()}>`;
+
+/** An invented cargo purchase line (quantity in cSCU, as the game writes it). */
+export function cargoBuyLine(
   base: number,
   s: number,
-  side: "buy" | "sell",
-  total: number,
-  quantity: number,
-  over: Partial<TradeTransaction> = {},
-): TradeTransaction => ({
-  at: new Date(base + s * 1000).toISOString(),
-  side,
-  kind: "commodity",
-  total_auec: total,
-  quantity,
-  unit: "SCU",
-  commodity: "LARA",
-  shop: side === "buy" ? "Port Tressler" : "Area18 TDD",
-  auto_loading: true,
-  outcome: "success",
-  confidence: "logged",
-  ...over,
-});
+  price: number,
+  scu: number,
+  guid = LARANITE_GUID,
+  shop = "SCShop_Cargo_Tressler",
+): string {
+  return `${stamp(base, s)} [Notice] <CEntityComponentCommodityUIProvider::SendCommodityBuyRequest> Sending SShopCommodityBuyRequest - ${IDS} shopName[${shop}] kioskId[3333333] price[${price}.000000] shopPricePerCentiSCU[1.889409] resourceGUID[${guid}] autoLoading[1] quantity[${scu * 100}.000000 cSCU] Cargo Box Data: boxSize[32.000000] | unitAmount[20] ${OWNER}`;
+}
 
-/** The four transactions of the run, `base` being epoch ms of the loop's start. */
-export function tradeTransactions(base: number): TradeTransaction[] {
+/** An invented cargo sale line (quantity in SCU). */
+export function cargoSellLine(
+  base: number,
+  s: number,
+  amount: number,
+  scu: number,
+  guid = LARANITE_GUID,
+  shop = "SCShop_Cargo_Area18",
+): string {
+  return `${stamp(base, s)} [Notice] <CEntityComponentCommodityUIProvider::SendCommoditySellRequest> Sending SShopCommoditySellRequest - ${IDS} shopName[${shop}] kioskId[3333333] amount[${amount}.000000] resourceGUID[${guid}] autoLoading[1] quantity[${scu}] transactionMode[CargoGrid] Cargo Box Data:  [boxSize[32] | unitAmount[20]] ${OWNER}`;
+}
+
+/** An invented cargo error line (the game logs only failures). */
+export function cargoErrorLine(base: number, s: number): string {
+  return `${stamp(base, s)} [Error] <CEntityComponentCommodityUIProvider::RmToken_CommodityTransactionResponse> Commodity Transaction Response Error - playerId[1111111111] result[TransactionCostMismatch] type[Buy] [Team_NAPU][Shops]`;
+}
+
+/** The four lines of the run, `base` being epoch ms of the loop's start. */
+export function tradeLines(base: number): string[] {
   const f = TRADE_FIGURES;
   return [
-    tx(base, 20, "buy", f.buys[0], 640),
-    tx(base, 22, "buy", f.buys[1], 56),
-    tx(base, 200, "sell", f.sells[0], 640),
-    tx(base, 202, "sell", f.sells[1], 56),
+    cargoBuyLine(base, 20, f.buys[0], 640),
+    cargoBuyLine(base, 22, f.buys[1], 56),
+    cargoSellLine(base, 200, f.sells[0], 640),
+    cargoSellLine(base, 202, f.sells[1], 56),
   ];
+}
+
+/**
+ * The journal's transactions for some invented log lines, through the real parser and journal. `lastMs` is the log's
+ * last timestamp (a cargo line within 3 s of it has not had time to fail: the journal leaves it unconfirmed).
+ */
+export function journalTransactions(lines: readonly string[], lastMs: number): Transaction[] {
+  const records = parseCommerceText(lines.join("\n"));
+  return buildTradeJournal(records, new Date(lastMs).toISOString()).transactions;
+}
+
+/** The four transactions of the run, long after the last of them (all inferred completed). */
+export function tradeTransactions(base: number): Transaction[] {
+  return journalTransactions(tradeLines(base), base + 3_600_000);
 }
 
 /** (second of the loop, balance from then on) of the made-up run. */
@@ -101,8 +138,8 @@ export type TradeVariant = "story" | "unknown" | "partial" | "none" | "second" |
  * The ledger payload (with its trade section) at `nowMs` for a variant:
  *   story   the run above, complete.
  *   unknown the dashboard was opened after the purchases: the balance before the first purchase was not seen.
- *   partial only the first sale happened (the second lot is still on board).
  *   estimated the stream was cut while the sales were settled: the fees cannot be measured per side, only deduced (hatched).
+ *   partial only the first sale happened (the second lot is still on board).
  *   none    no trade journal feeds the dashboard.
  *   second  the run above followed by a second, smaller one (a new purchase after the sales).
  */
@@ -115,28 +152,29 @@ export function tradeLedger(
 ): LedgerPayload {
   const loop = Math.max(0, Math.floor((nowMs - epoch) / (TRADE_LOOP_SECONDS * 1000)));
   const base = epoch + loop * TRADE_LOOP_SECONDS * 1000;
-  let transactions: TradeTransaction[] | undefined = tradeTransactions(base).filter(
-    (t) => Date.parse(t.at) <= nowMs,
-  );
+  const lines = tradeLines(base);
+  if (variant === "second") {
+    lines.push(
+      cargoBuyLine(base, 300, 60_000, 300, AGRICIUM_GUID),
+      cargoSellLine(base, 330, 71_000, 300, AGRICIUM_GUID),
+    );
+  }
+  // Only what the game had written by `nowMs`; "partial" never writes the second sale.
+  const written = lines
+    .filter((l) => Date.parse(l.slice(1, l.indexOf(">"))) <= nowMs)
+    .filter((l) => variant !== "partial" || !l.includes("amount[25592"));
+  let transactions: Transaction[] | undefined = journalTransactions(written, nowMs);
   let history = tradeHistory(base, nowMs);
   if (variant === "none") transactions = undefined;
+  // The telemetry was not watching during the second run: its balance is not seen, so its net is unknown.
+  if (variant === "second") history = tradeHistory(base, Math.min(nowMs, base + 210_000));
   if (variant === "estimated") {
     // The balance is known before the purchases and at the end, with the stream cut around the sales.
     history = history.filter((p) => p.at < base + 20_000 || p.at > base + 202_000);
     history = history.map((p) => (p.at < base + 20_000 ? { ...p, until: base + 19_900 } : p));
   }
   if (variant === "unknown") history = history.filter((p) => p.at > base + 30_000);
-  if (variant === "partial") {
-    transactions = transactions?.filter((t) => t.at !== tradeTransactions(base)[3]!.at);
-    history = history.filter((p) => p.at < base + 202_000);
-  }
-  if (variant === "second") {
-    const more = [
-      tx(base, 300, "buy", 60_000, 300, { commodity: "AGRI", shop: "Port Tressler" }),
-      tx(base, 330, "sell", 71_000, 300, { commodity: "AGRI", shop: "Area18 TDD" }),
-    ].filter((t) => Date.parse(t.at) <= nowMs);
-    transactions = [...(transactions ?? []), ...more];
-  }
+  if (variant === "partial") history = history.filter((p) => p.at < base + 202_000);
   return buildLedgerPayload({
     base: { ...EMPTY_LEDGER, status: "ok", asOf: nowMs },
     history,

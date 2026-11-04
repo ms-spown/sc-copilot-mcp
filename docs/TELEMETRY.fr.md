@@ -537,12 +537,18 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
 | Frais | Ce que le service de chargement a pris en plus des prix. Le journal n'a pas de ligne de frais | Mesuré côté par côté contre le solde quand c'est possible, sinon le total déduit (marge brute moins net), marqué « estimé » |
 | Bénéfice net | Solde après la dernière vente moins solde juste avant le premier achat : le seul chiffre qui dit ce que vous avez vraiment gagné | Mesuré dans l'historique du solde de la télémétrie ; inconnu (jamais zéro) si le tableau de bord n'a pas vu le solde avant l'achat |
 
-- **D'où viennent les transactions.** D'un journal de commerce dont le contrat d'entrée est `TradeTransaction`
-  (`src/dashboard/tradeTypes.ts`) : heure, sens, nature, total en aUEC, quantité et unité, identifiant court de la
-  marchandise, boutique, indicateur autoLoading, résultat et confiance. Le parseur de Game.log qui les produira est
-  sur une autre branche (`feat/trade-journal`) ; tant qu'il n'est pas branché, aucun journal n'alimente le tableau de
-  bord : la carte le dit, montre le plan, et montre la variation du solde sous son vrai nom (« Variation du solde »,
-  avec l'avertissement que ce n'est pas un bénéfice). Les tests et l'aperçu utilisent des transactions inventées.  Un adaptateur interchangeable (`tradeJournalAdapter.ts`) convertit déjà les transactions de ce journal vers ce contrat ; le brancher prend quelques lignes une fois ce parseur fusionné.
+- **D'où viennent les transactions.** Du journal de commerce du journal de jeu (`src/providers/gamelog/trade.ts`, celui
+  de `sc_trade_journal`) : le tableau de bord n'analyse rien lui-même. Les lectures du carnet (complète, puis seulement
+  les octets ajoutés par le jeu) gardent aussi les lignes de commerce, le journal les apparie, et le modèle de commerce
+  en prend les transactions : seules les terminées comptent, exactement comme le journal ; les lignes échouées et non
+  confirmées (les ambiguës comprises) sont laissées de côté et signalées par une note sur la carte ; un montant dans une
+  autre monnaie que l'aUEC n'est jamais ajouté. Le journal nomme les marchandises par un identifiant seulement (les 8
+  premiers caractères du GUID du jeu) ; les noms que `sc_trade_journal` trouve dans la liste du wiki ne sont pas
+  cherchés ici, donc la carte affiche « marchandise 5c2e9a41 » sauf si le plan nomme la marchandise, et un plan ne peut
+  pas être comparé aux marchandises du journal (« supposé »). Sans journal de jeu il n'y a pas de journal de commerce :
+  la carte le dit, montre le plan et montre la variation du solde sous son vrai nom (« Variation du solde », avec
+  l'avertissement que ce n'est pas un bénéfice). Les tests et l'aperçu font passer des lignes de journal inventées par
+  le même analyseur.
 - **Comment les frais sont mesurés.** Pour chaque côté, les transactions proches dans le temps sont regroupées ; les
   variations du solde vues dans une fenêtre autour d'elles (2 s avant à 8 s après le groupe, hypothèse non encore
   mesurée avec le vrai jeu) sont additionnées. À l'achat : frais = (baisse du solde) moins prix. À la vente : frais =

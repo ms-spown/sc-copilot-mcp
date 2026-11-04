@@ -1,4 +1,10 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { GameLog } from "../providers/gamelog/reader.js";
+import { LedgerService, ledgerLogFrom } from "./ledgerService.js";
+import { tradeLines } from "./testing/tradeScenario.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
 import { PLAN_PRICE_POINTS_MAX } from "./constants.js";
 import { parsePlan } from "./plan.js";
@@ -222,5 +228,47 @@ describe("Feature: the seam for the action bar", () => {
     const t = tradeSuggestionText(L, suggestion).replace(/[\u00a0\u202f]/g, " ");
     expect(t).toBe("Agricium · Port Tressler → Area18 TDD · ≈ +190 000 aUEC · 22 min");
     expect(tradeSuggestionText(L, null)).toBe("");
+  });
+});
+
+describe("Feature: from a game log file to the commerce card, end to end", () => {
+  it("Given a made-up Game.log with the run, When the balance is asked, Then the poll carries the run read by the real parser", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "trade-e2e-"));
+    try {
+      const file = path.join(dir, "Game.log");
+      const stamp = new Date(EPOCH).toISOString();
+      const filler = `<${new Date(EPOCH + 380_000).toISOString()}> [Info] filler`;
+      fs.writeFileSync(
+        file,
+        [
+          `<${stamp}> Log started on Tue Nov  3 18:00:00 2026`,
+          ...tradeLines(EPOCH),
+          filler,
+          "",
+        ].join(String.fromCharCode(10)),
+      );
+      const ledger = new LedgerService(ledgerLogFrom(new GameLog({ logPath: file })), () => NOW);
+      ledger.state();
+      await ledger.settled();
+      const s = new DashboardService(
+        stubTelemetry(),
+        () => NOW,
+        undefined,
+        undefined,
+        ledger,
+        () => ledger.trades(),
+      );
+      s.setPlan({ expected_profit_auec: 180_000, scu: 696, sell_unit_price: 457 });
+      const poll = await s.poll({ includeBalance: true });
+      const run = poll.ledger!.trade!.runs[0]!;
+      expect(run).toMatchObject({ stage: "complete", buys: 2, sells: 2, scu_bought: 696 });
+      expect(run.money!.net).toMatchObject({ auec: 143_000, method: "mesure" });
+      expect(run.money!.fees).toMatchObject({ total: 43_568, method: "mesure" });
+      const hidden = await s.poll({ includeBalance: false });
+      expect(JSON.stringify(hidden)).not.toMatch(MEASURED);
+      expect(hidden.ledger!.trade!.runs[0]).not.toHaveProperty("money");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+    }
   });
 });

@@ -79,6 +79,8 @@ export function dashboardTools({
     scwClient ? new ShipSpecsResolver(scwClient) : undefined,
     connection,
     ledger,
+    // The trade journal of the same log reads (providers/gamelog/trade.ts), for the commerce card.
+    ledger ? () => ledger.trades() : undefined,
   );
   const enabled = () => telemetry?.enabled === true;
 

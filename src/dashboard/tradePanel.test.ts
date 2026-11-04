@@ -137,8 +137,10 @@ describe("Feature: the compact line", () => {
   it("Given the balance shown or hidden, Then an amount appears only when shown", () => {
     const line = (include: boolean) =>
       tradeInlineText(L, trade(include), include).replace(/[\u00a0\u202f]/g, " ");
-    expect(line(true)).toBe("Dernier trajet · LARA : bénéfice net +143 000 aUEC (mesuré)");
-    expect(line(false)).toBe("Dernier trajet · LARA : terminé");
+    expect(line(true)).toBe(
+      "Dernier trajet · marchandise 5c2e9a41 : bénéfice net +143 000 aUEC (mesuré)",
+    );
+    expect(line(false)).toBe("Dernier trajet · marchandise 5c2e9a41 : terminé");
     expect(tradeInlineText(L, null, true)).toBe("");
     expect(tradeInlineText(L, { source: "none", runs: [] }, true)).toBe("");
   });

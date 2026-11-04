@@ -513,13 +513,17 @@ same thing. Each figure now has one meaning:
 | Frais | What the loading service took on top of the prices. The log has no fee line | Measured per side against the balance when possible, else the total deduced (marge brute minus net), labelled "estimé" |
 | Bénéfice net | Balance after the last sale minus the balance just before the first purchase: the only figure that says what you really gained | Measured from the telemetry's balance history; unknown (never zero) when the dashboard did not see the balance before the purchase |
 
-- **Where the transactions come from.** From a trade journal whose input contract is `TradeTransaction`
-  (`src/dashboard/tradeTypes.ts`): time, side, kind, total aUEC, quantity and unit, short commodity id, shop,
-  autoLoading flag, outcome and confidence. The Game.log parser that will produce them is on another branch
-  (`feat/trade-journal`); until it is wired, no journal feeds the dashboard and the card says so, shows the plan, and
-  shows the balance change under its own name ("Variation du solde", with the warning that it is not a profit). Tests
-  and the preview use invented transactions. A swappable adapter (`tradeJournalAdapter.ts`) already maps the journal's
-  transactions to this contract; wiring it takes a few lines once that parser is merged.
+- **Where the transactions come from.** From the trade journal of the game log (`src/providers/gamelog/trade.ts`, the
+  one behind `sc_trade_journal`): the dashboard parses nothing of its own. The ledger's reads (full, then only the
+  bytes the game added) also keep the commerce lines, the journal pairs them, and the commerce model takes its
+  transactions: only the completed ones count, exactly as the journal does; failed lines and unconfirmed ones (the
+  ambiguous ones included) are left out and counted in a note on the card; an amount in another currency than aUEC is
+  never added. The journal names goods by an id only (the first 8 characters of the game's GUID); the names that
+  `sc_trade_journal` finds in the wiki list are not looked up here, so the card shows "marchandise 5c2e9a41" unless the
+  plan names the goods, and a plan cannot be checked against the journal's goods ("supposé"). Without the game log
+  there is no journal: the card says so, shows the plan and shows the balance change under its own name ("Variation du
+  solde", with the warning that it is not a profit). Tests and the preview feed invented log lines through the same
+  parser.
 - **How fees are measured.** For each side, the transactions that are close in time are grouped; the balance changes
   seen in a window around them (2 s before to 8 s after the group, an assumption not yet measured with the real game)
   are added up. Buying: fee = (balance fall) minus price. Selling: fee = price minus (balance rise). The fee may be a

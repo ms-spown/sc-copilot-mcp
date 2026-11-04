@@ -1,5 +1,10 @@
 import fs from "node:fs/promises";
 import { decodeLog, parseLog, type LogEvent } from "../providers/gamelog/parser.js";
+import {
+  buildTradeJournal,
+  type TradeRecord,
+  type Transaction,
+} from "../providers/gamelog/trade.js";
 import type { GameLog } from "../providers/gamelog/reader.js";
 import { buildContracts, EMPTY_LEDGER, type LedgerBase } from "./ledger.js";
 
@@ -15,6 +20,9 @@ import { buildContracts, EMPTY_LEDGER, type LedgerBase } from "./ledger.js";
  *   a moment apart are never separated by a cut. A shorter file, or a different beginning (a new game session
  *   replaced the log), starts again with a full read. A log in UTF-16 is always read in full.
  * - A refresh that hangs does not pile up: while one is in flight no other starts.
+ * - The same reads feed the commerce lines (`parsed.commerce`, parsed by providers/gamelog/trade.ts: this module
+ *   parses nothing of its own). They are kept like the events (bounded, de-duplicated across the look-behind) and
+ *   `trades()` hands the session journal's transactions to the commerce model of the dashboard.
  * - Reads are asynchronous and lock-free (the file is opened read-only). Nothing is written, nothing leaves the
  *   process. Parsing is synchronous work, proportional to what was read.
  */
@@ -32,6 +40,8 @@ export const LEDGER_HEAD_BYTES = 256;
 export const LEDGER_MAX_INCREMENTAL_BYTES = 8 * 1024 * 1024;
 /** The events kept (only the types the ledger uses); the oldest go first. */
 export const LEDGER_MAX_EVENTS = 4000;
+/** The commerce lines kept; the oldest go first (the journal is quadratic in the cargo lines of one commodity). */
+export const LEDGER_MAX_COMMERCE = 3000;
 
 const LEDGER_TYPES = new Set([
   "mission_accepted",
@@ -47,7 +57,15 @@ export interface LedgerLogSource {
   readonly configured: boolean;
   stat(): Promise<{ mtimeMs: number; size: number }>;
   /** The whole log as the reader gives it (the end of a very large one). */
-  read(): Promise<{ events: LogEvent[]; truncated: boolean; modifiedAt: number }>;
+  read(): Promise<{
+    events: LogEvent[];
+    /** The commerce lines of the same text (absent: none). */
+    commerce?: TradeRecord[];
+    /** The last timestamp of the text, by the log's own clock (absent: unknown). */
+    lastTime?: string | null;
+    truncated: boolean;
+    modifiedAt: number;
+  }>;
   /** The first bytes of the file, which identify the session. Absent: every read is a full read. */
   head?(): Promise<Buffer>;
   /** Bytes [start, end) of the file. Absent: every read is a full read. */
@@ -75,7 +93,13 @@ export function ledgerLogFrom(gameLog: GameLog): LedgerLogSource {
     },
     read: async () => {
       const r = await gameLog.read("current");
-      return { events: r.parsed.events, truncated: r.truncated, modifiedAt: r.modifiedAt };
+      return {
+        events: r.parsed.events,
+        commerce: r.parsed.commerce,
+        lastTime: r.parsed.span.last,
+        truncated: r.truncated,
+        modifiedAt: r.modifiedAt,
+      };
     },
     head: () =>
       withFile(gameLog, async (h) => {
@@ -121,6 +145,10 @@ export class LedgerService {
   private partial = false;
   private events: LogEvent[] = [];
   private keys = new Set<string>();
+  private commerce: TradeRecord[] = [];
+  private commerceKeys = new Set<string>();
+  private lastTime: string | null = null;
+  private journal: Transaction[] = [];
   /** How the file was read, for tests and diagnostics. */
   reads = 0;
   fullReads = 0;
@@ -143,6 +171,16 @@ export class LedgerService {
     if (!this.source || !this.source.configured) return EMPTY_LEDGER;
     this.maybeRefresh();
     return this.current;
+  }
+
+  /**
+   * The transactions of the session journal (the game's own commerce lines, paired by trade.ts), as last read.
+   * undefined until the log has been read, and when the log is not configured or unreadable: then there is no
+   * journal, which is not the same as a journal with nothing in it.
+   */
+  trades(): readonly Transaction[] | undefined {
+    if (!this.source || !this.source.configured) return undefined;
+    return this.current.status === "ok" ? this.journal : undefined;
   }
 
   /** Resolves when the refresh in flight (if any) is done. For tests. */
@@ -168,6 +206,10 @@ export class LedgerService {
     this.head = null;
     this.events = [];
     this.keys = new Set();
+    this.commerce = [];
+    this.commerceKeys = new Set();
+    this.lastTime = null;
+    this.journal = [];
   }
 
   private unreadable(): void {
@@ -190,6 +232,7 @@ export class LedgerService {
       if (!done) await this.readFully(source, stat.size);
       this.lastModified = stat.mtimeMs;
       this.reads += 1;
+      this.journal = buildTradeJournal(this.commerce, this.lastTime).transactions;
       this.current = {
         status: "ok",
         asOf: stat.mtimeMs,
@@ -217,7 +260,7 @@ export class LedgerService {
     this.offset = size;
     // A log in UTF-16 cannot be read from the middle: every read stays a full one.
     this.head = head && !(head[0] === 0xff && head[1] === 0xfe) ? head.toString("hex") : null;
-    this.add(r.events);
+    this.add(r.events, r.commerce ?? [], r.lastTime ?? null);
   }
 
   /** Parses only what was added since the last read. False when a full read is needed instead. */
@@ -238,13 +281,26 @@ export class LedgerService {
     if (start > 0) text = text.slice(text.indexOf("\n") + 1);
     this.bytesParsed += end;
     this.incrementalReads += 1;
-    this.add(parseLog(text).events);
+    const parsed = parseLog(text);
+    this.add(parsed.events, parsed.commerce, parsed.span.last);
     this.offset = start + end;
     return true;
   }
 
   /** Keeps the events the ledger uses that have not been seen yet (the look-behind re-reads some). */
-  private add(events: LogEvent[]): void {
+  private add(events: LogEvent[], commerce: readonly TradeRecord[], lastTime: string | null): void {
+    if (lastTime !== null && (this.lastTime === null || lastTime > this.lastTime))
+      this.lastTime = lastTime;
+    for (const r of commerce) {
+      const key = JSON.stringify(r);
+      if (this.commerceKeys.has(key)) continue;
+      this.commerceKeys.add(key);
+      this.commerce.push(r);
+    }
+    if (this.commerce.length > LEDGER_MAX_COMMERCE) {
+      this.commerce = this.commerce.slice(this.commerce.length - LEDGER_MAX_COMMERCE);
+      this.commerceKeys = new Set(this.commerce.map((r) => JSON.stringify(r)));
+    }
     for (const e of events) {
       if (!LEDGER_TYPES.has(e.type)) continue;
       const key = eventKey(e);
