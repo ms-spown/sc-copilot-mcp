@@ -21,12 +21,12 @@ fraîcheur), la règle 2 (texte non fiable), la règle 4 (erreurs), le choix des
 règles 6 et 7 (aucune affirmation de sûreté, solde masqué respecté, état de connexion, pas de second tableau
 de bord, jamais `sc_live_poll`, `sc_live_mark` ni `sc_trade_suggest`) et la manière d'accompagner. Ce qu'il ne porte pas, et que le bloc
 doit garder : les autres lignes de la règle 3 (vaisseaux, patchs, missions, wiki, journal de jeu), la règle 5, et les
-détails des règles 6 et 7 (ce que le flux n'a pas, à pied ou assis, le solde du tableau de bord) et la règle 9 (la zone
-Raccourcis : le mode d'emploi du serveur n'en dit rien).
+détails des règles 6 et 7 (ce que le flux n'a pas, à pied ou assis, le solde du tableau de bord), la règle 9 (la zone
+Raccourcis : le mode d'emploi du serveur n'en dit rien) et la règle 10 (les cartes de route et les sessions du tableau de bord).
 
 - Claude Desktop ou claude.ai, la question canari 1 échoue : gardez le bloc entier.
 - Claude Code, ou un client où la question canari 1 réussit : vous pouvez retirer les règles 1, 2 et 4 et les lignes
-  de commerce de la règle 3. Si vous utilisez la télémétrie en direct, gardez les règles 6, 7 et 9.
+  de commerce de la règle 3. Si vous utilisez la télémétrie en direct, gardez les règles 6, 7, 9 et 10.
 
 ```
 Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règles :
@@ -147,6 +147,18 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
    touche, ce sont des valeurs par défaut tirées de sources publiques, jamais vérifiées en jeu sur la 4.10 : dites « la
    touche par défaut est X, vérifiez dans vos Keybindings », jamais « appuyez sur X ». Ne déduisez jamais d'elle que le
    joueur a changé une touche, qu'il fait sombre, ni que les phares sont allumés ou éteints.
+10. Les cartes de route du tableau de bord (« Trouver une route ») viennent du même planificateur que uex_plan_trade. Quand le
+   joueur vous envoie une carte avec « Demander à l'agent », le message porte l'appel exact de uex_plan_trade qui la reproduit
+   (soute, vaisseau, budget quand le joueur en a saisi un, lieu de départ, contraintes, temps d'escale) et les chiffres de la carte :
+   rejouez CET appel, jamais vos valeurs par défaut, comparez son premier résultat aux chiffres du message et dites explicitement ce
+   qui diffère et pourquoi (stock, âge des prix, hypothèses) avant de donner un verdict. Si le message dit que le budget est le solde du
+   joueur, lisez-le vous-même (sc_live_state) quand il est affiché ; masqué, lancez sans budget et dites-le. Le bloc « Fiabilité »
+   d'une carte (un niveau, ses raisons, un premier trajet prudent) et « Partir de ma position » (un lieu nommé par le journal du
+   jeu, daté, ou saisi par le joueur : le jeu n'a pas de position en direct) sont des estimations étiquetées du tableau de bord :
+   citez le niveau et les raisons, ne dites jamais qu'une route est sûre ou certaine. Le joueur démarre et termine ses sessions de
+   jeu depuis le tableau de bord (« Démarrer une session », « Nouvelle session », « Terminer », l'onglet Sessions avec archiver
+   et supprimer) : n'appelez sc_session_new ou sc_session_end que si le joueur le demande ; sc_session_list laisse de côté les
+   sessions archivées sauf include_archived à true.
 ```
 
 ## La zone « Raccourcis » du tableau de bord : ce que Claude doit et ne doit pas dire des touches
@@ -159,6 +171,18 @@ publiques et jamais vérifiées en jeu sur la 4.10 (quatre seulement sont affich
 « défaut ») : dites « la touche par défaut est X, vérifiez dans vos Keybindings », jamais « appuyez sur X ». La page ne sait pas
 si le joueur a changé une touche, s'il fait sombre, ni si les phares sont allumés (le flux ne distingue pas éteint de non
 rapporté) : Claude ne doit pas non plus l'affirmer à partir d'elle.
+
+## Les cartes de route et les sessions du tableau de bord : ce qui change pour le joueur (2.8.0)
+
+C'est la règle 10 du bloc ci-dessus, avec ses raisons. Jusqu'à la 2.7.0, « Demander à l'agent » envoyait la route, les prix et le gain,
+mais rien de la requête qui avait produit la carte (la soute, le budget, le lieu de départ, les contraintes) : Claude relançait
+`uex_plan_trade` avec les valeurs par défaut de l'outil et trouvait un autre plan. Désormais le message porte l'appel exact et les
+chiffres de la carte, et demande à Claude de dire ce qui diffère et pourquoi. Un budget qui est le solde du joueur n'est jamais écrit
+dans le message : affiché, Claude doit le lire lui-même ; masqué, Claude s'en passe. Chaque carte a aussi un bloc « Fiabilité »
+(jusqu'où l'estimation est fiable, pourquoi, et un premier trajet prudent), et « Partir de ma position » planifie depuis un lieu
+nommé par le journal du jeu (jamais une position en direct, que le jeu n'a pas). Dans le tableau de bord le joueur peut démarrer une
+session à tout moment, les voir toutes dans un onglet Sessions et archiver ou supprimer les terminées ; la formulation sur le solde
+dans le bloc ne change pas (affiché par défaut, masqué est le choix du joueur). Recopiez le bloc si vous voulez la règle 10.
 
 ## Test canari : les instructions du serveur sont-elles respectées ?
 

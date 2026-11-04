@@ -56,13 +56,17 @@ src/core/       http (host allowlist, guarded clients), cache (memory + disk, st
                 provenance (AsyncLocalStorage), untrusted (cleaning/fencing), config, paths, errors, format,
                 balance (the one BalancePolicy: shown by default, hidden by SC_BALANCE or the player's click)
 src/providers/  sessions (saved play sessions: store, reducer, stats, manager, trip sources) ·
-                uex, wiki, sctools (clients) · scmdb (store + queries) · gamelog (parser + reader, shipLoss*)
+                uex, wiki, sctools (clients; tripPlanner with opening/position/legMarket: the route planner's
+                opening trade, the player's place and the market facts of a leg) · scmdb (store + queries) · gamelog
+                (parser + reader, shipLoss*)
                 fleet (store + name resolver) · dumps (patch-dump repo) · local (user's game-*.json) · probes
                 telemetry (opt-in live stream: wire decoder, schema table, reader on node:http2, handler, service)
 src/tools/      one file per group (definition + handler together), catalog.ts (provenance + profiles),
                 registry.ts (envelope, scoping), status.ts (sc_data_status)
-src/dashboard/  the live dashboard (MCP App): poll, service, ledger, trade and pre-flight, health strip, session bar,
-                viewApp/viewLogic/page (the one HTML page, size-budgeted: 440 kB, scripts/check-page-size.mjs),
+src/dashboard/  the live dashboard (MCP App): poll, service, ledger, trade and pre-flight, health strip, sessionPanel (the
+                session card and the Sessions view), accountBalance (the header's balance: live, last known, unknown),
+                holds (hold sizes of the route form), routeReliability (the Fiabilité block of a card),
+                viewApp/viewLogic/page (the one HTML page, size-budgeted: 462 kB, scripts/check-page-size.mjs),
                 shortcuts* (context shortcuts and the sources of their keys), layoutOrder (the flight and commerce
                 orders of full screen), calibrationPanel (route cards), commodityNames (names of goods, wiki
                 lookup), testing/ (fake host)

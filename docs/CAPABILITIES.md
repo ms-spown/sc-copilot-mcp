@@ -263,6 +263,15 @@ What to know before you switch it on:
   dashboards share one stream of calls: only the most recent visible one polls. Claude Code does not render it and never
   lists its tools. The balance is shown in the page unless you hide it ("Masquer le solde", or `SC_BALANCE=hidden` to start hidden). A "Solde" reminder in the header always shows the account balance, whatever the session (live, or the last known one with its age, or "Solde inconnu" with the reason), and a trade run that belongs to an older session is kept apart as "Dernier trajet connu, hors session" instead of looking like a result of the current one. The speed dial is drawn against the ship's own limits (SCM and maximum speed from its Star Citizen Wiki page, found in the background, one search per ship, only when exactly one sheet fits) and says so when it keeps a scale deduced from the speeds seen; the hydrogen tank capacity is not known, so the hydrogen endurance stays an estimate. See
   [TELEMETRY.md](TELEMETRY.md#live-dashboard).
+- **Sessions, balance and routes in that dashboard (2.8.0).** The header's "Solde" box shows the account balance (live, last
+  known with its age, or unknown with the reason). A session can be started at any time (a chronometer the game fills later;
+  none is made when the dashboard opens), the game starts one when it is launched, and a "Sessions" tab lists every session
+  with archive and delete (the app-only `sc_session_manage`; archived sessions are out of the default `sc_session_list` and
+  of `sc_session_stats`, which take `include_archived`). The commerce card speaks of the current session only. In "Trouver une
+  route" the hold is a list with a default, "Partir de ma position" plans from a labelled, dated place with an opening trade
+  (`sc_trade_suggest` `position` / `position_text`), each card has a reliability block, and "Demander à l'agent" carries the
+  exact `uex_plan_trade` call that reproduces the card. See [TELEMETRY.md](TELEMETRY.md#live-dashboard) and the
+  [CHANGELOG](../CHANGELOG.md).
 - **Context shortcuts in that dashboard.** A "Raccourcis" zone reminds you of the actions that fit the moment, from
   states already in the stream (landing gear out and not landed, on foot, EVA, ground vehicle, powerplant off, quantum
   mode, hostile lock, shields cut): three in the compact view, six in full screen (in the flight order only what has a key or is an alert), the rest behind one button. Only a

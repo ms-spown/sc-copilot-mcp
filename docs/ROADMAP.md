@@ -4,7 +4,7 @@ Where the project stands and what is next, in product order: what helps the play
 promise, and every item says what is verified and what is not. The history of what shipped is in
 [CHANGELOG.md](../CHANGELOG.md); what each tool does is in [CAPABILITIES.md](CAPABILITIES.md).
 
-## Where it stands (2.7.0)
+## Where it stands (2.8.0)
 
 - **Data and answers:** UEX prices and routes, the Star Citizen Wiki, SCMDB (missions, crafting, mining), patch notes,
   your fleet, the optional local game log, honest `data_age` and estimate markers everywhere.
@@ -66,26 +66,62 @@ promise, and every item says what is verified and what is not. The history of wh
     page's old order), chosen from the stream and the ship's `landed` state, applied after 3 seconds, deferred while the focus
     is in a section that would move or the page is scrolled far down, with a grey stream keeping the order on screen. A button
     "Ordre : auto / commerce / vol" forces one. An unknown situation gets the commerce order and says so.
-  - The dashboard page is 419.9 kB against our own internal budget of 440 kB (a guard of ours, not a limit of the host;
+  - The dashboard page was 373.0 kB against our own internal budget of 392 kB (a guard of ours, not a limit of the host;
     nothing was removed to fit it).
+- **The first in-game test pass answered (2.8.0).** The player used the dashboard inside Claude Desktop for a session; what was
+  confusing is fixed. Details in [CHANGELOG.md](../CHANGELOG.md).
+  - *Sessions.* Opening the dashboard no longer makes a phantom "Session 1"; a session can be started at any time (a
+    chronometer the game fills later), the game starts one by itself when it is launched, "Terminer" and "Nouvelle session"
+    say what they did, and a **Sessions tab** lists every session with the filters (all, in progress, ended, archived), the
+    statistics across sessions (archived ones not counted) and **archive / delete** per ended session (the new app-only tool
+    `sc_session_manage`; the session file keeps version 2 with optional fields).
+  - *The balance is obvious.* A "Solde" box first in the header: live, or the last known balance with its age (the newer of the
+    last frame in memory and the last balance saved with a session, never a PTU one), or "Solde inconnu" with the reason;
+    independent of the session and obeying "Masquer le solde".
+  - *The commerce card speaks of the current session.* A run of an older session is "Dernier trajet connu, hors session"; the
+    Debrief button, "Et ensuite ?" and the alert boxes read the session's runs the same way.
+  - *"Trouver une route".* The hold is a list with a default (the flown ship, the last run, the habit, the fleet), "Partir de ma
+    position" plans from a labelled, dated place with an opening trade on the way, and each card has a **Fiabilité** block (level,
+    reasons with their sources and dates, a prudent first run). "Demander à l'agent" carries the exact `uex_plan_trade` call
+    that reproduces the card (the card also sent the flown ship's spool-up it used to leave at the planner's default), so the
+    agent finds the same route and says what differs.
+  - *The messages to Claude follow the balance choice.* Shown: nothing about the balance and no `include_balance`; hidden:
+    the instruction stays.
+  - The dashboard page is 439.3 kB against our own internal budget of 462 kB (a guard of ours, not a limit of the host;
+    nothing was removed to fit it). It was 373.0 kB in 2.7.0: **the page grew by 66 kB in this wave.**
 - **The agent:** server `instructions`, refreshed prompts (`haul_plan`, `trade_copilot`, `trade_review`,
   `session_debrief`), a block to paste into a Claude project.
 
 ## Next, in order of value
 
-1. **A test pass in the game, with the player (not started).** Nothing below is safe to build on before it. To look at: the
+1. **A slimming pass of the page (not started).** The page grew from 373 to 439 kB over the 2.8.0 wave (sessions, the Sessions
+   view, the header balance, the reliability block, the position mode, the recipe). It is our own budget, not a proven host
+   limit, but every open loads it: measure where the bytes are (the script and the styles of each panel) before cutting anything,
+   and drop no feature to fit it.
+2. **The Sessions view while trips accumulate (not started).** The view reloads its lists when a session changes; while the game
+   runs and trips pile up it should refresh the open session's figures without losing the selection or the focus.
+3. **The "session de jeu en cours" card of the transport ledger (not started).** It still lists the contracts of the game's log
+   under that name, which is not the play session: scope it like the commerce card, or rename it.
+4. **"Mouvements du solde" scoped to the session (not started).** It is a dated timeline since the server started, not of the
+   play session.
+5. **Token hardening for `sc_session_manage` (not started).** Like the other app-only tools it relies on the client having
+   declared the UI extension; a token, as the balance has, would also stop a client that shows Views from archiving or deleting
+   without a click (SECURITY.md states the known limit).
+6. **One shared constant for the "two hours" of the position (not started).** The server (`POSITION_MAX_AGE_MS`) and the page
+   each carry the limit after which a place is "trop ancien"; one constant would keep them from drifting.
+7. **The test pass in the game resumes, with the player.** Nothing below is safe to build on before it. To look at: the
    dashboard itself in Claude Desktop (how the host sizes full screen and whether it keeps the scroll position when sections
    move); the four default keys X, H, J and T on 4.10; `is_landed` when the game omits it (a hangar, a respawn), which today
    can show the flight order on the ground; a ship loss with a purchase on a 4.10 session (the cargo attribution is verified
    on 2025-build logs only, and the 4.10 line of a ship shot down has no sample); a complete run with telemetry, the log and
    the dashboard open together.
-2. **Trend of the trips (not started).** How your runs evolve over the sessions, with the number of runs behind it; the
+8. **Trend of the trips (not started).** How your runs evolve over the sessions, with the number of runs behind it; the
    route cards and the calibration already hold the per-route numbers.
-3. **Price alerts and watchlists (not started).** Follow a commodity or a route and say when its price moves. **The storage
+9. **Price alerts and watchlists (not started).** Follow a commodity or a route and say when its price moves. **The storage
    decision is open and comes first:** where the list lives (the saved-sessions file, a file of its own next to it, or the
    memory of the page only, which a restart would lose), and how an alert reaches the player without a new live region, a
    new host or a poll that UEX would throttle. Nothing is decided; no code exists.
-4. **On foot, with the helmet (future, not started).** Vitals forecast, kill and death counters, an interface that
+10. **On foot, with the helmet (future, not started).** Vitals forecast, kill and death counters, an interface that
    adapts to ship, foot and EVA (the context shortcuts zone and the full-screen orders already adapt to ship, foot and EVA: see
    [TELEMETRY.md](TELEMETRY.md#context-shortcuts)), and the helmet state: `Game.log` writes an attachment line when the
    helmet goes on or onto its hook, which would allow "wipe the visor" and a "no helmet in a vacuum" alert. Reserves:
@@ -94,7 +130,7 @@ promise, and every item says what is verified and what is not. The history of wh
    class name of the object, never the handle (a test with an invented handle must prove it); the signal has to be
    measured before anything relies on it. Also manual contexts for mining, salvage and scanning in the folded part
    of the shortcuts zone, since the stream has no signal for them.
-5. **Your own key bindings in the shortcuts zone (future, not started).** Today only four default keys are
+11. **Your own key bindings in the shortcuts zone (future, not started).** Today only four default keys are
    shown, labelled "défaut", none checked in the game. Reading the player's `actionmaps.xml` would show their real keys
    in place of the defaults. Reserves, all measured or stated by the research behind it: the file holds only what the
    player CHANGED (on the reference install it has no binding at all), so it gives no default key and an action that is
