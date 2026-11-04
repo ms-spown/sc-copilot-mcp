@@ -84,12 +84,11 @@ npm run build
    `--apply` sauvegarde d'abord `claude_desktop_config.json` vers un fichier horodaté `.bak-…`, puis ajoute ou met à
    jour uniquement `mcpServers["sc-copilot"]`. Vos autres serveurs ne sont ni affichés ni modifiés, et aucun secret n'y
    est inscrit. Omettez `--install-dir` pour laisser la lecture du journal de jeu désactivée. Redémarrez Claude Desktop
-   ensuite. **Relancer l'installateur remplace le `env` de cette entrée** : seuls `SCMCP_PROFILES`, le réglage du
-   journal que vous passez et `SC_TELEMETRY` survivent. Toute autre variable ajoutée à la main (`SC_SESSIONS=off`,
-   `SC_SESSION_GAP_HOURS`, `SCMCP_SESSIONS_FILE`, `SCMCP_FLEET_FILE`, `SCMCP_TOOLS`) est supprimée, donc
-   `SC_SESSIONS=off` redevient silencieusement inactif : remettez-les dans le `env` de l'entrée ensuite, ou modifiez
-   l'entrée à la main plutôt que de relancer l'installateur (la simulation montre la nouvelle entrée avant toute
-   écriture). Après un `git pull` et un `npm run build`, l'entrée existante continue de fonctionner : relancez
+   ensuite. **Relancer l'installateur garde le `env` de cette entrée** : chaque variable déjà présente (`SC_TELEMETRY`,
+   `SC_SESSIONS=off`, `SC_SESSION_GAP_HOURS`, `SCMCP_SESSIONS_FILE`, `SCMCP_TOOLS`, un jeton saisi à la main...) reste
+   telle quelle ; seuls les réglages que vous passez (`--profiles`, `--install-dir`, `--game-log`) changent, et
+   `SCMCP_PROFILES` ne reçoit sa valeur par défaut que pour une nouvelle entrée. La simulation liste les clés gardées
+   par leur nom, jamais leur valeur, et montre la nouvelle entrée avant toute écriture. Après un `git pull` et un `npm run build`, l'entrée existante continue de fonctionner : relancez
    l'installateur seulement pour changer l'entrée elle-même.
    Sur macOS ou Linux, passez `--config <path>`, ou ajoutez la même entrée manuellement :
 

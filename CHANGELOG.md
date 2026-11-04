@@ -19,7 +19,8 @@ versions follow [Semantic Versioning](https://semver.org/).
   is off; "the three dashboard tools" is "the dashboard tools"; the roadmap is for 2.4.0 and its "Next" list no longer
   holds what shipped in 2.3.0 and 2.4.0; the server manual is "about 3,500 characters (limit 3,500)".
 - Commands and paths: re-running `npm run install:claude` replaces the entry's `env` (only `SCMCP_PROFILES`, the log
-  setting and `SC_TELEMETRY` survive) and the README says so; TROUBLESHOOTING no longer tells users to delete the whole
+  setting and `SC_TELEMETRY` survive) and the README says so (superseded in this release: the installer now keeps every `env`
+  key, see "Fixed (security audit)"); TROUBLESHOOTING no longer tells users to delete the whole
   `%LOCALAPPDATA%\sc-copilot-mcp` folder (`cache\` can go, `data\` holds `sessions.json`); `check:sources` is described as
   checking the main UEX endpoints, not every path the tools use; the full verification chain of CONTRIBUTING.md is the one
   named in the README and CLAUDE.md; the configuration tables list `SCMCP_SNAPSHOT_DIR` and `SCMCP_BUILD_CACHE_DIR`.

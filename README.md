@@ -81,11 +81,11 @@ npm run build
    `--apply` first copies `claude_desktop_config.json` to a timestamped `.bak-…`, then adds or updates
    only `mcpServers["sc-copilot"]`. Your other servers are never shown or changed, and no secret is written
    there. Leave out `--install-dir` to keep the game log off. Restart Claude Desktop afterwards.
-   **Re-running it replaces that entry's `env`**: only `SCMCP_PROFILES`, the log setting you pass and `SC_TELEMETRY`
-   survive. Any other variable you added by hand (`SC_SESSIONS=off`, `SC_SESSION_GAP_HOURS`, `SCMCP_SESSIONS_FILE`,
-   `SCMCP_FLEET_FILE`, `SCMCP_TOOLS`) is dropped, so `SC_SESSIONS=off` silently reverts: add them back to the `env` of
-   the entry afterwards, or edit the entry by hand instead of re-running the installer (the dry run shows the new entry
-   before anything is written). After a `git pull` and `npm run build` the existing entry keeps working: re-run the
+   **Re-running it keeps that entry's `env`**: every variable already there (`SC_TELEMETRY`, `SC_SESSIONS=off`,
+   `SC_SESSION_GAP_HOURS`, `SCMCP_SESSIONS_FILE`, `SCMCP_TOOLS`, a token typed by hand...) stays as it is; only the
+   settings you pass (`--profiles`, `--install-dir`, `--game-log`) are changed, and `SCMCP_PROFILES` gets its default on a
+   new entry only. The dry run lists the kept keys by name, never their values, and shows the new entry before anything
+   is written. After a `git pull` and `npm run build` the existing entry keeps working: re-run the
    installer only to change the entry itself.
    On macOS or Linux pass `--config <path>`; or add the same entry by hand:
 
