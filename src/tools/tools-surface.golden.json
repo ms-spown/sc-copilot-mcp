@@ -781,6 +781,120 @@
     }
   },
   {
+    "name": "scmdb_rank_hauling",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "templates",
+            "offers"
+          ],
+          "description": "templates (default): datamined contract families. offers: price the offers given in `offers` (used by default when `offers` is present)."
+        },
+        "ship_name": {
+          "type": "string",
+          "description": "Ship (e.g. 'Cutlass Black'): hold and container sizes from UEX, quantum speed from the wiki. Use sc_fleet_get for the player's ships."
+        },
+        "cargo_scu": {
+          "type": "number",
+          "description": "Hold size in SCU (wins over the ship's), e.g. when only part of it is free."
+        },
+        "max_container_size": {
+          "type": "number",
+          "description": "Largest container size in SCU the ship takes (wins over UEX's list)."
+        },
+        "quantum_speed_ms": {
+          "type": "number",
+          "description": "offers: quantum speed in m/s when there is no ship_name."
+        },
+        "stop_minutes": {
+          "type": "number",
+          "description": "offers: assumed minutes per stop (default 8, an unmeasured assumption)."
+        },
+        "rank": {
+          "type": "string",
+          "description": "templates: the player's Hauling rank (Trainee, Rookie, Junior, Member, Experienced, Senior or Master): contracts outside it are left out. Omit to keep all."
+        },
+        "system": {
+          "type": "string",
+          "description": "templates: keep contracts that run in this system ('Stanton', 'Pyro', 'Nyx')."
+        },
+        "include_illegal": {
+          "type": "boolean",
+          "description": "templates: also show illegal contracts (default false)."
+        },
+        "include_unfit": {
+          "type": "boolean",
+          "description": "templates: also show contracts whose containers are too big for the ship, flagged (default false)."
+        },
+        "sort": {
+          "type": "string",
+          "enum": [
+            "reward_per_scu",
+            "reward"
+          ],
+          "description": "templates: reward_per_scu (default; by the low end of the range) or reward. With a ship, fit comes first (containers, then trips)."
+        },
+        "max_results": {
+          "type": "number",
+          "description": "templates: families to return (default 10, max 20)."
+        },
+        "channel": {
+          "type": "string",
+          "enum": [
+            "live",
+            "ptu"
+          ],
+          "description": "templates: game channel, 'live' (default) or 'ptu'."
+        },
+        "offers": {
+          "type": "array",
+          "description": "offers: 1 to 10 offers as seen in the mobiGlas (2 or more to compare and bundle).",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "description": "Optional title, for your own reference."
+              },
+              "reward": {
+                "type": "number",
+                "description": "Reward in aUEC."
+              },
+              "scu": {
+                "type": "number",
+                "description": "Cargo quantity in SCU."
+              },
+              "pickup": {
+                "type": "string",
+                "description": "Pickup place name (e.g. 'Port Tressler')."
+              },
+              "dropoffs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "1 to 6 drop-off place names."
+              },
+              "max_container_size": {
+                "type": "number",
+                "description": "Optional: the largest container size in SCU the offer uses."
+              }
+            },
+            "required": [
+              "reward",
+              "scu",
+              "pickup",
+              "dropoffs"
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
     "name": "scmdb_search_crafting",
     "inputSchema": {
       "type": "object",
