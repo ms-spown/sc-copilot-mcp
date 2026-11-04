@@ -26,7 +26,7 @@ versions follow [Semantic Versioning](https://semver.org/).
 - Honesty about the dashboard: the README says the maintainer has not yet seen the dashboard itself inside Claude Desktop;
   CAPABILITIES no longer says the MCP App "does not exist yet"; `docs/MCP_APP_SPIKE.md` is marked as a historical note.
 - French: README.fr gets the telemetry sentence in its introduction, the ROADMAP link and the "absent from build 4.10
-  logs" caveat; the health strip says "carnet de transport" like the rest of the dashboard (it said "grand livre").
+  logs" caveat.
 - A "Read this first" block opens `docs/TELEMETRY.md` and `docs/TELEMETRY.fr.md` (what it is, the two switches, the risks,
   what is unverified, how to turn it off, what is saved and how to erase it).
 

@@ -114,7 +114,7 @@ export function healthRows(L: any, poll: any, h: any, ctx: any): any[] {
   if (h.log === "off") {
     lg(
       "todo",
-      "Non configuré. Sans lui : pas d’état de connexion (un renvoi pour inactivité reste invisible), pas de journal de commerce ni de carnet de transport, des chiffres de session moins fiables.",
+      "Non configuré. Sans lui : pas d’état de connexion (un renvoi pour inactivité reste invisible), pas de journal de commerce ni de grand livre, des chiffres de session moins fiables.",
       {
         cmd: LOG_LINE,
         text: "Dans claude_desktop_config.json, entrée « sc-copilot », bloc « env » : ajoute cette ligne (mets le dossier qui contient ton Game.log, et une virgule si une autre ligne suit), puis quitte Claude Desktop complètement et relance-le. Pour un fichier précis, utilise SC_GAME_LOG_PATH.",
@@ -205,25 +205,20 @@ export function healthRows(L: any, poll: any, h: any, ctx: any): any[] {
       row(
         "journal",
         "ok",
-        "Journal de commerce et carnet de transport",
+        "Journal de commerce et grand livre",
         "Disponibles : contrats et opérations lus dans Game.log.",
       ),
     );
   } else if (ls === "loading") {
     rows.push(
-      row(
-        "journal",
-        "wait",
-        "Journal de commerce et carnet de transport",
-        "Lecture du journal en cours.",
-      ),
+      row("journal", "wait", "Journal de commerce et grand livre", "Lecture du journal en cours."),
     );
   } else if (ls === "unreadable" && h.log === "ok") {
     rows.push(
       row(
         "journal",
         "todo",
-        "Journal de commerce et carnet de transport",
+        "Journal de commerce et grand livre",
         "Le journal est configuré mais sa lecture échoue : fichier verrouillé ou supprimé ?",
         {
           text: "Relance le jeu pour qu’il recrée Game.log ; si cela dure, vérifie " + via + ".",
@@ -235,7 +230,7 @@ export function healthRows(L: any, poll: any, h: any, ctx: any): any[] {
       row(
         "journal",
         needsLog ? (h.log === "unchecked" ? "wait" : "todo") : "wait",
-        "Journal de commerce et carnet de transport",
+        "Journal de commerce et grand livre",
         needsLog ? logWhy : "En attente de la première lecture.",
         null,
         needsLog ? "log" : "journal",

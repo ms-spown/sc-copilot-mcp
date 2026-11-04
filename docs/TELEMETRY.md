@@ -1093,7 +1093,7 @@ The dashboard's own health strip (see [Live dashboard](#live-dashboard)) lists w
 | "Télémétrie du jeu: Désactivée côté serveur" | `npm run telemetry -- enable`, then add `--apply` and restart Claude Desktop |
 | "Journal du jeu (Game.log): Non configuré" | Add `SC_INSTALL_DIR` (the folder that contains `Game.log`) to the `env` of the `sc-copilot` entry, restart Claude Desktop. Without it: no connection state, no trade journal, no ledger |
 | "Journal du jeu: illisible" | `Game.log` only exists after a first launch of the game; otherwise fix the folder. `npm run doctor` for the full check |
-| "Jeu lancé sans télémétrie" | Quit the RSI Launcher completely (tray icon too), start it again, start the game. `npm run telemetry -- status` shows both switches |
+| "Télémétrie du jeu: Le jeu a été lancé sans la télémétrie" | Quit the RSI Launcher completely (tray icon too), start it again, start the game. `npm run telemetry -- status` shows both switches |
 | "Sessions enregistrées: À régler" | Read-only: update the server. Write failed: free disk space or fix the rights of the data folder (or `SCMCP_SESSIONS_FILE`) |
 
 ## Credits

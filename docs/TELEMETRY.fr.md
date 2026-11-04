@@ -410,7 +410,7 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   l'envoie dans un message, le dit dans le texte, et seulement quand vous l'appuyez.
 - **Bandeau de santé : ce qui est branché, ce qui manque.** Un nouveau joueur qui installe le serveur voit un tableau
   de bord qui en montre silencieusement moins qu'il ne pourrait : sans le journal du jeu, pas d'état de connexion (un
-  « renvoyé pour inactivité » reste invisible), pas de journal de commerce, pas de carnet de transport et des chiffres de session
+  « renvoyé pour inactivité » reste invisible), pas de journal de commerce, pas de grand livre et des chiffres de session
   plus fragiles ; télémétrie désactivée, rien du tout ; un jeu lancé sans la variable côté jeu n'affiche que « Jeu lancé
   sans télémétrie ». La page le dit maintenant elle-même. Elle est **invisible tant que rien n'est à faire** ; quand
   quelque chose manque, un bloc compact sous l'en-tête le nomme, dit ce qu'on perd et donne le remède exact, dans une
@@ -428,7 +428,7 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   3. **La ligne d'enregistrement** du service de télémétrie dans `Game.log` : vue, non vue (le jeu a été lancé sans
      `GRPC_CLIENT_SERVER_ENABLED` : quittez complètement le RSI Launcher, icône de la zone de notification comprise),
      ou pas encore vérifiable.
-  4. **État de connexion** et 5. **journal de commerce et carnet de transport** : ils ont besoin du journal ; ils renvoient à la
+  4. **État de connexion** et 5. **journal de commerce et grand livre** : ils ont besoin du journal ; ils renvoient à la
      ligne 2 au lieu de la répéter.
   6. **Sessions enregistrées** : actives (avec l'heure de la dernière écriture de ce processus serveur), désactivées par
      `SC_SESSIONS=off` (un choix délibéré : listé derrière le « ? », pas un rappel), en lecture seule (fichier plus
@@ -1161,9 +1161,9 @@ manque avec son remède :
 | Ce que dit le bandeau | Que faire |
 | --- | --- |
 | « Télémétrie du jeu : Désactivée côté serveur » | `npm run telemetry -- enable`, puis ajoutez `--apply` et redémarrez Claude Desktop |
-| « Journal du jeu (Game.log) : Non configuré » | Ajoutez `SC_INSTALL_DIR` (le dossier qui contient `Game.log`) au bloc `env` de l'entrée `sc-copilot`, redémarrez Claude Desktop. Sans lui : pas d'état de connexion, pas de journal de commerce, pas de carnet de transport |
+| « Journal du jeu (Game.log) : Non configuré » | Ajoutez `SC_INSTALL_DIR` (le dossier qui contient `Game.log`) au bloc `env` de l'entrée `sc-copilot`, redémarrez Claude Desktop. Sans lui : pas d'état de connexion, pas de journal de commerce, pas de grand livre |
 | « Journal du jeu : illisible » | `Game.log` n'existe qu'après un premier lancement du jeu ; sinon corrigez le dossier. `npm run doctor` pour le contrôle complet |
-| « Jeu lancé sans télémétrie » | Quittez complètement le RSI Launcher (icône de la zone de notification comprise), relancez-le, lancez le jeu. `npm run telemetry -- status` montre les deux interrupteurs |
+| « Télémétrie du jeu : Le jeu a été lancé sans la télémétrie » | Quittez complètement le RSI Launcher (icône de la zone de notification comprise), relancez-le, lancez le jeu. `npm run telemetry -- status` montre les deux interrupteurs |
 | « Sessions enregistrées : À régler » | Lecture seule : mettez le serveur à jour. Écriture échouée : libérez de l'espace disque ou corrigez les droits du dossier de données (ou `SCMCP_SESSIONS_FILE`) |
 
 `npm run doctor` indique les deux interrupteurs, si le launcher doit être relancé, et l'état du port.
