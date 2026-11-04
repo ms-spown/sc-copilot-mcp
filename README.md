@@ -242,6 +242,7 @@ health, hunger, thirst.
 
 - [docs/CAPABILITIES.md](docs/CAPABILITIES.md): everything it can do, need by need
 - [docs/TOOLS.md](docs/TOOLS.md): every tool and parameter (generated)
+- [docs/ROADMAP.md](docs/ROADMAP.md): where the project stands, what is next, what is verified and what is not
 - [docs/TELEMETRY.md](docs/TELEMETRY.md): the optional live telemetry, its data and its risks
 - [docs/USING_WITH_CLAUDE.md](docs/USING_WITH_CLAUDE.md): the block to paste into a Claude project, what the server
   already tells Claude by itself, and a canary test to check it
