@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DashboardService } from "../../dashboard/service.js";
 import { GameLog } from "../gamelog/reader.js";
 import { createTelemetry } from "../telemetry/index.js";
@@ -12,6 +12,12 @@ import { startFakeGame } from "../telemetry/testing/fakeServer.js";
 import { createGameRunning, SessionManager } from "./manager.js";
 import { SessionStore } from "./store.js";
 import type { TripInput } from "./types.js";
+import { waitFor } from "../../testing/waitFor.js";
+
+// Every change to the session file is a real write with fsync (the store's promise: a power cut keeps the old file or
+// the new one), and these tests make dozens of them. An idle disk takes a few ms each; a disk shared with other
+// work can stall for seconds. A timeout here only detects a hang.
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
 /**
  * Feature (audit): nothing connects or is written when it should not; the last trip is not lost; a write that fails is
@@ -86,6 +92,8 @@ describe("Feature: with telemetry on, the server connects only when the game is 
   it("Given the game runs with the registration line (control), Then the reader connects", async () => {
     const { game, tickFor } = await rig(async () => ({ running: true, telemetryRegistered: true }));
     await tickFor(4);
+    // The connection is made by the reader on its own timers and a real socket: wait for it, do not guess how long.
+    await waitFor(() => game.connections() > 0, "the reader connects");
     expect(game.connections()).toBeGreaterThan(0);
   });
 });

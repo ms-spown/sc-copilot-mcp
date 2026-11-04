@@ -19,9 +19,14 @@ import {
   vehicleField,
   weaponsField,
 } from "../providers/telemetry/testing/encode.js";
-import { startFakeGame, type FakeGame } from "../providers/telemetry/testing/fakeServer.js";
+import {
+  startFakeGame,
+  UNUSED_PORT,
+  type FakeGame,
+} from "../providers/telemetry/testing/fakeServer.js";
 import { createMcpServer } from "../server.js";
 import { allTools, createRegistry, type ToolClients } from "./registry.js";
+import { waitFor } from "../testing/waitFor.js";
 
 const empty = {
   defaults: { baseURL: "https://unused.test" },
@@ -46,15 +51,6 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function waitFor(check: () => boolean | Promise<boolean>, what: string, ms = 3000) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    if (await check()) return;
-    await new Promise((r) => setTimeout(r, 10));
-  }
-  throw new Error(`timed out waiting for: ${what}`);
-}
-
 async function connect(c: ToolClients) {
   const registry = createRegistry(allTools(c, createProbes(c, NO_NETWORK)), {});
   const client = new Client({ name: "test", version: "1" });
@@ -75,7 +71,17 @@ async function connect(c: ToolClients) {
   return { client, call };
 }
 
-async function liveWorld() {
+/** A clock the test moves by hand: frame ages, the 5 s quiet period of a balance and event times all read it. */
+function manualClock(start = 1_000_000) {
+  const clock = { t: start, now: () => clock.t };
+  return clock;
+}
+
+/**
+ * `clock` given: the service reads that clock and handles every frame (no 30 ms rate limit, which is a real timer).
+ * Tests then say "5 s later" by moving the clock, and wait for frames by counting them, never by sleeping.
+ */
+async function liveWorld(clock?: { now: () => number }) {
   const game: FakeGame = await startFakeGame();
   cleanup.push(() => game.close());
   const telemetry = createTelemetry({
@@ -83,6 +89,7 @@ async function liveWorld() {
     options: {
       endpointForTests: { host: "127.0.0.1", port: game.port },
       reader: { retryMs: [20, 20], connectTimeoutMs: 500 },
+      ...(clock ? { now: clock.now, frameIntervalMs: 0 } : {}),
     },
   });
   cleanup.push(() => telemetry.stop());
@@ -90,7 +97,16 @@ async function liveWorld() {
   const state = async () => (await world.call("sc_live_status")).json.data.state as string;
   const untilConnected = () => waitFor(async () => (await state()) === "connected", "connected");
   const untilLive = () => waitFor(async () => (await state()) === "live", "live");
-  return { game, telemetry, ...world, untilConnected, untilLive };
+  /** Sends frames and resolves once the service has counted all of them (they arrive on a real socket). */
+  const send = async (...frames: Buffer[]) => {
+    const before = (await telemetry.status(false)).frames_received;
+    game.send(...frames);
+    await waitFor(
+      async () => (await telemetry.status(false)).frames_received >= before + frames.length,
+      `${frames.length} frames counted`,
+    );
+  };
+  return { game, telemetry, ...world, untilConnected, untilLive, send };
 }
 
 describe("Feature: live telemetry is off by default", () => {
@@ -233,11 +249,12 @@ describe("Feature: reading the live game through the tools", () => {
     });
 
     it("Given an unverified event, Then sc_live_events labels it, can hide it, and pages with after_seq", async () => {
-      const { game, call, untilConnected } = await liveWorld();
+      const clock = manualClock();
+      const { call, untilConnected, send } = await liveWorld(clock);
       await untilConnected();
-      game.send(frame(actorField({ intoxication: 0, uec: 100 })));
-      await new Promise((r) => setTimeout(r, 30));
-      game.send(frame(actorField({ intoxication: 3, uec: 100 })));
+      await send(frame(actorField({ intoxication: 0, uec: 100 })));
+      clock.t += 30;
+      await send(frame(actorField({ intoxication: 3, uec: 100 })));
       await waitFor(
         async () => (await call("sc_live_events")).json.data.events.length > 0,
         "event",
@@ -287,9 +304,7 @@ describe("Feature: reading the live game through the tools", () => {
         ].join("\n"),
       );
       cleanup.push(async () => fs.rmSync(dir, { recursive: true, force: true }));
-      const closed = await startFakeGame();
-      const port = closed.port;
-      await closed.close();
+      const port = UNUSED_PORT;
       const telemetry = createTelemetry({
         enabled: true,
         options: {
@@ -307,14 +322,15 @@ describe("Feature: reading the live game through the tools", () => {
 
   describe("Scenario: the balance stays out unless asked for", () => {
     it("Given balance-change events, Then sc_live_events hides them by default and shows them with include_balance", async () => {
-      const { game, call, untilConnected } = await liveWorld();
+      const clock = manualClock();
+      const { call, untilConnected, send } = await liveWorld(clock);
       await untilConnected();
-      game.send(frame(actorField({ uec: 1000, health: 100 })));
-      await new Promise((r) => setTimeout(r, 20));
-      game.send(frame(actorField({ uec: 400, health: 100 })));
+      await send(frame(actorField({ uec: 1000, health: 100 })));
+      clock.t += 20;
+      await send(frame(actorField({ uec: 400, health: 100 })));
       // the balance event is raised once the balance has been quiet for 5 s: feed a later identical frame
-      await new Promise((r) => setTimeout(r, 5200));
-      game.send(frame(actorField({ uec: 400, health: 100 })));
+      clock.t += 5200;
+      await send(frame(actorField({ uec: 400, health: 100 })));
       await waitFor(async () => {
         const all = (await call("sc_live_events", { include_balance: true })).json.data.events;
         return all.some((e: { type: string }) => e.type === "uec_changed");
@@ -327,7 +343,7 @@ describe("Feature: reading the live game through the tools", () => {
         delta: "-600",
         balance: 400,
       });
-    }, 15_000);
+    });
 
     it("Given include_balance is not set, Then sc_live_state has no uec_session and no balance anywhere", async () => {
       const { game, call, untilConnected, untilLive } = await liveWorld();
@@ -342,15 +358,16 @@ describe("Feature: reading the live game through the tools", () => {
 
   describe("Scenario: filters apply before the cap", () => {
     it("Given the newest event is a hidden balance event, When limit is 1, Then the newest allowed event is still returned", async () => {
-      const { game, call, untilConnected } = await liveWorld();
+      const clock = manualClock();
+      const { call, untilConnected, send } = await liveWorld(clock);
       await untilConnected();
-      game.send(frame(actorField({ uec: 100, health: 100, intoxication: 0 })));
-      await new Promise((r) => setTimeout(r, 20));
-      game.send(frame(actorField({ uec: 100, health: 100, intoxication: 3 }))); // intoxicated (older)
-      await new Promise((r) => setTimeout(r, 20));
-      game.send(frame(actorField({ uec: 50, health: 100, intoxication: 3 })));
-      await new Promise((r) => setTimeout(r, 5200));
-      game.send(frame(actorField({ uec: 50, health: 100, intoxication: 3 }))); // uec_changed (newest)
+      await send(frame(actorField({ uec: 100, health: 100, intoxication: 0 })));
+      clock.t += 20;
+      await send(frame(actorField({ uec: 100, health: 100, intoxication: 3 }))); // intoxicated (older)
+      clock.t += 20;
+      await send(frame(actorField({ uec: 50, health: 100, intoxication: 3 })));
+      clock.t += 5200;
+      await send(frame(actorField({ uec: 50, health: 100, intoxication: 3 }))); // uec_changed (newest)
       await waitFor(async () => {
         const all = (await call("sc_live_events", { include_balance: true })).json.data.events;
         return all.some((e: { type: string }) => e.type === "uec_changed");
@@ -358,7 +375,7 @@ describe("Feature: reading the live game through the tools", () => {
       const { json } = await call("sc_live_events", { limit: 1 });
       expect(json.data.events).toHaveLength(1);
       expect(json.data.events[0].type).toBe("intoxicated");
-    }, 15_000);
+    });
   });
 
   describe("Scenario: a program pretending to be the game", () => {

@@ -1,11 +1,16 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LOCK_STALE_MS, LOCK_WAIT_MS, SessionStore, StoreBusyError } from "./store.js";
 import type { StoreState } from "./types.js";
 import { session } from "./fixtures.testing.js";
 import { MAX_FILE_BYTES, MAX_TRIPS, WRITE_SOFT_BYTES } from "./types.js";
+
+// Every change to the session file is a real write with fsync (the store's promise: a power cut keeps the old file or
+// the new one), and these tests make dozens of them. An idle disk takes a few ms each; a disk shared with other
+// work can stall for seconds. A timeout here only detects a hang.
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
 /** Enough sessions of the largest size to pass the byte bound several times over (all 200 would only slow the suite). */
 const SESSIONS_IN_TEST = 40;
@@ -304,15 +309,17 @@ describe("Feature: the lock is robust", () => {
   it("Given a live holder slower than the stale delay, Then it is not robbed: the other change waits and both are saved", async () => {
     let slow = true;
     const a = new SessionStore(file, {
-      lockStaleMs: 300,
+      // The holder touches its lock every quarter of the stale delay. A margin of a few hundred ms is eaten by a
+      // starved event loop, so the delay is long (the test costs the holder's slowness, 2x the delay, in real time).
+      lockStaleMs: 2000,
       beforeRename: async () => {
         if (slow) {
           slow = false;
-          await new Promise((r) => setTimeout(r, 900)); // three times the stale delay
+          await new Promise((r) => setTimeout(r, 4000)); // twice the stale delay
         }
       },
     });
-    const b = new SessionStore(file, { lockStaleMs: 300, lockWaitMs: 5000 });
+    const b = new SessionStore(file, { lockStaleMs: 2000, lockWaitMs: 20_000 });
     const first = a.transact(addTrip(1, "slow"));
     await new Promise((r) => setTimeout(r, 100));
     const second = b.transact(addTrip(1, "waiting"));
@@ -324,7 +331,7 @@ describe("Feature: the lock is robust", () => {
         .sessions[0].trips.map((t) => t.label)
         .sort(),
     ).toEqual(["slow", "waiting"]);
-  }, 15_000);
+  });
 
   it("Given a lock owned by someone else, Then this process never removes it", async () => {
     fs.writeFileSync(`${file}.lock`, "someone-else-token");
@@ -338,10 +345,10 @@ describe("Feature: the lock is robust", () => {
     const old = new Date(Date.now() - 2000);
     fs.utimesSync(`${file}.lock`, old, old);
     const store = new SessionStore(file, { lockStaleMs: 600, lockWaitMs: 5000 });
-    const t0 = Date.now();
     const r = await store.transact(addTrip(1, "x"));
     expect(r.written).toBe(true);
-    expect(Date.now() - t0).toBeLessThan(2000);
+    // Not "it was quick": it took the dead lock over instead of waiting for the 5 s limit and failing.
+    expect(store.lockTakeovers).toBe(1);
   });
 
   it("Given the default delays, Then the wait is longer than the stale delay (a crash never fails a change)", () => {

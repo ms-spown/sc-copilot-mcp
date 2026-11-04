@@ -27,6 +27,9 @@ export default defineConfig({
     environment: "node",
     include: ["src/dashboard/**/*.test.ts"],
     setupFiles: ["./vitest.setup.ts"],
+    // Same hang detectors as vitest.config.ts (a timeout is not a performance assertion).
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     env: { SCMCP_CACHE_DIR: path.join(os.tmpdir(), "sc-copilot-mcp-vitest") },
   },
 });

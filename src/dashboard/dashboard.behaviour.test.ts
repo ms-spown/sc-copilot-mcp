@@ -20,6 +20,7 @@ import {
   type ToolClients,
 } from "../tools/registry.js";
 import { DASHBOARD_URI, UI_EXTENSION_ID, UI_MIME_TYPE } from "./constants.js";
+import { waitFor } from "../testing/waitFor.js";
 
 const empty = {
   defaults: { baseURL: "https://unused.test" },
@@ -101,14 +102,6 @@ async function liveWorld() {
   });
   cleanup.push(() => telemetry.stop());
   const world = await connect(clients(telemetry), UI_CAPS);
-  const waitFor = async (check: () => boolean | Promise<boolean>, what: string, ms = 15_000) => {
-    const end = Date.now() + ms;
-    while (Date.now() < end) {
-      if (await check()) return;
-      await new Promise((r) => setTimeout(r, 10));
-    }
-    throw new Error(`timed out waiting for: ${what}`);
-  };
   const untilState = (state: string) =>
     waitFor(async () => (await world.call("sc_live_poll")).sc?.["state"] === state, state);
   return { game, telemetry, waitFor, untilState, ...world };

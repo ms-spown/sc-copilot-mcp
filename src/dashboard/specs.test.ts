@@ -408,10 +408,10 @@ describe("Feature: the search runs in the background, once per ship", () => {
     });
     const { client } = wikiClient(() => gate);
     const r = new ShipSpecsResolver(client, clock);
-    const started = Date.now();
+    // No clock: current() is synchronous, so answering "pending" while the wiki's gate is still closed is the proof
+    // that it does not wait for the wiki (a synchronous call cannot wait for a promise that nobody has released).
     expect(r.current("DRAK_Cutter")?.status).toBe("pending");
     expect(r.current("DRAK_Cutter")?.status).toBe("pending");
-    expect(Date.now() - started).toBeLessThan(2_000); // it never waits for the wiki (a loose bound: a slow machine must not flake)
     release(list([CUTTER]));
     await r.idle();
     expect(r.current("DRAK_Cutter")?.status).toBe("ready");
