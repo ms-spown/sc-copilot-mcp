@@ -284,6 +284,14 @@ describe("Feature: a run stored twice by an older build counts once in every sum
     expect(m.net_auec).toBe(50_000);
   });
 
+  it("Given a run stored twice and nothing else, Then the copy is neither a left-out contract nor a partial total", () => {
+    const m = summarizeSession(
+      played(1, { trips: [run("aaaaaa000001", 60), run("aaaaaa000002", 1300)] }),
+    ).money;
+    expect(m.overlap_excluded).toBe(0);
+    expect(m.net_complete).toBe(true);
+  });
+
   it("Given the same file across sessions, Then the aggregate turnover counts it once", () => {
     const a = aggregate([
       played(1, { trips: [run("aaaaaa000001", 60), run("aaaaaa000002", 1300)] }),

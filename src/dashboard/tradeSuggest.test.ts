@@ -847,6 +847,18 @@ describe("Feature: the cache cannot be used to guess a private budget (audit lef
     expect(requests).toHaveLength(1);
   });
 
+  it("Given the general throttle refuses a private request, Then it still used the private slot", async () => {
+    const { ask, requests, clock } = service();
+    await ask({ cargo_scu: 100, avoid_pyro: true }); // a run at t0: the general throttle is on
+    clock.t += 3 * SECOND;
+    expect(await ask(priv(1_234_561))).toMatchObject({ state: "throttled" }); // refused, slot taken
+    clock.t += 6 * SECOND; // 9 s after the run: the general throttle is open, the private slot is not
+    expect(await ask(priv(7_654_321))).toMatchObject({ state: "throttled" });
+    expect(requests).toHaveLength(1);
+    clock.t += 3 * SECOND; // 9 s after the slot was taken: open
+    expect(await ask(priv(7_654_321))).toMatchObject({ state: "ok", cached: false });
+  });
+
   it("Given a typed budget, Then the cache stays free of the private limit", async () => {
     const { ask, requests, clock } = service();
     await ask({ cargo_scu: 100, budget: 500_000 });

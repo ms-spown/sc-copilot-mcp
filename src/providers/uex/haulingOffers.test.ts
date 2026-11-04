@@ -379,6 +379,34 @@ describe("Feature: edge cases found by the audits", () => {
     expect(r.bundles[0].minutes).toBe(Math.round((secs / 60) * 10) / 10);
   });
 
+  it("Given three pickups in one orbit, Then a drop at a pickup visited after its own cargo was loaded is free", () => {
+    // Pickups sort as Everus Harbor, Extra A, Lorville. A's cargo is on board when the route stops at Extra A.
+    const r = analyzeOffers(
+      [
+        offer({ scu: 15, pickup: "Everus Harbor", dropoffs: ["Extra A"] }),
+        offer({ scu: 15, pickup: "Extra A", dropoffs: ["Seraphim Station"] }),
+        offer({ scu: 15, pickup: "Lorville", dropoffs: ["Seraphim Station"] }),
+      ],
+      ctx(),
+    );
+    const all = r.bundles.find((b) => b.offers.join() === "1,2,3")!;
+    expect(all.route).toEqual(["Everus Harbor", "Extra A", "Lorville", "Seraphim Station"]);
+    const secs = 4 * STOP + 2 * HOP + flight(50);
+    expect(all.minutes).toBe(Math.round((secs / 60) * 10) / 10);
+  });
+
+  it("Given an offer that drops at its own pickup, Then that drop stays free in a bundle", () => {
+    const r = analyzeOffers(
+      [
+        offer({ pickup: "Everus Harbor", dropoffs: ["Everus Harbor", "Seraphim Station"] }),
+        offer({ pickup: "Lorville", dropoffs: ["Seraphim Station"] }),
+      ],
+      ctx(),
+    );
+    expect(r.bundles[0].route).toEqual(["Everus Harbor", "Lorville", "Seraphim Station"]);
+    expect(r.bundles[0].minutes).toBe(Math.round(((3 * STOP + HOP + flight(50)) / 60) * 10) / 10);
+  });
+
   it("Given a single pickup that is also a drop-off, Then that drop is not counted twice (unchanged)", () => {
     const r = analyzeOffers(
       [offer({ pickup: "Port Tressler", dropoffs: ["Port Tressler", "Everus Harbor"] })],

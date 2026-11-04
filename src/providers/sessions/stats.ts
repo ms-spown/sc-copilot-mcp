@@ -195,10 +195,11 @@ export function summarizeSession(s: Session): SessionSummary {
       balance_change_auec: change,
       net_auec: net,
       net_source: netTrips !== null ? "trips" : change !== null ? "balance" : null,
-      net_complete: s.trips.length === 0 ? null : withResult.length === s.trips.length,
+      net_complete: counted.length === 0 ? null : withResult.length === counted.length,
       measured_net_auec: measuredNets.length > 0 ? sum(measuredNets) : null,
       gross_only_trips: withResult.filter((e) => e.trip.net_auec === null).length,
-      overlap_excluded: eff.filter((e) => e.excluded).length,
+      // A copy of a run stored twice is not a contract and does not make the total partial: only overlaps count.
+      overlap_excluded: eff.filter((e) => e.excluded && !e.duplicate).length,
       turnover_auec: revenue.length > 0 ? sum(revenue) : null,
       cost_auec: cost.length > 0 ? sum(cost) : null,
       fees_auec: fees.length > 0 ? sum(fees) : null,

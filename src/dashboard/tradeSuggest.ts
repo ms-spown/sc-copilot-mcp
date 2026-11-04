@@ -333,7 +333,8 @@ export class TradeSuggestService {
     // A private budget is the player's balance. A cache or an in-flight join that answers "yes, a run with exactly this
     // budget was made" (cached: true, no wait) would let a caller who can reach this tool find the balance by trying
     // values. So a private lookup is rate limited like a run, hit or miss: one guess per interval, whatever the cache
-    // holds. A typed budget is the player's own number, not a secret, and keeps its free cache.
+    // holds. The slot is taken before the general throttle below: a refused attempt costs as much as an accepted one, or
+    // misses would be free while hits stayed visible. A typed budget is the player's own number and keeps its free cache.
     if (priv) {
       const sincePrivate = t - this.lastPrivateLookupAt;
       if (sincePrivate >= 0 && sincePrivate < this.minInterval) {
