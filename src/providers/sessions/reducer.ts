@@ -155,6 +155,58 @@ const figures = (t: Trip) =>
   ].join("|");
 const grew = (a: Trip, b: Trip) => figures(a) !== figures(b);
 
+const MEASURES = [
+  "cost_auec",
+  "revenue_auec",
+  "fees_auec",
+  "gross_margin_auec",
+  "net_auec",
+] as const;
+/** The offered trip no longer knows a figure that the stored one has. */
+const lostFigure = (stored: Trip, offered: Trip) =>
+  MEASURES.some((k) => stored[k] !== null && offered[k] === null);
+/**
+ * Should the offered version of a trade run replace the stored one? When the run GREW (its last line is later, a late
+ * sale) its figures describe more than the stored ones: yes. When it ends at the same moment, the figures differ only
+ * because of what the server could see: a result that was still settling and is known now replaces it, but a figure
+ * that was measured must never be replaced by an unknown one. That is what a restarted server offers for every run it
+ * did not watch: the log still holds the lines, the balance history of the run is gone (memory only), so its net and
+ * its fees come out unknown. The stored trip is the frozen, measured one (trips.ts).
+ */
+const supersedes = (stored: Trip, offered: Trip) =>
+  grew(stored, offered) &&
+  (ms(offered.ended_at) > ms(stored.ended_at) || !lostFigure(stored, offered));
+
+const CARRIED = [
+  "net_auec",
+  "net_kind",
+  "fees_auec",
+  "fees_method",
+  "unexplained_auec",
+  "net_doubtful",
+] as const;
+
+/**
+ * The offered version of a run that GREW, with the figures the stored one measured and the offered one cannot (a restart
+ * lost the balance history): a known figure is never replaced by an unknown one. Those figures describe the run as it was
+ * measured, not its last lines, so the trip says so (`figures_from_before`) and its net is flagged doubtful: the
+ * calibration and the efficiency against the plan leave it out, the session total keeps it (a raw measure of the balance).
+ */
+function carryMeasured(stored: Trip, offered: Trip): Trip {
+  // A net measured again covers the whole run: nothing from before is mixed into it (old fees would not match it).
+  if (offered.net_auec !== null) return offered;
+  const lost = CARRIED.filter((k) => stored[k] !== null && offered[k] === null);
+  if (lost.length === 0) return offered;
+  const kept: Partial<Trip> = {};
+  for (const k of lost) (kept as Record<string, unknown>)[k] = stored[k];
+  return {
+    ...offered,
+    ...kept,
+    ...(offered.net_auec === null && stored.net_auec !== null ? { net_doubtful: true } : {}),
+    figures_from_before: true,
+  };
+}
+
 function mergeTrips(state: StoreState, cur: Session, inputs: readonly TripInput[]): boolean {
   if (inputs.length === 0) return false;
   const known = new Set<string>();
@@ -169,9 +221,13 @@ function mergeTrips(state: StoreState, cur: Session, inputs: readonly TripInput[
       // A trade run of THIS session that grew (a late sale line) replaces its stored trip: same key, new figures.
       // Contracts stay frozen. A run stored in an older session is left as it was.
       const at = cur.trips.findIndex((t) => t.key === parsed.data.key);
-      if (at >= 0 && parsed.data.source === "trade_journal" && grew(cur.trips[at], parsed.data)) {
+      if (
+        at >= 0 &&
+        parsed.data.source === "trade_journal" &&
+        supersedes(cur.trips[at], parsed.data)
+      ) {
         cur.trips[at] = {
-          ...parsed.data,
+          ...carryMeasured(cur.trips[at], parsed.data),
           planned_profit_auec: parsed.data.planned_profit_auec ?? cur.trips[at].planned_profit_auec,
           // What the plan said is kept too when the grown run no longer carries it.
           plan_link: parsed.data.plan_link ?? cur.trips[at].plan_link,

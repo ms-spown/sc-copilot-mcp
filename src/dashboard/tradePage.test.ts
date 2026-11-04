@@ -208,7 +208,9 @@ describe("Feature: honest when it does not know", () => {
     const t = card(w);
     expect(t).toMatch(/Bénéfice net\s*variation du solde\s*\+143 000 aUEC/);
     expect(t).toMatch(/Frais\s*estimé\s*−43 568 aUEC/);
-    expect(t).toContain("estimé : marge brute − bénéfice net, sans détail par côté");
+    expect(t).toContain(
+      "estimé, flux interrompu ou fenêtre illisible : marge brute − bénéfice net, sans détail par côté",
+    );
     expect(t).not.toContain("Achat\n");
   });
 

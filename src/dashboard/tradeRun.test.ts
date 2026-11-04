@@ -115,6 +115,62 @@ describe("Feature: what a run really earned", () => {
     expect(m.fees).toMatchObject({ total: 43_568, method: "estime", buy: null, sell: null });
   });
 
+  it("Given fees deduced across a stream cut, Then they promise no planned net and are not carried to the next run (found by the end-to-end replay)", () => {
+    const history: BalancePoint[] = [
+      { at: BASE + 6_000, uec: F.start, until: BASE + 19_000 },
+      { at: BASE + 209_000, uec: F.end, until: NOW },
+    ];
+    // the rate is shown (labelled estimated) but the plan is not netted with it: it may hold a foreign spending
+    const m = latest({ history }).money!;
+    expect(m.fees.method).toBe("estime");
+    expect(m.fees.rate).toBeCloseTo(43_568 / 318_072, 6);
+    expect(m.planned_net).toBeNull();
+    // a second run whose own fees are unknown borrows no rate from it either
+    const t = tradeTransactions(BASE);
+    const mk = (s: number, side: "buy" | "sell", total: number): Transaction => ({
+      ...t[0]!,
+      time: new Date(BASE + s * 1000).toISOString(),
+      side,
+      total_auec: total,
+      quantity: 300,
+      commodity_id: AGRICIUM_ID,
+    });
+    const two = run({
+      transactions: [...t, mk(300, "buy", 60_000), mk(330, "sell", 71_000)],
+      history: [...history, { at: BASE + 215_000, uec: F.end, until: BASE + 215_000 }],
+    }).runs[0]!.money!;
+    expect(two.fees.rate_from).toBeUndefined();
+    expect(two.fees.rate).toBeNull();
+    expect(two.planned_net).toBeNull();
+  });
+
+  it("Given a measured first run and a second whose fees are deduced, Then the planned net says its rate comes from the earlier run", () => {
+    const t = tradeTransactions(BASE);
+    const mk = (s: number, side: "buy" | "sell", total: number): Transaction => ({
+      ...t[0]!,
+      time: new Date(BASE + s * 1000).toISOString(),
+      side,
+      total_auec: total,
+      quantity: 300,
+      commodity_id: AGRICIUM_ID,
+    });
+    // run 2: 60 000 bought (+5 000 of fee), the stream is cut over the sale (71 000, 2 000 of fee), back at 336 s
+    const history: BalancePoint[] = [
+      ...tradeHistory(BASE, BASE + 250_000),
+      { at: BASE + 290_000, uec: F.end, until: BASE + 299_000 },
+      { at: BASE + 300_500, uec: F.end - 65_000, until: BASE + 327_000 },
+      { at: BASE + 336_000, uec: F.end - 65_000 + 69_000, until: NOW },
+    ];
+    const m = run({
+      transactions: [...t, mk(300, "buy", 60_000), mk(330, "sell", 71_000)],
+      history,
+    }).runs[0]!.money!;
+    expect(m.fees).toMatchObject({ method: "estime", total: 7_000 });
+    expect(m.fees.rate_from).toBe("ce_trajet"); // the rate shown for this run is its own deduction...
+    expect(m.planned_net).toMatchObject({ rate_from: "trajet_precedent" }); // ...the plan is netted with the earlier one
+    expect(m.planned_net!.fee_rate).toBeCloseTo(43_568 / 318_072, 6);
+  });
+
   it("Given the dashboard opened after the purchases, Then the net is unknown and says why; the fees of the sales are not claimed alone", () => {
     const history = tradeHistory(BASE, NOW).filter((p) => p.at > BASE + 30_000);
     const m = latest({ history }).money!;
@@ -550,6 +606,32 @@ describe("Feature: runs that are not clean", () => {
     expect(r.failed).toBe(1);
     expect(r.money!.cost).toBe(131_504);
     expect(r.buys).toBe(2);
+  });
+
+  it("Given a sale for nothing that the game rejected, Then the card tells it as failed like the journal does, and counts nothing", () => {
+    // The journal lists a cargo line with an amount of 0 as failed (`zero_amount`): the card used to drop it silently
+    // because it has no positive amount, so the two disagreed on how many lines failed.
+    const t = tradeTransactions(BASE);
+    t.push({
+      ...t[3]!,
+      time: new Date(BASE + 60_000).toISOString(),
+      total_auec: 0,
+      status: "failed",
+      reason: "zero_amount",
+      basis: "zero_amount",
+      confidence: "confirmed",
+    });
+    const r = latest({ transactions: t });
+    expect(r.failed).toBe(1);
+    expect(r.sells).toBe(2);
+    expect(r.money!.turnover).toBe(318_072);
+    expect(r.money!.fees.total).toBe(43_568);
+    // Only a FAILED line may carry no amount: a completed one with nothing is still dropped.
+    const done = tradeTransactions(BASE);
+    done.push({ ...done[3]!, time: new Date(BASE + 60_000).toISOString(), total_auec: 0 });
+    const kept = prepareTransactions(done);
+    expect(kept.failed).toHaveLength(0);
+    expect(kept.counted).toHaveLength(4);
   });
 
   it("Given a line the journal could not confirm (even an ambiguous one), Then it is not counted, exactly as the journal does, and is told", () => {

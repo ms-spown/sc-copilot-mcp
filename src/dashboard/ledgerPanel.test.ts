@@ -8,6 +8,7 @@ import {
   ledgerStepNumber,
   ledgerStepText,
   ledgerStripBalance,
+  ledgerTradeMoney,
 } from "./ledgerPanel.js";
 import { fmtAuec } from "./viewLogic.js";
 
@@ -145,5 +146,17 @@ describe("Feature: wording", () => {
       expect(g.text).not.toMatch(/aUEC/);
     }
     expect(ledgerGainText(L, null).text).toBe("");
+  });
+});
+
+describe("Feature: the planned net says where its fee rate comes from", () => {
+  it("Given a planned net, Then the origin of its rate is kept, and an unknown origin is dropped", () => {
+    const money = (rate_from: unknown) =>
+      ledgerTradeMoney({
+        planned_net: { auec: 100, basis: "prix_du_plan", fee_rate: 0.1, fee: 10, rate_from },
+      }).planned_net;
+    expect(money("trajet_precedent").rate_from).toBe("trajet_precedent");
+    expect(money("ce_trajet").rate_from).toBe("ce_trajet");
+    expect(money("<script>").rate_from).toBe("");
   });
 });
