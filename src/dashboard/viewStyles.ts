@@ -246,7 +246,6 @@ h2, h3 { margin: 0; }
 .trbox { display: flex; flex-direction: column; gap: var(--sp-2); grid-column: 1 / -1; min-width: 0; }
 .trbox[data-fold="1"] > .trade { display: none; }
 .tfold { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-3); padding: var(--sp-2) var(--sp-4); background: var(--sc-bg2); border-radius: var(--r-l); }
-.tfold-title { font-size: var(--fs-xs); font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sc-text2); }
 .tfold-sum { flex: 1 1 200px; min-width: 0; color: var(--sc-text2); font-size: var(--fs-s); overflow-wrap: anywhere; }
 .card { background: var(--sc-bg2); border-radius: var(--r-l); padding: var(--sp-4); min-width: 0; }
 .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); margin-bottom: var(--sp-3); }

@@ -10,7 +10,9 @@
 export const TRADE_ACTIONS_CSS = `
 /* the bar keeps its colours when the stream is grey: the planner does not need the stream */
 [data-grey="1"] .full { opacity: 1; filter: none; }
-[data-grey="1"] .full > :not(.trade) { opacity: 0.5; filter: grayscale(1); }
+/* Not the commerce box (its card has its own rule below), and not the shortcuts, the session or the health strip, which the flight order
+   moves into this grid: they were never greyed by this rule and stay as they were in both orders. */
+[data-grey="1"] .full > :not(.trbox):not(.sc):not(.ses):not(.hl) { opacity: 0.5; filter: grayscale(1); }
 [data-grey="1"] .trade { opacity: 1; filter: none; }
 [data-grey="1"] .trade > :not(.tr-actions-slot) { opacity: 0.5; filter: grayscale(1); }
 

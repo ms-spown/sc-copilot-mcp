@@ -15,21 +15,29 @@
  * a ship, a contradiction between the ship and the pilot's locomotion) is "unknown", and unknown gets the default order and
  * says so on the button. The gear is not read: "gear out" would be a guess that the player is about to land.
  *
+ * `why: "flux"` marks the unknown that comes from a grey or absent stream: it is not a change of situation, so the page keeps
+ * the order it has (viewApp.ts); menu, disconnected, closed and a contradiction are real and send it back to the default.
+ *
  * The page applies a change only after `stableMs` of stability (viewApp.ts), so that a `landed` that flips does not make
- * the page jump, and never moves a node that holds the keyboard focus (`layoutPlace`).
+ * the page jump, never while the page is scrolled down, and never moves a node that holds the keyboard focus (`layoutPlace`).
  */
 
-/** The one number of the feature: how long a context must hold before the page follows it. */
+/**
+ * The two numbers of the feature, both choices and not measures: how long a context must hold before the page follows it,
+ * and how far down the page may be scrolled for an automatic change to be applied (px; below it the change waits).
+ */
 export function layoutConfig(): any {
-  return { stableMs: 3000 };
+  return { stableMs: 3000, scrollMaxPx: 200 };
 }
 
 /** What the data say about the situation: { id: "flight" | "station" | "unknown", why }. `grey`: the values are not current. */
 export function layoutContext(L: any, poll: any, grey: boolean): any {
-  if (!poll || grey || poll.state !== "live") return { id: "unknown", why: "flux" };
+  if (!poll) return { id: "unknown", why: "flux" };
+  // What Game.log says wins over the frames (as in the header): a menu or a kick is a real change, grey values or not.
   const conn = poll.connection && poll.connection.state;
   if (conn === "menu" || conn === "disconnected" || conn === "closed")
     return { id: "unknown", why: "connexion" };
+  if (grey || poll.state !== "live") return { id: "unknown", why: "flux" };
   const ctx = L.shipContext(poll);
   const s = ctx.state.id;
   const loco = poll.pilot && poll.pilot.locomotion;

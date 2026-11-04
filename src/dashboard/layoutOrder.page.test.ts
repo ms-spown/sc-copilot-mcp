@@ -18,6 +18,7 @@ import {
   visibleText,
   type PageWorld,
 } from "./testing/pageHarness.js";
+import { pageCss } from "./page.js";
 import { Scenario } from "./testing/scenario.js";
 import { sessionBar } from "./testing/sessionScenario.js";
 import { TRADE_FIGURES, tradeBalanceAt, tradeLedger } from "./testing/tradeScenario.js";
@@ -89,6 +90,17 @@ describe("Feature: what counts as flight, station or unknown", () => {
     expect(id(live({ ship: null, pilot: { locomotion: "seated" } }))).toBe("unknown");
     // a ship section while the pilot is on foot: the data contradict each other
     expect(id(live({ pilot: { locomotion: "on_foot" } }))).toBe("unknown");
+  });
+
+  it("Given an unknown, Then it says why: only a grey or absent stream is 'flux', which the page does not follow", () => {
+    const why = (poll: any, grey = false) => layoutContext(L, poll, grey).why;
+    expect(why(null)).toBe("flux");
+    expect(why(live({}), true)).toBe("flux");
+    expect(why(live({ state: "off" }))).toBe("flux");
+    // Game.log wins over the frames: a menu is a real change even when the values are grey
+    expect(why(live({ connection: { ...ONLINE, state: "menu" } }), true)).toBe("connexion");
+    expect(why(live({ pilot: { locomotion: "on_foot" } }))).toBe("incohérent");
+    expect(why(live({ ship: { name: "DRAK_Cutter_1" } }))).toBe("vaisseau");
   });
 
   it("Given the player's choice, Then it wins over the situation, and auto follows it", () => {
@@ -456,7 +468,7 @@ describe("Feature: the keyboard meets the sections in the order they are drawn",
     const stops = tabStops(w);
     const pin = at(stops, "Épingler : vitesse");
     const shortcuts = at(stops, SHORTCUT_FOLD);
-    const fold = at(stops, "Déplier");
+    const fold = at(stops, "Carte Commerce");
     const session = at(stops, "Sessions");
     expect(pin).toBeGreaterThan(-1);
     expect(shortcuts).toBeGreaterThan(-1);
@@ -482,7 +494,7 @@ describe("Feature: the keyboard meets the sections in the order they are drawn",
     expect(shortcuts).toBeLessThan(session);
     expect(session).toBeLessThan(trade);
     expect(trade).toBeLessThan(pin);
-    expect(at(stops, "Déplier")).toBe(-1); // no fold bar outside the flight order
+    expect(at(stops, "Carte Commerce")).toBe(-1); // no fold bar outside the flight order
   });
 
   it("Given a change of order, Then the order button stays where it is in the header, before every section", async () => {
@@ -502,12 +514,7 @@ describe("Feature: the keyboard meets the sections in the order they are drawn",
 // ---------------------------------------------------------------------------------------------- the fold
 const trade = (w: PageWorld) => findAll(w.root, (n) => n.className === "trbox")[0]!;
 const foldButton = (w: PageWorld): FakeNode =>
-  findAll(
-    w.root,
-    (n) =>
-      n.tag === "button" &&
-      (n.textContent.startsWith("Déplier") || n.textContent.startsWith("Replier")),
-  )[0]!;
+  findAll(w.root, (n) => n.tag === "button" && n.attrs["aria-controls"] === "trade-card")[0]!;
 const foldSum = (w: PageWorld) => findAll(w.root, (n) => n.className === "tfold-sum")[0]!;
 
 describe("Feature: the commerce card is one line, with a fold, while nothing fresh happens in it", () => {
@@ -518,12 +525,13 @@ describe("Feature: the commerce card is one line, with a fold, while nothing fre
     expect(trade(w).attrs["data-fold"]).toBe("1");
     expect(foldButton(w).attrs["aria-expanded"]).toBe("false");
     expect(foldButton(w).attrs["aria-controls"]).toBe("trade-card");
-    expect(foldButton(w).textContent).toBe("Déplier ▸");
+    // the name never changes (it would contradict aria-expanded for a screen reader): the state is aria-expanded alone
+    expect(foldButton(w).attrs["aria-label"]).toBe("Carte Commerce");
     expect(foldSum(w).textContent).toBe("aucun trajet ni plan");
     foldButton(w).click();
     expect(trade(w).attrs["data-fold"]).toBe("0");
     expect(foldButton(w).attrs["aria-expanded"]).toBe("true");
-    expect(foldButton(w).textContent).toBe("Replier ▴");
+    expect(foldButton(w).attrs["aria-label"]).toBe("Carte Commerce");
     // the card is the one the box holds, with the id the button controls
     expect(findAll(trade(w), (n) => n.attrs["id"] === "trade-card")).toHaveLength(1);
     foldButton(w).click();
@@ -631,10 +639,10 @@ describe("Feature: the commerce card is one line, with a fold, while nothing fre
       expect(trade(w).attrs["data-fold"]).toBe("1");
       const bar = findAll(w.root, (n) => n.className === "tfold")[0]!;
       const said = visibleText(bar) + "\n" + orderButton(w).textContent;
-      // the stage and the route of the card itself, nothing else
-      const stage = findAll(w.root, (n) => n.className === "tr-stage")[0]!.textContent;
-      const route = findAll(w.root, (n) => n.className === "tr-route")[0]!.textContent;
-      expect(foldSum(w).textContent).toBe(`${stage} · ${route}`);
+      // the stage and the route of the card, in words fixed here (not read back from the card), nothing else
+      expect(foldSum(w).textContent).toBe(
+        "Achat fait, rien vendu · Laranite · Port Tressler → Area18 TDD",
+      );
       for (const f of figures) expect(flat(said)).not.toMatch(figure(f));
       expect(said).not.toMatch(/5c2e9a41|SCShop_/);
       // The positive control: the page prints amounts with separators, so they are joined before matching, and with the
@@ -690,8 +698,8 @@ describe("Feature: the line of the trip under way stands above the instruments, 
       await w.advance(2 * SECOND);
       expect(orderOf(w)).toBe("flight");
       const line = tripLine(w)!.textContent;
-      const same = (s: string) => s.replace(/en route depuis .*? ·|en route depuis .*$/, "");
-      expect(same(line)).toBe(same(compact));
+      // the whole sentence, the time since the first purchase included (both read within the same minute)
+      expect(line).toBe(compact);
       expect(line).toContain("d’après ton plan : Laranite, Port Tressler → Area18 TDD");
       // right under the banner, before the grid
       const root = rootOrder(w);
@@ -797,5 +805,207 @@ describe("Feature: nothing else about the page changes", () => {
     expect(live()).toBeLessThanOrEqual(3);
     expect(words("station")).toEqual(flightWords);
     expect([...storage.keys()]).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------- audit corrections
+describe("Feature: the grey of a cut stream is the same in both orders (the planner keeps its colours)", () => {
+  /** The classes the `[data-grey="1"] .full > ...` rule leaves alone, read from the style sheet (the fake DOM has no style). */
+  const exempt = (): string[] => {
+    const rule = /\[data-grey="1"\] \.full > ((?::not\(\.[a-z-]+\))+) \{ opacity: 0\.5/.exec(
+      pageCss(),
+    );
+    expect(rule).not.toBeNull();
+    return [...rule![1]!.matchAll(/:not\(\.([a-z-]+)\)/g)].map((m) => m[1]!);
+  };
+
+  it("Given the style sheet, Then the commerce box, the shortcuts, the session and the health strip are not greyed by the grid rule", () => {
+    expect(exempt().sort()).toEqual(["hl", "sc", "ses", "trbox"]);
+    // the card itself keeps its own rules: coloured as a whole, only what is not the action bar is greyed
+    expect(pageCss()).toContain('[data-grey="1"] .trade { opacity: 1; filter: none; }');
+    expect(pageCss()).toContain(
+      '[data-grey="1"] .trade > :not(.tr-actions-slot) { opacity: 0.5; filter: grayscale(1); }',
+    );
+  });
+
+  it("Given each order, Then the same children of the grid are the greyed ones", async () => {
+    const w = await fullscreenPage();
+    const greyed = (): string[] =>
+      findAll(w.root, (n) => n.className === "full")[0]!
+        .children.filter((c) => !exempt().some((k) => c.className.split(" ").includes(k)))
+        .map(kind)
+        .sort();
+    answer(w, flightPoll({}, { landed: true }));
+    await w.advance(5 * SECOND);
+    const station = greyed();
+    answer(w, flightPoll());
+    await w.advance(5 * SECOND);
+    expect(orderOf(w)).toBe("flight");
+    expect(greyed()).toEqual(station);
+    expect(station).toEqual(["col", "col", "col", "off-note", "wide"]);
+  });
+});
+
+describe("Feature: a grey stream is not a change of situation", () => {
+  it("Given a flight whose stream goes grey for twenty seconds, Then nothing moves", async () => {
+    const w = await fullscreenPage();
+    answer(w, flightPoll());
+    await w.advance(3 * SECOND);
+    expect(orderOf(w)).toBe("flight");
+    const before = JSON.stringify([rootOrder(w), fullOrder(w)]);
+    answer(w, flightPoll({ frame_age_ms: 60_000 })); // frames older than the stale limit: grey values
+    const seen: string[] = [];
+    for (let i = 0; i < 40; i++) {
+      await w.advance(500);
+      seen.push(JSON.stringify([rootOrder(w), fullOrder(w)]));
+    }
+    expect(visibleText(w.root)).toContain("Flux interrompu");
+    expect(new Set(seen)).toEqual(new Set([before]));
+    expect(orderOf(w)).toBe("flight");
+    expect(orderButton(w).textContent).toBe("Ordre : auto · vol");
+  });
+
+  it("Given the game log saying menu, Then the page goes back to the default order after its stability, and returns when the flight resumes", async () => {
+    const w = await fullscreenPage();
+    answer(w, flightPoll());
+    await w.advance(3 * SECOND);
+    expect(orderOf(w)).toBe("flight");
+    answer(w, flightPoll({ connection: { ...ONLINE, state: "menu" } }));
+    await w.advance(2 * SECOND);
+    expect(orderOf(w)).toBe("flight"); // not yet
+    await w.advance(3 * SECOND);
+    expect(orderOf(w)).toBe("station");
+    expect(orderButton(w).textContent).toBe("Ordre : auto · contexte inconnu, ordre commerce");
+    answer(w, flightPoll());
+    await w.advance(5 * SECOND);
+    expect(orderOf(w)).toBe("flight");
+  });
+});
+
+describe("Feature: an alert reminder calls the shortcuts up, between the banner and the instruments", () => {
+  const lock = { conditions: [{ id: "hostile_lock", level: "bad" }] };
+
+  it("Given a hostile lock in flight, Then the zone stands right under the banner, with the countermeasure keys; without an alert, after the instruments", async () => {
+    const w = await fullscreenPage();
+    answer(w, flightPoll({ derived: { in_planet_frame: true } }));
+    await w.advance(3 * SECOND);
+    expect(fullOrder(w)).toContain("sc");
+    expect(rootOrder(w)).not.toContain("sc");
+    answer(w, flightPoll({ derived: { in_planet_frame: true }, ...lock }));
+    await w.advance(1 * SECOND); // urgent: no wait
+    const root = rootOrder(w);
+    expect(root.indexOf("ctx")).toBeLessThan(root.indexOf("sc"));
+    expect(root.indexOf("sc")).toBeLessThan(root.indexOf("full"));
+    expect(fullOrder(w)).not.toContain("sc");
+    const zone = findAll(w.root, (n) => n.className === "sc")[0]!;
+    expect(visibleText(zone)).toContain("Leurres");
+    // the tab order: the zone before the instruments
+    const stops = tabStops(w);
+    expect(at(stops, SHORTCUT_FOLD)).toBeLessThan(at(stops, "Épingler : vitesse"));
+    // the alert ends: the zone goes back down after its moment of stability, not before
+    answer(w, flightPoll({ derived: { in_planet_frame: true } }));
+    await w.advance(2 * SECOND);
+    expect(rootOrder(w)).toContain("sc");
+    await w.advance(3 * SECOND);
+    expect(rootOrder(w)).not.toContain("sc");
+    expect(fullOrder(w)).toContain("sc");
+    expect(orderOf(w)).toBe("flight");
+  });
+
+  it("Given the commerce order, Then an alert does not move the zone", async () => {
+    const w = await fullscreenPage();
+    answer(w, flightPoll({ ...lock }, { landed: true }));
+    await w.advance(5 * SECOND);
+    expect(orderOf(w)).toBe("");
+    const root = rootOrder(w);
+    expect(root.indexOf("sc")).toBeLessThan(root.indexOf("ses"));
+  });
+});
+
+describe("Feature: the commerce fold keeps one name, and aria-expanded says the state", () => {
+  it("Given the fold opened and closed, Then the accessible name is the same, only aria-expanded changes", async () => {
+    const w = await fullscreenPage();
+    answer(w, flightPoll());
+    await w.advance(3 * SECOND);
+    const states: string[] = [];
+    const names: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      names.push(foldButton(w).attrs["aria-label"]!);
+      states.push(foldButton(w).attrs["aria-expanded"]!);
+      foldButton(w).click();
+    }
+    expect(names).toEqual(["Carte Commerce", "Carte Commerce", "Carte Commerce"]);
+    expect(states).toEqual(["false", "true", "false"]);
+    expect(foldButton(w).textContent).not.toMatch(/Déplier|Replier/);
+  });
+});
+
+describe("Feature: the automatic change of order is said once, through the existing status region", () => {
+  const sr = (w: PageWorld) => w.root.children.find((c) => c.className === "sr-only")!;
+
+  it("Given flight, then landing, Then the region says the new order; a press of the button does not add to it", async () => {
+    const w = await fullscreenPage();
+    const live = () => findAll(w.root, (n) => n.attrs["aria-live"] !== undefined).length;
+    const regions = live();
+    answer(w, flightPoll());
+    await w.advance(3 * SECOND);
+    expect(sr(w).textContent).toBe("Ordre : vol");
+    answer(w, flightPoll({}, { landed: true }));
+    await w.advance(5 * SECOND);
+    expect(orderOf(w)).toBe("station");
+    expect(sr(w).textContent).toBe("Ordre : commerce");
+    orderButton(w).click(); // forced commerce: nothing moves
+    orderButton(w).click(); // forced flight, by hand: the button already says it
+    expect(orderOf(w)).toBe("flight");
+    expect(sr(w).textContent).toBe("Ordre : commerce");
+    expect(live()).toBe(regions);
+    expect(live()).toBeLessThanOrEqual(3);
+  });
+});
+
+describe("Feature: an automatic change waits while the page is scrolled down", () => {
+  const scrollTo = (w: PageWorld, y: number) => {
+    (w.doc.documentElement as any).scrollTop = y;
+  };
+
+  it("Given a landing while the page is scrolled past 200 px, Then it waits for the top; the player's press applies at once", async () => {
+    const w = await fullscreenPage();
+    answer(w, flightPoll());
+    await w.advance(3 * SECOND);
+    expect(orderOf(w)).toBe("flight");
+    scrollTo(w, 500);
+    answer(w, flightPoll({}, { landed: true }));
+    await w.advance(10 * SECOND);
+    expect(orderOf(w)).toBe("flight");
+    scrollTo(w, 150);
+    await w.advance(1 * SECOND);
+    expect(orderOf(w)).toBe("station"); // near the top again: applied
+    // back in flight, scrolled: waits; the button applies anyway
+    answer(w, flightPoll());
+    scrollTo(w, 900);
+    await w.advance(6 * SECOND);
+    expect(orderOf(w)).toBe("station");
+    orderButton(w).click(); // commerce (forced): already that order
+    orderButton(w).click(); // flight (forced)
+    expect(orderOf(w)).toBe("flight");
+  });
+
+  it("Given the alert calling the zone up while scrolled, Then it waits too", async () => {
+    const w = await fullscreenPage();
+    answer(w, flightPoll({ derived: { in_planet_frame: true } }));
+    await w.advance(3 * SECOND);
+    scrollTo(w, 600);
+    answer(
+      w,
+      flightPoll({
+        derived: { in_planet_frame: true },
+        conditions: [{ id: "hostile_lock", level: "bad" }],
+      }),
+    );
+    await w.advance(3 * SECOND);
+    expect(rootOrder(w)).not.toContain("sc");
+    scrollTo(w, 0);
+    await w.advance(1 * SECOND);
+    expect(rootOrder(w)).toContain("sc");
   });
 });

@@ -25,9 +25,22 @@ versions follow [Semantic Versioning](https://semver.org/).
   fresh happened in it; fresh is what the "Ask Claude" button already counts (a loss, a refused price, a run ended less than 30
   minutes ago). The player's fold wins until the order changes; the card is never folded while the focus is inside it. The shortcuts
   show only what has a key (X, H, J, T) or is an alert, the rest behind the same button. No section changes its content, no new
-  live region, no new amount (tests in both balance modes), `textContent` only. The page grows from 357.7 kB to 364.6 kB, inside
+  live region, no new amount (tests in both balance modes), `textContent` only. The page grows from 357.7 kB to 365.5 kB, inside
   the internal budget of 368 kB (our own guard, not a proven host limit). Not verified in Claude Desktop (how the host sizes
   full screen, whether its frame keeps the scroll position when sections move).
+- **After the independent audit of this change.** (1) The commerce box and the shortcuts, session and health strip that the flight
+  order moves into the grid are exempt from the grey rule of a cut stream, so the planner keeps its colours and the grey is the
+  same in both orders (a test reads the style sheet; the first version greyed the whole planner). (2) **A grey stream no longer
+  moves the page** (the order on screen stays while the frames are stale; menu, disconnected, closed and a contradiction still
+  send it back); previously it jumped to the commerce order after about 8 seconds and back. (3) With an alert reminder (a
+  countermeasure, a hostile lock, shields cut) the shortcuts stand between the banner and the instruments, at once, and go back
+  down 3 seconds after the alert. (4) The fold button is named "Carte Commerce" for good and `aria-expanded` alone carries the
+  state. (5) An automatic change of order is said once ("Ordre : vol", "Ordre : commerce") in the existing status region (no
+  region added). (6) An automatic change waits while the page is scrolled more than 200 px down; the player's press applies at
+  once. After a landing and a take-off the card is folded again by the rule (the player's fold lasts until the order changes).
+  **Not verified in the game:** when `is_landed` is omitted (a hangar, a respawn) the flight order may show although the pilot is
+  on the ground. Measured again in real Chrome (1000 px, preview story): landed y=735 px, on foot y=690 px, normal flight y=149
+  px.
 
 ### Changed (dashboard, UX wave B: the ship loss and the contextual "Ask Claude" button)
 - **A ship loss is the gravest event of the page (audit recommendation R2).** One new top tone, "fatal" (solid red fill, built on

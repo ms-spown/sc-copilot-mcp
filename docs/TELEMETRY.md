@@ -582,10 +582,14 @@ no section changes its words, no figure is added, and the balance choice is unto
 
 - **Flight order** ("vol"). The verdict and the alerts, the ship banner, the line of the trip under way (the same text as the
   compact view, only for a run that is open or partial and not cut by a ship loss), then the instruments; after them the
-  shortcuts (limited as above), the commerce card, the session, the health strip, then the rest. The commerce card is
-  folded to one line (its stage and its route, nothing else) with a button (`aria-expanded`, `aria-controls`) while nothing
+  shortcuts (limited as above; with a reminder of an ALERT in them, a countermeasure, a hostile lock or shields cut, the
+  zone stands instead between the banner and the line of the trip, at once, and goes back down 3 seconds after the alert
+  ends), the commerce card, the session, the health strip, then the rest. The commerce card is
+  folded to one line (its stage and its route, nothing else) with a button named "Carte Commerce" (the name never changes:
+  `aria-expanded` and `aria-controls` carry the state) while nothing
   fresh happened in it: fresh means what the "Ask Claude" button already counts as a commerce event (a ship loss, a refused
-  price, a run that ended in the last half hour). Your own fold wins and lasts until the order changes; the rule never folds
+  price, a run that ended in the last half hour). Your own fold wins and lasts until the order changes, so after a landing
+  and a take-off the card is folded again by the rule; the rule never folds
   the card while the keyboard focus is inside it.
 - **Commerce order** ("commerce"): the order the page always had (banner, shortcuts, session, commerce card, instruments),
   because preparing a route is the job on the ground.
@@ -594,9 +598,16 @@ no section changes its words, no figure is added, and the balance choice is unto
   the button** ("Ordre : auto · contexte inconnu, ordre commerce"): no live stream, `Game.log` saying menu, disconnected
   or closed, a ship whose `landed` is not reported, a powered-off ship, a seat with no ship, or a ship section that
   contradicts the pilot's locomotion. The landing gear is not read: gear out would be a guess that you are about to land.
+  **A grey stream is not a change of situation**: when the frames go stale (about 5 seconds) while an order is on screen,
+  that order stays; only menu, disconnected, closed and a contradiction send the page back to the commerce order. **Not
+  verified in the game:** when the game omits `is_landed` (in a hangar, at a respawn) the ship section may read "not landed"
+  and show the flight order although you are standing on the ground; the button forces the other order.
 - **No jumping.** A change is applied only after the situation has held for 3 seconds (a `landed` that flips every second
   moves nothing), at once the first time a known situation is read, and never while the keyboard focus is inside a section
-  that would move (it waits for the focus to leave). The compact view never changes order.
+  that would move (it waits for the focus to leave), and, for an automatic change, never while the page is scrolled more
+  than 200 px down (it waits for the top; the player's own press of the button always applies). An automatic change is
+  said once, "Ordre : vol" or "Ordre : commerce", in the page's existing status region (no region added). The compact view
+  never changes order.
 - **The button** "Ordre : auto / commerce / vol" in the header (full screen only) cycles auto, commerce, vol and applies at
   once. The choice lives in the memory of the page: no storage, no file, no new `localStorage` key.
 - **Keyboard.** The page moves the nodes themselves (no CSS `order`), so the tab order is the drawn order; tests walk it for

@@ -612,11 +612,15 @@ aucun montant).
 
 - **Ordre « vol ».** Le verdict et les alertes, le bandeau du vaisseau, la ligne du trajet en cours (le même texte que la vue
   compacte, seulement pour un trajet ouvert ou partiel et non coupé par une perte de vaisseau), puis les instruments ; viennent
-  ensuite les raccourcis (limités comme ci-dessus), la carte Commerce, la session, la bande d'état, puis le reste. La carte
-  Commerce est repliée en une ligne (son étape et sa route, rien d'autre) avec un bouton (`aria-expanded`, `aria-controls`)
+  ensuite les raccourcis (limités comme ci-dessus ; avec un rappel d'ALERTE dedans, une contre-mesure, un verrouillage
+  hostile ou des boucliers coupés, la zone se place plutôt entre le bandeau et la ligne du trajet, tout de suite, et
+  redescend 3 secondes après la fin de l'alerte), la carte Commerce, la session, la bande d'état, puis le reste. La carte
+  Commerce est repliée en une ligne (son étape et sa route, rien d'autre) avec un bouton nommé « Carte Commerce » (le nom ne
+  change jamais : `aria-expanded` et `aria-controls` portent l'état)
   tant qu'il ne s'y est rien passé de frais : « frais » veut dire ce que le bouton « Demander à Claude » compte déjà comme un
   événement de commerce (une perte de vaisseau, un prix refusé, un trajet terminé depuis moins d'une demi-heure). Votre pli
-  l'emporte et dure jusqu'au changement d'ordre ; la règle ne replie jamais la carte quand le focus clavier est dedans.
+  l'emporte et dure jusqu'au changement d'ordre : après un atterrissage et un décollage, la carte est donc de nouveau repliée
+  par la règle ; la règle ne replie jamais la carte quand le focus clavier est dedans.
 - **Ordre « commerce »** : l'ordre que la page a toujours eu (bandeau, raccourcis, session, carte Commerce, instruments),
   parce que préparer une route est l'objet au sol.
 - **Ce qui décide.** Vol : le flux est vivant et la section vaisseau dit qu'il n'est pas posé (en l'air, en mode quantique ou
@@ -624,10 +628,17 @@ aucun montant).
   sur le bouton** (« Ordre : auto · contexte inconnu, ordre commerce ») : pas de flux vivant, `Game.log` disant menu,
   déconnecté ou fermé, un vaisseau dont `landed` n'est pas rapporté, un vaisseau éteint, un siège sans vaisseau, ou une
   section vaisseau qui contredit la locomotion du pilote. Le train n'est pas lu : train sorti serait une supposition que vous
-  allez vous poser.
+  allez vous poser. **Un flux gris n'est pas un changement de situation** : quand les trames sont périmées (environ 5
+  secondes) alors qu'un ordre est affiché, cet ordre reste ; seuls menu, déconnecté, fermé et une contradiction ramènent
+  la page à l'ordre commerce. **Non vérifié en jeu :** quand le jeu omet `is_landed` (dans un hangar, à une réapparition),
+  la section vaisseau peut dire « pas posé » et afficher l'ordre vol alors que vous êtes au sol ; le bouton force l'autre
+  ordre.
 - **Pas de saut.** Un changement n'est appliqué qu'après 3 secondes de stabilité (un `landed` qui oscille chaque seconde ne
   déplace rien), tout de suite la première fois qu'une situation connue est lue, et jamais tant que le focus clavier est dans
-  une section qui bougerait (il attend que le focus parte). La vue compacte ne change jamais d'ordre.
+  une section qui bougerait (il attend que le focus parte), et, pour un changement automatique, jamais tant que la page est
+  défilée de plus de 200 px (il attend le haut ; l'appui du joueur sur le bouton s'applique toujours). Un changement
+  automatique est dit une fois, « Ordre : vol » ou « Ordre : commerce », dans la zone d'état déjà présente de la page (aucune
+  zone ajoutée). La vue compacte ne change jamais d'ordre.
 - **Le bouton** « Ordre : auto / commerce / vol » de l'en-tête (plein écran seulement) fait tourner auto, commerce, vol et
   s'applique tout de suite. Le choix vit dans la mémoire de la page : ni stockage, ni fichier, aucune nouvelle clé
   `localStorage`.

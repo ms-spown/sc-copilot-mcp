@@ -62,6 +62,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   // card (null = follow the rule). Nothing is stored anywhere.
   let orderPref = "auto";
   let orderApplied = "";
+  let orderUp = false;
   let orderWant = "";
   let orderSince = 0;
   let orderAtOnce = false;
@@ -951,7 +952,6 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.tradeBox = el("div", "trbox");
     R.trade.card.setAttribute("id", "trade-card");
     R.tfold = el("div", "tfold");
-    R.tfoldTitle = el("span", "tfold-title", "Commerce");
     R.tfoldSum = el("span", "tfold-sum", "");
     R.tfoldBtn = button(
       "",
@@ -962,11 +962,14 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       "mini",
     );
     R.tfoldBtn.setAttribute("aria-controls", "trade-card");
-    R.tfoldText = el("span", "", "");
+    // The name of the button never changes ("Carte Commerce", the same for the eye and the screen reader): `aria-expanded`
+    // says whether the card is open, so the name and the state never contradict each other.
+    R.tfoldBtn.setAttribute("aria-label", "Carte Commerce");
+    R.tfoldText = el("span", "", "Carte Commerce");
     R.tfoldCaret = el("span", "", "");
     R.tfoldCaret.setAttribute("aria-hidden", "true");
     add(R.tfoldBtn, R.tfoldText, R.tfoldCaret);
-    add(R.tfold, R.tfoldTitle, R.tfoldSum, R.tfoldBtn);
+    add(R.tfold, R.tfoldSum, R.tfoldBtn);
     add(R.tradeBox, R.tfold, R.trade.card);
 
     add(R.full, R.offNote, R.tradeBox, R.colInstr, R.colShip, R.colPilot, R.wide);
@@ -1660,18 +1663,41 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   /** Is the page in its flight order right now (full screen, and the flight order is the one on screen)? */
   const flightOn = (): boolean => displayMode === "fullscreen" && orderApplied === "flight";
 
-  /** Puts the sections in the order of `mode`; false (nothing moved) while the keyboard focus is in a node that would move. */
-  function placeOrder(mode: string, force?: boolean): boolean {
-    const steps =
-      mode === "flight"
-        ? [
-            [R.full, R.fullFlight],
-            [root, R.rootFlight],
-          ]
-        : [
-            [root, R.rootStation],
-            [R.full, R.fullStation],
-          ];
+  /** How far down the page is scrolled, in px (the frame's own scroll: the window, or the document element). */
+  const scrolledY = (): number =>
+    Math.max(
+      win.scrollY || 0,
+      (doc.documentElement && doc.documentElement.scrollTop) || 0,
+      (doc.body && doc.body.scrollTop) || 0,
+    );
+
+  /**
+   * Puts the sections in the order of `mode`; false (nothing moved) while the keyboard focus is in a node that would move.
+   * `up` (flight order only): the shortcuts zone stands between the banner and the line of the trip instead of after the
+   * instruments, because an alert reminder (a countermeasure, a hostile lock, shields cut) is in it.
+   */
+  function placeOrder(mode: string, up: boolean, force?: boolean): boolean {
+    const flight = mode === "flight";
+    const sc = R.shortcuts.root;
+    let rootList: any[] = flight ? R.rootFlight : R.rootStation;
+    let fullList: any[] = flight ? R.fullFlight : R.fullStation;
+    if (flight && up) {
+      rootList = [];
+      for (const n of R.rootFlight) {
+        rootList.push(n);
+        if (n === R.ctx) rootList.push(sc);
+      }
+      fullList = R.fullFlight.filter((n: any) => n !== sc);
+    }
+    const steps = flight
+      ? [
+          [R.full, fullList],
+          [root, rootList],
+        ]
+      : [
+          [root, rootList],
+          [R.full, fullList],
+        ];
     // `force`: leaving full screen. The cockpit is about to be hidden and the focus with it, and the compact view must not
     // be left without its session bar and shortcuts because the focus was in one of them.
     if (!L.layoutPlace(steps, force ? null : doc.activeElement)) return false;
@@ -1690,8 +1716,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       orderWant = "";
       orderSeen = false;
       orderAtOnce = false;
-      if (orderApplied !== "" && placeOrder("station", true)) {
+      if (orderApplied !== "" && placeOrder("station", false, true)) {
         orderApplied = "";
+        orderUp = false;
         tradeFoldUser = null;
       }
       return;
@@ -1700,22 +1727,53 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     orderCtx = cls.id;
     const first = !orderSeen;
     if (cls.id !== "unknown") orderSeen = true;
+    // A grey stream is not a change of situation: the order on screen stays (the page would otherwise jump to the commerce
+    // order after 5 s of grey and back after 3 s of live). Only menu, disconnected, closed and a contradiction send it back.
+    if (
+      orderPref === "auto" &&
+      !orderAtOnce &&
+      cls.id === "unknown" &&
+      cls.why === "flux" &&
+      orderApplied !== ""
+    ) {
+      orderWant = "";
+      return;
+    }
     const want = L.layoutWant(orderPref, cls.id);
-    if (want === (orderApplied || "station")) {
+    // An alert reminder (tier 0 of the shortcuts) calls the zone up, between the banner and the instruments.
+    const up =
+      want === "flight" &&
+      L.shortcutsFor(L, view.poll, { grey: info.grey, dark: false }).items.some(
+        (it: any) => it.tier === 0,
+      );
+    const cur = orderApplied || "station";
+    if (want === cur && (want !== "flight" || up === orderUp)) {
       orderWant = "";
       orderAtOnce = false;
       return;
     }
-    if (orderWant !== want) {
-      orderWant = want;
+    const key = want + (up ? "!" : "");
+    if (orderWant !== key) {
+      orderWant = key;
       orderSince = now;
     }
-    if (!(first || orderAtOnce || now - orderSince >= L.layoutConfig().stableMs)) return;
-    if (placeOrder(want)) {
+    // The zone going UP for an alert is urgent and applies at once; everything else waits for its moment of stability.
+    const urgent = want === "flight" && cur === "flight" && up;
+    if (!(first || orderAtOnce || urgent || now - orderSince >= L.layoutConfig().stableMs)) return;
+    // An automatic change waits while the page is scrolled down (moving sections under a reader would lose their place);
+    // the player's own press always applies.
+    if (!orderAtOnce && scrolledY() > L.layoutConfig().scrollMaxPx) return;
+    if (placeOrder(want, up)) {
+      const byHand = orderAtOnce;
       orderApplied = want;
+      orderUp = up;
       orderWant = "";
       orderAtOnce = false;
-      tradeFoldUser = null;
+      if (want !== cur) {
+        tradeFoldUser = null;
+        // Said once, through the page's existing status region (no region added); the button already speaks for a press.
+        if (!byHand) setText(R.sr, "Ordre : " + (want === "flight" ? "vol" : "commerce"));
+      }
     }
   }
 
@@ -1744,7 +1802,6 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     if (!open && wasOpen && L.layoutHolds(R.trade.card, doc.activeElement)) open = true;
     setAttr(R.tradeBox, "data-fold", open ? "0" : "1");
     setText(R.tfoldSum, R.trade.summary() || "aucun trajet ni plan");
-    setText(R.tfoldText, open ? "Replier" : "Déplier");
     setText(R.tfoldCaret, open ? " ▴" : " ▸");
     setAttr(R.tfoldBtn, "aria-expanded", open ? "true" : "false");
   }
