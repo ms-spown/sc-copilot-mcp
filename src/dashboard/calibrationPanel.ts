@@ -16,7 +16,8 @@
  */
 
 export function calibrationConfig() {
-  return { maxGroups: 14, textMax: 60, maxN: 999 };
+  // minRatioRuns: under this many runs the route card gives the number of runs and no ratio (the tile and the tools keep 2).
+  return { maxGroups: 14, textMax: 60, maxN: 999, minRatioRuns: 3 };
 }
 
 /**
@@ -41,12 +42,17 @@ export function calibrationKey(value: unknown): string {
 
 /** "78 %" (a no-break space before the sign). */
 export function calibrationPct(ratio: number): string {
-  return Math.round(ratio * 100) + "\u00a0%";
+  const p = Math.round(ratio * 100);
+  return (p < 0 ? String.fromCharCode(0x2212) : "") + Math.abs(p) + "\u00a0%";
 }
 
-/** A ratio this far from 1 (500 %) is shown as "écart très élevé", never as a number: it rests on a tiny plan. */
+/**
+ * A ratio that is not above zero, or above 500 %, is shown as "écart très élevé", never as a number, and nothing is applied
+ * to it: it rests on a tiny plan, or the runs lost money (a link by prices keeps a ratio between about 50 % and 200 %, a
+ * link by name has no bound).
+ */
 export function calibrationHuge(ratio: unknown): boolean {
-  return typeof ratio === "number" && Math.abs(ratio) > 5;
+  return typeof ratio === "number" && (ratio <= 0 || ratio > 5);
 }
 
 export function calibrationWord(confidence: string): string {
@@ -70,6 +76,11 @@ export function calibrationGroupNormalize(L: any, raw: any): any {
   if (commodity === "" || n < 2 || gross === null) return null;
   const kind = raw.kind === "route" ? "route" : "commodity";
   const count = (v: unknown) => Math.min(cfg.maxN, Math.max(0, Math.floor(L.ledgerNum(v) || 0)));
+  // Mean amounts (whole aUEC) behind the ratios: finite, bounded, null when absent.
+  const amount = (v: unknown) => {
+    const a = L.ledgerNum(v);
+    return a === null ? null : Math.max(-1e12, Math.min(1e12, Math.round(a)));
+  };
   return {
     kind,
     commodity,
@@ -80,9 +91,13 @@ export function calibrationGroupNormalize(L: any, raw: any): any {
     gross_ratio: gross,
     gross_min: calibrationRatio(L, raw.gross_min),
     gross_max: calibrationRatio(L, raw.gross_max),
+    gross_avg_auec: amount(raw.gross_avg_auec),
+    gross_planned_avg_auec: amount(raw.gross_planned_avg_auec),
     high_variance: raw.high_variance === true,
     net_ratio: calibrationRatio(L, raw.net_ratio),
     net_n: count(raw.net_n),
+    net_avg_auec: amount(raw.net_avg_auec),
+    net_planned_avg_auec: amount(raw.net_planned_avg_auec),
     net_excluded: count(raw.net_excluded),
     goods_unverified: raw.goods_unverified === true,
     confidence_capped: raw.confidence_capped === true,
@@ -183,6 +198,8 @@ export function calibrationExpected(
     return {
       auec: Math.round(plannedProfit * group.gross_ratio - group.fee_rate * plannedTurnover),
       basis: "gross_ratio_minus_fees",
+      // the usual fees on the planned turnover, as subtracted above (so a card can write the real decomposition)
+      fees: Math.round(group.fee_rate * plannedTurnover),
       ratio: group.gross_ratio,
       n: Math.min(group.n, group.fee_n),
       confidence: conf,
@@ -213,6 +230,30 @@ export function calibrationCaution(group: any): string {
   return parts.join(" · ");
 }
 
+/** Whose runs these are, in words: never "of this goods" when the plan was tied to the runs by their prices only. */
+export function calibrationWho(scope: string, unverified: boolean): string {
+  return unverified
+    ? "similaires (marchandise non vérifiée)"
+    : scope === "route"
+      ? "sur cette route"
+      : "de cette marchandise";
+}
+
+/** The end of the fold under a calibration line: the price link, the ceiling, the scope of a two-leg card. */
+export function calibrationMoreTail(group: any, multi: boolean): string {
+  let more = "";
+  if (group.goods_unverified === true)
+    more +=
+      " Le journal du jeu ne nomme pas les marchandises : ton plan est rattaché à tes trajets par la ressemblance des prix (lien par prix), une ressemblance et non une preuve.";
+  if (group.confidence_capped === true)
+    more +=
+      " Confiance plafonnée à « moyenne » : les trajets qui rendent moins de la moitié du prévu ne sont pas rattachés, donc absents de ce chiffre.";
+  if (multi)
+    more +=
+      " Calculé pour le premier tronçon seulement : ce n’est pas un chiffre pour l’aller-retour.";
+  return more;
+}
+
 /**
  * The quiet line under a suggestion card, for the commodity of the card's first leg (and its two terminals): null when
  * there is nothing to say (the balance is hidden, no group, fewer than two runs). `tag` always carries the confidence and
@@ -232,11 +273,7 @@ export function calibrationLine(
   // The game log never names goods: when the plan was tied to the runs by their prices, the line says they only
   // RESEMBLE the plan, never that they are "of this goods". The line speaks of the first leg only when there are two.
   const multi = typeof legs === "number" && legs > 1;
-  const who = unverified
-    ? "similaires (marchandise non vérifiée)"
-    : hit.scope === "route"
-      ? "sur cette route"
-      : "de cette marchandise";
+  const who = calibrationWho(hit.scope, unverified);
   let text =
     (multi ? "Sur le 1er tronçon, d’après" : "D’après") + " tes " + g.n + " trajets " + who;
   text += calibrationHuge(g.gross_ratio)
@@ -247,17 +284,9 @@ export function calibrationLine(
   const caution = calibrationCaution(g);
   if (caution !== "") text += " " + caution[0]!.toUpperCase() + caution.slice(1) + ".";
   // The details behind the line, folded: what the figures are, how the plan is tied to the runs, the ceiling, the scope.
-  let more =
-    "Réalisé : la marge brute (ventes moins achats), comparée au prévu. Frais : en part du chiffre d’affaires.";
-  if (unverified)
-    more +=
-      " Le journal du jeu ne nomme pas les marchandises : ton plan est rattaché à tes trajets par la ressemblance des prix (lien par prix), une ressemblance et non une preuve.";
-  if (g.confidence_capped === true)
-    more +=
-      " Confiance plafonnée à « moyenne » : les trajets qui rendent moins de la moitié du prévu ne sont pas rattachés, donc absents de ce chiffre.";
-  if (multi)
-    more +=
-      " Calculé pour le premier tronçon seulement : ce n’est pas un chiffre pour l’aller-retour.";
+  const more =
+    "Réalisé : la marge brute (ventes moins achats), comparée au prévu. Frais : en part du chiffre d’affaires." +
+    calibrationMoreTail(g, multi);
   return {
     text,
     more,
@@ -288,6 +317,23 @@ export function calibrationHint(group: any, confidence: string): string {
 }
 
 /**
+ * calibrationExpected with ONE minimum for everything the player sees (the tile and the route cards): under `minRatioRuns`
+ * runs behind the very figure used (the net ratio's runs, the fee rate's runs, the gross ratio's runs) it gives nothing.
+ * The profit given is that of ONE leg (the plan's, or the card's first leg), never a round-trip total.
+ */
+export function calibrationApply(group: any, profit: unknown, turnover?: unknown): any {
+  if (!group) return null;
+  const min = calibrationConfig().minRatioRuns;
+  if (group.n < min) return null;
+  const enough = (v: number) => (v >= min ? v : 0);
+  return calibrationExpected(
+    { ...group, net_n: enough(group.net_n), fee_n: enough(group.fee_n) },
+    profit,
+    turnover,
+  );
+}
+
+/**
  * The calibrated "Si tu refais ce trajet": the expectation for the plan in force (the same plan the card's own figure is
  * built on, whether or not the journal could confirm the goods), when the group has what it needs. null otherwise (the card
  * keeps its own figure).
@@ -301,7 +347,7 @@ export function calibrationNextTile(calib: any, plan: any, money: any): any {
     typeof plan.sell_unit_price === "number" && typeof plan.scu === "number"
       ? plan.sell_unit_price * plan.scu
       : null;
-  const e = calibrationExpected(hit.group, money.planned_profit, turnover);
+  const e = calibrationApply(hit.group, money.planned_profit, turnover);
   if (!e) return null;
   const unverified = e.goods_unverified === true;
   const where = unverified
@@ -340,6 +386,148 @@ export function calibrationNextTile(calib: any, plan: any, money: any): any {
   };
 }
 
+/**
+ * The three values of a route card side by side: ESTIMATED (the planner's figure from UEX prices, per trip and per hour),
+ * MEASURED (what the player's own saved runs of this route or goods averaged, and how many) and the RATIO realised / planned
+ * with what it gives applied. Every string is ready to be written with textContent. null when there is nothing to say (no
+ * group for the first leg's goods, no leg). The caller passes it only while the balance is shown: everything here is derived
+ * from the balance.
+ *
+ * Honesty rules, each one tested:
+ *   - under `minRatioRuns` (3) runs behind the figure in use, only the NUMBER of runs is given: no ratio, no applied figure;
+ *   - the ratio is the one the tile "Si tu refais ce trajet" uses (calibrationExpected: the net ratio, else the gross ratio
+ *     less the usual fees), and it is applied to the profit of the FIRST LEG only (what "apply as plan" stores as the plan's
+ *     profit, so what the runs were compared with), never to the card's round-trip total, never to another goods;
+ *   - a per-hour figure is applied only to a one-leg card, as the applied trip over the estimated cycle;
+ *   - a huge gap is worded, not printed as a percentage, and nothing is applied to it;
+ *   - the ratio is censored by construction (about 50 % to 200 %): the fold says so.
+ * `calibrationLine` above is the same figures as one plain sentence (the form the tools and the tests pin); the card uses this.
+ */
+export function calibrationCompare(L: any, calib: any, o: any): any {
+  const leg = o && Array.isArray(o.legs) ? o.legs[0] : null;
+  if (!leg) return null;
+  const hit = calibrationPick(calib, leg.commodity, leg.from, leg.to);
+  if (!hit) return null;
+  const cfg = calibrationConfig();
+  const g = hit.group;
+  const multi = o.legs.length > 1;
+  const who = calibrationWho(hit.scope, g.goods_unverified === true);
+  const money = (v: number) => "≈ " + L.fmtAuec(v, true);
+  const unit = "\xa0aUEC";
+  // The measured side and the ratio are those of the FIRST leg: a card of two legs says so beside the total it shows.
+  const scopeWord = multi ? "1er tronçon (" + leg.commodity + ") · " : "";
+  const out: any = {
+    mode: "count",
+    scope: hit.scope,
+    estValue: money(o.profit_per_trip),
+    estUnit: multi ? "aUEC pour les " + o.legs.length + " tronçons" : "aUEC par trajet",
+    estSub:
+      o.profit_per_hour === null
+        ? "durée inconnue : pas de gain par heure"
+        : money(o.profit_per_hour) + unit + " par heure",
+    measLabel: "Mesuré",
+    measValue: g.n + " trajets",
+    measUnit: "",
+    measSub:
+      scopeWord + who + " · pas assez pour un ratio (" + cfg.minRatioRuns + " trajets minimum)",
+    ratioValue: "",
+    ratioSub: "",
+    fill: -1,
+    apply: "",
+    caution: "",
+    tag: "",
+    hint: "",
+    reading:
+      "Estimé : le calcul du planificateur sur les prix UEX (relevés de la communauté), jamais une promesse. Mesuré : la moyenne de tes trajets enregistrés, chacun avec son plan. Le ratio compare chaque trajet au prévu de CE trajet-là, ramené à la quantité transportée : ce n’est pas le mesuré divisé par l’estimation d’aujourd’hui. Un trajet rattaché à son plan par la ressemblance des prix ne l’est que si sa marge unitaire est entre la moitié et le double de celle du plan : ceux qui rendent moins ou plus sont absents, donc le ratio de ces trajets reste entre ≈ 50 % et ≈ 200 % (un lien par le nom n’a pas cette borne). Un ratio négatif, nul ou au-dessus de 500 % se lit « écart très élevé » et n’est appliqué à rien." +
+      calibrationMoreTail(g, multi),
+  };
+  if (g.n < cfg.minRatioRuns) return out;
+
+  // The ratio and what it gives: only with enough runs behind the very figure used (the net, or the fees), else the gross one.
+  const legProfit = Math.round(leg.profit_per_scu * leg.scu);
+  const e = legProfit > 0 ? calibrationApply(g, legProfit, leg.sell_price * leg.scu) : null;
+  const net = !!e && e.basis === "net_ratio";
+  const ratio = e ? e.ratio : g.gross_ratio;
+  // The runs the shown mean is over (the net's runs, else all of them): the confidence tag keeps the runs behind the ratio used.
+  const runs = net ? g.net_n : g.n;
+  const confidence = e ? e.confidence : g.confidence;
+  const mean = net ? g.net_avg_auec : g.gross_avg_auec;
+  const planned = net ? g.net_planned_avg_auec : g.gross_planned_avg_auec;
+  out.mode = "ratio";
+  out.measLabel = "Mesuré · " + runs + " trajets";
+  if (typeof mean === "number") {
+    out.measValue = money(mean);
+    out.measUnit = "aUEC par trajet, en moyenne";
+  } else {
+    out.measValue = runs + " trajets";
+    out.measUnit = "";
+  }
+  out.measSub =
+    scopeWord +
+    who +
+    " · " +
+    (net ? "résultat net" : "marge brute, avant frais") +
+    (typeof planned === "number" ? " · prévu alors " + money(planned) + unit : "");
+  out.tag = calibrationTag(confidence, e ? e.n : g.n);
+  out.hint = calibrationHint(g, confidence);
+  out.caution = calibrationCaution(g);
+  const huge = calibrationHuge(ratio);
+  out.ratioValue = huge ? "écart très élevé" : calibrationPct(ratio);
+  out.ratioSub = scopeWord + (net ? "sur le net" : "sur la marge brute") + " · réalisé ÷ prévu";
+  out.fill = huge ? -1 : Math.round(Math.min(2, Math.max(0, ratio)) * 50);
+  if (e && !huge) {
+    // On the gross basis the figure is planned × ratio LESS the usual fees: the sentence says so, with the amount taken off.
+    const sum =
+      money(e.auec) +
+      unit +
+      " (prévu " +
+      money(legProfit) +
+      " × " +
+      calibrationPct(e.ratio) +
+      (net
+        ? ""
+        : ", moins les frais habituels ≈ " +
+          L.fmtAuec(e.fees) +
+          unit +
+          ", à " +
+          calibrationPct(g.fee_rate) +
+          " du chiffre d’affaires prévu") +
+      ")";
+    if (multi) {
+      out.apply =
+        "Si tu refais le 1er tronçon (" +
+        leg.commodity +
+        ") " +
+        sum +
+        ". Pas de chiffre pour l’aller-retour entier.";
+    } else {
+      const hour =
+        typeof o.cycle_minutes === "number" && o.cycle_minutes > 0
+          ? Math.round((e.auec / o.cycle_minutes) * 60)
+          : null;
+      out.apply =
+        "Si tu refais ce trajet " +
+        sum +
+        (hour === null ? "" : ", soit " + money(hour) + unit + " par heure") +
+        ".";
+    }
+  } else if (!e && !huge && legProfit > 0) {
+    // Nothing is applied: say the one reason that is true.
+    const turnover = leg.sell_price * leg.scu;
+    const netRuns = g.net_n >= cfg.minRatioRuns && typeof g.net_ratio === "number";
+    const feeRuns = g.fee_n >= cfg.minRatioRuns && typeof g.fee_rate === "number";
+    out.apply =
+      netRuns && calibrationHuge(g.net_ratio) && !(feeRuns && turnover > 0)
+        ? "Le net de tes trajets s’écarte trop du prévu (écart très élevé) : aucun chiffre appliqué."
+        : feeRuns && !(turnover > 0)
+          ? "Chiffre d’affaires prévu inconnu : les frais habituels ne peuvent pas être déduits, aucun chiffre appliqué."
+          : "Pas assez de trajets avec frais connus pour chiffrer le net (" +
+            cfg.minRatioRuns +
+            " minimum) : aucun chiffre appliqué.";
+  }
+  return out;
+}
+
 /** The functions of this file, in the order they are serialised (page.ts). */
 export const CALIBRATION_VIEW_FUNCTIONS = [
   calibrationConfig,
@@ -354,8 +542,11 @@ export const CALIBRATION_VIEW_FUNCTIONS = [
   calibrationPick,
   calibrationExpected,
   calibrationCaution,
-  calibrationLine,
+  calibrationWho,
+  calibrationMoreTail,
   calibrationTag,
   calibrationHint,
+  calibrationApply,
   calibrationNextTile,
+  calibrationCompare,
 ];

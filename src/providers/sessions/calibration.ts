@@ -101,10 +101,20 @@ export interface CalibrationGroup {
   gross_median: number | null;
   gross_min: number | null;
   gross_max: number | null;
+  /**
+   * The two means behind the gross ratio, over the same used runs: the mean realised gross margin and the mean planned profit
+   * (each plan brought to the quantity really moved). The ratio is their quotient, so the card can show both beside it.
+   * Whole aUEC, derived from the balance like the ratio; null below 2 runs.
+   */
+  gross_avg_auec: number | null;
+  gross_planned_avg_auec: number | null;
   high_variance: boolean;
   /** Realised net over the planned profit, from the runs whose net is their own; null below 2 such runs. */
   net_ratio: number | null;
   net_n: number;
+  /** The same two means for the net ratio, over the runs whose net is their own; null below 2 such runs. */
+  net_avg_auec: number | null;
+  net_planned_avg_auec: number | null;
   /** Runs left out of the net because it held a movement of the balance that is not the run's (or could not be told). */
   net_excluded: number;
   net_confidence: Confidence;
@@ -169,6 +179,7 @@ const DAY = 86_400_000;
 const sum = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0);
 const norm = calibrationKey;
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
+const meanOf = (xs: readonly number[]) => Math.round(sum(xs) / xs.length);
 
 /** "4.10" from "4.10.197.2878 (build 12881860)"; null when the text does not start with two numbers. */
 export function patchLine(version: string | null | undefined): string | null {
@@ -386,9 +397,13 @@ function groupOf(
     gross_median: gross ? gross.median : null,
     gross_min: gross ? gross.min : null,
     gross_max: gross ? gross.max : null,
+    gross_avg_auec: gross ? meanOf(used.map((u) => u.gross.num)) : null,
+    gross_planned_avg_auec: gross ? meanOf(used.map((u) => u.gross.den)) : null,
     high_variance: gross ? gross.spread > CALIBRATION_SPREAD_HIGH : false,
     net_ratio: net ? net.typical : null,
     net_n: netSamples.length,
+    net_avg_auec: net ? meanOf(netSamples.map((u) => (u.net as Pair).num)) : null,
+    net_planned_avg_auec: net ? meanOf(netSamples.map((u) => (u.net as Pair).den)) : null,
     net_excluded: used.filter((u) => u.netPolluted).length,
     net_confidence: netVerdict.confidence,
     fee_rate: feeFigures ? feeFigures.typical : null,

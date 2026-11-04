@@ -33,6 +33,27 @@ versions follow [Semantic Versioning](https://semver.org/).
   loss box carries its own copy of the button. The page grows from 350.7 kB to 357.7 kB, inside the internal budget of 368 kB
   (our own guard, not a proven host limit).
 
+### Changed (dashboard, UX audit R5: route cards)
+- **Route cards: the estimate, what you measured and the ratio, side by side (UX audit R5).** Under each route of "Chercher une
+  route", the quiet calibration line is replaced by three aligned values: ESTIMÉ (tag "ESTIMATION": the planner's profit per
+  trip and per hour from UEX prices), MESURÉ (the mean of your own runs of that route or goods, their number and what they were
+  planned at) and RÉALISÉ ÷ PRÉVU (the ratio of the tile "Si tu refais ce trajet", with a small 0 to 200 % bar, its confidence
+  tag and what it gives: "Si tu refais ce trajet ≈ X aUEC (prévu Y × Z %)"). Rules: under 3 runs the card gives their number
+  and nothing else; the ratio is applied to the first leg's profit only (a card of two legs says "1er tronçon" and gives no
+  round-trip figure; an hourly figure only for a card of one leg); a huge gap is worded, not printed; the fold "Comment lire
+  ça" says that runs tied by prices are censored to about 50 % to 200 % (a link by name has no such bound) and that the ratio is
+  not the measured mean over today's estimate. On the gross basis the sentence writes the real decomposition ("prévu × ratio,
+  moins les frais habituels ≈ F"); the "mesuré" cell counts the runs its mean is over; a ratio not above zero or above 500 %
+  reads "écart très élevé" with nothing applied, and when nothing is applied the sentence gives the one true reason. Shown only with the
+  balance, and emptied (hidden nodes and attributes included) when it is hidden again.
+- **The tile "Si tu refais ce trajet" follows the same minimum.** It used to give a coefficient from 2 runs while the route cards
+  need 3; both now go through one function (`calibrationApply`): no coefficient under 3 runs behind the figure in use (the net
+  ratio's runs, the fee rate's runs), above 500 % no value, and the plan's profit is that of its one leg. With 2 runs the tile
+  keeps the card's own figure. `sc_session_stats` still reports groups from 2 runs, with their confidence.
+- The calibration groups of `sc_session_stats` (`route_reliability`) and of the dashboard poll carry four new mean amounts
+  (`gross_avg_auec`, `gross_planned_avg_auec`, `net_avg_auec`, `net_planned_avg_auec`), derived from the balance like the ratios
+  and withheld with them.
+
 ## [2.6.0] - 2026-11-04
 
 Behaviour change first: **the aUEC balance and every amount derived from it are now SHOWN by default**; hiding them is the opt-in
