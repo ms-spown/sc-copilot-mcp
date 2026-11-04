@@ -7,6 +7,27 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Route reliability: what your own saved runs say about the planner's profit.** UEX prices are crowdsourced estimates,
+  so a planned profit is a guess; the completed trade runs that carry a planned profit now say how the realised result
+  compares with it, per goods and per route (`src/providers/sessions/calibration.ts`, a pure module). Realised gross
+  margin over planned profit (pooled, with median, minimum and maximum), net over planned profit (only with net and fees
+  both known), fees over turnover; the plan is scaled to the quantity really moved; no figure below 2 runs and the number
+  of runs always shown; a confidence label (`none`, `low`, `medium`, `high`) from the number of runs, the spread and the
+  age; runs older than 60 days or from another patch line are left out, only the last 8 per group count; a figure is
+  never carried from one commodity to another; a plan under 1 000 aUEC is ignored and a ratio above 500 % is shown as "écart
+  très élevé"; a net that holds a purchase made elsewhere (what the margin and the fees leave unexplained above 2 % of the
+  turnover, or flagged doubtful by the commerce model) is left out of the net ratio and counted. Shown in `sc_session_stats` (`route_reliability`), as a quiet line under
+  each suggested route of the action bar, in the commerce card's "Si tu refais ce trajet" tile (calibrated net
+  expectation, an estimate), and in a sentence of the server instructions and the `trade_copilot` prompt. Every ratio is
+  derived from the balance: it exists only where the balance is shown (not in the tool without `include_balance`, not in
+  the poll of a View that did not ask, not on the channel between Views, not in `ui/update-model-context` or the message to
+  the agent). Docs EN/FR, SECURITY.
+- Session file version 2: a trade trip also keeps the plan's quantity and terminals, how the plan was tied to the run,
+  how the fees were obtained and what the balance holds beyond the run (all optional, null for older trips). A version 1
+  file is read as is and, before the first write in the new format, copied once to `sessions.json.v1.bak` (an existing copy
+  is never overwritten). A build that only knows version 1 opens a version 2 file read-only, in memory, with a notice: the
+  data is not lost.
+
 - **Health strip and legend in the live dashboard: the page explains what is wired and what is missing.** A new player
   used to get a dashboard that silently showed less than it could (no connection state without the game log, no trade
   journal or ledger, nothing with telemetry off, only "Jeu lancé sans télémétrie" for a game started without the
@@ -36,6 +57,14 @@ versions follow [Semantic Versioning](https://semver.org/).
     runtime, so the two do not share code; the strip points to it.
 
 ### Fixed
+- **A planned profit was never saved with a trade run in the real game.** The journal names goods by an id (the first 8
+  characters of a GUID), the plan by a name, so the commerce model's name comparison always said "non vérifié" and the
+  saved trip carried no plan: the efficiency against the plan had nothing to compare. A plan is now also tied to the run
+  by its prices, strictly (average buy and sell prices each within 15 % of the plan's, a known bought quantity within a
+  factor of 2.5 of the plan's, a positive realised unit margin between half and twice the plan's; a run that fails a test
+  leaves the plan free, and the closest of several candidates takes it), recorded as `plan_link: "prices"`. Such goods are
+  never verified: the calibration, its line and its tile say "marchandise non vérifiée (lien par prix)", the confidence is
+  capped at medium, and the session figures count them (`price_linked_trips`, label suffix "(lien par prix)").
 - **Tests that failed intermittently on a loaded machine.** Under CPU load (several suites at once plus busy-loop
   processes) 15 of 15 runs failed on at least one test; they all pass now. Causes, fixed at the root and without
   weakening an assertion: real-clock thresholds (`Date.now() - started < X`) replaced by injected clocks, counted
@@ -45,6 +74,7 @@ versions follow [Semantic Versioning](https://semver.org/).
   instead of a port just closed. Where real I/O is the point, the limit is a generous hang detector rather than a
   speed claim: the default test timeout goes from 5 s to 30 s, and to 120 s for the 400-round ledger read test and for
   the session-store tests (one fsync per change, dozens per test).
+
 
 ### Changed
 - `npm run test:stress` (local, not in CI) runs the suite under CPU load and lists the tests that fail; the rules for

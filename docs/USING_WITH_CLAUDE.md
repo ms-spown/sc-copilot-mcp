@@ -111,6 +111,9 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    explaining why. Money figures (balances, results, rates) come only with include_balance=true: ask the player first, and say
    they come from the game's telemetry. Measured figures and estimates are labelled: repeat the label, and never
    invent a figure the tools left null. Start or end a session (sc_session_new, sc_session_end) only when the player asks.
+   UEX prices are crowdsourced estimates: when the player agreed to the money figures, read route_reliability in
+   sc_session_stats before quoting a planned profit, and quote it with its number of runs and its confidence (an estimate,
+   no figure below 2 runs, never carried from one commodity to another, no cause claimed).
 ```
 
 ## Canary test: are the server instructions honoured?

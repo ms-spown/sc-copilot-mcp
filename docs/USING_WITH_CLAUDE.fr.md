@@ -127,7 +127,10 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
    résultats, rythmes) ne viennent qu'avec include_balance=true : demandez d'abord au joueur, et dites qu'ils viennent
    de la télémétrie du jeu. Mesures et estimations sont étiquetées : reprenez l'étiquette, et n'inventez jamais un
    chiffre que les outils ont laissé null. Ne démarrez ou ne terminez une session (sc_session_new, sc_session_end) que si
-   le joueur le demande.
+   le joueur le demande. Les prix UEX sont des estimations de la communauté : quand le joueur a accepté les chiffres
+   d'argent, lisez route_reliability dans sc_session_stats avant de citer un profit prévu, et citez-la avec son nombre de
+   trajets et sa confiance (une estimation, aucun chiffre sous 2 trajets, jamais reportée d'une marchandise à une autre,
+   aucune cause affirmée).
 ```
 
 ## Test canari : les instructions du serveur sont-elles respectées ?

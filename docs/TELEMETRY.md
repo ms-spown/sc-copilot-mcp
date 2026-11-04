@@ -730,7 +730,8 @@ it again from any conversation, after a game crash, and after a reboot of the PC
   `SC_SESSIONS=off` (or `0`, `false`, `no`) turns the sessions off while telemetry stays on: no file is created or read,
   and the session tools and the bar disappear.
 - **To wipe it.** Stop Claude Desktop (or set `SC_SESSIONS=off`), then delete `sessions.json`. Files next to it
-  (`sessions.json.corrupt-...`, `.bak-...`) are copies kept when a file was unreadable; delete them too if you want.
+  (`sessions.json.v1.bak`, `sessions.json.corrupt-...`, `.bak-...`) are copies of older or unreadable files and hold the
+  same balances: delete all of them to wipe the data.
   The file is plain JSON: you can read it.
 - **A deliberate change of behaviour.** The starting balance cannot be recovered from Game.log, so to capture it the
   server must be watching when the game starts. With sessions on, a small manager keeps the telemetry reader alive
@@ -789,7 +790,7 @@ A trip is a **completed contract** of the transport ledger (its result is the ba
 stays unknown when two contracts overlapped or the balance was not seen) or a **completed trade run** of the commerce card
 (its model, `src/dashboard/tradeRun.ts`, is the one pairing of the journal's purchases and sales; the trip keeps its
 cost, turnover, **gross margin**, fees and **net**, each as that model measured or computed it, and the plan's profit
-when the model matched the plan to the run). A contract's balance change that overlaps a trade run is left out of the
+when the plan was tied to the run, by the goods' name or by prices: see Route reliability). A contract's balance change that overlaps a trade run is left out of the
 totals (it already holds the run's sales), and the session shows the measured net and the gross margin separately. A trip is stored only once its result is
 settled and is never recomputed later.
 
@@ -801,6 +802,71 @@ time), best trip, and efficiency against the plan when Claude passed one with th
 average per hour, trend (the last sessions against the ones before, 10 percent threshold), best and worst session, best
 routes and goods when known. A figure that cannot be worked out is `null`, never zero. All of them are raw measures: the
 balance also moves with purchases, fines and repairs.
+
+### Route reliability (calibration)
+
+UEX prices are crowdsourced estimates, and for most routes nobody has reported them recently, so the planner's profit is
+a guess. Your own saved runs are evidence. For each completed trade run that carries a planned profit, the server
+compares what the plan promised with what you really got (`src/providers/sessions/calibration.ts`, a pure module).
+
+- **What is compared.** The realised gross margin over the planned profit (a margin before fees, so like for like); the
+  net over the planned profit, only for a run whose net is its own (the net and the fees are known, the commerce model did
+  not flag the net as doubtful, and what the margin and the fees leave unexplained of the balance change is at most 2 % of
+  the turnover: a purchase made elsewhere or a reward is left out and counted in `net_excluded`, and an older trip without
+  that information is left out too); and the fees over the turnover. The plan is first scaled to the quantity really moved
+  when the plan's quantity is known and differs by more than 2 % (a half-loaded hold is not a bad price); a run that moved
+  less than a quarter or more than four times the planned quantity is left out. A plan under 1 000 aUEC, or under the run's
+  own fees, is ignored (a ratio over a few aUEC is noise), and a ratio above 500 % is shown as "écart très élevé", never as
+  a percentage. The typical ratio is pooled (sum realised over sum planned), with the median, the minimum and the maximum of
+  the per-run ratios beside it. It is not the efficiency figure of the sessions (`money.plan.efficiency`): that one is the
+  measured result (net, else gross margin) over the plan as planned, while the calibration compares the gross margin with
+  the plan rescaled to the quantity moved, so the two can differ on purpose.
+- **Groups and which runs count.** Per goods (exact name once accents are folded and lower-cased, never a prefix, never the
+  figure of another goods) and, when the run holds the plan's two terminals, per route. A goods group pools all its routes;
+  the route group is preferred when it has 2 runs or more. Only runs of the last 60 days count, from the current patch line
+  (the first two numbers of the game version, for example 4.10: a run of another patch line is left out, a run of unknown
+  version is kept and counted, and with no current version known nothing is left out for its patch), and only the last 8
+  runs of a group. What was left out, and why, is counted in the answer of the tool. The card line is about the first leg of
+  a route only, and says so on a card with two legs.
+- **How a plan is tied to a run.** One applied plan marks one run: the first trade run that ends after it, or, when several
+  qualify in the same look, the closest to the plan. The journal names goods by an id, not by a name, so in practice every
+  plan is tied to its run by prices (`plan_link`): the run's average buy and sell prices each within 15 % of the plan's, a
+  bought quantity within a factor of 2.5 of the plan's (both must be known), and a realised unit margin that is positive and
+  between half and twice the plan's. A run that fails any test is not tied, and the plan stays free for the right run. These
+  thresholds are choices, not measurements. That is a resemblance, not a proof: the group says `goods_unverified`, the line
+  and the tile say "marchandise non vérifiée (lien par prix)" and "qui ressemblent au plan" instead of "de cette
+  marchandise", and the confidence is never `high`, with the reason in the tag's title. The session figures count such
+  trips too (`price_linked_trips` in `money.plan`, in the best goods and routes), and their label ends with "(lien par prix)".
+  To have two runs of a route, apply its plan twice. **Selection bias:** because a run must have a unit margin between half and
+  twice the plan's to be tied, a run that yields 30 % of the plan is never tied and never counted: the calibrated ratios are
+  censored to about 50 % to 200 %, so the calibration cannot show that a route really yields 20 % of the plan (such runs are
+  simply absent). When the confidence is held at `medium` for that reason the line says so in its visible text.
+- **Confidence** (`none`, `low`, `medium`, `high`). `none` below 2 runs: no figure at all, only the count. `low` with 2
+  or 3 runs, a spread above 0.6 (maximum minus minimum of the per-run ratios, in points of the plan) or a newest run older
+  than 21 days. `medium` with 4 to 7 runs. `high` only with 8 runs, a spread of at most 0.3, fresh runs and goods tied by
+  name. It says how much to lean on the figure; it is not a probability.
+- **The expectation.** "Net expected is about the planned profit times the typical ratio (n runs)": the planned profit times
+  the typical net ratio when at least 2 runs have their own net, otherwise times the typical gross ratio less the usual fee
+  rate on the plan's turnover. An ESTIMATE, always with its number of runs and its confidence; it claims no cause (a ratio
+  below 100 % can come from prices, quantity or a slow sale).
+- **Where it shows.** `sc_session_stats` (section `route_reliability`, only with `include_balance`); a quiet line under each
+  suggested route of the action bar ("Tes N derniers trajets ... réalisé (marge brute) ≈ X % du prévu, frais ≈ Y %", with its
+  confidence tag, only when data exist); the tile "Si tu refais ce trajet" of the commerce card, which prefers the calibrated
+  figure when the plan in force has a group of 2 runs or more; one sentence in the server instructions and in the prompt
+  `trade_copilot` so that Claude quotes it with its number of runs.
+- **Privacy.** A ratio times the plan reveals the realised result, so the section exists only where the balance is shown:
+  absent from the tool without `include_balance`, from the dashboard poll (and so from its hash) of a View that did not ask
+  for the balance, from the channel between Views, from `ui/update-model-context` and from the message of "Demander à l'agent".
+  The View ignores it while the balance is hidden, even if a server sent it.
+- **Stored (file version 2).** For a trade trip: the plan's quantity, the plan's two terminals (UEX names: the plan's, not
+  observed places), `plan_link`, how the fees were obtained, and what the balance holds beyond the run (`unexplained_auec`,
+  `net_doubtful`: both come from the balance and are withheld like the money). Never frames, raw lines, handle or identifiers.
+  A version 1 file is read as is (the new fields are unknown, so those trips count by goods, without scaling, and with no
+  net); the format number moved so that an older build leaves a version 2 file alone: it opens it read-only, in memory,
+  with a notice, and the data is not lost. Before the first write in the new format the server copies the version 1 file once
+  to `sessions.json.v1.bak` and never overwrites or deletes that copy.
+- **Not verified.** Nothing was observed with the real game. The thresholds (60 days, 8 runs, 21 days, 15 %, 2.5, the margin
+  band, 1 000 aUEC, the confidence bounds) are our choice, not measured.
 
 ### In the dashboard and in the tools
 

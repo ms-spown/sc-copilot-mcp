@@ -1,3 +1,4 @@
+import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
@@ -53,6 +54,8 @@ export const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record
   {
     // Version 0 never shipped: it is the stub that proves the mechanism (sessions without a counter).
     0: (raw) => ({ ...raw, version: 1, revision: 0, saved_at: null, next_number: 1 }),
+    // Version 2 adds optional fields to a trade trip (see types.ts); there is nothing to rewrite.
+    1: (raw) => ({ ...raw, version: 2 }),
   };
 
 export class StoreBusyError extends Error {}
@@ -70,7 +73,7 @@ export interface StoreOptions {
 }
 
 type Parsed =
-  | { kind: "ok"; state: StoreState; dropped: number }
+  | { kind: "ok"; state: StoreState; dropped: number; from: number }
   | { kind: "newer"; version: number }
   | { kind: "invalid"; why: string };
 
@@ -88,6 +91,7 @@ export function parseState(text: string): Parsed {
   if (typeof doc.version !== "number" || !Number.isInteger(doc.version) || doc.version < 0)
     return { kind: "invalid", why: "no version" };
   if (doc.version > SESSIONS_VERSION) return { kind: "newer", version: doc.version };
+  const from = doc.version as number;
   while ((doc.version as number) < SESSIONS_VERSION) {
     const step = MIGRATIONS[doc.version as number];
     if (!step) return { kind: "invalid", why: "unknown old version" };
@@ -115,6 +119,7 @@ export function parseState(text: string): Parsed {
   return {
     kind: "ok",
     dropped,
+    from,
     state: {
       version: SESSIONS_VERSION,
       revision:
@@ -155,6 +160,8 @@ export class SessionStore {
   private memory: StoreState | null = null;
   private queue: Promise<unknown> = Promise.resolve();
   private pendingBackup = false;
+  /** The file on disk is of this older version: its first rewrite keeps a copy of it (`<file>.v<N>.bak`, once). */
+  private olderVersionOnDisk: number | null = null;
   private readonly now: () => number;
   /** For tests and diagnostics. */
   writes = 0;
@@ -316,6 +323,10 @@ export class SessionStore {
       throw e;
     }
     const loaded = await this.loadFile(stat.size);
+    this.olderVersionOnDisk =
+      loaded.kind === "ok" && loaded.from < SESSIONS_VERSION && loaded.from >= 1
+        ? loaded.from
+        : null;
     if (loaded.kind === "ok")
       return this.memory && this.memory.revision > loaded.state.revision
         ? structuredClone(this.memory)
@@ -379,6 +390,18 @@ export class SessionStore {
     try {
       await fs.mkdir(dir, { recursive: true, mode: 0o700 });
       await this.sweepOrphans();
+      if (this.olderVersionOnDisk !== null) {
+        // The first write in a newer format: keep the file as the older build wrote it. Never overwrite a copy that exists
+        // (COPYFILE_EXCL), never delete it: it is the way back, and the only trace of a format the new build rewrote.
+        await fs
+          .copyFile(
+            this.file,
+            `${this.file}.v${this.olderVersionOnDisk}.bak`,
+            fsConstants.COPYFILE_EXCL,
+          )
+          .catch(() => undefined);
+        this.olderVersionOnDisk = null;
+      }
       if (this.pendingBackup) {
         await fs
           .copyFile(

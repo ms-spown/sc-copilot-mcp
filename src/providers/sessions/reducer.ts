@@ -173,6 +173,11 @@ function mergeTrips(state: StoreState, cur: Session, inputs: readonly TripInput[
         cur.trips[at] = {
           ...parsed.data,
           planned_profit_auec: parsed.data.planned_profit_auec ?? cur.trips[at].planned_profit_auec,
+          // What the plan said is kept too when the grown run no longer carries it.
+          plan_link: parsed.data.plan_link ?? cur.trips[at].plan_link,
+          planned_scu: parsed.data.planned_scu ?? cur.trips[at].planned_scu,
+          plan_buy_terminal: parsed.data.plan_buy_terminal ?? cur.trips[at].plan_buy_terminal,
+          plan_sell_terminal: parsed.data.plan_sell_terminal ?? cur.trips[at].plan_sell_terminal,
         };
         changed = true;
       }

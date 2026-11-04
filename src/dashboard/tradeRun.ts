@@ -86,6 +86,9 @@ export interface TradePlan {
   expected_profit_auec?: number;
   buy_unit_price?: number;
   sell_unit_price?: number;
+  /** The plan's two terminals (UEX names): kept on the saved trip for the route calibration, never shown by the model. */
+  buy_terminal?: string;
+  sell_terminal?: string;
 }
 
 export type RunStage =

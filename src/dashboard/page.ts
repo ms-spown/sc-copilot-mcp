@@ -1,3 +1,5 @@
+import { CALIBRATION_VIEW_FUNCTIONS } from "./calibrationPanel.js";
+import { CALIBRATION_CSS } from "./calibrationStyles.js";
 import { HEALTH_VIEW_FUNCTIONS } from "./healthPanel.js";
 import { HEALTH_CSS } from "./healthStyles.js";
 import { LEDGER_VIEW_FUNCTIONS } from "./ledgerPanel.js";
@@ -45,6 +47,7 @@ export function viewScript(): string {
     ...TRADE_ACTIONS_VIEW_FUNCTIONS,
     ...SESSION_VIEW_FUNCTIONS,
     ...MOVEMENTS_VIEW_FUNCTIONS,
+    ...CALIBRATION_VIEW_FUNCTIONS,
     ...HEALTH_VIEW_FUNCTIONS,
   ];
   const functions = all.map((f) => compact(f.toString())).join("\n");
@@ -73,7 +76,7 @@ export function dashboardHtml(): string {
     '<meta name="color-scheme" content="light dark">',
     `<meta http-equiv="Content-Security-Policy" content="${CSP}">`,
     "<title>Tableau de bord en direct</title>",
-    `<style>${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}${TRADE_CSS}${TRADE_ACTIONS_CSS}${SESSION_CSS}${MOVEMENTS_CSS}${HEALTH_CSS}</style>`,
+    `<style>${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}${TRADE_CSS}${TRADE_ACTIONS_CSS}${SESSION_CSS}${MOVEMENTS_CSS}${HEALTH_CSS}${CALIBRATION_CSS}</style>`,
     "</head>",
     "<body>",
     '<div id="app" data-stream="init" data-mode="inline" data-grey="1"></div>',

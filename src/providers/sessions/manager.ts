@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { cleanLabel } from "../../core/untrusted.js";
 import type { LedgerService } from "../../dashboard/ledgerService.js";
 import type { TradePlan } from "../../dashboard/tradeRun.js";
 import type { ConnectionInfo } from "../gamelog/connectionState.js";
@@ -28,10 +29,17 @@ import {
   withoutMoney,
   type SessionSummary,
 } from "./stats.js";
+import {
+  buildCalibration,
+  calibrationForPoll,
+  usedSessions,
+  type CalibrationReport,
+  type CalibrationSection,
+} from "./calibration.js";
 import type { SessionStore } from "./store.js";
 import type { TripInput } from "./types.js";
 import type { Session, StoreState } from "./types.js";
-import type { TripSource } from "./trips.js";
+import { planFacts, type TripSource } from "./trips.js";
 
 /**
  * The session manager: the one object that turns what the server sees (the game's log, the telemetry stream, the
@@ -132,6 +140,8 @@ export interface ManagerDeps {
   now?: () => number;
   newId?: () => string;
 }
+
+const NO_PLAN_FACTS = planFacts(undefined);
 
 /** The route plan Claude passed (the commerce model's own shape, dashboard/tradeRun.ts). */
 export type PlanForTrips = TradePlan;
@@ -313,7 +323,7 @@ export class SessionManager {
       freshStart,
       connection: conn ? { state: conn.state, since: conn.since } : null,
       game: info,
-      trips: this.withPlans(collected.trips),
+      trips: this.withPlans(collected.trips, collected.plan_distance),
       context: collected.context,
     };
     await this.apply((s) => observe(s, obs, this.rc));
@@ -324,7 +334,10 @@ export class SessionManager {
    * (a hauling contract never carries it, and a second run of the same goods does not: the plan would be counted twice
    * in the efficiency). The run is remembered by its key so the same one keeps it on every look.
    */
-  private withPlans(trips: readonly TripInput[]): TripInput[] {
+  private withPlans(
+    trips: readonly TripInput[],
+    distance: Record<string, number> = {},
+  ): TripInput[] {
     const p = this.plan;
     const planned = p && typeof p.expected_profit_auec === "number" ? p.expected_profit_auec : null;
     const runs = trips
@@ -338,11 +351,31 @@ export class SessionManager {
       return a.includes(b) || b.includes(a);
     };
     if (planned !== null && this.planTripKey === null) {
-      this.planTripKey = runs.find(matches)?.key ?? null;
+      // Several runs may qualify in one look (a restart, a flush): the one closest to the plan takes it, the earliest on a tie.
+      const d = (t: TripInput) => distance[t.key] ?? 0;
+      const best = runs
+        .filter(matches)
+        .reduce<TripInput | null>((b, t) => (b === null || d(t) < d(b) ? t : b), null);
+      this.planTripKey = best?.key ?? null;
     }
     return trips.map((t) => {
       const mine = planned !== null && t.key === this.planTripKey;
-      return { ...t, planned_profit_auec: mine ? (t.planned_profit_auec ?? planned) : null };
+      // What the plan said besides the profit goes to the same ONE trip, and to no other (it would make a second run
+      // look planned): the calibration compares a run with the plan it was started from.
+      const facts = mine ? planFacts(p) : NO_PLAN_FACTS;
+      // A run tied to the plan by its prices is named after the plan only here, on the one run that carries it: a later
+      // run of the same goods must not look as if its goods had been verified.
+      const named = mine && t.commodity == null ? cleanLabel(p?.commodity, 60) : null;
+      return {
+        ...t,
+        ...(named ? { commodity: named, label: t.label ?? `Cargo ${named} (lien par prix)` } : {}),
+        planned_profit_auec: mine ? (t.planned_profit_auec ?? planned) : null,
+        planned_scu: mine ? (t.planned_scu ?? facts.planned_scu) : null,
+        plan_buy_terminal: mine ? (t.plan_buy_terminal ?? facts.plan_buy_terminal) : null,
+        plan_link: mine ? (t.plan_link ?? null) : null,
+        plan_sell_terminal: mine ? (t.plan_sell_terminal ?? facts.plan_sell_terminal) : null,
+        // The prices are the player's own and the flag tells that the goods were not named: no amount, kept.
+      };
     });
   }
 
@@ -468,8 +501,40 @@ export class SessionManager {
     const out = {
       ...(includeBalance ? a : aggregateWithoutMoney(a)),
       history_trimmed: state.dropped_sessions,
+      // How the player's own runs compare with their plans: every ratio comes from the balance, so it follows the money.
+      route_reliability: includeBalance
+        ? buildCalibration(usedSessions(state.sessions, last), {
+            nowMs: this.now(),
+            gameVersion: latest(state)?.game_version ?? null,
+          })
+        : ("withheld" as const),
     };
     return out;
+  }
+
+  private calibrationMemo: { key: string; report: CalibrationReport } | null = null;
+
+  /**
+   * The calibration for the dashboard poll (only the groups with two runs or more, no prose). Called ONLY for a poll that
+   * asked for the balance: its ratios are derived from it. Kept until the file changes or a minute passes (a poll comes
+   * every few seconds).
+   */
+  async calibrationSection(): Promise<CalibrationSection | undefined> {
+    if (!this.enabled) return undefined;
+    const state = await this.deps.store.read();
+    const now = this.now();
+    const trips = state.sessions.reduce((n, s) => n + s.trips.length, 0);
+    const key = [state.revision, state.sessions.length, trips, Math.floor(now / 60_000)].join("|");
+    if (!this.calibrationMemo || this.calibrationMemo.key !== key) {
+      this.calibrationMemo = {
+        key,
+        report: buildCalibration(usedSessions(state.sessions), {
+          nowMs: now,
+          gameVersion: latest(state)?.game_version ?? null,
+        }),
+      };
+    }
+    return calibrationForPoll(this.calibrationMemo.report);
   }
 
   /** The balance seen a moment ago, if any (for a new session's start balance). */
@@ -538,6 +603,11 @@ const stripTripMoney = (t: Session["trips"][number]) => ({
   net_auec: null,
   net_kind: null,
   planned_profit_auec: null,
+  // The plan's quantity can be sized by the balance (a route built from "Budget = mon solde"): it goes with the money.
+  planned_scu: null,
+  // Both come from the balance (what the margin and the fees do not explain of it).
+  unexplained_auec: null,
+  net_doubtful: null,
 });
 
 export { MONEY_WITHHELD_NOTE };
