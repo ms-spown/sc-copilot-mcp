@@ -43,6 +43,8 @@ import { tradeBalanceAt, tradeLedger } from "./testing/tradeScenario.js";
 
 const L = { ledgerNum, ledgerText, ledgerOneOf };
 const SECOND = 1000;
+/** A right-to-left override, built from its code point (the repository refuses it as a literal). */
+const BIDI = String.fromCodePoint(0x202e);
 const NBSP_FREE = (s: string) => s.replace(/[\u00a0\u202f]/g, " ");
 
 /** Ratios chosen so that they cannot appear by chance anywhere else in an answer. */
@@ -102,7 +104,7 @@ describe("Feature: the section is rebuilt field by field in the View", () => {
       patch_line: "4.10<script>alert(1)</script>".padEnd(40, "x"),
       evil: "x",
       groups: [
-        { ...group(), commodity: "Laranite‮".padEnd(200, "z"), evil: { a: 1 }, n: 1e12 },
+        { ...group(), commodity: ("Laranite" + BIDI).padEnd(200, "z"), evil: { a: 1 }, n: 1e12 },
         { ...group(), n: 1 }, // one run: never a figure
         { ...group(), gross_ratio: "0.9" }, // a string is not a number
         { ...group(), gross_ratio: 9e99 },
@@ -115,7 +117,7 @@ describe("Feature: the section is rebuilt field by field in the View", () => {
     // kept: the long one, the huge ratio and the unknown confidence; dropped: one run, a string, junk
     expect(n.groups).toHaveLength(3);
     expect(n.groups[0].commodity.length).toBeLessThanOrEqual(60);
-    expect(n.groups[0].commodity).not.toContain("‮");
+    expect(n.groups[0].commodity).not.toContain(BIDI);
     expect(n.groups[0].n).toBeLessThanOrEqual(999);
     expect(n.groups[0]).not.toHaveProperty("evil");
     expect(n.groups[1].gross_ratio).toBe(100); // clamped, finite

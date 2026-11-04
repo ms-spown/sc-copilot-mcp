@@ -35,6 +35,8 @@ const HISTORY: BalancePoint[] = [
 ];
 const LINES = [buy(10, 20_000, 1000, WASTE), sell(60, 26_500, 10, WASTE)];
 const NOW = DAY + 100_000;
+/** A right-to-left override, built from its code point (the repository refuses it as a literal). */
+const BIDI = String.fromCodePoint(0x202e);
 
 describe("Feature: a trade trip keeps what the plan said", () => {
   it("Given a plan with a quantity, prices and two terminals that resembles the run, Then the trip keeps them and how its fees were obtained", async () => {
@@ -235,7 +237,7 @@ describe("Feature: version 2 adds optional fields without breaking a version 1 f
   });
 
   it("Given a hostile terminal name, Then it is cleaned; given an unknown fee method, Then that session is set aside, the others stay", () => {
-    const dirty = { ...v1Trip, plan_buy_terminal: "Port‮\u0000 Tressler\n\n  x" };
+    const dirty = { ...v1Trip, plan_buy_terminal: `Port${BIDI}\u0000 Tressler\n\n  x` };
     const ok = parseState(
       JSON.stringify({ version: 2, sessions: [session(1, { trips: [dirty] as never })] }),
     );
