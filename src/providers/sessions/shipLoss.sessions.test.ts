@@ -204,6 +204,19 @@ describe("Feature: a loss is the same loss whatever the look knew of its model a
   });
 });
 
+describe("Feature: a place or a model the filter dropped is said to be unknown", () => {
+  it("Given a loss with no place and no model, Then the debrief says so", () => {
+    const s = session(1, {
+      ship_losses: [
+        SessionSchema.shape.ship_losses.parse([loss({ zone: null, ship_class: null })])[0]!,
+      ],
+    });
+    const md = buildDebrief([s], { includeMoney: false }).markdown;
+    expect(md).toContain("lieu inconnu");
+    expect(md).toContain("modèle inconnu");
+  });
+});
+
 describe("Feature: the aUEC paid for the cargo presumed lost follows the balance", () => {
   it("Given the summary, Then the SCU are always given and the paid amount sits under money only", () => {
     const s = withLoss();

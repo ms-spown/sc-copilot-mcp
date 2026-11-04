@@ -886,7 +886,7 @@ perte). Les enregistrements contiennent une heure, un modèle de vaisseau, un co
 responsable, un lieu : ni nom, ni pseudo, ni GUID, ni identifiant brut. Le modèle n'est gardé que s'il commence par un code
 de constructeur connu (AEGS, DRAK, MISC, RSI ...), et le lieu que s'il commence par une famille connue de noms de lieux du
 jeu (un corps « OOC_ », un point de saut, un système stellaire ou un corps ...) : ce sont des filtres sur la FORME du texte,
-pas une liste de lieux ; tout le reste (« Hangar_ » suivi d'un nom, une entité personnalisée) s'affiche « modèle inconnu » ou
+pas une liste de lieux ; tout le reste (« Hangar_ » suivi d'un nom, une entité personnalisée) s'affiche « modèle inconnu » ou « lieu inconnu » (après la famille, 6 segments courts au plus, aucun ne commençant par hangar, apartment, home, habitat ou room) ou
 est omis. Une courte empreinte de l'identifiant du vaisseau
 relie un achat à son vaisseau, en mémoire seulement : elle n'est jamais écrite, envoyée à une View ni exportée. Les SCU
 partent avec ou sans le solde (`trade.ship_losses` : le serveur envoie les 5 plus récents, la View garde les 3 plus récents ; aussi sur le canal entre Views) ; les aUEC payés

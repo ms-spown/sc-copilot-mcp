@@ -839,7 +839,7 @@ logs only (no 4.10 session has a purchase followed by a loss). The records hold 
 code, a kind of causer, a place token: no name, handle, GUID or raw identifier. The model is kept only when it starts with
 a known maker's code (AEGS, DRAK, MISC, RSI ...), and the place only when it begins with a known family of the game's own
 place names (an "OOC_" body, a jump point, a star system or a body ...): these are filters on the SHAPE of the text, not a
-list of places, so anything else ("Hangar_" followed by a name, a custom entity) is shown as "modèle inconnu" or left out. A short hash of the ship's identifier
+list of places, so anything else ("Hangar_" followed by a name, a custom entity) is shown as "modèle inconnu" or "lieu inconnu" (after the family, at most 6 short segments, none starting with hangar, apartment, home, habitat or room). A short hash of the ship's identifier
 links a purchase to its ship, in memory only: it is never written, sent to a View or exported. The SCU go with or without
 the balance (`trade.ship_losses`: the server sends the newest 5, the View keeps the newest 3; also on the channel between Views); the aUEC paid is a balance figure and
 is withheld without it. The session keeps `ship_losses` (additive, optional, the file stays version 2): only the time, the

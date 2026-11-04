@@ -50,10 +50,12 @@ const CLASS =
 /**
  * A place token: the game's own families of place names seen in its logs (an "OOC_" body, a jump point, a star system or a
  * body, a station or a mission segment), then the usual segments. NOT a list of places: a token that begins otherwise
- * ("Hangar_<a name>", "Apartment_<a name>_Home") is dropped, because a place named after a player must not be kept.
+ * ("Hangar_<a name>", "Apartment_<a name>_Home") is dropped, because a place named after a player must not be kept. After
+ * the family: at most 6 segments of 1 to 20 letters or digits, none starting with hangar, apartment, home, habitat or room
+ * (a family followed by such a segment, "Orison_Hangar_<a name>", is a private place too).
  */
 const PLACE =
-  /^(?!.*\d{5})(?:OOC|jumppoint|stanton\d*|pyro\d*|nyx\d*|terra\d*|levski|keeger|rs|pu|P\d|ARC|CRU|HUR|MIC|lagrange|aberdeen|arial|daymar|yela|cellin|calliope|clio|euterpe|lyria|wala|magda|ita|microtech|hurston|crusader|orison|lorville|area18|newbabbage|ruin)(?:[_-][A-Za-z0-9]+){0,9}$/i;
+  /^(?!.*\d{5})(?!.*[_-](?:hangar|apartment|home|habitat|room))(?:OOC|jumppoint|stanton\d*|pyro\d*|nyx\d*|terra\d*|levski|keeger|rs|pu|P\d|ARC|CRU|HUR|MIC|lagrange|aberdeen|arial|daymar|yela|cellin|calliope|clio|euterpe|lyria|wala|magda|ita|microtech|hurston|crusader|orison|lorville|area18|newbabbage|ruin)(?:[_-][A-Za-z0-9]{1,20}){0,6}$/i;
 /** The game's own lines are short (a few hundred characters); a longer one is not read at all (bounded work per line). */
 export const SHIP_LINE_MAX_CHARS = 4096;
 const SUFFIX = /^(.*?)_(\d{6,20})$/;

@@ -411,6 +411,11 @@ describe("Feature: only known forms of place and model are kept", () => {
       `Apartment_${NAME}_Home`,
       `${NAME}_Residence`,
       "Hangar_Generic_01",
+      `Orison_Hangar_${NAME}`,
+      `lorville_Apartment_${NAME}_Home`,
+      `OOC_Stanton_Habitat_${NAME}`,
+      `stanton_a_b_c_d_e_f_g_h`,
+      `OOC_${"x".repeat(21)}`,
     ]) {
       expect(one(dead(900).replace("OOC_Stanton_3a_Lyria", odd)), odd).toMatchObject({
         zone: null,
@@ -484,6 +489,29 @@ describe("Feature: the records are bounded while the log is parsed", () => {
         ship: i % 2 ? "aaaaaaaaaaaa" : "bbbbbbbbbbbb",
       });
     expect(buffer.records.filter((r) => r.kind === "dead")).toHaveLength(1);
+  });
+});
+
+describe("Feature: the repeats of one crash do not push an earlier loss's collision out", () => {
+  it("Given a loss, then 400 hull-part lines of another crash within a second, Then the first loss keeps its cause", () => {
+    const repeats = Array.from({ length: 400 }, (_, i) => crash(2000 + i / 500, OTHER_SHIP));
+    const parsed = parseLog([character(), crash(900), dead(900.3), ...repeats].join("\n"));
+    expect(parsed.ships.filter((r) => r.kind === "collision")).toHaveLength(2); // one per ship and second
+    const [first] = buildShipLosses(tidyShipRecords(parsed.ships), []);
+    expect(first).toMatchObject({ cause: "collision" });
+  });
+
+  it("Given 300 separate crashes of 300 ships, Then the bound still applies (the newest are kept)", () => {
+    const buffer = new ShipRecordBuffer();
+    for (let i = 0; i < 300; i++)
+      buffer.add({
+        kind: "collision",
+        time: new Date(BASE + i * 5000).toISOString(),
+        ship: i.toString(16).padStart(12, "0"),
+        cls: null,
+        zone: null,
+      });
+    expect(buffer.records.length).toBeLessThanOrEqual(SHIP_RECORDS_MAX.collision * 2);
   });
 });
 

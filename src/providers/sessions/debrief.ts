@@ -828,7 +828,7 @@ function shipLossLines(s: Session, money: boolean): string[] {
       `cause : ${LOSS_CAUSE[l.cause] ?? "non journalisée"}${LOSS_CAUSER[l.causer] ? ` (${LOSS_CAUSER[l.causer]})` : ""}`,
     );
     const zone = markdownText(l.zone ?? "", 60);
-    if (zone) parts.push(`lieu : ${zone}`);
+    parts.push(zone ? `lieu : ${zone}` : "lieu inconnu");
     if (l.cargo_scu === null) parts.push("cargo : journal d’achats non lisible");
     else if (l.cargo_scu <= 0) parts.push("aucun achat de cargo présumé à bord");
     else {

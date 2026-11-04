@@ -624,8 +624,13 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     // The run a destroyed ship interrupted says so, with the cargo presumed lost (tradePreflight.ts words it). The alert box
     // above (fresh for 15 minutes) already says all of it: then the chip and the alert are the two places, not three.
     if (lost) {
-      const inAlert =
-        !!(ctx && typeof ctx.now === "number") && !!L.tradeLossInfo(L, trade, ctx.now, showBalance);
+      // The alert box holds the NEWER of the loss and a refused price, and only while the actions are on (a server that
+      // answers): the sentence stays in the card unless the box really shows this loss.
+      const shown =
+        ctx && ctx.actionsEnabled && typeof ctx.now === "number"
+          ? L.tradeAlertInfo(L, trade, ctx.now, showBalance)
+          : null;
+      const inAlert = !!shown && shown.loss === true;
       msg = inAlert
         ? msg
         : "Vaisseau détruit : trajet interrompu. " +

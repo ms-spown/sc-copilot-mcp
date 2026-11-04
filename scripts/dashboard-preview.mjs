@@ -26,8 +26,9 @@
 //                 refine=1 (opens "Affiner")  card=1 (opens the details of the first card)
 //                 fw=<px>  (width of the frame in full screen, to see a narrow host at 360 px in a window that cannot be that narrow)
 //                 conn=disconnected|menu|closed|online  (the connection read from Game.log)
-//                 sessions=story|empty|off|stale|ended|readonly|gross|none  (the saved play session bar; story by default; the
-//                 figures are invented, see src/dashboard/testing/sessionScenario.ts)
+//                 sessions=story|empty|off|stale|ended|readonly|gross|losses|manylosses|none  (the saved play session bar; story
+//                 by default; the figures are invented, see src/dashboard/testing/sessionScenario.ts; losses = a resumed
+//                 session with a store notice, a start balance that is not the game's and 3 ships destroyed, manylosses = 5)
 //                 menu=1|detail  (opens the "Sessions" menu, or the detail of session 2, after the page has loaded)
 //                 health=ok|nolog|unreadable|unregistered|sessionsoff|degraded|readonly|off|custom|everything  (the health strip: what is
 //                 wired and what is missing; made-up facts through the server builder, see src/dashboard/testing/healthScenario.ts;

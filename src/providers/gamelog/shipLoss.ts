@@ -118,6 +118,7 @@ export class ShipRecordBuffer {
   readonly records: ShipRecord[] = [];
   private readonly counts = new Map<ShipRecord["kind"], number>();
   private lastKiosk: { ship: string; at: number } | null = null;
+  private readonly lastCollision = new Map<string, number>();
 
   add(r: ShipRecord): void {
     if (r.kind === "kiosk_ship") {
@@ -125,6 +126,15 @@ export class ShipRecordBuffer {
       const last = this.lastKiosk;
       if (last && last.ship === r.ship && at - last.at >= 0 && at - last.at < 5 * 60_000) return;
       this.lastKiosk = { ship: r.ship, at };
+    }
+    if (r.kind === "collision") {
+      // The log repeats a fatal collision once per hull part within a few ms: one per ship and second, BEFORE counting, so
+      // that the repeats of a crash cannot push the collisions of an earlier loss out of the bound.
+      const at = ms(r.time);
+      const last = this.lastCollision.get(r.ship);
+      if (last !== undefined && at - last >= 0 && at - last < 1000) return;
+      this.lastCollision.set(r.ship, at);
+      if (this.lastCollision.size > 200) this.lastCollision.clear();
     }
     this.records.push(r);
     const n = (this.counts.get(r.kind) ?? 0) + 1;

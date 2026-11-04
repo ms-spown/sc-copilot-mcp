@@ -90,7 +90,10 @@ describe("Feature: the session card keeps every note", () => {
 });
 
 describe("Feature: the commerce card after a ship was destroyed", () => {
-  async function tradePage(lossAgoMs: number) {
+  async function tradePage(
+    lossAgoMs: number,
+    opts: { refusalAgoMs?: number; pollOff?: boolean } = {},
+  ) {
     const scenario = new Scenario();
     scenario.uec = tradeBalanceAt;
     scenario.ledger = (include, nowMs) => {
@@ -112,9 +115,21 @@ describe("Feature: the commerce card after a ship was destroyed", () => {
           ...(include ? { paid_auec: 10_581 } : {}),
         },
       ];
+      if (opts.refusalAgoMs !== undefined)
+        l.trade.price_refusals = [
+          {
+            at: new Date(nowMs - opts.refusalAgoMs).toISOString(),
+            side: "buy",
+            kind: "commodity",
+            confidence: "confirmed",
+            superseded: false,
+          },
+        ];
       return l;
     };
     const w = await startPage({ scenario });
+    if (opts.pollOff)
+      w.host.overrides.poll = (base: any) => ({ ...base, state: "off", enabled: false });
     w.fromHost({
       jsonrpc: "2.0",
       method: "ui/notifications/tool-result",
@@ -135,6 +150,32 @@ describe("Feature: the commerce card after a ship was destroyed", () => {
     // two places in full screen: the stage chip and the alert box (the card's own message stays silent)
     expect(count(t, "Cargo présumé perdu")).toBe(1);
     expect(t).toContain("Vaisseau détruit, joueur à bord");
+  });
+
+  it("Given a loss and then a price refused at the kiosk (the alert shows the refusal), Then the card still carries the cargo sentence, once", async () => {
+    const w = await tradePage(120 * SECOND, { refusalAgoMs: 20 * SECOND });
+    const t = text(w);
+    expect(t).toContain("Prix changé");
+    expect(t).toContain("Trajet interrompu");
+    expect(count(t, "Cargo présumé perdu")).toBe(1);
+    expect(t).toContain("Vaisseau détruit : trajet interrompu.");
+  });
+
+  it("Given a refusal OLDER than the loss, Then the alert shows the loss and the card does not repeat it", async () => {
+    const w = await tradePage(20 * SECOND, { refusalAgoMs: 120 * SECOND });
+    const t = text(w);
+    expect(count(t, "Cargo présumé perdu")).toBe(1);
+    expect(t).not.toContain("Vaisseau détruit : trajet interrompu.");
+  });
+
+  it("Given no alert at all (the server's answers are off), Then the sentence does not disappear from the card", async () => {
+    const w = await tradePage(60 * SECOND, { pollOff: true });
+    const t = text(w);
+    expect(t).not.toContain("Vaisseau détruit, joueur à bord");
+    // the card is there, interrupted, and carries the sentence itself (there is no alert box to carry it)
+    expect(t).toContain("Trajet interrompu");
+    expect(count(t, "Cargo présumé perdu")).toBe(1);
+    expect(t).toContain("Vaisseau détruit : trajet interrompu.");
   });
 
   it("Given a loss older than the alert's 15 minutes, Then the card's message carries the sentence, once", async () => {
