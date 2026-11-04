@@ -104,6 +104,17 @@ export const CATALOG: Record<string, CatalogEntry> = {
   uex_get_price_history: { ...uex, profiles: ["trade"] },
   uex_get_market_status: { ...uex, profiles: ["trade"] },
   uex_plan_trade: { ...uex, kind: "computed", profiles: ["trade"] },
+  // Refining, shop items and the player marketplace (uexCommerce.ts). They return UEX names (ores, terminals,
+  // items, attributes) from player-driven data, so they are untrusted_text like the other row-returning UEX tools.
+  uex_get_refining_margins: { ...uex, trust: "untrusted_text", maxText: 200, profiles: ["trade"] },
+  uex_get_item_prices: { ...uex, trust: "untrusted_text", maxText: 200, profiles: ["trade"] },
+  uex_compare_items: { ...uex, trust: "untrusted_text", maxText: 200, profiles: ["trade"] },
+  uex_get_marketplace_prices: {
+    ...uex,
+    trust: "untrusted_text",
+    maxText: 200,
+    profiles: ["trade"],
+  },
 
   scw_get_vehicle: { ...wiki, profiles: ["core"] },
   scw_get_item: { ...wiki, profiles: ["core"] },
@@ -191,6 +202,16 @@ export const CATALOG: Record<string, CatalogEntry> = {
     source: "Game.log (local)",
     kind: "local_log",
     trust: "untrusted_text",
+    channel: "unknown",
+    profiles: ["local"],
+  },
+  // Shop names and item class names come out of the log, commodity names from the wiki's public
+  // list: all text from elsewhere, so untrusted_text (cut at 400 characters).
+  sc_trade_journal: {
+    source: "Game.log (local) + star-citizen.wiki (commodity names)",
+    kind: "local_log",
+    trust: "untrusted_text",
+    maxText: 400,
     channel: "unknown",
     profiles: ["local"],
   },

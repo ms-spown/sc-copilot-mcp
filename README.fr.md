@@ -26,6 +26,9 @@ touche, n'automatise rien et n'écrit jamais dans le dossier du jeu. Le seul fic
 | Vaisseaux | « Cutlass Black ou Freelancer ? Où l'acheter ? » | `scw_get_ship_comparison`, `scw_get_vehicle`, `uex_get_ship_prices` |
 | Missions | « Quelles missions donnent un plan à Pyro ? » | `scmdb_search_missions`, `scmdb_search_crafting` |
 | Minage | « Où est la Quantainium et quel laser la supporte ? » | `scmdb_search_mining` |
+| Raffinage | « Quelle raffinerie donne le meilleur rendement pour ma Laranite ? » | `uex_get_refining_margins` |
+| Composants et équipement | « Où le propulseur quantique Burst est-il le moins cher ? Burst ou Voyage ? » | `uex_get_item_prices`, `uex_compare_items` |
+| Marché des joueurs | « 3 000 est-il un prix correct pour un MG Scrip ? » | `uex_get_marketplace_prices` |
 | Patchs | « Qu'est-ce qui a changé dans la dernière mise à jour ? » | `sc_patch_notes`, `scmdb_changes` |
 | Votre jeu | « Que suis-je en train de faire ? Bilan de ma dernière session. » | `sc_log_context`, `sc_log_sessions` |
 | Votre flotte | « Lequel de mes vaisseaux porte 300 SCU ? » | `sc_fleet_get` |
@@ -98,9 +101,9 @@ npm run build
    aucun secret n'est affiché. `npm run check:sources` interroge chaque source de données sur sa version et vérifie les
    fichiers et champs attendus par les outils. Dans Claude, demandez `sc_data_status`.
 
-## Outils (51)
+## Outils (56)
 
-Claude en voit 46 par défaut : `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll` et
+Claude en voit 51 par défaut : `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll` et
 `sc_live_mark` ne sont listés que lorsque la télémétrie en direct est activée (les trois derniers exigent aussi un
 client capable de les afficher, comme Claude Desktop).
 
@@ -109,11 +112,11 @@ Référence complète des paramètres : **[docs/TOOLS.md](docs/TOOLS.md)** (gén
 | Thème                                            | Outils                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Fraîcheur**                                    | `sc_data_status` : version du jeu par source, ancienneté, écarts entre sources et sources indisponibles                                                                                                                                                                                                                                                                                                                       |
-| **Commerce** (UEX)                               | `uex_get_trade_routes` (adapté à votre vaisseau ou à votre soute, profit calculé pour la cargaison qui rentre, relevés joueurs derrière chaque prix), `uex_get_commodity_prices`, `uex_get_commodity_averages`, `uex_get_commodity_ranking`, `uex_get_commodities`, `uex_get_terminals`, `uex_get_terminal_inventory`, `uex_search_marketplace`, `uex_get_ship_prices`, `uex_get_game_versions`, `scw_search_ships_by_vendor`, `uex_get_price_history` (évolution d'un prix, avec un verdict et son nombre de points), `uex_get_market_status` (alertes de pénurie et de saturation), `uex_plan_trade` (options de transport classées par profit horaire estimé) |
+| **Commerce** (UEX)                               | `uex_get_trade_routes` (adapté à votre vaisseau ou à votre soute, profit calculé pour la cargaison qui rentre, relevés joueurs derrière chaque prix), `uex_get_commodity_prices`, `uex_get_commodity_averages`, `uex_get_commodity_ranking`, `uex_get_commodities`, `uex_get_terminals`, `uex_get_terminal_inventory`, `uex_search_marketplace`, `uex_get_ship_prices`, `uex_get_game_versions`, `scw_search_ships_by_vendor`, `uex_get_refining_margins` (raffineries classées par bonus de rendement relevé ; un classement, jamais un profit en aUEC), `uex_get_item_prices` et `uex_compare_items` (composants, armes, armures, nourriture : boutique la moins chère, caractéristiques, âge des prix), `uex_get_marketplace_prices` (guide des prix du marché des joueurs, unités séparées), `uex_get_price_history` (évolution d'un prix, avec un verdict et son nombre de points), `uex_get_market_status` (alertes de pénurie et de saturation), `uex_plan_trade` (options de transport classées par profit horaire estimé) |
 | **Vaisseaux et objets** (Wiki)                   | `scw_get_vehicle`, `scw_get_item`, `scw_get_ship_comparison`, `scw_list_vehicles`, `scw_list_items`, `scw_get_filters`, `scw_search`, `scw_snapshot_save`, `scw_snapshot_list`, `scw_snapshot_diff`, `sc_get_vocabulary`                                                                                                                                                                                                      |
 | **Missions, artisanat, minage** (SCMDB)          | `scmdb_search_missions`, `scmdb_search_crafting`, `scmdb_search_mining`, `scmdb_changes`                                                                                                                                                                                                                                                                                                                                      |
 | **Patchs et lore**                               | `sc_patch_notes` (notes d'une mise à jour, par section ou mot-clé), `sct_search`, `sct_get_article`, `sc_list_builds`, `sc_diff_versions`                                                                                                                                                                                                                                                                                     |
-| **Votre journal de jeu** (désactivé par défaut)  | `sc_log_context` (ce que vous faites actuellement), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`                                                                                                                                                                                                                                                                                                                |
+| **Votre journal de jeu** (désactivé par défaut)  | `sc_log_context` (ce que vous faites actuellement), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`, `sc_trade_journal` (achats, ventes et transports de fret)                                                                                                                                                                                                                                                                                                                |
 | **Télémétrie en direct** (désactivée par défaut) | `sc_live_status` (toujours listé : l'état et comment l'activer), `sc_live_state`, `sc_live_events` (listés seulement avec `SC_TELEMETRY=on`), `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark` (le tableau de bord en direct, dans Claude Desktop uniquement)                                                                                                                                                                                                                                                                                  |
 | **Votre flotte**                                 | `sc_fleet_get`, `sc_fleet_upsert`, `sc_fleet_remove`                                                                                                                                                                                                                                                                                                                                                                          |
 | **Vos propres fichiers de données**              | `sc_local_datasets`, `sc_search_local`, `sc_read_local_collection`                                                                                                                                                                                                                                                                                                                                                            |
@@ -128,9 +131,9 @@ listé reste appelable.
 | Profil    | Outils | Usage                                                                                             |
 | --------- | ------ | ------------------------------------------------------------------------------------------------- |
 | **core**  | 14     | Le copilote au quotidien : statut, vaisseaux, bases du commerce, missions, notes de patch, flotte |
-| **trade** | 15     | La boîte à outils complète du marché UEX                                                          |
+| **trade** | 19     | La boîte à outils complète du marché UEX, avec raffinage, objets de boutique et marché des joueurs |
 | **data**  | 16     | Données de référence, artisanat, minage, historique des patchs, navigation sur le wiki            |
-| **local** | 11     | Votre journal de jeu, votre flotte, vos propres fichiers de données                               |
+| **local** | 12     | Votre journal de jeu, votre flotte, vos propres fichiers de données                               |
 
 Le choix des profils et instructions recommandées est détaillé dans
 [docs/USING_WITH_CLAUDE.fr.md](docs/USING_WITH_CLAUDE.fr.md) ; la description de chaque outil précise ce qu'il renvoie
@@ -179,6 +182,14 @@ de fret, plans (blueprints) reçus, achats en boutique, déclarations d'assuranc
 vaisseau dont vous avez rejoint ou quitté le canal de communication, et transits par points de saut entre systèmes.
 `sc_log_context` résume ces événements en « ce que je fais maintenant », et `sc_log_sessions` sous forme de tableau de
 vos sessions récentes.
+
+`sc_trade_journal` est votre carnet de commerce personnel, construit à partir du même journal : achats et ventes en
+boutique, achats et ventes aux bornes de fret (en SCU), le résultat de chacun, les dépenses par catégorie (déduites du
+nom de classe de l'objet) et les transports de fret qui apparient achats et ventes d'une même marchandise en une marge
+**brute**. Le journal ne contient ni solde du portefeuille, ni frais d'autochargement, ni ligne de succès pour le fret
+(le succès est déduit de l'absence d'erreur) : il n'y a donc pas de résultat net et les chiffres sont des estimations.
+Les noms des marchandises viennent de la liste publique du wiki, appariée localement sur le GUID du jeu (rien de votre
+journal n'est envoyé) ; sinon la marchandise est « unknown commodity ».
 
 **Absent du journal, donc jamais rapporté :** voyage quantique ordinaire, combats et éliminations, solde du
 portefeuille, position exacte, décès. Chaque champ de contexte correspond à « la dernière fois où le jeu l'a écrit »,

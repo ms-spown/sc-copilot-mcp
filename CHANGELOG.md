@@ -9,7 +9,7 @@ versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 - **Trade intelligence (UEX), three tools in the `trade` profile.**
   - `uex_plan_trade` ranks one-way routes (from UEX `commodities_routes`), round trips A>B>A and two-leg chains A>B>C
-    (computed offline from one cached `commodities_prices_all` call) by estimated profit per hour, per run or by
+    (the last two computed offline from one cached `commodities_prices_all` call) by estimated profit per hour, per run or by
     shortest run, sized to the hold (`ship_name` or `cargo_scu`) and the budget. It gives profit per SCU, per run and
     per hour and lists its assumptions. Travel time is an ESTIMATE: ship quantum spool-up plus distance divided by the
     quantum speed (wiki sheet, or `quantum_speed_ms`), plus a fixed time per stop (8 minutes, `stop_minutes`). The SCM
@@ -17,20 +17,69 @@ versions follow [Semantic Versioning](https://semver.org/).
     176 s). Distances come from the route, else the `orbits_distances` matrix, else `terminals_distances`
     (`data: false` is an explicit "no data"). Prices older than 7 days are left out (`max_age_days`,
     `include_stale`); every leg has `price_age_days`, `stale` and `report_status` (`reported`, `estimate`,
-    `unverified`: the price file cannot tell a player report from a UEX estimate, so the legs shown are checked
-    against `commodities_prices`). Fuel is not subtracted, and the answer says why with the measured age of UEX's fuel
-    prices. Stanton to Pyro routes are not planned (the gate transit time is not in UEX). Each option carries a
-    labelled safety heuristic (armistice flag and jurisdiction from UEX stations, cities and outposts, system, kind of
-    place, number of flights): never a claim that a route is safe.
+    `unverified`: the price file cannot tell a player report from a UEX estimate, so the legs of the candidates are
+    checked against `commodities_prices`). Each option carries `report_status`, an `estimate` flag and an
+    `[ESTIMATE]` tag in its summary, and the answer counts them (`report_counts`); the ORDER follows the objective, not
+    the report status (most UEX prices have no player report today). `min_reports` requires reports and drops
+    options whose reports could not be checked; every failed check is named in `notes`, and a timeout or 429 stops
+    the checks. `options` (one-way routes repeated, round trips: first purchase at the requested terminal or planet)
+    and `chains` (open A>B>C, no return leg priced) are two lists, never ranked against each other. The plan has a
+    25 s deadline, a failure of the UEX routes call degrades to the offline round trips, and the request count is
+    15 to 28 typically, at most about 43. Fuel is not subtracted, and the answer says why with the measured age of
+    UEX's fuel prices. Stanton to Pyro routes are not planned (the gate transit time is not in UEX). Each option
+    carries a labelled safety heuristic (armistice flag and jurisdiction from UEX stations, cities and outposts,
+    system, kind of place, number of flights): never a claim that a route is safe.
   - `uex_get_price_history` summarises `commodities_prices_history` for one commodity at one terminal: the points,
     low, high, mean, volatility, position of the latest price in the range and a verdict (high, low, normal) with the
     number of points it rests on. It always says SHORT HISTORY (about 10 snapshots) and gives no verdict under 4.
   - `uex_get_market_status` turns `commodities_status` and the `status_*` / `scu_*` fields of `commodities_prices` into
     shortage and saturation warnings. The legend is read side by side: when selling, level 7 means no demand.
+- `fetchWithCache` shares one download between identical simultaneous requests and bounds its memory cache (300 entries).
 - The planner is a provider-level function (`src/providers/uex/tripPlanner.ts`, `planTrips`) that the MCP tool wraps
   thinly, so other callers can rank options without going through the model.
-- The `haul_plan` prompt uses the new tools; README, `docs/CAPABILITIES.md` (section 1, the profile sizes, 51 tools),
+- The `haul_plan` prompt uses the new tools; README, `docs/CAPABILITIES.md` (section 1, the profile sizes and counts),
   `docs/USING_WITH_CLAUDE*.md` and `docs/TOOLS.md` follow.
+- **`uex_get_refining_margins`.** Which refinery is best for an ore, or which ore is worth refining most, from UEX
+  (`refineries_yields`, `refineries_capacities`, `refineries_methods`, the ore-sales prices and the refined product
+  linked by `id_parent`, which is one-directional for some ores). UEX has no ore-to-refined conversion ratio and no
+  refining cost, so the tool ranks and never gives an aUEC profit: refineries by the yield bonus players reported
+  (ties share a rank), ores by an index where the best is 100. The capacity value is shown with its unit marked
+  unverified and is not used to rank. `refineries_audits` is never read (it carries a player's handle). The
+  `mining_prep` prompt mentions it.
+- **`uex_get_item_prices` and `uex_compare_items`.** Where to buy a ship component, weapon, armor piece or food
+  cheapest (`items`, `items_prices`, `categories`), and two items side by side with their `items_attributes`
+  (differences only for numbers of the same unit, no verdict on which is better). Every price row carries its age,
+  a stale flag (over 30 days) and whether its game version is older than LIVE. `items_prices_all` (6.4 MB) is never
+  called.
+- **`uex_get_marketplace_prices`.** A player-market price guide from `marketplace_prices_averages`,
+  `marketplace_trends` and, on request, `marketplace_prices_history` (capped by UEX at 1000 rows: the summary says when
+  it is cut). Prices are converted from text to numbers; set, pack, stack and crate prices are bundles and stay apart
+  from per-unit prices. Optional `check_price` places a price against the recent average. The deprecated
+  `marketplace_averages` is not used.
+- Trade profile: 12 tools to 16. No fuel price tool: UEX's fuel prices are too old to rank refuel stops (median 43
+  days; reasons in docs/CAPABILITIES.md).
+- **Trade journal from the game log** (`sc_trade_journal`, profile `local`, read-only, off with the log). Per play
+  session, newest first: every shop purchase and sale (`SendShopBuyRequest`, `SendStandardItemBuyRequest`,
+  `SendShopSellRequest`) and cargo-kiosk purchase and sale (`SendCommodityBuyRequest` in cSCU, converted to SCU;
+  `SendCommoditySellRequest` in SCU) with time, side, shop, quantity and unit, the TOTAL of the line, unit price,
+  `auto_loading`, outcome and confidence. Item flows are paired with their `RmShopFlowResponse` (known); cargo success
+  is inferred from the absence of a `RmToken_CommodityTransactionResponse` error within 3 s (the game logs only
+  failures). Failed lines, sales of amount 0, unconfirmed lines and other currencies are listed and left out of the
+  totals. Spending by category is inferred from the item class name. Cargo runs pair purchases and sales of one
+  commodity first-in first-out into paired SCU, cost, revenue, GROSS margin and margin per SCU (estimated); there is no
+  net figure and no balance, which the log does not have. `location_hint` is the last location token logged before the
+  line, never a terminal. Commodity names come from the wiki's commodity list, matched locally on the resource GUID
+  (six real GUIDs resolved; three agree with the log's own hauling-contract names), otherwise "unknown commodity".
+  The parser is a pure module (`src/providers/gamelog/trade.ts`: `parseCommerceLine`, `parseCommerceText`,
+  `buildTradeJournal`); `parseLog` keeps its commerce lines in a new `commerce` array, so the events of the log tools
+  and their frozen schema are unchanged (note: `stats.recognized` now also counts these commerce and location lines,
+  which were `ignored` before; the stats schema is the same). A cargo error line that follows several same-side
+  requests within 3 s cannot be attributed to one: those lines are `ambiguous`, listed as unconfirmed and not counted.
+  The answer is bounded to fit the 40 000-character output limit (rows, then runs, are cut, with a `truncated` note
+  and counts). Verified on the author's logs (March 2025 to November 2026): 183 item
+  requests all paired with a response, 79 cargo requests, 12 cargo errors each within 2 s of its request. The 4.10 cargo
+  sale format rests on two lines of one session (3 November 2026); the earlier research note that found no sale after
+  March 2025 predates them.
 
 ## [2.1.0] - 2026-11-03
 

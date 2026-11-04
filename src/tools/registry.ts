@@ -26,6 +26,7 @@ import { scmdbTools } from "./scmdb.js";
 import { dashboardResources, dashboardTools } from "./dashboard.js";
 import { fleetTools } from "./fleet.js";
 import { gameLogTools } from "./gamelog.js";
+import { tradeJournalTools } from "./tradejournal.js";
 import { sctTools } from "./sctools.js";
 import { statusTools, type StatusProbe } from "./status.js";
 import { telemetryTools } from "./telemetry.js";
@@ -38,6 +39,7 @@ import type {
 } from "./types.js";
 import { uexTools } from "./uex.js";
 import { uexIntelTools } from "./uexIntel.js";
+import { uexCommerceTools } from "./uexCommerce.js";
 import { vocabularyTools } from "./vocabulary.js";
 import { wikiTools } from "./wiki.js";
 
@@ -60,11 +62,13 @@ export function allTools(clients: ToolClients, probes: StatusProbe[] = []): Tool
     ...statusTools(probes),
     ...uexTools(clients),
     ...uexIntelTools(clients),
+    ...uexCommerceTools(clients),
     ...wikiTools(clients),
     ...sctTools(clients),
     ...patchNotesTools(clients),
     ...scmdbTools(clients),
     ...gameLogTools(clients),
+    ...tradeJournalTools(clients),
     ...telemetryTools(clients),
     ...dashboardTools(clients),
     ...fleetTools(clients),

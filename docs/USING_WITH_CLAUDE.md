@@ -26,6 +26,11 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
      terminal (about 10 points: short history), uex_get_market_status warns of shortage or saturation.
      uex_get_commodity_prices for where one commodity buys and sells; the other uex_* tools
      (trade profile) for terminals, averages, ranking and player ads.
+   - Refining: uex_get_refining_margins ranks refineries for an ore (or ores, by an index) from reported yield
+     bonuses. UEX has no conversion ratio or refining cost: never turn it into an aUEC profit.
+   - Components, weapons, armor, food: uex_get_item_prices (needs the item category) for the cheapest shop,
+     uex_compare_items for two items. Check stale and data_age_days on every price. Player-market prices:
+     uex_get_marketplace_prices; a price per set is not a price per unit.
    - What a patch changed: sc_patch_notes (newest update, or by section or keyword), then scmdb_changes for
      the datamined mission and blueprint differences.
    - Missions, rewards, blueprints: scmdb_search_missions. What changed in the last update: scmdb_changes.
@@ -36,6 +41,9 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
      sc_log_recent_events and sc_log_sessions. They need the game log enabled (sc_log_status tells). Each field
      is the last time the game logged it, not live. The log does NOT know ordinary quantum travel, combat,
      wallet or position: do not infer them.
+   - What the player bought and sold, how a cargo run went: sc_trade_journal. The log has no wallet balance and
+     no autoload fee, so give a GROSS margin only (revenue minus cost of the paired SCU), never a net result;
+     cargo success is inferred (no error line), say so; a commodity shown as "unknown commodity" stays unknown.
 4. If a tool returns an error or "ambiguous" candidates, say so and ask; do not invent a value.
 5. Nothing here writes to the game or to any website. The only writes are the local fleet list and caches.
 6. Live telemetry (sc_live_status, sc_live_state, sc_live_events) exists only if the player turned it on.
