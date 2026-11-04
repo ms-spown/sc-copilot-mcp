@@ -96,9 +96,9 @@ npm run build
    `npm run check:sources` asks every data source for its version and verifies the files and fields the tools rely
    on. In Claude, ask for `sc_data_status`.
 
-## Tools (48)
+## Tools (49)
 
-Claude sees 43 of them by default: `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll` and
+Claude sees 44 of them by default: `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll` and
 `sc_live_mark` are listed only when live telemetry is on (the last three also need a client that can show them, such
 as Claude Desktop).
 
@@ -111,7 +111,7 @@ Full parameter reference: **[docs/TOOLS.md](docs/TOOLS.md)** (generated from the
 | **Ships and items** (Wiki)             | `scw_get_vehicle`, `scw_get_item`, `scw_get_ship_comparison`, `scw_list_vehicles`, `scw_list_items`, `scw_get_filters`, `scw_search`, `scw_snapshot_save`, `scw_snapshot_list`, `scw_snapshot_diff`, `sc_get_vocabulary`                                                                                                                                                                        |
 | **Missions, crafting, mining** (SCMDB) | `scmdb_search_missions`, `scmdb_search_crafting`, `scmdb_search_mining`, `scmdb_changes`                                                                                                                                                                                                                                                                                                        |
 | **Patches and lore**                   | `sc_patch_notes` (notes of an update, by section or keyword), `sct_search`, `sct_get_article`, `sc_list_builds`, `sc_diff_versions`                                                                                                                                                                                                                                                             |
-| **Your game log** (off by default)     | `sc_log_context` (what you are doing now), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`                                                                                                                                                                                                                                                                                           |
+| **Your game log** (off by default)     | `sc_log_context` (what you are doing now), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`, `sc_trade_journal` (what you bought and sold, cargo runs)                                                                                                                                                                                                                                                                                           |
 | **Live telemetry** (off by default)    | `sc_live_status` (always listed: state and how to enable), `sc_live_state`, `sc_live_events` (listed only when `SC_TELEMETRY=on`), `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark` (the live dashboard, in Claude Desktop only)                                                                                                                                                                                                                                                               |
 | **Your fleet**                         | `sc_fleet_get`, `sc_fleet_upsert`, `sc_fleet_remove`                                                                                                                                                                                                                                                                                                                                            |
 | **Your own data files**                | `sc_local_datasets`, `sc_search_local`, `sc_read_local_collection`                                                                                                                                                                                                                                                                                                                              |
@@ -127,7 +127,7 @@ at startup instead of listing nothing. Scoping is for speed, not security: an un
 | **core**  | 14    | The everyday copilot: status, ships, trade basics, missions, patch notes, your fleet |
 | **trade** | 12    | The full UEX market toolbox                                                          |
 | **data**  | 16    | Reference data, crafting, mining, patch history, wiki browsing                       |
-| **local** | 11    | Your game log, your fleet, your own data files                                       |
+| **local** | 12    | Your game log, your fleet, your own data files                                       |
 
 When to use which is in [docs/USING_WITH_CLAUDE.md](docs/USING_WITH_CLAUDE.md); each tool's description says
 what it returns and its limits.
@@ -172,6 +172,13 @@ failed or abandoned (followed through their mission id), objectives, hauling pic
 received, shop purchases, insurance claims, hangar requests and queue, the ship whose comms channel you joined or
 left, and jump-point transits between systems. `sc_log_context` turns these into "what am I doing now", and
 `sc_log_sessions` into a table of your recent sessions.
+
+`sc_trade_journal` is your personal trade journal, built from the same log: shop purchases and sales, cargo-kiosk
+purchases and sales (in SCU), the outcome of each, spending by category (inferred from the item class name), and
+cargo runs that pair purchases and sales of one commodity into a **gross** margin. The log has no wallet balance, no
+autoload fee and no success line for cargo (it is inferred from the absence of an error), so there is no net result
+and the figures are estimates. Commodity names come from the wiki's public commodity list, matched locally on the
+game's GUID (nothing from your log is sent); otherwise the commodity is "unknown commodity".
 
 **Not in the log, so never reported:** ordinary quantum travel, combat and kills, wallet balance, your position, a
 death. Every context field is "the last time the game logged it", not a live reading. Unknown lines are ignored and

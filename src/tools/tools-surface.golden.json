@@ -577,6 +577,26 @@
     }
   },
   {
+    "name": "sc_trade_journal",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sessions": {
+          "type": "number",
+          "description": "How many of the newest log files to scan (default 2, max 10). Files with no trade are left out."
+        },
+        "max_transactions": {
+          "type": "number",
+          "description": "Most recent transactions listed per session (default 40, max 120; at most 120 in all). Totals and runs always cover the whole session."
+        },
+        "resolve_names": {
+          "type": "boolean",
+          "description": "Look commodity names up in the wiki's public commodity list (default true). The list is the same for everyone: nothing from the log is sent. False keeps it fully local."
+        }
+      }
+    }
+  },
+  {
     "name": "scmdb_changes",
     "inputSchema": {
       "type": "object",

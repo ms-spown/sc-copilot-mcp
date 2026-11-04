@@ -27,6 +27,29 @@ versions follow [Semantic Versioning](https://semver.org/).
   dashboard never calls UEX (golden and docs/TOOLS.md regenerated).
 - Preview: `trade=story|estimated|unknown|partial|second|none` and `fw=<px>`.
 
+- **Trade journal from the game log** (`sc_trade_journal`, profile `local`, read-only, off with the log). Per play
+  session, newest first: every shop purchase and sale (`SendShopBuyRequest`, `SendStandardItemBuyRequest`,
+  `SendShopSellRequest`) and cargo-kiosk purchase and sale (`SendCommodityBuyRequest` in cSCU, converted to SCU;
+  `SendCommoditySellRequest` in SCU) with time, side, shop, quantity and unit, the TOTAL of the line, unit price,
+  `auto_loading`, outcome and confidence. Item flows are paired with their `RmShopFlowResponse` (known); cargo success
+  is inferred from the absence of a `RmToken_CommodityTransactionResponse` error within 3 s (the game logs only
+  failures). Failed lines, sales of amount 0, unconfirmed lines and other currencies are listed and left out of the
+  totals. Spending by category is inferred from the item class name. Cargo runs pair purchases and sales of one
+  commodity first-in first-out into paired SCU, cost, revenue, GROSS margin and margin per SCU (estimated); there is no
+  net figure and no balance, which the log does not have. `location_hint` is the last location token logged before the
+  line, never a terminal. Commodity names come from the wiki's commodity list, matched locally on the resource GUID
+  (six real GUIDs resolved; three agree with the log's own hauling-contract names), otherwise "unknown commodity".
+  The parser is a pure module (`src/providers/gamelog/trade.ts`: `parseCommerceLine`, `parseCommerceText`,
+  `buildTradeJournal`); `parseLog` keeps its commerce lines in a new `commerce` array, so the events of the log tools
+  and their frozen schema are unchanged (note: `stats.recognized` now also counts these commerce and location lines,
+  which were `ignored` before; the stats schema is the same). A cargo error line that follows several same-side
+  requests within 3 s cannot be attributed to one: those lines are `ambiguous`, listed as unconfirmed and not counted.
+  The answer is bounded to fit the 40 000-character output limit (rows, then runs, are cut, with a `truncated` note
+  and counts). Verified on the author's logs (March 2025 to November 2026): 183 item
+  requests all paired with a response, 79 cargo requests, 12 cargo errors each within 2 s of its request. The 4.10 cargo
+  sale format rests on two lines of one session (3 November 2026); the earlier research note that found no sale after
+  March 2025 predates them.
+
 ### Changed
 - The transport ledger's last line is "Récompense mesurée, dernier contrat" (a contract's balance change is the reward
   minus what it cost, not a profit) and the planned line says "avant frais". The ledger payload budget is 26 000

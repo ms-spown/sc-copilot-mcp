@@ -99,6 +99,20 @@ for (const channel of ["live", "ptu"]) {
   }
 }
 
+console.log("\n== Wiki: commodity list (names for sc_trade_journal, matched on the game's resource GUID)");
+try {
+  const r = await clients.scwClient.get("/commodities", { params: { "page[number]": 1, "page[size]": 5 } });
+  const rows = r.data?.data;
+  const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  line(
+    Array.isArray(rows) && rows.length > 0 && rows.every((x) => guid.test(String(x.uuid)) && typeof x.name === "string"),
+    "commodities (uuid + name)",
+    `${r.data?.meta?.total ?? "?"} rows`,
+  );
+} catch (e) {
+  line(false, "commodities (uuid + name)", e.message);
+}
+
 console.log("\n== Game.log");
 if (!clients.gameLog.configured) console.log("  --    not configured (SC_GAME_LOG_PATH / SC_INSTALL_DIR)");
 else {
