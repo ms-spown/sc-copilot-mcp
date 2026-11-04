@@ -2084,6 +2084,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       sessionTrade,
       calibration,
       plan: view.plan,
+      // When this View received the plan: "Partir de ma position" only takes the plan's end as a place when the plan was in
+      // force during the run (tradePlanAttached), never one applied afterwards for the NEXT trip.
+      planAt: view.planAt,
       call: async (name: string, args: any, timeoutMs: number) =>
         request("tools/call", { name, arguments: args }, timeoutMs),
       say: (text: string) =>

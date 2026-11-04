@@ -19,6 +19,7 @@ import {
   type PreflightResult,
 } from "../providers/uex/preflight.js";
 import type { KnownHold } from "./holds.js";
+import type { LastPlace } from "./ledgerService.js";
 import { parsePlan, type Plan } from "./plan.js";
 import { describePreflight } from "./preflightText.js";
 import {
@@ -67,6 +68,8 @@ export const SUGGEST_CACHE_TTL_MS = 120_000;
 export const SUGGEST_DEADLINE_MS = 20_000;
 /** What the View waits for one call. Unverified against the real host's own limit. */
 export const SUGGEST_VIEW_TIMEOUT_MS = 32_000;
+/** A place the game log named is used for at most this long (the page's `positionFreshMs`): older, the player is asked. */
+export const POSITION_MAX_AGE_MS = 2 * 3_600_000;
 export const SUGGEST_MAX_OPTIONS = 5;
 export const SUGGEST_MAX_CHAINS = 3;
 const MAX_CACHE_ENTRIES = 12;
@@ -101,6 +104,13 @@ const searchSchema = z
       .regex(/^[0-9A-Za-z:.+-]{1,40}$/)
       .optional(),
     origin: z.string().max(80).optional(),
+    /**
+     * "Partir de ma position", from the place the SERVER last read in the game log ("journal"): the View names the source, never
+     * a place token (the ship is never an input either). The answer says which place that was and how old.
+     */
+    position: z.enum(["journal"]).optional(),
+    /** "Partir de ma position", from a place the player typed or a plan holds (a UEX name). Not with `position` or `origin`. */
+    position_text: z.string().trim().min(1).max(80).optional(),
     /** Use the flown ship's quantum speed (and hold, when no cargo_scu is given). Default true. */
     use_ship: z.boolean().optional(),
   })
@@ -182,6 +192,37 @@ export interface SuggestOption {
   cost?: number;
   /** How far the figures can be trusted: level, reasons with their source, a prudent first run (dashboard/routeReliability.ts). */
   reliability: Reliability;
+  /** Only from a position ("Partir de ma position"): the way to the start of this route and what an opening trade adds. */
+  opening?: SuggestOpening;
+}
+
+/**
+ * ESTIMATES all of it (UEX prices, a fixed-stop travel model). `first_cycle` is the repositioning plus ONE cycle of the route,
+ * with step 1; `without_step1` is the same route reached with an empty flight. The route's own steady figures are the
+ * option's `profit_per_hour` and `cycle_minutes`.
+ */
+export interface SuggestOpening {
+  /** The player's place as UEX names it. */
+  position: string;
+  at_position: boolean;
+  /** Where the route loads (the end of the repositioning flight). */
+  start: string;
+  step1: SuggestLeg | null;
+  reposition_minutes: number | null;
+  first_cycle: { profit: number; minutes: number | null; per_hour: number | null };
+  without_step1: { profit: number; minutes: number | null; per_hour: number | null };
+}
+
+/** Where a search from a position started, for the View to say it. */
+export interface SuggestPosition {
+  /** The place as UEX names it. */
+  label: string;
+  /** "journal": the newest place the game log named (with its time); "saisie": a place the player typed or a plan holds. */
+  source: "journal" | "saisie";
+  /** When the log wrote the place (journal only). */
+  at: string | null;
+  /** The planet UEX puts the place on: what the agent's own tool (`origin_planet_name`) can take. */
+  planet: string | null;
 }
 
 export interface SuggestOk {
@@ -197,6 +238,8 @@ export interface SuggestOk {
   /** The budget is the player's balance: quantities and totals below are for his screen only. */
   private: boolean;
   ship: string | null;
+  /** Only from a position: where the plans start. */
+  position?: SuggestPosition;
   /** Whether a quantum speed was known: without one, hourly figures and the order by time are not available. */
   speed_known: boolean;
   stop_minutes: number;
@@ -226,6 +269,9 @@ export interface SuggestThrottled {
 export type SuggestErrorCode =
   | "no_cargo"
   | "bad_origin"
+  /** "Partir de ma position": the server has no usable place from the log, or no place can be named at UEX for it. */
+  | "position_unknown"
+  | "position_unresolved"
   | "armistice_unavailable"
   | "upstream"
   | "expired"
@@ -279,6 +325,11 @@ export interface SuggestDeps {
   plan: (req: TripRequest) => Promise<TripPlanResult>;
   /** The flown ship, from the server's own state. null: no ship known. Must not throw (a failure is null). */
   ship: () => Promise<FlownShip | null>;
+  /**
+   * The newest PUBLIC place the game log named, from the server's own state (ledgerService.lastPlace()): its token (never
+   * sent to a View), its words and the time the log wrote it. undefined: none known. Must not throw.
+   */
+  lastPlace?: () => LastPlace | undefined;
   /** From the text of the player to the planner's origin hint. */
   resolveOrigin: (text: string) => Promise<NonNullable<TripRequest["origin"]>>;
   /**
@@ -328,6 +379,10 @@ export function resolveOriginHint(
 // -------------------------------------------------------------------------------------------------
 // The service
 // -------------------------------------------------------------------------------------------------
+
+/** Where a search from a position starts (see positionSource). The token never leaves this file's callers. */
+type PositionSource =
+  { kind: "journal"; token: string; at: string } | { kind: "saisie"; text: string };
 
 interface CacheEntry {
   at: number;
@@ -478,7 +533,12 @@ export class TradeSuggestService {
     // No hold size: nothing to ask UEX, and nothing that should count toward the interval.
     const cargo = input.cargo_scu ?? ship?.cargoScu ?? undefined;
     if (cargo === undefined || cargo < 1) return { v: 1, state: "error", code: "no_cargo" };
-    const key = this.keyOf(input, ship);
+    // "Partir de ma position": one source, and not together with an origin (which says where a route LOADS). Refused here,
+    // with a sentence, before anything counts toward the interval. The log's place is the server's own (the View never sends
+    // a token); one that is missing or private is "unknown", never replaced by an older one.
+    const source = this.positionSource(input);
+    if ("error" in source) return source.error;
+    const key = this.keyOf(input, ship, source.pos);
     const t = this.now();
     const priv = input.budget_private === true;
 
@@ -524,14 +584,47 @@ export class TradeSuggestService {
     // 4. start
     this.markNext(input.next_run);
     this.lastStartAt = t;
-    const job = this.run(input, ship, key, cargo).finally(() => {
+    const job = this.run(input, ship, key, cargo, source.pos).finally(() => {
       this.inFlight.delete(key);
     });
     this.inFlight.set(key, job);
     return job;
   }
 
-  private keyOf(input: SearchInput, ship: FlownShip | null): string {
+  /** Where a search from a position starts: the server's own journal place, or a typed text; null for a plain search. */
+  private positionSource(
+    input: SearchInput,
+  ): { pos: PositionSource | null } | { error: SuggestError } {
+    const wanted = (input.position ? 1 : 0) + (input.position_text ? 1 : 0);
+    if (wanted === 0) return { pos: null };
+    if (wanted > 1 || (input.origin ?? "").trim() !== "") {
+      return {
+        error: {
+          v: 1,
+          state: "error",
+          code: "other",
+          detail: "a position excludes an origin and a second position",
+        },
+      };
+    }
+    if (input.position_text) return { pos: { kind: "saisie", text: input.position_text.trim() } };
+    const place = this.deps.lastPlace?.();
+    // None, a private newest place (nothing usable), a time in the future (a clock out of step) or a place older than the
+    // limit: "unknown" and the player is asked. The same limit as the page's, so the server does not use what the page would not.
+    const age = place ? this.now() - Date.parse(place.at) : NaN;
+    if (
+      !place ||
+      "private" in place ||
+      !Number.isFinite(age) ||
+      age < -300_000 ||
+      age > POSITION_MAX_AGE_MS
+    ) {
+      return { error: { v: 1, state: "error", code: "position_unknown" } };
+    }
+    return { pos: { kind: "journal", token: place.token, at: place.at } };
+  }
+
+  private keyOf(input: SearchInput, ship: FlownShip | null, pos: PositionSource | null): string {
     return JSON.stringify([
       input.objective,
       !!input.avoid_pyro,
@@ -543,6 +636,12 @@ export class TradeSuggestService {
       input.cargo_scu ?? null,
       (input.origin ?? "").trim().toLowerCase(),
       ship ? [ship.name, ship.cargoScu, ship.quantumSpeedMs, ship.spoolSeconds ?? null] : null,
+      // A search from a position is a different question: the place (and, for the log's, the time it was written) is in the key.
+      pos
+        ? pos.kind === "journal"
+          ? ["j", pos.token, pos.at]
+          : ["t", pos.text.toLowerCase()]
+        : null,
     ]);
   }
 
@@ -551,6 +650,7 @@ export class TradeSuggestService {
     ship: FlownShip | null,
     key: string,
     cargo: number,
+    pos: PositionSource | null,
   ): Promise<SuggestAnswer> {
     try {
       const origin: TripRequest["origin"] | undefined = input.origin?.trim()
@@ -565,6 +665,9 @@ export class TradeSuggestService {
         ...(ship?.quantumSpeedMs ? { quantumSpeedMs: ship.quantumSpeedMs } : {}),
         ...(ship?.quantumSpeedMs && ship.spoolSeconds ? { spoolSeconds: ship.spoolSeconds } : {}),
         ...(origin ? { origin } : {}),
+        ...(pos
+          ? { position: pos.kind === "journal" ? { token: pos.token } : { text: pos.text } }
+          : {}),
         ...(input.avoid_pyro ? { avoidPyro: true } : {}),
         ...(input.armistice_only ? { armisticeOnly: true } : {}),
         ...(input.min_reports ? { minReports: input.min_reports } : {}),
@@ -572,7 +675,7 @@ export class TradeSuggestService {
       };
       const result = await this.deps.plan(req);
       const at = this.now();
-      const ok = this.shape(result, input, ship, cargo, at);
+      const ok = this.shape(result, input, ship, cargo, at, pos);
       if (origin) {
         const kind = origin.planetName ? "planet" : origin.systemName ? "system" : "terminal";
         const name = cleanLabel(
@@ -603,6 +706,7 @@ export class TradeSuggestService {
     ship: FlownShip | null,
     cargo: number,
     at: number,
+    pos: PositionSource | null,
   ): SuggestOk {
     const priv = input.budget_private === true;
     const rel: ReliabilityContext = {
@@ -639,6 +743,16 @@ export class TradeSuggestService {
         input.cargo_scu !== undefined && input.cargo_scu !== ship?.cargoScu ? "saisie" : "fiche",
       private: priv,
       ship: ship ? cleanLabel(ship.name, NAME_MAX) : null,
+      ...(pos && res.position
+        ? {
+            position: {
+              label: cleanLabel(res.position.label, NAME_MAX) ?? "?",
+              source: pos.kind,
+              at: pos.kind === "journal" ? pos.at : null,
+              planet: cleanLabel(res.position.planet, NAME_MAX),
+            },
+          }
+        : {}),
       speed_known: speedKnown,
       stop_minutes: res.time_model.stop_minutes,
       partial: res.notes.some((n) => /ran out/i.test(n)),
@@ -655,7 +769,7 @@ export class TradeSuggestService {
 
   private option(o: TripOption, priv: boolean, at: number, rel: ReliabilityContext): SuggestOption {
     const id = randomBytes(16).toString("hex");
-    const legs: SuggestLeg[] = o.legs.slice(0, 2).map((l) => {
+    const view = (l: TripOption["legs"][number]): SuggestLeg => {
       const ages = [l.price_age_days.buy, l.price_age_days.sell].filter(
         (a): a is number => a !== null,
       );
@@ -673,7 +787,11 @@ export class TradeSuggestService {
         report_status: l.report_status,
         armistice: { from: l.from.armistice_zone, to: l.to.armistice_zone },
       };
-    });
+    };
+    const legs: SuggestLeg[] = o.legs.slice(0, 2).map(view);
+    // A zero is a zero (no flight): never "about one minute".
+    const minutes = (s: number | null) =>
+      s === null ? null : s <= 0 ? 0 : Math.max(1, Math.round(s / 60));
     const first = legs[0] ?? { from: "?", to: "?" };
     const names = [first.from, ...legs.map((l) => l.to)];
     // A one-way route is repeated with an empty return: the cycle ends where it started.
@@ -704,6 +822,27 @@ export class TradeSuggestService {
       },
       ...(priv ? {} : { cost: o.trip.peak_investment }),
       reliability: safeAssessReliability(o, rel),
+      ...(o.opening
+        ? {
+            opening: {
+              position: cleanLabel(o.opening.position, NAME_MAX) ?? "?",
+              at_position: o.opening.at_position,
+              start: cleanLabel(o.opening.start_terminal, NAME_MAX) ?? "?",
+              step1: o.opening.step1 ? view(o.opening.step1) : null,
+              reposition_minutes: minutes(o.opening.reposition_seconds),
+              first_cycle: {
+                profit: o.opening.first_cycle.profit,
+                minutes: minutes(o.opening.first_cycle.seconds),
+                per_hour: o.opening.first_cycle.profit_per_hour,
+              },
+              without_step1: {
+                profit: o.opening.without_step1.profit,
+                minutes: minutes(o.opening.without_step1.seconds),
+                per_hour: o.opening.without_step1.profit_per_hour,
+              },
+            },
+          }
+        : {}),
     };
     this.storePlan(id, option, priv, at, {
       buy: o.legs[0]?.from.terminal_id ?? null,
@@ -723,12 +862,15 @@ export class TradeSuggestService {
     const leg = o.legs[0];
     if (!leg) return;
     const second = o.legs[1];
+    const step = o.opening?.step1;
+    // The note holds 60 characters: step 1 comes first (it is what the route's own text does not say).
     const note =
-      second && o.mode === "round_trip"
+      (step ? `Avant : ${step.commodity} vers ${step.to} · ` : "") +
+      (second && o.mode === "round_trip"
         ? `Retour : ${second.commodity}`
         : second
           ? `Puis : ${second.commodity} vers ${second.to}`
-          : "Cycle complet : retour à vide";
+          : "Cycle complet : retour à vide");
     const plan = parsePlan({
       commodity: leg.commodity,
       buy_terminal: leg.from,
@@ -740,6 +882,8 @@ export class TradeSuggestService {
       ...(o.cycle_minutes !== null ? { est_trip_minutes: o.cycle_minutes } : {}),
       safety_note: `Heuristique : ${o.safety.points} facteur(s) de risque`,
       note,
+      // Reached from a position: the run of the opening trade is the plan's preface, not a use of it.
+      ...(step ? { preamble: step.commodity } : {}),
     });
     if (!plan) return;
     this.plans.set(id, { plan, priv, at, ids });
@@ -755,6 +899,11 @@ export class TradeSuggestService {
 export function failure(error: unknown): SuggestError {
   if (error instanceof TripPlanError) {
     const m = error.message;
+    // "Position: ..." (a place that cannot be named at UEX): the planner's own sentence, cleaned, for the View to relay.
+    if (/^Position:/.test(m)) {
+      const detail = cleanLabel(m.replace(/^Position:\s*/, ""), 160);
+      return { v: 1, state: "error", code: "position_unresolved", ...(detail ? { detail } : {}) };
+    }
     if (/cargo|hold size/i.test(m)) return { v: 1, state: "error", code: "no_cargo" };
     if (/armistice_only cannot/i.test(m))
       return { v: 1, state: "error", code: "armistice_unavailable" };

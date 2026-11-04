@@ -15,6 +15,7 @@ import {
   byValue,
   oneWayPlan,
   pairKey,
+  type DistanceFn,
   parsePriceRows,
   roundTrips,
   routeLeg,
@@ -34,6 +35,8 @@ import {
   type TerminalPlace,
 } from "./places.js";
 import { legMarket, parseMarketRows, type LegMarket, type MarketRow } from "./legMarket.js";
+import { openingPlans, type OpeningPlan } from "./opening.js";
+import { resolvePosition } from "./position.js";
 import { pickRow } from "./resolve.js";
 import { fetchShipSheet, type ShipSheet } from "./shipSheet.js";
 import {
@@ -83,6 +86,13 @@ export interface TripRequest {
     systemName?: string;
     commodityName?: string;
   };
+  /**
+   * "Partir de ma position": where the player is, as a place name (`text`) or a place token of the game log (`token`, already
+   * checked by the caller for private places). The plans then START there: each candidate route is reached from this place,
+   * with an opening trade on the way when one pays (see opening.ts). Cannot be combined with `origin` (which says where a
+   * route LOADS). Open chains A>B>C are not computed in this mode.
+   */
+  position?: { text: string } | { token: string };
   avoidPyro?: boolean;
   /** Keep only plans whose every stop UEX flags as an armistice zone. */
   armisticeOnly?: boolean;
@@ -151,6 +161,24 @@ export interface PlaceView {
   jurisdiction: string | null;
 }
 
+/** What "Partir de ma position" adds to an option: the opening step and the honest comparison. ESTIMATES all of it. */
+export interface OpeningView {
+  /** The player's place as UEX names it. */
+  position: string;
+  /** The route starts at a terminal of that place: no flight, no opening step. */
+  at_position: boolean;
+  /** The terminal where the route's first leg loads (the end of the repositioning flight). */
+  start_terminal: string;
+  /** The opening trade from the position to `start_terminal`, or null when none pays (the flight is then made empty). */
+  step1: LegView | null;
+  reposition_gm: number | null;
+  reposition_seconds: number | null;
+  /** Repositioning plus one cycle of the route, with step 1. */
+  first_cycle: { profit: number; seconds: number | null; profit_per_hour: number | null };
+  /** The same route reached with an empty flight: the honest baseline of step 1. */
+  without_step1: { profit: number; seconds: number | null; profit_per_hour: number | null };
+}
+
 export interface TripOption {
   rank: number;
   mode: PlanMode;
@@ -175,9 +203,19 @@ export interface TripOption {
   };
   data_age: { oldest_price_age_days: number | null; stale: boolean; undated_prices: boolean };
   safety: SafetyHeuristic;
+  /** Only with `position`: how the player gets to the start of this route, and what an opening trade adds. */
+  opening?: OpeningView;
 }
 
 export interface TripPlanResult {
+  /** Only with `position`: the place the plans start from, as UEX names it. */
+  position?: {
+    label: string;
+    terminals: number;
+    basis: "exact" | "partial";
+    /** The planet (or moon) UEX puts the place on, when it says: the one key of the model-facing tool that comes close. */
+    planet: string | null;
+  };
   objective: Objective;
   ship: {
     name: string | null;
@@ -448,6 +486,28 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
     );
   }
 
+  // "Partir de ma position": the place becomes the terminals of one UEX orbit. A request that cannot be placed is refused with
+  // a sentence, never guessed at.
+  let position: { label: string; ids: Set<number>; basis: "exact" | "partial" } | null = null;
+  if (req.position) {
+    if (hint.terminalName || hint.planetName || hint.systemName || hint.commodityName) {
+      throw new TripPlanError(
+        "Position cannot be combined with an origin (origin says where a route loads, position where the player is).",
+      );
+    }
+    const found = resolvePosition(await terminalList(), places, req.position);
+    if (!found.ok) {
+      const why =
+        found.reason === "ambiguous"
+          ? `this place fits several places at UEX${found.suggestions.length ? ` (${found.suggestions.join(", ")})` : ""}`
+          : found.reason === "no_orbit"
+            ? "UEX gives this place no orbit, so no distance can be worked out"
+            : "UEX knows no place that matches it";
+      throw new TripPlanError(`Position: ${why}.`);
+    }
+    position = { label: found.label, ids: new Set(found.terminalIds), basis: found.basis };
+  }
+
   const excluded: Record<string, number> = {};
   const bump = (k: string, n = 1) => {
     excluded[k] = (excluded[k] ?? 0) + n;
@@ -564,11 +624,60 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
   if (legs.undated_rows) bump("price_rows_without_date", legs.undated_rows);
   const hasStart = startTerminal !== undefined || startPlanet !== undefined;
   if (maxLegs === 2) {
-    const rt = roundTrips(legs, distance, model, pool, hasStart ? startsAt : undefined, rank);
-    const tl = twoLegChains(legs, distance, model, pool, hasStart ? startsAt : undefined, rank);
+    // From a position every route is scored below (opening.ts): the global top-N lists are not the candidates.
+    const rt = position
+      ? { plans: [] as Plan[], scored: 0, skipped: { unknownDistance: 0 } }
+      : roundTrips(legs, distance, model, pool, hasStart ? startsAt : undefined, rank);
+    // From a position the open chains A>B>C are not computed: no return is priced, so a first-cycle figure would not compare.
+    const tl = position
+      ? { plans: [] as Plan[], scored: 0, skipped: { unknownDistance: 0 } }
+      : twoLegChains(legs, distance, model, pool, hasStart ? startsAt : undefined, rank);
     plans.push(...rt.plans, ...tl.plans);
     scored += rt.scored + tl.scored;
     bump("plans_without_known_distance", rt.skipped.unknownDistance + tl.skipped.unknownDistance);
+  }
+  // From a position, the routes that START at the player's own place, and every one-way trade (stock up at A, sell at B, come
+  // back empty: UEX's own routes list needs an origin, so they are built here from the same price legs).
+  let opening: OpeningPlan[] | null = null;
+  if (position) {
+    const here = position.ids;
+    // EVERY route: all round trips (each can start at either end) and every one-way trade of the price legs, not the best N by
+    // their steady state: the first cycle can rank a modest route near the player above a rich one far away. The work is a
+    // lookup per route and start (distances are memoised), so it stays small.
+    const everyRoundTrip = roundTrips(
+      legs,
+      distance,
+      model,
+      Number.MAX_SAFE_INTEGER,
+      undefined,
+      rank,
+    );
+    scored += everyRoundTrip.scored;
+    bump("plans_without_known_distance", everyRoundTrip.skipped.unknownDistance);
+    const oneWays: Plan[] = [];
+    for (const leg of legs.best.values()) {
+      const d = distance(leg.fromId, leg.toId);
+      if (d.kind === "unknown") {
+        bump("plans_without_known_distance");
+        continue;
+      }
+      oneWays.push(oneWayPlan(leg, d, model));
+    }
+    scored += oneWays.length;
+    const mains = [...everyRoundTrip.plans, ...oneWays];
+    const search = openingPlans({
+      legs,
+      distance: distance as DistanceFn,
+      model,
+      position: { terminalIds: here, label: position.label },
+      mains,
+      rank,
+      pool,
+    });
+    bump("starts_without_known_distance", search.skippedUnknownDistance);
+    opening = search.plans;
+    // The cycle lists below are replaced by the opening plans: nothing is shown that does not start from here.
+    plans.length = 0;
   }
 
   // One-way routes from UEX, for an origin the API accepts.
@@ -660,6 +769,13 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
   for (const p of candidates) {
     if (routeEvidence.has(p)) continue;
     for (const l of p.legs) if (!needed.has(l.commodityId)) needed.set(l.commodityId, l.commodity);
+  }
+  // The opening steps are checked too (their goods are not those of the routes): without this every step 1 would come out
+  // "unverified". The best-ranked options come first, so the check budget goes to the ones that will be shown.
+  for (const o of opening ?? []) {
+    for (const l of [...o.legs, ...(o.step1 ? [o.step1] : [])]) {
+      if (!needed.has(l.commodityId)) needed.set(l.commodityId, l.commodity);
+    }
   }
   const reports = new Map<string, { buy: number | null; sell: number | null }>();
   const marketRows = new Map<number, MarketRow[]>();
@@ -803,8 +919,60 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
         : "reported";
 
   // The objective decides the order. The report status is shown on every option, not used to reorder.
+  type Kept = {
+    plan: Plan;
+    views: LegView[];
+    status: ReportStatus;
+    /** Only from a position: the opening plan and the view of its step 1 (null: none, or dropped by min_reports). */
+    from?: { opening: OpeningPlan; step: LegView | null; rankPlan: Plan };
+  };
+  const enoughReports = (v: LegView) =>
+    (v.reports.origin ?? 0) >= minReports && (v.reports.destination ?? 0) >= minReports;
+  // From a position: every plan is "reach the start of a route, with an opening trade when one pays". The route's own report
+  // status is the option's; step 1 carries its own (a step 1 that fails min_reports is dropped, not the whole option).
+  const buildFrom = (list: OpeningPlan[]): Kept[] => {
+    const kept: Kept[] = [];
+    for (const o of list) {
+      const views = o.legs.map((l) => viewLeg(o.main, l));
+      const routeStatus = worst(views);
+      if (minReports > 0) {
+        if (routeStatus === "unverified") {
+          bump("options_unverified_dropped_by_min_reports");
+          continue;
+        }
+        if (!views.every(enoughReports)) {
+          bump("options_with_fewer_reports_than_min_reports");
+          continue;
+        }
+      }
+      let step = o.step1 ? viewLeg(o.main, o.step1) : null;
+      if (step && minReports > 0 && (step.report_status === "unverified" || !enoughReports(step))) {
+        bump("opening_steps_dropped_by_min_reports");
+        step = null;
+      }
+      // The option's evidence is the route's AND its step 1's: a route with reported prices and an estimate-only step 1 is an
+      // estimate, never green. A step 1 that was dropped leaves the plain flight, and the ranking follows what is shown.
+      const status = worst(step ? [...views, step] : views);
+      const rankPlan: Plan = step
+        ? o.asPlan
+        : {
+            ...o.asPlan,
+            legs: o.legs,
+            profit: o.withoutStep1.profit,
+            cycleSeconds: o.withoutStep1.seconds,
+            profitPerHour: o.withoutStep1.profitPerHour,
+          };
+      kept.push({
+        plan: { ...o.main, legs: o.legs },
+        views,
+        status,
+        from: { opening: o, step, rankPlan },
+      });
+    }
+    return kept.sort((x, y) => rank(x.from!.rankPlan, y.from!.rankPlan));
+  };
   const build = (list: Plan[]) => {
-    const kept: { plan: Plan; views: LegView[]; status: ReportStatus }[] = [];
+    const kept: Kept[] = [];
     for (const plan of list) {
       const views = plan.legs.map((l) => viewLeg(plan, l));
       const status = worst(views);
@@ -826,15 +994,40 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
     }
     return kept.sort((x, y) => rank(x.plan, y.plan)).slice(0, limit);
   };
-  const shownCycle = build(cyclePlans);
-  const shownChains = build(chainPlans);
+  const shownCycle = opening ? buildFrom(opening).slice(0, limit) : build(cyclePlans);
+  const shownChains = opening ? [] : build(chainPlans);
   const shown = [...shownCycle, ...shownChains];
 
-  const toOption = (
-    { plan, views, status }: { plan: Plan; views: LegView[]; status: ReportStatus },
-    i: number,
-  ): TripOption => {
-    const ages = views
+  const openingView = (from: NonNullable<Kept["from"]>): OpeningView => {
+    const o = from.opening;
+    // A step 1 dropped by min_reports leaves the plain flight: the first cycle is then the plain one.
+    const first = from.step ? o.firstCycle : o.withoutStep1;
+    const secs = (t: number | null) => (t === null ? null : Math.round(t));
+    const perH = (t: number | null) => (t === null ? null : Math.round(t));
+    return {
+      position: position?.label ?? "",
+      at_position: o.atPosition,
+      start_terminal: o.legs[0]?.from ?? "?",
+      step1: from.step,
+      reposition_gm: o.repositionGm,
+      reposition_seconds: secs(o.repositionSeconds),
+      first_cycle: {
+        profit: first.profit,
+        seconds: secs(first.seconds),
+        profit_per_hour: perH(first.profitPerHour),
+      },
+      without_step1: {
+        profit: o.withoutStep1.profit,
+        seconds: secs(o.withoutStep1.seconds),
+        profit_per_hour: perH(o.withoutStep1.profitPerHour),
+      },
+    };
+  };
+
+  const toOption = ({ plan, views, status, from }: Kept, i: number): TripOption => {
+    // The data age is that of everything the option rests on: the route and, when there is one, its step 1.
+    const evidence = from?.step ? [...views, from.step] : views;
+    const ages = evidence
       .flatMap((v) => [v.price_age_days.buy, v.price_age_days.sell])
       .filter((a): a is number => a !== null);
     const scuMoved = plan.legs.reduce((s, l) => s + l.scu, 0);
@@ -846,7 +1039,7 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
       mode: plan.mode,
       report_status: status,
       estimate: status === "estimate",
-      summary: `${tag}${plan.legs.map((l) => `${l.scu} SCU ${l.commodity}`).join(" + ")} on ${route}${plan.returnsToStart && plan.mode !== "round_trip" ? " and back empty" : ""}`,
+      summary: `${tag}${from?.step ? `Step 1 from ${position?.label}: ${from.step.scu} SCU ${from.step.commodity} to ${from.opening.legs[0]?.from}; then ` : from && !from.opening.atPosition ? `Fly empty from ${position?.label} to ${from.opening.legs[0]?.from}; then ` : ""}${plan.legs.map((l) => `${l.scu} SCU ${l.commodity}`).join(" + ")} on ${route}${plan.returnsToStart && plan.mode !== "round_trip" ? " and back empty" : ""}`,
       legs: views,
       trip: {
         profit_per_cycle: plan.profit,
@@ -863,12 +1056,13 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
       },
       data_age: {
         oldest_price_age_days: ages.length ? Math.max(...ages) : null,
-        stale: views.some((v) => v.stale),
-        undated_prices: views.some(
+        stale: evidence.some((v) => v.stale),
+        undated_prices: evidence.some(
           (v) => v.price_updated.buy === null || v.price_updated.sell === null,
         ),
       },
-      safety: safetyFor(plan),
+      safety: safetyFor(from ? from.opening.asPlan : plan),
+      ...(from ? { opening: openingView(from) } : {}),
     };
   };
   const options = shownCycle.map(toOption);
@@ -878,7 +1072,11 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
 
   // Provenance: the real age of the prices behind what is shown.
   const stamps = shown
-    .flatMap(({ plan }) => plan.legs.flatMap((l) => [l.buyUpdatedAt, l.sellUpdatedAt]))
+    .flatMap(({ plan, from }) =>
+      [...(from?.opening.step1 && from.step ? [from.opening.step1] : []), ...plan.legs].flatMap(
+        (l) => [l.buyUpdatedAt, l.sellUpdatedAt],
+      ),
+    )
     .filter((t): t is number => t !== null);
   if (stamps.length > 0) {
     setDataDates(
@@ -899,6 +1097,14 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
     fuel = fuelUnavailable();
   }
   const assumptions = tripAssumptions(model, maxAgeDays);
+  if (position) {
+    assumptions.push(
+      `FROM A POSITION (${position.label}): the player's place is the terminals of one UEX orbit, taken from what the caller says (the game gives no live position). Each option is reached from there with one stop where the flight leaves, the flight, then the route's own stops. An opening trade (step 1) is the best price leg from a terminal of that place to the terminal where the route loads, sized by the hold and the budget; it takes the same time as the empty flight, because loading time is not modelled. Figures marked first_cycle are the repositioning plus ONE cycle of the route; the route's own trip figures stay the steady state. without_step1 is the same route reached with an empty flight.`,
+    );
+    notes.push(
+      "From a position, the open chains A>B>C are not computed (no return is priced, so a first-cycle figure would not compare), and one-way trades are built from the price legs rather than from UEX's routes list.",
+    );
+  }
   if ([...options, ...chains].some((o) => o.report_status !== "reported")) {
     notes.push(
       "report_status: reported = a player reported both prices; estimate = UEX counts 0 player reports for that price (the is_estimate convention of uex_get_trade_routes, whatever the date of the price: most UEX prices are in that state today, so reported options are rare), do not count on it; unverified = the check could not be made. The order follows the objective, not the report status: see report_counts and the [ESTIMATE] tag on each summary.",
@@ -918,6 +1124,19 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
     notes.push(`Safety heuristic degraded: ${places.armisticeUnavailable}.`);
 
   return {
+    ...(position
+      ? {
+          position: {
+            label: position.label,
+            terminals: position.ids.size,
+            basis: position.basis,
+            planet:
+              [...position.ids]
+                .map((id) => places.byTerminal.get(id)?.planetName)
+                .find((p): p is string => typeof p === "string" && p !== "") ?? null,
+          },
+        }
+      : {}),
     objective,
     ship: sheet
       ? {
@@ -1035,13 +1254,19 @@ async function fuelBlock(client: HttpClient, now: number): Promise<TripPlanResul
 export function forModelTool(result: TripPlanResult): TripPlanResult {
   const without = (value: object, key: string): Record<string, unknown> =>
     Object.fromEntries(Object.entries(value).filter(([k]) => k !== key));
-  const strip = (o: TripOption): TripOption => ({
-    ...o,
-    legs: o.legs.map((l) => ({
+  const lean = (l: LegView): LegView =>
+    ({
       ...without(l, "market"),
       from: without(l.from, "body"),
       to: without(l.to, "body"),
-    })) as unknown as LegView[],
+    }) as unknown as LegView;
+  const strip = (o: TripOption): TripOption => ({
+    ...o,
+    legs: o.legs.map(lean),
+    // From a position (never asked through the model tool, but never leaked either): the opening step is a leg like the others.
+    ...(o.opening
+      ? { opening: { ...o.opening, step1: o.opening.step1 ? lean(o.opening.step1) : null } }
+      : {}),
   });
   return { ...result, options: result.options.map(strip), chains: result.chains.map(strip) };
 }

@@ -883,6 +883,18 @@
           "type": "boolean",
           "description": "Use the flown ship's quantum speed and hold (search). Default true."
         },
+        "position": {
+          "type": "string",
+          "enum": [
+            "journal"
+          ],
+          "description": "Start from the place the SERVER last read in the game log (search): each route is reached from there, with an opening trade on the way when one pays. The View names the source, never a place token. Not with origin or position_text."
+        },
+        "position_text": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Start from a place the player typed or a plan holds, a UEX place name (search): same as position. Not with origin or position."
+        },
         "next_run": {
           "type": "string",
           "maxLength": 40,

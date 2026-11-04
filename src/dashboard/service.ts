@@ -267,6 +267,14 @@ export class DashboardService {
       ...(calibration ? { calibration } : {}),
       // The ship losses: their SCU go with or without the balance, the aUEC paid only with it (tradeRun.ts).
       ...(this.ledger ? { losses: this.ledger.shipLosses() } : {}),
+      // The newest public place the log named: words and time only (the token stays here). Not an amount.
+      ...(() => {
+        const p = this.ledger?.lastPlace();
+        if (!p) return {};
+        return "private" in p
+          ? { lastPlace: { words: "", at: p.at, private: true as const } }
+          : { lastPlace: { words: p.words, at: p.at } };
+      })(),
     });
   }
 

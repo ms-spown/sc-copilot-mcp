@@ -206,6 +206,15 @@ export function ledgerTradeNormalize(raw: any): any {
       return item;
     });
   if (losses.length > 0) section.ship_losses = losses;
+  // The newest public place the game log named: words and a time. Not a live position, not an amount, never a token.
+  const lp = raw.last_place;
+  if (lp && typeof lp === "object" && ledgerIso(lp.at) !== null) {
+    const at = new Date(Date.parse(lp.at)).toISOString();
+    // A PRIVATE newest place (a hangar, an apartment, a home) carries its time only: every older source is then stale.
+    if (lp.private === true) section.last_place = { words: "", at, private: true };
+    else if (ledgerText(lp.words, 60) !== "")
+      section.last_place = { words: ledgerText(lp.words, 60), at };
+  }
   return section;
 }
 

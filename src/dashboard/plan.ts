@@ -29,6 +29,11 @@ export interface Plan {
   price_points?: number[];
   price_points_for?: "buy" | "sell";
   price_points_label?: string;
+  /**
+   * Only for a route reached "from my position" (tradeSuggest.ts): the goods of the opening trade (step 1) that precedes the
+   * route. The run of that trade is the plan's own preface, so it does not count as a use of the plan (tradePlanAttached).
+   */
+  preamble?: string;
 }
 
 /**
@@ -45,6 +50,7 @@ const TEXT_FIELDS = [
   "note",
   "safety_note",
   "price_points_label",
+  "preamble",
 ] as const;
 
 export function cleanPlanText(value: unknown): string | undefined {

@@ -281,6 +281,12 @@ export interface TradeSection {
    * `paid_auec` (the purchase price paid, not the value) exists only with `includeBalance`. Absent when there is none.
    */
   ship_losses?: ShipLossView[];
+  /**
+   * The newest place the game log named (an inventory request), as words ("Stanton1 Lorville") and the time the log wrote it.
+   * NOT a live position (the game logs none), and only a public place family: never a hangar, apartment or home. No token
+   * leaves the server. Not an amount: it goes with or without the balance. Absent when there is none.
+   */
+  last_place?: { words: string; at: string; private?: true };
 }
 
 export interface ShipLossView {
@@ -317,6 +323,8 @@ export interface TradeInput {
   losses?: readonly ShipLoss[] | undefined;
   /** Names of goods by lower-case resource GUID (commodityNames.ts), for display only. Absent: none known. */
   commodityNames?: ReadonlyMap<string, string> | undefined;
+  /** The newest public place the log named (ledgerService.lastPlace(), words and time only). Absent: none known. */
+  lastPlace?: { words: string; at: string; private?: true } | undefined;
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -1034,6 +1042,7 @@ export function buildTradeSection(input: TradeInput): TradeSection {
     runs_total: views.length,
     ...(refusals.length > 0 ? { price_refusals: refusals } : {}),
     ...(losses.length > 0 ? { ship_losses: losses } : {}),
+    ...(input.lastPlace ? { last_place: input.lastPlace } : {}),
   };
 }
 

@@ -66,6 +66,24 @@ const NPC_NAME = /^(PU_|AIModule_|NPC_|Unmanned_)|_\d{8,}$/i;
 
 const place = (s: string | undefined): string | null => (s && PLACE.test(s) ? s : null);
 
+/**
+ * A word that makes a place private WHEREVER it sits in a segment, not only at its start ("PlayerHangar", "JohnsHome"): a place
+ * named after a player. Wider than the ship-loss rule above on purpose (that one stays as it was: a ship-loss zone is never
+ * shown as a position, so it keeps its behaviour); only a token that is going to be USED as a position goes through this one.
+ */
+const PRIVATE_WORD = /hangar|apartment|home|habitat|room|residence|quarters|cabin|locker|bunk/i;
+
+/**
+ * A place token of the game log that may be used, shown or kept: one of the game's own place families, with no private word
+ * anywhere in it (hangar, apartment, home, habitat, room, residence, quarters, cabin, locker, bunk: a place named after a
+ * player). null for anything else. The commerce parser accepts a wider token (an inventory location can be "Hangar_<a name>"):
+ * every consumer that USES a token goes through here first.
+ */
+export const publicPlaceToken = (s: string | undefined): string | null => {
+  const t = place(s);
+  return t && !PRIVATE_WORD.test(t) ? t : null;
+};
+
 /** "DRAK_Dragonfly_123456789012" -> { cls: "DRAK_Dragonfly", id: "123456789012" } (null parts when it is not that shape). */
 function splitInstance(token: string): { cls: string | null; id: string | null } {
   const m = token.match(SUFFIX);

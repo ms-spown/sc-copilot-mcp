@@ -850,6 +850,53 @@ searches again by itself after a short quiet time; before the first click no sea
   run, the habit or a size the player picked or typed, and shows the source on its card; it does not search by itself on
   a fleet-file hold or when no hold is known. A typed size is cut at 100 000 SCU and its spaces ("4 608") are ignored.
 
+- **"Partir de ma position".** A box under "Affiner", OFF by default. Ticked, the routes are reached FROM where the player
+  is, and each card says two steps: **step 1**, an opening trade from the player's place to the terminal where the route
+  loads (goods, SCU, destination, estimated gain; or "no profitable trip found, fly there empty"), then **step 2**, the
+  route. The planner (`position` in `uex_plan_trade`'s machinery, `src/providers/uex/opening.ts`) scores every route AND
+  every start of it (a round trip can start at either end; a one-way trade only where it loads) from the player's place:
+  one stop where the flight leaves, the flight, the route's own stops. The opening trade is the best price leg from a
+  terminal of that place to the start, sized by the hold and the budget, and its goods get their player-report check like
+  the route's. The ranking and the big figure are the FIRST cycle (the way to the route plus one cycle, step 1 included);
+  the route's own steady figures stay on the card, labelled "Route seule". The comparison is honest by construction: the
+  baseline is the SAME route reached with an empty flight, and in this model step 1 costs no extra time (one stop where
+  the flight leaves either way, the loading time of a big hold is not modelled), so what step 1 adds is its own profit;
+  what the ranking really decides is WHICH route to go for. Every figure is an estimate (UEX prices, few player reports, a
+  fixed-stop model, no fuel) and the card says so. Open chains A → B → C are not computed in this mode. "Appliquer comme
+  plan" still sets the plan only on the click, with the route (step 1 named in its note). A budget that is the player's
+  balance works as everywhere else (the figures stay on screen, nothing goes to the agent).
+  **Where the player is: the game gives NO live position.** The game log has no coordinate, the telemetry only a planet
+  frame, so the page never invents one. Three sources exist, each shown with its age, and an older place is "trop
+  ancien" and never used (limit: two hours, `positionFreshMs`):
+  1. what the player typed in "Départ" (his own word, always first; with the box ticked it is the position, not the
+     route's loading place, and no `origin` goes with it);
+  2. the newest PUBLIC place the game log named (an inventory request: "dernier lieu qu'il cite", not a live position).
+     The server keeps the token and the page only gets words and a time; only the game's own place families count
+     (a hangar, apartment or home can be named after a player: such a place is never used, and an older public one is not
+     used instead). The server turns it into a UEX place only when a segment of the token names a place exactly
+     (a star-system name or a code is not a place);
+  3. the end of the last COMPLETE run, when the plan in force was in force DURING that run (the commerce card's own rule:
+     dated, not received after the run's first purchase, not spent by an earlier run): the plan's selling terminal. A plan
+     applied afterwards for the next trip names where he is going, not where he is, and is never used.
+  A private newest place (a hangar, an apartment, a home) is never used and ships only its time: every older source is then
+  too old (the server and the page apply the same two-hour limit). In this mode every route and every start of it is scored
+  (all round trips, from either end, and every one-way trade), and the four buttons rank the FIRST cycle of what is shown
+  ("1er cycle depuis ta position"), not the route's steady state; the same route from its two ends is listed once, with the
+  better start. The plan applied from such a card remembers the goods of its step 1, so the run of that opening trade is its
+  preface and does not count as a use of the plan. Once a search has resolved the log's words to a UEX place, UEX's name is
+  shown. Names are matched with the spaces the game's tokens leave out opened ("NewBabbage", "Area18"); an orbit-level name
+  (a moon, a planet) is the whole orbit and is labelled with the orbit's own name.
+  The "Fiabilité" block of such a card counts step 1's prices with the route's (the level, the reasons, the ages; a step 1 with
+  no player report makes a reported route "partially reported"), names its reasons "Étape 1" and the route's own "Route", and the
+  "premier trajet de test" is the ROUTE's: step 1 stays a separate leg with its own quantity and prices (the card says so).
+  The place is the named city, station or outpost: its own terminals are "here" (they carry step 1, and a route that loads
+  there has no step 1), and the other places of the same UEX orbit (Everus Harbor next to Lorville) are a short hop away,
+  which can carry a step 1 (distances are orbit-level). A name that is the orbit's own (a moon, a planet) is the whole
+  orbit. The newest of 2 and 3 wins. With none, the player is asked ("Départ" opens, with the places the page knows as
+  suggestions). A place UEX cannot name (unknown, ambiguous, no orbit) is refused with a sentence, never guessed. "Et
+  ensuite ?" keeps its own origin and never uses this option. The option is the app-only `position` (the server's own
+  journal place: a flag, never a token) or `position_text` (a UEX name) of `sc_trade_suggest`, not with `origin`.
+
 - **Measured, estimated, heuristic.** Prices are UEX's, crowdsourced; today almost every option is tagged
   *estimation UEX · aucun relevé de joueur* (UEX counts no player report for a price), and the bar says so and offers
   the player-report option. Durations are ESTIMATES (quantum flight plus a fixed 8 minutes per stop); without a quantum

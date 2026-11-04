@@ -24,6 +24,9 @@
 //                 route Port Tressler > Area18 TDD (4 runs), Gold (2 runs, wide spread) and Agricium (8 runs); needs balance=1)
 //                 click=<button label>  (presses it once the page is up, e.g. click=Plus rentable; click=A|B presses A then B, 1.5 s apart; a label starting with @ matches a button by the start of its aria-label, e.g. click=Sessions ▾|Toutes les sessions (4)|@Archiver la session 3)
 //                 refine=1 (opens "Affiner")  card=1 (opens the details of the first card)  rel=1|all (opens the "Fiabilité" block of the first card, or of all)
+//                 tick=<label>  (ticks that checkbox of the form, e.g. tick=Partir de ma position)
+//                 place=<minutes>  (the game log named a public place that many minutes ago; with trade=story: the box "Partir de ma
+//                 position" then has a source. Ticking it and pressing a button shows the cards with step 1 and step 2)
 //                 holds=story  (the hold sizes the server would list: a size from saved runs and a fleet ship; use with specs=none
 //                 and trade=story to see the hold default of a player whose game is closed)
 //                 fw=<px>  (width of the frame in full screen, to see a narrow host at 360 px in a window that cannot be that narrow)
@@ -197,6 +200,16 @@ if (trade) {
     ? (include, nowMs) => movementsLedger(nowMs, scenario.epoch, include, TRADE_PLAN)
     : (include, nowMs) => tradeLedger(nowMs, scenario.epoch, include, trade, TRADE_PLAN);
 }
+// place=<minutes>: the game log named a public place ("Stanton1 Lorville") that many minutes ago (needs trade=...). The tick
+// box "Partir de ma position" then has a source; the made-up planner answers with openings (suggest fixtures).
+if (q.get("place") && scenario.ledger) {
+  const base = scenario.ledger;
+  const ago = Math.max(0, Number(q.get("place")) || 0) * 60000;
+  scenario.ledger = (include, nowMs) => {
+    const l = base(include, nowMs);
+    return l.trade ? { ...l, trade: { ...l.trade, last_place: { words: "Stanton1 Lorville", at: new Date(nowMs - ago).toISOString() } } } : l;
+  };
+}
 // calib=1: the calibration section the real server adds to the ledger, only for a poll that asked for the balance.
 if (q.get("calib")) {
   const g = (over) => ({ kind: "commodity", commodity: "Laranite", buy_terminal: null, sell_terminal: null, n: 4, confidence: "medium", gross_ratio: 0.737, gross_min: 0.65, gross_max: 0.83, gross_avg_auec: 140030, gross_planned_avg_auec: 190000, net_avg_auec: 144780, net_planned_avg_auec: 190000,high_variance: false, net_ratio: 0.762, net_n: 4, net_confidence: "medium", fee_rate: 0.137, fee_n: 4, last_run_age_days: 1, quantity_adjusted: 0, quantity_unknown: 0, goods_unverified: true, ...over });
@@ -255,9 +268,15 @@ if (q.get("balance")) frame.addEventListener("load", () => setTimeout(() => {
   if (b) b.click();
 }, 1200));
 // click=<label>, refine=1, card=1: drive the page the way the player would (same-origin frame).
-if (q.get("click") || q.get("refine") || q.get("card") || q.get("rel")) frame.addEventListener("load", () => setTimeout(() => {
+if (q.get("click") || q.get("refine") || q.get("card") || q.get("rel") || q.get("tick")) frame.addEventListener("load", () => setTimeout(() => {
   const doc = frame.contentDocument;
   if (q.get("refine")) doc.querySelectorAll("details.ta-refine").forEach((d) => { d.open = true; });
+  // tick=<label of a checkbox>: ticks it, e.g. tick=Partir de ma position
+  if (q.get("tick")) {
+    const box = [...doc.querySelectorAll("label.ta-check")].find((l) => l.textContent.startsWith(q.get("tick")));
+    const input = box && box.querySelector("input");
+    if (input) { input.checked = true; input.dispatchEvent(new Event("change", { bubbles: true })); }
+  }
   if (q.get("click")) {
     // click=A|B|C presses A, then (1.5 s later) B, then C: e.g. click=Terminer la session|Confirmer la fin
     q.get("click").split("|").forEach((label, i) => setTimeout(() => {
@@ -296,7 +315,15 @@ const server = http.createServer((req, res) => {
     res.end(body);
   };
   if (url.pathname === "/") return send(200, "text/html; charset=utf-8", HARNESS);
-  if (url.pathname === "/view.html") return send(200, "text/html; charset=utf-8", page.dashboardHtml({ balanceHidden: url.searchParams.get("hidden") === "1", token: "previewtoken0123456789abcdef012345" }));
+  if (url.pathname === "/view.html")
+    return send(
+      200,
+      "text/html; charset=utf-8",
+      page.dashboardHtml({
+        balanceHidden: url.searchParams.get("hidden") === "1",
+        token: "previewtoken0123456789abcdef012345",
+      }),
+    );
   if (url.pathname.startsWith("/dist/") && url.pathname.endsWith(".js")) {
     const file = path.resolve(root, "." + url.pathname);
     if (file.startsWith(dist + path.sep) && fs.existsSync(file)) {
