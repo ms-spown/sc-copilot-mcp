@@ -198,6 +198,28 @@ versions follow [Semantic Versioning](https://semver.org/).
   trade accompaniment line in rule 3, and a canary test (three questions and the expected behaviour) to check in
   Claude Desktop or Claude Code whether the instructions are honoured.
 
+
+### Fixed
+
+- **Low-severity findings left open by independent audits** (one fix each, each with a test).
+  - `scmdb_rank_hauling`, offers: `stop_minutes` is used to the second (0.4 was rounded to 0, 0.5 to 1; the answer's
+    `time_model.stop_minutes` shows the exact value). A route that takes 0 seconds (0 minutes a stop and a pickup that
+    is also the drop-off) has a null hourly figure with the reason "no travel time", is never the best single offer and
+    no longer makes `vs_best_single` 0 or NaN. A drop-off at a pickup other than the last one now costs the second pass
+    (it was left out). A wrong `quantum_speed_ms` is refused before any UEX or wiki request.
+  - `scmdb_rank_hauling`, templates: a merged family is flagged `deduced_fixed_quantity` if ANY merged variant is (the
+    fingerprint does not tell a `[288,288]` variant from a `[288,0]` one); a contract that can roll 0 SCU no longer
+    reports 0 trips.
+  - Saved sessions: the "total partiel" notice is also shown when only gross margins are known (the overlap case); a trade
+    run stored twice by an older build no longer counts twice in turnover, cost, fees and gross margin; orphan
+    `.stale-<pid>-<hex>` files of killed lock takeovers are swept like the `.tmp` files.
+  - `sc_trade_suggest`: a private (balance) budget cannot be probed through the cache. A private lookup is rate limited
+    like a run (one per interval, hit or miss), and a cached answer is only served to a caller in the same private
+    context. A typed budget keeps its free cache.
+  - `npm run check:sources` also probes the SCMDB hauling fields the extractor reads (`haulingOrders`, SCU, container
+    size) and UEX `container_sizes` (not run here).
+  - README (EN and FR): the `local` profile has 24 tools, not 12 (as `docs/TOOLS.md` says).
+
 ### Changed
 - Prompts `haul_plan` and `session_debrief` now say exactly what the answer must contain (a ranked list with the
   numbers, the assumptions, the estimate markers, one next action) and `session_debrief` reads the trade journal when

@@ -151,7 +151,10 @@ interface Timed {
 /** Time of one trip: a stop at each place, plus the flights between them; the best drop-off order. */
 function tripTime(pickups: Stop[], drops: Stop[], ctx: OffersContext): Timed | { reason: string } {
   const head = [...pickups].sort((a, b) => a.label.localeCompare(b.label));
-  const rest = drops.filter((d) => !head.some((p) => p.key === d.key));
+  // The route ends its pickups at the LAST one: only a drop-off there is already visited. A drop-off at an earlier
+  // pickup (the drop of A is the pickup of B, and B sorts first) needs a second pass, which costs a stop.
+  const lastPickup = head[head.length - 1];
+  const rest = drops.filter((d) => d.key !== lastPickup?.key);
   const cost = (path: Stop[]): number | { reason: string } => {
     let total = 0;
     for (let i = 1; i < path.length; i++) {
@@ -200,7 +203,14 @@ function tripTime(pickups: Stop[], drops: Stop[], ctx: OffersContext): Timed | {
   return { seconds: best!.seconds + route.length * ctx.model.stopSeconds, route, heuristic };
 }
 
-const perHour = (reward: number, seconds: number): number => Math.round(reward / (seconds / 3600));
+const NO_TRAVEL_TIME =
+  "no travel time: the route takes 0 seconds (same place, 0 minutes per stop), so a reward per hour is meaningless";
+/** Reward per hour, null when the time is not a positive number (never Infinity or NaN). */
+const perHour = (reward: number, seconds: number): number | null => {
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  const r = Math.round(reward / (seconds / 3600));
+  return Number.isFinite(r) ? r : null;
+};
 const minutesOf = (seconds: number): number => Math.round((seconds / 60) * 10) / 10;
 
 export function analyzeOffers(inputs: OfferInput[], ctx: OffersContext): OffersAnalysis {
@@ -242,11 +252,13 @@ export function analyzeOffers(inputs: OfferInput[], ctx: OffersContext): OffersA
           if (back.ok) seconds += back.seconds * (trips - 1);
           else reason = back.reason;
         }
+        const rph = reason === undefined ? perHour(o.reward, seconds) : null;
         alone =
           reason === undefined
             ? {
                 minutes: minutesOf(seconds),
-                reward_per_hour: perHour(o.reward, seconds),
+                reward_per_hour: rph,
+                ...(rph === null ? { reason: NO_TRAVEL_TIME } : {}),
                 route: t.route.map((s) => s.label),
                 trips,
                 ...(t.heuristic ? { heuristic_order: true } : {}),
@@ -270,7 +282,7 @@ export function analyzeOffers(inputs: OfferInput[], ctx: OffersContext): OffersA
   let best: OffersAnalysis["best_single"] = null;
   for (const o of offers) {
     const r = o.alone.reward_per_hour;
-    if (r !== null && (best === null || r > best.reward_per_hour)) {
+    if (r !== null && Number.isFinite(r) && (best === null || r > best.reward_per_hour)) {
       best = { offer: o.n, reward_per_hour: r };
     }
   }
@@ -320,9 +332,13 @@ export function analyzeOffers(inputs: OfferInput[], ctx: OffersContext): OffersA
             ...base,
             minutes: minutesOf(t.seconds),
             reward_per_hour: rph,
+            ...(rph === null ? { reason: NO_TRAVEL_TIME } : {}),
             route: t.route.map((s) => s.label),
             ...(t.heuristic ? { heuristic_order: true } : {}),
-            vs_best_single: best ? Math.round((rph / best.reward_per_hour) * 100) / 100 : null,
+            vs_best_single:
+              best && rph !== null && best.reward_per_hour > 0
+                ? Math.round((rph / best.reward_per_hour) * 100) / 100
+                : null,
           });
         }
       }

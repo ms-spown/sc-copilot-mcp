@@ -326,3 +326,64 @@ describe("Feature: bundles of offers that share a pickup orbit", () => {
     expect(exact.offers[0].alone.heuristic_order).toBeUndefined();
   });
 });
+
+describe("Feature: edge cases found by the audits", () => {
+  const zeroStop = ctx({
+    model: { quantumSpeedMs: SPEED, spoolSeconds: 6.9, stopSeconds: 0, localHopSeconds: HOP },
+  });
+
+  it("Given 0 minutes a stop and a pickup that is also the drop-off, Then there is no hourly figure, with a reason", () => {
+    const r = analyzeOffers(
+      [offer({ pickup: "Port Tressler", dropoffs: ["Port Tressler"] })],
+      zeroStop,
+    );
+    expect(r.offers[0].alone).toMatchObject({ minutes: 0, reward_per_hour: null });
+    expect(r.offers[0].alone.reason).toMatch(/no travel time/);
+    expect(JSON.stringify(r)).not.toMatch(/Infinity|NaN/);
+    expect(r.best_single).toBeNull();
+  });
+
+  it("Given such an offer next to a real one, Then it never becomes the best single and ratios stay finite", () => {
+    const r = analyzeOffers(
+      [
+        offer({ reward: 900_000, pickup: "Port Tressler", dropoffs: ["Port Tressler"] }),
+        offer({ reward: 100_000, pickup: "Port Tressler", dropoffs: ["Everus Harbor"] }),
+        offer({ reward: 50_000, pickup: "Port Tressler", dropoffs: ["Port Tressler"] }),
+      ],
+      zeroStop,
+    );
+    expect(r.best_single).toMatchObject({ offer: 2 });
+    expect(r.bundles.length).toBeGreaterThan(0);
+    for (const b of r.bundles) {
+      expect(b.vs_best_single === null || Number.isFinite(b.vs_best_single)).toBe(true);
+    }
+    // The bundle of the two zero-time offers has no time at all: null with the reason, not 0 or Infinity.
+    const both = r.bundles.find((b) => b.offers.join() === "1,3")!;
+    expect(both).toMatchObject({ reward_per_hour: null, vs_best_single: null });
+    expect(both.reason).toMatch(/no travel time/);
+  });
+
+  it("Given the drop of A is the pickup of B and B sorts first, Then the way back costs a stop", () => {
+    // Pickups sort as Everus Harbor, Lorville (one orbit). A: Everus > Lorville. B: Lorville > Everus.
+    const r = analyzeOffers(
+      [
+        offer({ pickup: "Lorville", dropoffs: ["Everus Harbor"] }),
+        offer({ pickup: "Everus Harbor", dropoffs: ["Lorville"] }),
+      ],
+      ctx(),
+    );
+    expect(r.bundles).toHaveLength(1);
+    // Load both, drop at the last pickup (free), go back for the other drop: 3 stops and 2 local hops.
+    expect(r.bundles[0].route).toEqual(["Everus Harbor", "Lorville", "Everus Harbor"]);
+    const secs = 3 * STOP + 2 * HOP;
+    expect(r.bundles[0].minutes).toBe(Math.round((secs / 60) * 10) / 10);
+  });
+
+  it("Given a single pickup that is also a drop-off, Then that drop is not counted twice (unchanged)", () => {
+    const r = analyzeOffers(
+      [offer({ pickup: "Port Tressler", dropoffs: ["Port Tressler", "Everus Harbor"] })],
+      ctx(),
+    );
+    expect(r.offers[0].alone.route).toEqual(["Port Tressler", "Everus Harbor"]);
+  });
+});

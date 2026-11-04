@@ -132,7 +132,7 @@ at startup instead of listing nothing. Scoping is for speed, not security: an un
 | **core**  | 14    | The everyday copilot: status, ships, trade basics, missions, patch notes, your fleet |
 | **trade** | 23    | The full UEX market toolbox, with refining, shop items, the player market and hauling contracts |
 | **data**  | 16    | Reference data, crafting, mining, patch history, wiki browsing                       |
-| **local** | 12    | Your game log, your fleet, your own data files                                       |
+| **local** | 24    | Your game log, live telemetry and sessions, your fleet, your own data files          |
 
 When to use which is in [docs/USING_WITH_CLAUDE.md](docs/USING_WITH_CLAUDE.md); each tool's description says
 what it returns and its limits.

@@ -253,12 +253,13 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
     const parts: string[] = [];
     if (money.net_source === "trips" && money.gross_only_trips > 0 && !grossOnly)
       parts.push(money.gross_only_trips + " en marge brute, hors frais");
-    if (money.overlap_excluded > 0)
-      parts.push(
-        "total partiel : " +
+    const overlapNote =
+      money.overlap_excluded > 0
+        ? "total partiel : " +
           money.overlap_excluded +
-          " contrat(s) non compté(s) (chevauche(nt) une cargaison, déjà comptée)",
-      );
+          " contrat(s) non compté(s) (chevauche(nt) une cargaison, déjà comptée)"
+        : "";
+    if (overlapNote) parts.push(overlapNote);
     kpis.push({
       id: "net",
       label:
@@ -272,7 +273,7 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
         net === null
           ? "inconnu pour l’instant"
           : grossOnly
-            ? "revenu − coût, hors frais"
+            ? "revenu − coût, hors frais" + (overlapNote ? " · " + overlapNote : "")
             : parts.length > 0
               ? parts.join(" · ")
               : money.net_source === "trips" && money.net_complete === false

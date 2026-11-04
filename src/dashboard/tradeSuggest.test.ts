@@ -819,3 +819,39 @@ describe("Feature: the tool, as the registry lists and runs it", () => {
     expect(plan).not.toHaveBeenCalled();
   });
 });
+
+describe("Feature: the cache cannot be used to guess a private budget (audit leftover)", () => {
+  const priv = (budget: number) => ({ cargo_scu: 100, budget, budget_private: true });
+
+  it("Given a private answer in the cache, Then a caller without the private flag never gets it, even with the same budget", async () => {
+    const { ask, requests, clock } = service();
+    await ask(priv(1_234_561));
+    clock.t += SUGGEST_MIN_INTERVAL_MS + SECOND;
+    const typed = (await ask({ cargo_scu: 100, budget: 1_234_561 })) as any;
+    expect(requests).toHaveLength(2); // a fresh run, not the private entry
+    expect(typed).toMatchObject({ state: "ok", cached: false, private: false });
+    expect(typed.options[0].cost).toBeDefined();
+  });
+
+  it("Given a private lookup, Then another one inside the interval is refused whatever the cache holds (one guess per interval)", async () => {
+    const { ask, requests, clock } = service();
+    await ask(priv(1_234_561));
+    clock.t += 2 * SECOND;
+    // The exact same private request would be a cache hit: it is answered as throttled, so a hit is not observable.
+    expect(await ask(priv(1_234_561))).toMatchObject({ state: "throttled" });
+    expect(await ask(priv(7_654_321))).toMatchObject({ state: "throttled" });
+    expect(requests).toHaveLength(1);
+    // After the interval the legitimate caller gets its cached answer again.
+    clock.t += SUGGEST_MIN_INTERVAL_MS;
+    expect(await ask(priv(1_234_561))).toMatchObject({ state: "ok", cached: true });
+    expect(requests).toHaveLength(1);
+  });
+
+  it("Given a typed budget, Then the cache stays free of the private limit", async () => {
+    const { ask, requests, clock } = service();
+    await ask({ cargo_scu: 100, budget: 500_000 });
+    clock.t += 2 * SECOND;
+    expect(await ask({ cargo_scu: 100, budget: 500_000 })).toMatchObject({ cached: true });
+    expect(requests).toHaveLength(1);
+  });
+});

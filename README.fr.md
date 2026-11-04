@@ -136,7 +136,7 @@ listé reste appelable.
 | **core**  | 14     | Le copilote au quotidien : statut, vaisseaux, bases du commerce, missions, notes de patch, flotte |
 | **trade** | 23     | La boîte à outils complète du marché UEX, avec raffinage, objets de boutique, marché des joueurs et contrats de transport |
 | **data**  | 16     | Données de référence, artisanat, minage, historique des patchs, navigation sur le wiki            |
-| **local** | 12     | Votre journal de jeu, votre flotte, vos propres fichiers de données                               |
+| **local** | 24     | Votre journal de jeu, la télémétrie et les sessions, votre flotte, vos propres fichiers de données |
 
 Le choix des profils et instructions recommandées est détaillé dans
 [docs/USING_WITH_CLAUDE.fr.md](docs/USING_WITH_CLAUDE.fr.md) ; la description de chaque outil précise ce qu'il renvoie
