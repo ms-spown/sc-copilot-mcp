@@ -61,9 +61,28 @@ export class FakeNode {
   get firstChild(): FakeNode | null {
     return this.children[0] ?? null;
   }
+  /** Like the browser: a node has one parent, so adding it somewhere takes it from where it was. */
+  private detach(child: FakeNode): void {
+    const from = child.parentNode;
+    if (from) {
+      from.children = from.children.filter((c) => c !== child);
+      child.parentNode = null;
+    }
+  }
   appendChild(child: FakeNode): FakeNode {
     FakeNode.writes++;
+    this.detach(child);
     this.children.push(child);
+    child.parentNode = this;
+    return child;
+  }
+  /** `before` null (or not a child of this node): at the end, as in the browser. */
+  insertBefore(child: FakeNode, before: FakeNode | null): FakeNode {
+    FakeNode.writes++;
+    this.detach(child);
+    const at = before ? this.children.indexOf(before) : -1;
+    if (at < 0) this.children.push(child);
+    else this.children.splice(at, 0, child);
     child.parentNode = this;
     return child;
   }

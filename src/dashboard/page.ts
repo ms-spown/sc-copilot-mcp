@@ -2,6 +2,7 @@ import { CALIBRATION_VIEW_FUNCTIONS } from "./calibrationPanel.js";
 import { CALIBRATION_CSS } from "./calibrationStyles.js";
 import { HEALTH_VIEW_FUNCTIONS } from "./healthPanel.js";
 import { HEALTH_CSS } from "./healthStyles.js";
+import { LAYOUT_VIEW_FUNCTIONS } from "./layoutOrder.js";
 import { LEDGER_VIEW_FUNCTIONS } from "./ledgerPanel.js";
 import { LEDGER_CSS } from "./ledgerStyles.js";
 import { SESSION_VIEW_FUNCTIONS } from "./sessionPanel.js";
@@ -107,6 +108,7 @@ export function rawViewScript(): string {
     ...CALIBRATION_VIEW_FUNCTIONS,
     ...HEALTH_VIEW_FUNCTIONS,
     ...SHORTCUTS_VIEW_FUNCTIONS,
+    ...LAYOUT_VIEW_FUNCTIONS,
   ];
   const functions = all.map((f) => f.toString()).join("\n");
   const names = all.map((f) => f.name).join(", ");

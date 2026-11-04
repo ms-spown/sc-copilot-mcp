@@ -517,6 +517,18 @@ export function tradeInlineText(
 }
 
 /**
+ * Is a trip under way, in the journal's own words: the newest run is open or partial and no ship loss ended it? (The line that
+ * says where it goes is shown in full screen only for that case, when the page is in its flight order.)
+ */
+export function tradeIsUnderWay(trade: any): boolean {
+  if (!trade || trade.source !== "journal" || !trade.runs || trade.runs.length === 0) return false;
+  const r = trade.runs[0];
+  if (Array.isArray(trade.ship_losses) && trade.ship_losses.some((l: any) => l.run_id === r.id))
+    return false;
+  return r.stage === "open" || r.stage === "partial";
+}
+
+/**
  * Builds the card and the compact line once; `render(ctx)` then only changes text, attributes and custom properties.
  * svgNs is the SVG namespace name, handed in by the View (one place names it).
  * ctx: { trade, plan, showBalance, fullscreen, balance, baseline, decomposition }
@@ -747,6 +759,10 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
 
   add(root, head, message, hero, warn, slot, flow, duo, courseBox, more);
 
+  // What the last render decided, for the page's fold bar (viewApp.ts): is the card on screen, and its one-line summary.
+  let lastVisible = false;
+  let lastSummary = "";
+
   function render(ctx: any) {
     const trade = ctx && ctx.trade ? ctx.trade : null;
     const showBalance = !!(ctx && ctx.showBalance);
@@ -757,12 +773,15 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     const run = trade && trade.runs && trade.runs.length > 0 ? trade.runs[0] : null;
     const m = run && showBalance ? run.money : null;
 
-    const inline = full
-      ? ""
-      : tradeInlineText(L, trade, showBalance, plan, ctx && ctx.now, {
-          conn: ctx && ctx.conn,
-          planAt: ctx && ctx.planAt,
-        });
+    // Full screen has the card; in its flight order the line of a trip under way stands above the instruments (the same text).
+    const flightLine = full && !!(ctx && ctx.flightLine) && tradeIsUnderWay(trade);
+    const inline =
+      full && !flightLine
+        ? ""
+        : tradeInlineText(L, trade, showBalance, plan, ctx && ctx.now, {
+            conn: ctx && ctx.conn,
+            planAt: ctx && ctx.planAt,
+          });
     setText(line, inline);
     show(line, inline !== "");
 
@@ -771,6 +790,8 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     const visible = full && (!bare || !!(ctx && ctx.actionsEnabled));
     show(root, visible);
     show(slot, visible && !!(ctx && ctx.actionsEnabled));
+    lastVisible = visible;
+    lastSummary = "";
     if (!visible) return;
 
     // The run a destroyed ship interrupted: it will not be finished, whatever the stage says ("rien vendu", "pas terminé").
@@ -789,7 +810,8 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       (run.stage === "open" || run.stage === "partial") &&
       tradeRunIdle(run, ctx && ctx.now, ctx && ctx.conn);
     const headPlan = plan && (!run || (att && att.ok && !left)) ? plan : null;
-    setText(route, tradeRouteText(L, headPlan, run));
+    const routeText = tradeRouteText(L, headPlan, run);
+    setText(route, routeText);
     const metaParts: string[] = [];
     const scu =
       run && run.scu_bought !== null
@@ -819,10 +841,16 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     if (headPlan && headPlan.note) metaParts.push(headPlan.note);
     if (att && !att.ok && att.note) metaParts.push(att.note);
     setText(meta, metaParts.join(" · "));
-    setText(
-      stage,
-      lost ? "Trajet interrompu" : run ? tradeStageLabel(run.stage) : plan ? "Plan seul" : "",
-    );
+    const stageText = lost
+      ? "Trajet interrompu"
+      : run
+        ? tradeStageLabel(run.stage)
+        : plan
+          ? "Plan seul"
+          : "";
+    setText(stage, stageText);
+    // What the folded card says in one line (no amount: the stage and the route only).
+    lastSummary = bare ? "" : [stageText, routeText].filter((t: string) => t !== "").join(" · ");
     show(stage, !bare);
     setAttr(stage, "data-stage", run ? run.stage : "plan");
 
@@ -1368,7 +1396,15 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
   }
 
   // `more` is the body of the folded details: blocks of other modules (the balance movements) are added to it.
-  return { line, card: root, slot, more: moreBody, render };
+  return {
+    line,
+    card: root,
+    slot,
+    more: moreBody,
+    render,
+    visible: () => lastVisible,
+    summary: () => lastSummary,
+  };
 }
 
 /** The functions of this file, in the order they are serialised (page.ts). */
@@ -1392,6 +1428,7 @@ export const TRADE_VIEW_FUNCTIONS = [
   tradeAgoLong,
   tradeRunIdle,
   tradeShopContradicts,
+  tradeIsUnderWay,
   tradePlanAttached,
   tradePlanFacts,
   tradeWaterfall,

@@ -29,6 +29,9 @@ async function at(seconds: number, options: { fullscreen?: boolean } = {}) {
       method: "ui/notifications/host-context-changed",
       params: { displayMode: "fullscreen" },
     });
+    // These suites are about the default order of full screen: the order button (auto, then commerce) pins it. The flight
+    // order, where the zone is limited to what has a key, has its own suite (layoutOrder.page.test.ts).
+    findAll(w.root, (n) => n.tag === "button" && n.textContent.startsWith("Ordre :"))[0]!.click();
   }
   await w.advance(seconds * SECOND);
   return w;
