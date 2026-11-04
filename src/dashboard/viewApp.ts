@@ -375,7 +375,15 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       () => requestMode(displayMode === "fullscreen" ? "inline" : "fullscreen"),
       "primary",
     );
-    add(R.topActions, R.age, R.btnAnalyse, R.btnMode);
+    // The health strip (healthPanel.ts): what is wired and what is missing. Its "?" button sits in the header.
+    R.health = L.healthPanel(doc, L, {
+      get: storageGet,
+      set: storageSet,
+      copy: copyText,
+      say: (text: string) => feedback(text),
+      later: (fn: () => void, ms: number) => win.setTimeout(fn, ms),
+    });
+    add(R.topActions, R.age, R.btnAnalyse, R.health.help, R.btnMode);
     add(R.top, R.status, R.verdict, R.topActions);
     R.toastTop = el("div", "toast toast-top", "");
     R.toastTop.setAttribute("aria-hidden", "true");
@@ -927,6 +935,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.toastTop,
       R.supersede,
       R.notice,
+      R.health.root,
       R.ctx,
       R.alerts,
       R.pinbar,
@@ -972,7 +981,11 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       setText(R.noticeText, needsNotice ? info.detail : "");
       setText(R.noticeCmd, info.help || "");
     }
-    show(R.noticeCmd, !!info.help && !retired);
+    // The health strip carries the same command with a copy button: say it once.
+    show(
+      R.noticeCmd,
+      !!info.help && !retired && !(info.id === "off" && R.health.ownsTelemetryFix()),
+    );
     show(R.btnResume, retired);
     show(R.supersede, isFollower() && !retired);
     // The verdict at a glance
@@ -1431,6 +1444,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const conds = L.conditionItems(view.poll, now, view.receivedAt, 12)
       .filter((c: any) => c.id !== "in_quantum" && c.id !== "in_jump")
       .slice(0, R.condList.length);
+    R.health.render(view.poll, { showBalance, now, link: view.link });
     const info = renderStatus(now, conds);
     streamLive = !info.grey;
     renderContext(now);
@@ -1766,9 +1780,14 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       const sessions = L.sessionChannelClean(
         event.data && event.data.poll ? event.data.poll.sessions : null,
       );
+      // The health codes are rebuilt too (cleanPoll leaves them out, like the sections above).
+      const health = L.healthNormalize(
+        event.data && event.data.poll ? event.data.poll.health : null,
+      );
       const shared = Object.assign(
         {},
         m.poll,
+        health ? { health } : {},
         sheet ? { specs: sheet } : {},
         ledger ? { ledger } : {},
         sessions ? { sessions } : {},
@@ -1812,6 +1831,56 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       setText(R.toast, "");
       setText(R.toastTop, "");
     }, 6000);
+  }
+
+  /**
+   * What this View remembers about the player, best effort and never needed: one flag, "the help was read". Reaching the
+   * storage may throw (an opaque origin, blocked site data): then nothing is remembered and the page works the same.
+   */
+  function storageGet(key: string): string | null | undefined {
+    try {
+      return win.localStorage.getItem(key);
+    } catch {
+      return undefined; // unavailable (not "empty"): the caller must not count on remembering anything
+    }
+  }
+  function storageSet(key: string, value: string) {
+    try {
+      win.localStorage.setItem(key, value);
+    } catch {
+      /* not available here */
+    }
+  }
+
+  /** Copies a command. The clipboard may be refused in the host's sandbox: then the text is selected and the player copies it. */
+  function copyText(text: string, node: any): Promise<boolean> {
+    const select = () => {
+      try {
+        const sel = win.getSelection();
+        const range = doc.createRange();
+        range.selectNodeContents(node);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } catch {
+        /* the text stays selectable by hand (user-select: all) */
+      }
+    };
+    try {
+      const clip = win.navigator && win.navigator.clipboard;
+      if (clip && typeof clip.writeText === "function") {
+        return Promise.resolve(clip.writeText(text)).then(
+          () => true,
+          () => {
+            select();
+            return false;
+          },
+        );
+      }
+    } catch {
+      /* falls through to the selection */
+    }
+    select();
+    return Promise.resolve(false);
   }
 
   async function sendAction(kind: string) {

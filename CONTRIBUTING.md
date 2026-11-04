@@ -153,8 +153,13 @@ project's licence and confirm that you have the right to do so.
 
 ```bash
 npm ci --ignore-scripts
-npm run lint && npm run format:check && npm run typecheck && npm test && npm run build && npm run check:docs && npm run check:page-size && npm run audit:prod
+npm run lint && npm run format:check && npm run typecheck && npm test && npm run build && npm run check:docs && npm run check:page-size && npm run test:built && npm run audit:prod
 ```
+
+`npm test` assembles the dashboard page from vitest's transform of the sources; the host receives the page assembled from
+the compiled `dist/dashboard/page.js` (functions without their indentation, see `compact` in `src/dashboard/page.ts`).
+`npm run test:built` (after the build) runs the `src/dashboard` tests against that compiled page, so the two cannot
+drift apart unnoticed. CI runs it after the build.
 
 Generated files: after changing a tool run `npm run golden:update` and `npm run docs:tools` (tests fail if you
 forget).

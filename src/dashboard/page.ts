@@ -1,3 +1,5 @@
+import { HEALTH_VIEW_FUNCTIONS } from "./healthPanel.js";
+import { HEALTH_CSS } from "./healthStyles.js";
 import { LEDGER_VIEW_FUNCTIONS } from "./ledgerPanel.js";
 import { LEDGER_CSS } from "./ledgerStyles.js";
 import { SESSION_VIEW_FUNCTIONS } from "./sessionPanel.js";
@@ -25,6 +27,13 @@ import { VIEW_CSS } from "./viewStyles.js";
 const CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'";
 
+/**
+ * Indentation only costs bytes in the page, so each function loses its leading blanks. A function that holds a template
+ * literal is left as written: there the indentation could be part of a string.
+ */
+export const compact = (source: string): string =>
+  source.includes("`") ? source : source.replace(/^[ \t]+/gm, "");
+
 export function viewScript(): string {
   // viewLogic.ts first, then the ship sheet module (specsView.ts), then the transport ledger panel
   // (ledgerPanel.ts), the commerce card (tradePanel.ts) and its action bar slot (tradeActions.ts): one scope, one object L.
@@ -36,15 +45,16 @@ export function viewScript(): string {
     ...TRADE_ACTIONS_VIEW_FUNCTIONS,
     ...SESSION_VIEW_FUNCTIONS,
     ...MOVEMENTS_VIEW_FUNCTIONS,
+    ...HEALTH_VIEW_FUNCTIONS,
   ];
-  const functions = all.map((f) => f.toString()).join("\n");
+  const functions = all.map((f) => compact(f.toString())).join("\n");
   const names = all.map((f) => f.name).join(", ");
   return [
     '"use strict";',
     "(function () {",
     functions,
     `var L = { ${names} };`,
-    `var dashboardMain = ${dashboardMain.toString()};`,
+    `var dashboardMain = ${compact(dashboardMain.toString())};`,
     "dashboardMain(window, document, L);",
     "})();",
   ].join("\n");
@@ -63,7 +73,7 @@ export function dashboardHtml(): string {
     '<meta name="color-scheme" content="light dark">',
     `<meta http-equiv="Content-Security-Policy" content="${CSP}">`,
     "<title>Tableau de bord en direct</title>",
-    `<style>${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}${TRADE_CSS}${TRADE_ACTIONS_CSS}${SESSION_CSS}${MOVEMENTS_CSS}</style>`,
+    `<style>${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}${TRADE_CSS}${TRADE_ACTIONS_CSS}${SESSION_CSS}${MOVEMENTS_CSS}${HEALTH_CSS}</style>`,
     "</head>",
     "<body>",
     '<div id="app" data-stream="init" data-mode="inline" data-grey="1"></div>',

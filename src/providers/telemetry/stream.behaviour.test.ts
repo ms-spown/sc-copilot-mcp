@@ -193,12 +193,9 @@ describe("Feature: reading the stream from the game", () => {
         async () => (await s.status()).reconnects >= 0 && g.connections() >= 2,
         "reconnect",
       );
-      // The new connection exists before the fake game has registered its stream: a frame sent right now would
-      // go nowhere. The real game sends 17 a second, so keep sending until the reader reports live.
-      await waitFor(async () => {
-        g.send(aFrame(1));
-        return (await s.status()).state === "live";
-      }, "live again");
+      // A frame sent before the fake game has registered the new stream waits for it (see FakeGame.send).
+      g.send(aFrame(1));
+      await waitFor(async () => (await s.status()).state === "live", "live again");
       expect((await s.status()).reconnects).toBe(1);
     });
   });

@@ -16,6 +16,21 @@ import { waitFor } from "../../testing/waitFor.js";
  * test encoder: no real frame, no real game.
  */
 
+/** Counts the fields the wire reader hands to the decoder (transparent otherwise): the work done, not the time. */
+const fieldReads = vi.hoisted(() => ({ n: 0 }));
+vi.mock("./wire.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./wire.js")>();
+  return {
+    ...real,
+    readFields: function* (buf: Uint8Array) {
+      for (const field of real.readFields(buf)) {
+        fieldReads.n++;
+        yield field;
+      }
+    },
+  };
+});
+
 const FAST = { retryMs: [20, 20, 40], connectTimeoutMs: 500 };
 
 const cleanup: (() => Promise<void>)[] = [];
@@ -52,8 +67,13 @@ describe("Feature: repeated fields are capped", () => {
     // "Fast" is a property of the code, not of the clock: the decoder reads fields lazily and stops at the budget
     // (5000), it does not walk the 500 000 entries first. The message names the budget, so a decoder that read
     // them all and failed for another reason would not pass.
+    fieldReads.n = 0;
     expect(() => decodeFrame(message)).toThrow(WireError);
     expect(() => decodeFrame(message)).toThrow(/more than 5000 fields/);
+    // Two calls, each stopped at the budget: a decoder that walked all 500 000 entries before throwing would read
+    // 1 000 000 fields here (and a slow one would be caught by the count, not by a clock).
+    expect(fieldReads.n).toBeGreaterThan(MAX_FIELDS_PER_FRAME); // the counter is wired
+    expect(fieldReads.n).toBeLessThanOrEqual(2 * (MAX_FIELDS_PER_FRAME + 2));
   });
 
   it("Given 200 weapons, 40 countermeasures and 100 game events in one frame, Then 64, 16 and 32 are kept and the surplus is noted", () => {

@@ -54,6 +54,8 @@ jobs:
       - run: npm run check:docs
       # The dashboard page as it ships (from dist/): fails over its size budget.
       - run: npm run check:page-size
+      # The dashboard tests again, against the page as the host receives it (compiled, indentation dropped).
+      - run: npm run test:built
 
   audit:
     name: Dependency audit

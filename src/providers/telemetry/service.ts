@@ -296,6 +296,11 @@ export class TelemetryService {
     return this.balancePoints.map((p) => ({ ...p }));
   }
 
+  /** What Game.log said at the last look (refreshed at most every 15 s while no frame arrives), or null. */
+  get gameHint(): GameLogHint | null {
+    return this.hint;
+  }
+
   private async refreshHint(): Promise<void> {
     if (!this.options.gameLogHint || this.now() - this.hintAt < 15_000) return;
     this.hintAt = this.now();

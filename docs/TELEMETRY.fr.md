@@ -394,6 +394,55 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   dans le résumé automatique que la page peut envoyer au modèle, ni dans les messages fixes des boutons, ni sur le
   canal entre tableaux de bord (voir plus bas), avec une exception : le bouton « Route avec mon solde et ce vaisseau »
   l'envoie dans un message, le dit dans le texte, et seulement quand vous l'appuyez.
+- **Bandeau de santé : ce qui est branché, ce qui manque.** Un nouveau joueur qui installe le serveur voit un tableau
+  de bord qui en montre silencieusement moins qu'il ne pourrait : sans le journal du jeu, pas d'état de connexion (un
+  « renvoyé pour inactivité » reste invisible), pas de journal de commerce, pas de grand livre et des chiffres de session
+  plus fragiles ; télémétrie désactivée, rien du tout ; un jeu lancé sans la variable côté jeu n'affiche que « Jeu lancé
+  sans télémétrie ». La page le dit maintenant elle-même. Elle est **invisible tant que rien n'est à faire** ; quand
+  quelque chose manque, un bloc compact sous l'en-tête le nomme, dit ce qu'on perd et donne le remède exact, dans une
+  boîte que l'on copie avec un bouton (le presse-papiers peut être refusé dans le bac à sable de l'hôte : le texte est
+  alors sélectionné et la page dit d'appuyer sur Ctrl+C). Le bouton « ? » de l'en-tête ouvre à tout moment la liste
+  complète, avec « Tout est branché » (ou « Rien à régler pour l'instant » quand une ligne attend seulement le jeu) et
+  la légende en dessous. Les huit lignes :
+  1. **Télémétrie** : son état et, quand elle est désactivée, `npm run telemetry -- enable` (une simulation : ajoutez
+     `--apply`).
+  2. **Journal du jeu** (`SC_INSTALL_DIR` ou `SC_GAME_LOG_PATH`) : non configuré, configuré mais illisible (le fichier
+     n'existe qu'après un premier lancement, ou le dossier est faux), ou lu. La page montre le NOM du réglage et une
+     courte étiquette fixe (`LIVE/Game.log`, `Game.log`, `custom`), jamais un chemin et jamais une valeur : le serveur
+     construit l'étiquette et la page n'accepte que cette liste. Le remède est la ligne à ajouter à la main dans le
+     bloc `env` de l'entrée `sc-copilot` (`npm run install:claude` remplacerait ce bloc, il n'est donc pas proposé).
+  3. **La ligne d'enregistrement** du service de télémétrie dans `Game.log` : vue, non vue (le jeu a été lancé sans
+     `GRPC_CLIENT_SERVER_ENABLED` : quittez complètement le RSI Launcher, icône de la zone de notification comprise),
+     ou pas encore vérifiable.
+  4. **État de connexion** et 5. **journal de commerce et grand livre** : ils ont besoin du journal ; ils renvoient à la
+     ligne 2 au lieu de la répéter.
+  6. **Sessions enregistrées** : actives (avec l'heure de la dernière écriture de ce processus serveur), désactivées par
+     `SC_SESSIONS=off` (un choix délibéré : listé derrière le « ? », pas un rappel), en lecture seule (fichier plus
+     récent) ou dégradées (une écriture a échoué, les sessions restent en mémoire).
+  7. **Solde** : ce que « Afficher le solde » révèle (le montant, sur cet écran seulement ; rien dans le résumé
+     automatique ni sur le canal entre tableaux de bord, et seul le bouton de route l'envoie, quand vous l'appuyez) et
+     que les sessions enregistrées gardent leurs chiffres dans un fichier local.
+  8. **Fraîcheur des données** : non mesurée ici (il faudrait les sources, donc le réseau) ; la ligne renvoie à
+     `sc_data_status`.
+
+  Le serveur ajoute à la réponse du poll un petit objet `health` : des codes (`log` : `off`, `unchecked`, `ok`,
+  `unreadable` ; `registration` ; `sessions`), le nom du réglage, l'étiquette fixe et l'heure de la dernière écriture. Il
+  est construit à partir de ce que le serveur détient déjà (l'état de la télémétrie, l'indice de journal que le service
+  garde, la réponse du suivi de connexion, la barre de session) : **aucun nouveau réseau, aucune nouvelle lecture de
+  fichier** (télémétrie désactivée, rien n'est lu et le journal est annoncé « non vérifié »), aucun montant, rien qui
+  dérive du solde, et il ne participe pas aux empreintes des sections. Chaque phrase et chaque commande est écrite dans
+  la page ; la page reconstruit l'objet champ par champ et le rejette en entier si un code `log`, `registration` ou `sessions` est inconnu (un nom de réglage ou une étiquette inconnus est écarté seul). `npm run doctor`
+  reste le contrôle approfondi (il lit la config de Claude, la variable utilisateur et le port) ; la page ne le
+  duplique pas.
+- **Comment lire le tableau de bord (la légende).** Montrée à la première ouverture et derrière le « ? » ensuite :
+  **Mesuré** (envoyé par le jeu à l'instant), **Calculé** (somme ou différence de valeurs mesurées), **Estimé** (une
+  tendance sur les dernières minutes, avec sa fenêtre), **Probable** (déduit d'indices, jamais confirmé par le jeu),
+  **Inconnu** (non envoyé par le jeu : un tiret, jamais un zéro inventé). Chaque terme a un glyphe, et chaque état est
+  écrit autant que coloré. « Grisé » veut dire que les valeurs ne sont plus à jour, « non vérifié » que le champ n'a
+  jamais été vu fonctionner.
+- **Ce dont la page se souvient.** Un seul drapeau dans le stockage propre au navigateur, `sc-copilot-help-seen` :
+  « la légende a été lue ». C'est au mieux et jamais nécessaire : quand le stockage est indisponible (un bac à sable) la
+  page fonctionne pareil, et la légende ne s'ouvre d'elle-même que lorsque quelque chose est à régler (sa fermeture est alors gardée en mémoire pour la session). Le serveur ne stocke rien de nouveau sur le joueur.
 - **Ce que font les boutons.** « Analyser ma situation », « Route avec mon solde et ce vaisseau » et « Bilan de
   session » publient un court message fixe dans la conversation, comme si vous l'aviez tapé, demandant à Claude
   d'utiliser `sc_live_state` et `sc_live_events` ; une confirmation apparaît à côté des boutons et s'efface seule.
@@ -712,7 +761,7 @@ plantage du jeu et après un redémarrage du PC.
   de page : chaque conversation a la sienne, donc deux conversations ne verraient pas la même session ; l'hôte peut le
   vider à tout moment ; et les outils du modèle ne peuvent pas le lire. Un petit fichier JSON écrit par ce serveur est
   partagé par toutes les conversations et tous les processus du serveur, survit à l'hôte, et il est lu de la même façon
-  par les outils et par le tableau de bord. La page ne garde rien dans le stockage du navigateur.
+  par les outils et par le tableau de bord. La page ne garde aucune donnée de session dans le stockage du navigateur : son seul drapeau est `sc-copilot-help-seen` (la légende a été lue).
 - **Où.** `sessions.json` dans le dossier de données de l'utilisateur (Windows : `%LOCALAPPDATA%\sc-copilot-mcp\data`).
   `SCMCP_SESSIONS_FILE` le déplace ; `SCMCP_DATA_DIR` déplace le dossier.
 - **Quand il existe.** Seulement avec `SC_TELEMETRY=on`. Télémétrie désactivée, rien n'est créé, lu ni surveillé.
@@ -892,6 +941,17 @@ cela, pour autant que nous puissions l'établir.
 | `live` mais aucune donnée de vaisseau | Vous êtes à pied ou dans un véhicule terrestre. C'est normal | Asseyez-vous dans un vaisseau. Les données du vaisseau arrivent 6 à 9 secondes plus tard |
 | `incompatible` | Un patch a changé le schéma | Mettez le serveur à jour ; signalez-le avec la version du jeu |
 | Port 2942 utilisé par autre chose | Un autre client de télémétrie n'est pas le problème (plusieurs sont permis) ; un autre programme, si | `npm run telemetry -- status` et vos outils habituels pour les ports |
+
+Le bandeau de santé du tableau de bord (voir [Tableau de bord en direct](#tableau-de-bord-en-direct)) liste ce qui
+manque avec son remède :
+
+| Ce que dit le bandeau | Que faire |
+| --- | --- |
+| « Télémétrie du jeu : Désactivée côté serveur » | `npm run telemetry -- enable`, puis ajoutez `--apply` et redémarrez Claude Desktop |
+| « Journal du jeu (Game.log) : Non configuré » | Ajoutez `SC_INSTALL_DIR` (le dossier qui contient `Game.log`) au bloc `env` de l'entrée `sc-copilot`, redémarrez Claude Desktop. Sans lui : pas d'état de connexion, pas de journal de commerce, pas de grand livre |
+| « Journal du jeu : illisible » | `Game.log` n'existe qu'après un premier lancement du jeu ; sinon corrigez le dossier. `npm run doctor` pour le contrôle complet |
+| « Jeu lancé sans la télémétrie » | Quittez complètement le RSI Launcher (icône de la zone de notification comprise), relancez-le, lancez le jeu. `npm run telemetry -- status` montre les deux interrupteurs |
+| « Sessions enregistrées : À régler » | Lecture seule : mettez le serveur à jour. Écriture échouée : libérez de l'espace disque ou corrigez les droits du dossier de données (ou `SCMCP_SESSIONS_FILE`) |
 
 `npm run doctor` indique les deux interrupteurs, si le launcher doit être relancé, et l'état du port.
 

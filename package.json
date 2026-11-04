@@ -11,6 +11,7 @@
     "lint": "eslint \"src/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\"",
     "test": "vitest run",
+    "test:built": "vitest run --config vitest.built.config.ts",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "probe": "node scripts/mcp-probe.mjs",
     "check:sources": "node scripts/check-sources.mjs",

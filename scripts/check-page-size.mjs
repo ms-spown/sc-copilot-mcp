@@ -12,7 +12,10 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const BUDGET_BYTES = 410_000; // the built page was 382.9 kB when set (with removeComments), about 7 % of headroom
+// The built page was 382.9 kB when the budget was set at 410 kB (with removeComments). It is 331.2 kB since page.ts drops
+// the indentation (health strip included). 360 kB leaves about 8 % of headroom, and room for the route-calibration work
+// (about 10 kB) that lands in parallel: a tighter bound (350 kB) would make whichever of the two merges second fail.
+const BUDGET_BYTES = 360_000;
 
 const page = await import(pathToFileURL(path.join(root, "dist", "dashboard", "page.js")).href);
 const bytes = Buffer.byteLength(page.dashboardHtml(), "utf8");

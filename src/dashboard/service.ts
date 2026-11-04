@@ -2,6 +2,7 @@ import type { ConnectionInfo } from "../providers/gamelog/connectionState.js";
 import type { SessionManager } from "../providers/sessions/manager.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
 import { POLL_CACHE_MS, POLL_EVENT_COUNT } from "./constants.js";
+import { buildHealth, type HealthStatic } from "./health.js";
 import { buildLedgerPayload, EMPTY_LEDGER, type PlanForLedger } from "./ledger.js";
 import type { LedgerService } from "./ledgerService.js";
 import {
@@ -64,6 +65,8 @@ export class DashboardService {
     private readonly trades?: TradeSource,
     /** The saved play sessions. Absent: no `sessions` in the answer, and the markers stay in memory only. */
     private readonly sessions?: SessionManager,
+    /** How the game log and the sessions are configured (health.ts). Absent: no `health` in the answer. */
+    private readonly health?: HealthStatic,
   ) {}
 
   get enabled(): boolean {
@@ -97,7 +100,24 @@ export class DashboardService {
 
   private async build(includeBalance: boolean, nowMs: number): Promise<PollResult> {
     const telemetry = this.telemetry;
-    if (!telemetry || !telemetry.enabled) return offPoll(nowMs, this.session);
+    if (!telemetry || !telemetry.enabled) {
+      // Nothing is read while telemetry is off: the health only says how things are configured.
+      return offPoll(
+        nowMs,
+        this.session,
+        this.health &&
+          buildHealth({
+            telemetryOn: false,
+            state: "off",
+            hint: null,
+            log: this.health.log,
+            logFollowed: false,
+            sessionsOff: this.health.sessionsOff,
+            sessionStatus: null,
+            savedAtMs: null,
+          }),
+      );
+    }
     const status = await telemetry.status(true);
     const snapshot = await telemetry.snapshot();
     const recent = await telemetry.events(
@@ -126,9 +146,24 @@ export class DashboardService {
     const sessions = this.sessions?.enabled
       ? await this.sessions.bar(includeBalance).catch(() => undefined)
       : undefined;
+    // What is wired, from facts already in hand: the hint the telemetry service holds, the connection tracker's answer
+    // (null: the log cannot be followed) and the session bar. No read of its own.
+    const health = this.health
+      ? buildHealth({
+          telemetryOn: true,
+          state: status.state,
+          hint: (await telemetry.gameHint?.().catch(() => null)) ?? null,
+          log: this.health.log,
+          logFollowed: !!connection,
+          sessionsOff: this.health.sessionsOff,
+          sessionStatus: sessions?.status ?? null,
+          savedAtMs: this.sessions?.lastSavedAtMs ?? null,
+        })
+      : undefined;
     const answer = buildPoll({
       status,
       snapshot,
+      ...(health ? { health } : {}),
       ...(specs ? { specs } : {}),
       ledger,
       ...(connection ? { connection } : {}),

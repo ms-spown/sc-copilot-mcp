@@ -4,6 +4,7 @@ import type { TelemetryEvent } from "../providers/telemetry/events.js";
 import type { Condition } from "../providers/telemetry/handler.js";
 import type { Pilot, Ship, Weapons } from "../providers/telemetry/normalize.js";
 import type { TelemetrySnapshot, TelemetryStatusReport } from "../providers/telemetry/service.js";
+import type { HealthSection } from "./health.js";
 import type { LedgerPayload } from "./ledger.js";
 import type { ShipSpecs } from "./specs.js";
 
@@ -87,6 +88,11 @@ export interface PollResult {
    * on. It holds no aUEC figure unless the View asked for the balance; the channel between Views strips it again.
    */
   sessions?: SessionBar;
+  /**
+   * What is wired and what is missing (health.ts): codes only, no amount and nothing derived from the balance, so a plain
+   * field like `sessions`, outside the hashes. Absent when the server was built without the facts.
+   */
+  health?: HealthSection;
   derived: Record<string, boolean | string> | null;
   /**
    * What is true now (from the smoothed state, not from the history), most urgent first. Empty when nothing needs
@@ -136,9 +142,14 @@ const CAUSE_OFF =
   "Telemetry is switched off on the server side (SC_TELEMETRY is not 'on'). Nothing was read from the game.";
 
 /** The answer while the telemetry is off. Built without touching the telemetry service at all. */
-export function offPoll(nowMs: number, session: SessionState = EMPTY_SESSION): PollResult {
+export function offPoll(
+  nowMs: number,
+  session: SessionState = EMPTY_SESSION,
+  health?: HealthSection,
+): PollResult {
   return {
     v: 1,
+    ...(health ? { health } : {}),
     at: nowMs,
     enabled: false,
     state: "off",
@@ -256,6 +267,8 @@ export interface PollInput {
   ledger?: LedgerPayload;
   /** The session bar as built for THIS balance choice (providers/sessions/manager.ts). */
   sessions?: SessionBar;
+  /** The health section (health.ts), built by the service from facts it already holds. */
+  health?: HealthSection;
   /** The connection state read from Game.log (connection.ts), when the log is available. */
   connection?: ConnectionInfo | null;
 }
@@ -351,6 +364,7 @@ function buildAnswer(input: PollInput): PollResult {
     ...(input.specs && state?.ship ? { specs: input.specs } : {}),
     ...(input.ledger ? { ledger: input.ledger } : {}),
     ...(input.sessions ? { sessions: input.sessions } : {}),
+    ...(input.health ? { health: input.health } : {}),
     derived: state ? { ...state.derived } : null,
     conditions:
       snapshot &&

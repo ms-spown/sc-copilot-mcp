@@ -88,6 +88,11 @@ export class GameLog {
     return resolveSource(this.config) !== null;
   }
 
+  /** Which setting points at the log (the names only, never the value): the file wins over the folder. */
+  get via(): "log_path" | "install_dir" | null {
+    return this.config.logPath ? "log_path" : this.config.installDir ? "install_dir" : null;
+  }
+
   source(): LogSource {
     const source = resolveSource(this.config);
     if (!source) {
