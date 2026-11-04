@@ -1037,6 +1037,43 @@
     }
   },
   {
+    "name": "uex_compare_items",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "item_a": {
+          "type": "string",
+          "description": "First item name (e.g. 'Burst')."
+        },
+        "item_b": {
+          "type": "string",
+          "description": "Second item name (e.g. 'Voyage')."
+        },
+        "category": {
+          "type": "string",
+          "description": "UEX item category of the first item (and of the second unless category_b)."
+        },
+        "category_b": {
+          "type": "string",
+          "description": "Optional: category of the second item."
+        },
+        "size_a": {
+          "type": "number",
+          "description": "Optional: size of the first item."
+        },
+        "size_b": {
+          "type": "number",
+          "description": "Optional: size of the second item."
+        }
+      },
+      "required": [
+        "item_a",
+        "item_b",
+        "category"
+      ]
+    }
+  },
+  {
     "name": "uex_get_commodities",
     "inputSchema": {
       "type": "object",
@@ -1114,6 +1151,166 @@
     "inputSchema": {
       "type": "object",
       "properties": {}
+    }
+  },
+  {
+    "name": "uex_get_item_prices",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "item_name": {
+          "type": "string",
+          "description": "Words of the item name (e.g. 'Burst', 'FR-66', 'P4-AR'). A close spelling is tried when nothing matches exactly."
+        },
+        "category": {
+          "type": "string",
+          "description": "UEX item category or section (e.g. 'Quantum Drives', 'Guns', 'Foods'). At most three categories are opened. An unknown or too wide name returns the list of categories in `categories`."
+        },
+        "company": {
+          "type": "string",
+          "description": "Optional: maker name (e.g. 'ArcCorp')."
+        },
+        "size": {
+          "type": "number",
+          "description": "Optional: item size (e.g. 1, 2, 3)."
+        },
+        "star_system_name": {
+          "type": "string",
+          "description": "Optional: only terminals in this system (exact, e.g. 'Stanton')."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Items to price when several match (default 3, max 4)."
+        },
+        "locations": {
+          "type": "number",
+          "description": "Rows per side, buy and sell, per item (default 8, max 15). The answer is cut, and says so, if it would be too large."
+        },
+        "with_attributes": {
+          "type": "boolean",
+          "description": "Add the item's stats from UEX (one more request per item). Default false."
+        }
+      },
+      "required": [
+        "item_name",
+        "category"
+      ]
+    }
+  },
+  {
+    "name": "uex_get_market_status",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "commodity_name": {
+          "type": "string",
+          "description": "Exact commodity name (e.g. 'Laranite')."
+        },
+        "terminal_name": {
+          "type": "string",
+          "description": "Terminal name or nickname (e.g. 'ARC-L1')."
+        },
+        "star_system_name": {
+          "type": "string",
+          "description": "Optional: keep one system (e.g. 'Stanton')."
+        },
+        "only_warnings": {
+          "type": "boolean",
+          "description": "Only rows that carry a critical or warning level (default false: all rows)."
+        },
+        "max_age_days": {
+          "type": "number",
+          "description": "A row older than this is flagged stale (default 7). Rows are never hidden for age."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Rows to return (default 25, max 100)."
+        }
+      }
+    }
+  },
+  {
+    "name": "uex_get_marketplace_prices",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "item_name": {
+          "type": "string",
+          "description": "Item name or part of it (e.g. 'MG Scrip', 'Wikelo'). Must be unique or exact; several matches are listed."
+        },
+        "id_item": {
+          "type": "number",
+          "description": "UEX item id, when known (wins over item_name)."
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "buy",
+            "sell"
+          ],
+          "description": "Optional: one side only. 'sell' = players offering the item (what you pay), 'buy' = players wanting it (what you are paid)."
+        },
+        "quality_tier": {
+          "type": "number",
+          "description": "Optional: one quality tier (0 = unqualified)."
+        },
+        "include_history": {
+          "type": "boolean",
+          "description": "Add a summary of recent adverts (price changes of the last 30 days). Heavy: UEX sends up to 1000 rows and the summary then covers only the newest ones, which it says. Default false."
+        },
+        "check_price": {
+          "type": "number",
+          "description": "Optional: a price per unit to place against the recent average (needs operation)."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Without an item: how many of the most traded items (default 15, max 50)."
+        }
+      }
+    }
+  },
+  {
+    "name": "uex_get_price_history",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "commodity_name": {
+          "type": "string",
+          "description": "Exact commodity name (e.g. 'Medical Supplies')."
+        },
+        "terminal_name": {
+          "type": "string",
+          "description": "Terminal name or nickname (e.g. 'CBD Lorville' or 'TDD Area 18')."
+        }
+      },
+      "required": [
+        "commodity_name",
+        "terminal_name"
+      ]
+    }
+  },
+  {
+    "name": "uex_get_refining_margins",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ore": {
+          "type": "string",
+          "description": "Ore to refine (e.g. 'Laranite', 'Gold', 'Quantainium'; '(Raw)' or '(Ore)' is optional). Omit to rank all ores."
+        },
+        "star_system_name": {
+          "type": "string",
+          "description": "Optional: only refineries in this star system (exact name, e.g. 'Stanton', 'Pyro', 'Nyx')."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Rows to return (default 10, max 30): refineries, or ores without `ore`."
+        },
+        "include_methods": {
+          "type": "boolean",
+          "description": "With `ore`: add the refining methods with UEX's 1 to 3 ratings for yield, cost and speed (default true). The ratings are not numbers of aUEC or minutes."
+        }
+      }
     }
   },
   {
@@ -1218,6 +1415,92 @@
         "min_reports": {
           "type": "number",
           "description": "Drop routes that have fewer than this many player reports at the origin OR at the destination (default 0: keep UEX estimates, but rank them after reported routes). 1 = only routes both ends of which a player has reported."
+        }
+      }
+    }
+  },
+  {
+    "name": "uex_plan_trade",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "objective": {
+          "type": "string",
+          "enum": [
+            "profit_per_hour",
+            "profit",
+            "speed",
+            "safety"
+          ],
+          "description": "profit_per_hour (default), profit (per run), speed (shortest run), safety (fewest risk factors of the heuristic)."
+        },
+        "ship_name": {
+          "type": "string",
+          "description": "Ship to haul with (e.g. 'Caterpillar'): cargo from UEX, quantum speed from the wiki sheet."
+        },
+        "cargo_scu": {
+          "type": "number",
+          "description": "Hold size in SCU (wins over the ship's)."
+        },
+        "quantum_speed_ms": {
+          "type": "number",
+          "description": "Quantum speed in m/s when there is no ship (e.g. 238314300 for a Cutlass Black)."
+        },
+        "budget": {
+          "type": "number",
+          "description": "aUEC available for one purchase."
+        },
+        "commodity_name": {
+          "type": "string",
+          "description": "Only this commodity (exact name)."
+        },
+        "origin_terminal_name": {
+          "type": "string",
+          "description": "Start at this terminal."
+        },
+        "origin_planet_name": {
+          "type": "string",
+          "description": "Start on this planet (exact name)."
+        },
+        "origin_system_name": {
+          "type": "string",
+          "description": "Stay in this system (e.g. 'Stanton')."
+        },
+        "avoid_pyro": {
+          "type": "boolean",
+          "description": "Leave every Pyro terminal out."
+        },
+        "armistice_only": {
+          "type": "boolean",
+          "description": "Only stops that UEX flags as armistice zones (unknown counts as no)."
+        },
+        "max_legs": {
+          "type": "number",
+          "enum": [
+            1,
+            2
+          ],
+          "description": "1 = one-way routes only (needs an origin); 2 (default) = also round trips and two-leg chains."
+        },
+        "max_age_days": {
+          "type": "number",
+          "description": "Leave out prices older than this (default 7)."
+        },
+        "include_stale": {
+          "type": "boolean",
+          "description": "Keep old prices, flagged stale (default false)."
+        },
+        "min_reports": {
+          "type": "number",
+          "description": "Drop options with fewer player reports than this at an end (default 0)."
+        },
+        "stop_minutes": {
+          "type": "number",
+          "description": "Assumed minutes per stop (landing, terminal, takeoff). Default 8."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Options to return (default 8, max 20)."
         }
       }
     }
