@@ -6,7 +6,7 @@ import { defineConfig } from "vitest/config";
 //
 // The usual run imports `src/dashboard/page.ts`, so the page is assembled from vitest's own transform of the sources.
 // The host receives the page assembled from the compiled `dist/dashboard/page.js` (tsc output, functions without their
-// indentation by `compact`). This config points every import of `page.js` made from the dashboard sources at that
+// blanks by `minifyScript`). This config points every import of `page.js` made from the dashboard sources at that
 // compiled file, so the same tests (the fake host, the fake DOM, the page harness) exercise the shipped script.
 const built = path.resolve("dist", "dashboard", "page.js");
 

@@ -295,7 +295,6 @@ export function specsClean(raw: any): any {
 export const SPECS_VIEW_FUNCTIONS = [
   specsFmt,
   specsAgeText,
-  speedObservedMax,
   specsPositive,
   specsScaleWhy,
   specsScaleReason,

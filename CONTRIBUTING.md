@@ -159,7 +159,8 @@ npm run lint && npm run format:check && npm run typecheck && npm test && npm run
 The `&&` chain works in cmd, Git Bash and PowerShell 7; in Windows PowerShell 5.1 run the commands one per line.
 
 `npm test` assembles the dashboard page from vitest's transform of the sources; the host receives the page assembled from
-the compiled `dist/dashboard/page.js` (functions without their indentation, see `compact` in `src/dashboard/page.ts`).
+the compiled `dist/dashboard/page.js` (the script without its blanks, see `minifyScript` in `src/dashboard/scriptMinify.ts`, proven by a test that a JavaScript
+parser reads both scripts the same).
 `npm run test:built` (after the build) runs the `src/dashboard` tests against that compiled page, so the two cannot
 drift apart unnoticed. CI runs it after the build.
 

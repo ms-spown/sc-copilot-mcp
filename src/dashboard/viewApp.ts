@@ -81,37 +81,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   // ---------------------------------------------------------------------------------------------
   // DOM helpers: text only goes through textContent
   // ---------------------------------------------------------------------------------------------
-  const el = (tag: string, cls?: string, text?: string): any => {
-    const n = doc.createElement(tag);
-    if (cls) n.className = cls;
-    if (text !== undefined) n.textContent = text;
-    return n;
-  };
-  const add = (parent: any, ...kids: any[]): any => {
-    for (const k of kids) if (k) parent.appendChild(k);
-    return parent;
-  };
-  const setText = (n: any, text: string) => {
-    if (n._t !== text) {
-      n._t = text;
-      n.textContent = text;
-    }
-  };
-  const setAttr = (n: any, name: string, value: string) => {
-    const key = "_a_" + name;
-    if (n[key] !== value) {
-      n[key] = value;
-      n.setAttribute(name, value);
-    }
-  };
-  const setVar = (n: any, name: string, value: string) => {
-    const key = "_v_" + name;
-    if (n[key] !== value) {
-      n[key] = value;
-      n.style.setProperty(name, value);
-    }
-  };
-  const show = (n: any, on: boolean) => setAttr(n, "data-hidden", on ? "0" : "1");
+  const { el, add, setText, setAttr, setVar, show } = L.domKit(doc);
   const button = (label: string, onClick: () => void, cls?: string): any => {
     const b = el("button", "btn" + (cls ? " " + cls : ""), label);
     b.setAttribute("type", "button");
