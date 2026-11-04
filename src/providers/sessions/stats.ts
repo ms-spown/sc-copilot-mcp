@@ -114,10 +114,25 @@ export function effectiveResults(
   trips: readonly Trip[],
 ): { trip: Trip; result: number | null; excluded: boolean }[] {
   const runs = trips.filter((t) => t.kind === "trade").map(span);
+  // Two trade trips that begin at the same instant with the same goods are one run stored twice (an older file, or a
+  // run that grew under another key): only the latest-ending one counts.
+  const last = new Map<string, Trip>();
+  for (const t of trips) {
+    if (t.kind !== "trade") continue;
+    const k = `${t.started_at ?? ""}|${t.commodity ?? ""}`;
+    const seen = last.get(k);
+    if (!seen || ms(t.ended_at) >= ms(seen.ended_at)) last.set(k, t);
+  }
   return trips.map((trip) => {
     const [b, e] = span(trip);
+    const duplicate =
+      trip.kind === "trade" &&
+      last.get(`${trip.started_at ?? ""}|${trip.commodity ?? ""}`) !== trip;
     const excluded =
-      trip.kind !== "trade" && trip.net_auec !== null && runs.some(([rb, re]) => rb < e && re > b);
+      duplicate ||
+      (trip.kind !== "trade" &&
+        trip.net_auec !== null &&
+        runs.some(([rb, re]) => rb < e && re > b));
     return { trip, result: excluded ? null : tripResult(trip), excluded };
   });
 }

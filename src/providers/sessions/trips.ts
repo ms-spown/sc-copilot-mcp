@@ -156,8 +156,9 @@ export class TradeRunTripSource implements TripSource {
       if (m.net.reason === "en_cours" || (m.net.reason === "en_attente" && !opts.final)) continue;
       const named = m.plan_match === "ok" ? cleanLabel(this.plan()?.commodity, 60) : null;
       trips.push({
-        // The run's own id is the time of its first transaction: stable, and hashed with its end.
-        key: hash(`run|${run.id}|${run.ended_at}`),
+        // The run's own id (the time of its first transaction) is its identity: it does not change when a late sale
+        // is added to the run (the end moves, the key does not), so the stored trip is REPLACED, not doubled.
+        key: hash(`run|${run.id}`),
         kind: "trade",
         source: "trade_journal",
         started_at: run.started_at,

@@ -293,7 +293,9 @@ export class SessionStore {
   }
 
   private cacheFrom(state: StoreState): void {
-    this.memory = null;
+    // Unsaved content (after a refused write) stays until a write succeeds: a change that changes nothing never
+    // forgets it, and the state passed here is then not the file's, so it is not cached as the file's.
+    if (this.memory) return;
     fs.stat(this.file).then(
       (s) => {
         this.cache = { state, mtimeMs: s.mtimeMs, size: s.size };
@@ -448,6 +450,65 @@ export class SessionStore {
   // The lock file
   // -------------------------------------------------------------------------------------------
 
+  /** How long ago the file was last touched, read through an OPEN handle (no check on a path); null when it is not there. */
+  private async age(file: string): Promise<number | null> {
+    let h;
+    try {
+      h = await fs.open(file, "r");
+    } catch {
+      return null;
+    }
+    try {
+      return Date.now() - (await h.stat()).mtimeMs;
+    } catch {
+      return null;
+    } finally {
+      await h.close().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Removes a DEAD lock-like file with no check-then-act on its path: it is renamed to a name only this call knows
+   * (atomic, one winner), looked at through a handle, and deleted if it really was stale. If it was fresh after all (it
+   * was replaced between the decision and the rename) it is put back with `link`, which never overwrites.
+   */
+  private async reclaim(file: string, staleMs: number): Promise<boolean> {
+    const mine = `${file}.stale-${process.pid}-${randomBytes(4).toString("hex")}`;
+    try {
+      await fs.rename(file, mine);
+    } catch {
+      return false; // someone else moved it first, or it is gone
+    }
+    const age = await this.age(mine);
+    if (age !== null && age <= staleMs) await fs.link(mine, file).catch(() => undefined);
+    await fs.rm(mine, { force: true }).catch(() => undefined);
+    return age === null || age > staleMs;
+  }
+
+  /**
+   * A lock whose owner died is taken over by ONE process at a time: a takeover file is created exclusively (a dead one is
+   * reclaimed the same way), the lock's age is read through a handle, and only a stale lock is renamed away and deleted.
+   * While the stale lock exists nobody can create a new one (`wx` fails), so nothing fresh is removed.
+   */
+  private async takeOver(lockFile: string, staleMs: number): Promise<void> {
+    const gate = `${lockFile}.takeover`;
+    try {
+      const h = await fs.open(gate, "wx", 0o600);
+      await h.close();
+    } catch {
+      const a = await this.age(gate);
+      if (a !== null && a > staleMs) await this.reclaim(gate, staleMs);
+      return;
+    }
+    try {
+      const a = await this.age(lockFile);
+      if (a !== null && a > staleMs && (await this.reclaim(lockFile, staleMs)))
+        this.lockTakeovers += 1;
+    } finally {
+      await fs.rm(gate, { force: true }).catch(() => undefined);
+    }
+  }
+
   private async lock(): Promise<() => Promise<void>> {
     const lockFile = `${this.file}.lock`;
     const staleMs = this.opts.lockStaleMs ?? LOCK_STALE_MS;
@@ -478,24 +539,14 @@ export class SessionStore {
       } catch (e) {
         if (code(e) !== "EEXIST" && code(e) !== "EPERM" && code(e) !== "EACCES") throw e;
       }
-      // A lock whose owner died (no touch for the stale delay) is taken over.
-      try {
-        const s1 = await fs.stat(lockFile);
-        if (Date.now() - s1.mtimeMs > staleMs) {
-          const seen = await fs.readFile(lockFile, "utf8").catch(() => null);
-          const s2 = await fs.stat(lockFile);
-          // Still the same dead lock a moment later (not touched, not replaced): remove it.
-          if (
-            s2.mtimeMs === s1.mtimeMs &&
-            (await fs.readFile(lockFile, "utf8").catch(() => null)) === seen
-          ) {
-            await fs.rm(lockFile, { force: true });
-            this.lockTakeovers += 1;
-          }
-          continue;
-        }
-      } catch {
-        continue; // it vanished meanwhile: try to take it
+      // A lock whose owner died (no touch for the stale delay) is taken over, by ONE process at a time: the takeover
+      // file is created exclusively, the staleness is checked AGAIN under it (another process may have replaced the lock
+      // since), the dead lock is removed, and the takeover file is released. Everyone then competes for the lock with `wx`.
+      const lockAge = await this.age(lockFile);
+      if (lockAge === null) continue; // it vanished meanwhile: try to take it
+      if (lockAge > staleMs) {
+        await this.takeOver(lockFile, staleMs);
+        continue;
       }
       if (Date.now() - started > waitMs) throw new StoreBusyError("the session file is busy");
       await sleep(15 + Math.floor(Math.random() * 25));

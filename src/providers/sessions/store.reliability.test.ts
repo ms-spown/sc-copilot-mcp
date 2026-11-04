@@ -361,3 +361,51 @@ describe("Feature: the lock is robust", () => {
     },
   );
 });
+
+describe("Feature: unsaved content survives a change that changes nothing", () => {
+  it("Given a refused write then a no-op change then a later write, Then nothing unsaved is lost", async () => {
+    let full = false;
+    const store = new SessionStore(file, {
+      beforeRename: () => {
+        if (full) throw Object.assign(new Error("no space"), { code: "ENOSPC" });
+      },
+    });
+    await store.transact(addTrip(1, "saved"));
+    full = true;
+    await store.transact((d) => {
+      for (let n = 2; n <= 10; n++) {
+        d.sessions.push(session(n));
+        d.next_number = n + 1;
+      }
+      return { changed: true, result: null };
+    });
+    await store.transact(() => ({ changed: false, result: null })); // a probe that changes nothing
+    expect((await store.read()).next_number).toBe(11);
+    full = false;
+    await store.transact(addTrip(10, "after"));
+    const doc = readDoc();
+    expect(doc.next_number).toBe(11);
+    expect(doc.sessions).toHaveLength(10);
+  });
+});
+
+describe("Feature: several processes starting together on a dead lock lose nothing", () => {
+  it("Given a dead lock and five stores each adding a trip at the same instant, over many rounds, Then every trip of every round is in the file", async () => {
+    for (let round = 0; round < 25; round++) {
+      fs.rmSync(file, { force: true });
+      fs.writeFileSync(`${file}.lock`, "dead-owner");
+      const old = new Date(Date.now() - 60_000);
+      fs.utimesSync(`${file}.lock`, old, old);
+      const stores = Array.from(
+        { length: 5 },
+        () => new SessionStore(file, { lockStaleMs: 300, lockWaitMs: 8000 }),
+      );
+      await Promise.all(stores.map((s, i) => s.transact(addTrip(1, `r${round}-p${i}`))));
+      const labels = readDoc().sessions[0].trips.map((t) => t.label);
+      expect(labels.sort(), `round ${round}`).toEqual(
+        [0, 1, 2, 3, 4].map((i) => `r${round}-p${i}`),
+      );
+      expect(left().filter((n) => n.endsWith(".lock") || n.endsWith(".takeover"))).toEqual([]);
+    }
+  }, 120_000);
+});

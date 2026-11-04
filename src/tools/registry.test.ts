@@ -74,7 +74,11 @@ describe("tool surface (non-regression)", () => {
   it("keeps every tool name and input schema as frozen in the golden file", () => {
     // Telemetry on (it never connects without a call) and a client that renders Views: the optional tools are
     // part of the frozen surface, and so is the _meta of the tools that open or serve a View.
-    const listed = registryWith({ telemetry: createTelemetry({ enabled: true }) })
+    // A stub manager makes the five session tools part of the frozen surface (they are listed only when it is enabled).
+    const listed = registryWith({
+      telemetry: createTelemetry({ enabled: true }),
+      sessions: { enabled: true } as never,
+    })
       .list({ ui: true })
       .map(({ name, inputSchema, _meta }) => ({ name, inputSchema, ...(_meta ? { _meta } : {}) }))
       .sort((a, b) => a.name.localeCompare(b.name));

@@ -143,6 +143,18 @@ function freshAfter(obs: Observation, sinceMs: number): boolean {
 // Trips
 // ---------------------------------------------------------------------------------------------
 
+const figures = (t: Trip) =>
+  [
+    t.ended_at,
+    t.cost_auec,
+    t.revenue_auec,
+    t.fees_auec,
+    t.gross_margin_auec,
+    t.net_auec,
+    t.scu,
+  ].join("|");
+const grew = (a: Trip, b: Trip) => figures(a) !== figures(b);
+
 function mergeTrips(state: StoreState, cur: Session, inputs: readonly TripInput[]): boolean {
   if (inputs.length === 0) return false;
   const known = new Set<string>();
@@ -152,7 +164,20 @@ function mergeTrips(state: StoreState, cur: Session, inputs: readonly TripInput[
   let changed = false;
   for (const input of inputs) {
     const parsed = TripSchema.safeParse(input);
-    if (!parsed.success || known.has(parsed.data.key)) continue;
+    if (!parsed.success) continue;
+    if (known.has(parsed.data.key)) {
+      // A trade run of THIS session that grew (a late sale line) replaces its stored trip: same key, new figures.
+      // Contracts stay frozen. A run stored in an older session is left as it was.
+      const at = cur.trips.findIndex((t) => t.key === parsed.data.key);
+      if (at >= 0 && parsed.data.source === "trade_journal" && grew(cur.trips[at], parsed.data)) {
+        cur.trips[at] = {
+          ...parsed.data,
+          planned_profit_auec: parsed.data.planned_profit_auec ?? cur.trips[at].planned_profit_auec,
+        };
+        changed = true;
+      }
+      continue;
+    }
     const end = ms(parsed.data.ended_at);
     if (end < from || end > to) continue;
     known.add(parsed.data.key);

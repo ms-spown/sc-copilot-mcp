@@ -527,6 +527,79 @@
     }
   },
   {
+    "name": "sc_session_current",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "include_balance": {
+          "type": "boolean",
+          "description": "Include aUEC figures (balances, results, turnover, rate per hour). Default false. Ask the player first: the answer goes into the conversation."
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 48,
+          "description": "A session id from sc_session_list."
+        }
+      }
+    }
+  },
+  {
+    "name": "sc_session_end",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "note": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    }
+  },
+  {
+    "name": "sc_session_list",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "number",
+          "description": "How many sessions, 1 to 50. Default 20."
+        },
+        "include_balance": {
+          "type": "boolean",
+          "description": "Include aUEC figures (balances, results, turnover, rate per hour). Default false. Ask the player first: the answer goes into the conversation."
+        }
+      }
+    }
+  },
+  {
+    "name": "sc_session_new",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "note": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    }
+  },
+  {
+    "name": "sc_session_stats",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "last": {
+          "type": "number",
+          "description": "Only the newest N sessions (1 to 200). Default: all."
+        },
+        "include_balance": {
+          "type": "boolean",
+          "description": "Include aUEC figures (balances, results, turnover, rate per hour). Default false. Ask the player first: the answer goes into the conversation."
+        }
+      }
+    }
+  },
+  {
     "name": "sc_trade_journal",
     "inputSchema": {
       "type": "object",

@@ -255,7 +255,9 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
       parts.push(money.gross_only_trips + " en marge brute, hors frais");
     if (money.overlap_excluded > 0)
       parts.push(
-        money.overlap_excluded + " contrat(s) non compté(s) : chevauche(nt) une cargaison",
+        "total partiel : " +
+          money.overlap_excluded +
+          " contrat(s) non compté(s) (chevauche(nt) une cargaison, déjà comptée)",
       );
     kpis.push({
       id: "net",

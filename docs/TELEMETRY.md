@@ -631,8 +631,9 @@ used in place of the older file until a write succeeds; `sc_session_new` and `sc
 The lock is touched while held, removed only by its owner, and a lock left by a crash is taken over after 5 seconds
 (a change waits up to 8 s); orphan temporary files older than a minute are swept. Before "Nouvelle session", "Terminer"
 and a clean shutdown the server re-reads the game log at once so that the last trip is kept (a trip whose result is still
-settling is kept with an unknown result). A race between two processes taking over the same dead lock is possible and
-unlikely.
+settling is kept with an unknown result). A dead lock is taken over by one process at a time (through a takeover file,
+with no check on a path before acting on it): several real processes starting together on a dead lock lose nothing. A run
+of the commerce card that grows after it was saved (a late sale) replaces its trip, it is never stored twice.
 
 ### Trips, results and statistics
 

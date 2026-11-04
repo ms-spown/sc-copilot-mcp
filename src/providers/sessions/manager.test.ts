@@ -325,25 +325,62 @@ describe("Feature: trips are recorded once with their result", () => {
     net_kind: net === null ? null : "balance_delta",
   });
 
-  it("Given trips offered at every look, Then the file holds each once, and the plan marks the matching goods", async () => {
+  it("Given trips offered at every look, Then the file holds each once, and the plan goes to ONE trade run only (never a contract, never a second run)", async () => {
     const r = rig();
     r.log.running = true;
     r.manager.setPlan({ commodity: "agricium", expected_profit_auec: 20_000 });
-    r.trips.list = [trip(1, T0 + 2 * MIN + 30_000, 18_000)];
+    const run = (n: number, end: number, net: number | null): TripInput => ({
+      ...trip(n, end, net),
+      kind: "trade",
+      source: "trade_journal",
+    });
+    r.trips.list = [
+      trip(9, T0 + 2 * MIN, 5_000), // a hauling contract of the same goods: it never carries the plan
+      run(1, T0 + 2 * MIN + 30_000, 18_000),
+    ];
     await playMinutes(r, 2, () => 100);
-    r.trips.list = [...r.trips.list, trip(2, T0 + 3 * MIN, null)];
+    r.trips.list = [...r.trips.list, run(2, T0 + 3 * MIN, null)];
     await playMinutes(r, 2, () => 100);
     const [s] = await stored(r);
-    expect(s.trips.map((t) => t.label)).toEqual(["Run 1", "Run 2"]);
-    expect(s.trips[0].planned_profit_auec).toBe(20_000);
-    expect(s.trips[1].net_auec).toBeNull();
+    expect(s.trips.map((t) => t.label)).toEqual(["Run 9", "Run 1", "Run 2"]);
+    expect(s.trips.map((t) => t.planned_profit_auec)).toEqual([null, 20_000, null]);
+    expect(s.trips[2].net_auec).toBeNull();
     const out = await r.manager.session(undefined, true);
-    expect(out?.session && out.session.trips).toBe(2);
+    expect(out?.session && out.session.trips).toBe(3);
     expect(out?.session && "money" in out.session && out.session.money).toMatchObject({
-      net_auec: 18_000,
       net_source: "trips",
       net_complete: false,
+      plan: { planned_auec: 20_000, trips: 1 },
     });
+  });
+
+  it("Given a run that grows (a late sale), Then the stored trip is replaced under the same key, never doubled", async () => {
+    const r = rig();
+    r.log.running = true;
+    const base = {
+      ...trip(1, T0 + 2 * MIN, 50_000),
+      kind: "trade" as const,
+      source: "trade_journal" as const,
+    };
+    r.trips.list = [
+      { ...base, revenue_auec: 150_000, cost_auec: 100_000, gross_margin_auec: 50_000 },
+    ];
+    await playMinutes(r, 2, () => 100);
+    r.trips.list = [
+      {
+        ...base,
+        ended_at: new Date(T0 + 3 * MIN).toISOString(),
+        revenue_auec: 170_000,
+        cost_auec: 120_000,
+        gross_margin_auec: 50_000,
+        net_auec: 50_000,
+      },
+    ];
+    await playMinutes(r, 2, () => 100);
+    const [s] = await stored(r);
+    expect(s.trips).toHaveLength(1);
+    expect(s.trips[0].revenue_auec).toBe(170_000);
+    expect(s.trips[0].cost_auec).toBe(120_000);
   });
 });
 

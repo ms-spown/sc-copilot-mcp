@@ -662,8 +662,10 @@ fichier tant qu'aucune écriture ne réussit ; `sc_session_new` et `sc_session_e
 verrou est rafraîchi tant qu'il est tenu, retiré seulement par son propriétaire, et un verrou laissé par un plantage est
 repris après 5 secondes (un changement attend jusqu'à 8 s) ; les fichiers temporaires orphelins de plus d'une minute sont
 balayés. Avant « Nouvelle session », « Terminer » et un arrêt propre, le serveur relit le journal du jeu aussitôt pour
-garder le dernier trajet (un trajet dont le résultat se règle encore est gardé avec un résultat inconnu). Une course entre
-deux processus reprenant le même verrou mort est possible et peu probable.
+garder le dernier trajet (un trajet dont le résultat se règle encore est gardé avec un résultat inconnu). Un verrou mort est repris par un
+seul processus à la fois (par un fichier de reprise, sans vérification sur un chemin avant d'agir dessus) : plusieurs vrais
+processus démarrant ensemble sur un verrou mort ne perdent rien. Une cargaison de la carte de commerce qui grandit après
+son enregistrement (une vente tardive) remplace son trajet, elle n'est jamais enregistrée deux fois.
 
 ### Trajets, résultats et statistiques
 

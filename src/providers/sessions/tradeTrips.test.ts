@@ -153,3 +153,68 @@ describe("Feature: the run's result reaches the session once, on one basis", () 
     expect(summary.money.fees_auec).toBe(0);
   });
 });
+
+describe("Feature: a run that gets a late sale is one trip, not two", () => {
+  it("Given 100 SCU bought and sold, then 10 SCU of old stock sold 20 minutes later, Then the session holds ONE trip with the run's own figures", async () => {
+    const buyAll = buy(10, 100_000, 10_000, WASTE); // 100 SCU
+    const sellAll = sell(60, 150_000, 100, WASTE);
+    const late = sell(60 + 20 * 60, 20_000, 10, WASTE);
+    const history: BalancePoint[] = [
+      { at: DAY, uec: 500_000, until: DAY + 9000 },
+      { at: DAY + 10_500, uec: 400_000, until: DAY + 59_000 },
+      { at: DAY + 60_500, uec: 550_000, until: DAY + 1_259_000 },
+      { at: DAY + 1_260_500, uec: 570_000, until: DAY + 3_000_000 },
+    ];
+    const state = emptyState();
+    const cfg = { gapMs: 3 * 3_600_000 };
+    const base = { running: true, freshStart: false, connection: null, game: null, context: null };
+    observe(state, { ...base, now: DAY, balance: 500_000, trips: [] }, cfg);
+    for (const [lines, now] of [
+      [[buyAll, sellAll], DAY + 100_000],
+      [[buyAll, sellAll, late], DAY + 1_300_000],
+    ] as const) {
+      const src = new TradeRunTripSource(
+        () => transactions([...lines]),
+        async () => history,
+        () => undefined,
+      );
+      const { trips } = await src.collect(now);
+      observe(state, { ...base, now, balance: 570_000, trips }, cfg);
+    }
+    const cur = latest(state)!;
+    const runs = cur.trips.filter((t) => t.kind === "trade");
+    expect(runs).toHaveLength(1);
+    expect(runs[0].revenue_auec).toBeLessThanOrEqual(150_000);
+    expect(runs[0].gross_margin_auec).toBe(50_000);
+    expect(summarizeSession(cur).money.gross_margin_auec).toBe(50_000);
+  });
+
+  it("Given two trade trips with the same start and goods already stored (an older file), Then only the latest counts", () => {
+    const state = emptyState();
+    const cfg = { gapMs: 3 * 3_600_000 };
+    const mk = (key: string, endSec: number, gm: number) => ({
+      key,
+      kind: "trade" as const,
+      source: "trade_journal" as const,
+      started_at: new Date(DAY + 10_000).toISOString(),
+      ended_at: new Date(DAY + endSec * 1000).toISOString(),
+      commodity: "Waste",
+      gross_margin_auec: gm,
+      net_auec: null,
+    });
+    const base = { running: true, freshStart: false, connection: null, game: null, context: null };
+    observe(
+      state,
+      {
+        ...base,
+        now: DAY,
+        balance: 1,
+        trips: [mk("aaaaaa000001", 60, 50_000), mk("aaaaaa000002", 1300, 100_000)],
+      },
+      cfg,
+    );
+    const m = summarizeSession(latest(state)!).money;
+    expect(m.net_auec).toBe(100_000);
+    expect(m.overlap_excluded).toBe(1);
+  });
+});

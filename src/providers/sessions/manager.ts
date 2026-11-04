@@ -152,6 +152,8 @@ export class SessionManager {
   private timer: NodeJS.Timeout | null = null;
   private closed = false;
   private finalCollect = false;
+  private planAppliedAt = -Infinity;
+  private planTripKey: string | null = null;
   /** The last change reached the disk (false: it is only in memory, see the store's notice). */
   private lastSaved = true;
   private ticking: Promise<void> | null = null;
@@ -309,22 +311,37 @@ export class SessionManager {
       freshStart,
       connection: conn ? { state: conn.state, since: conn.since } : null,
       game: info,
-      trips: collected.trips.map((t) => this.withPlan(t)),
+      trips: this.withPlans(collected.trips),
       context: collected.context,
     };
     await this.apply((s) => observe(s, obs, this.rc));
   }
 
-  /** A trip whose goods are those of the route Claude put on the dashboard carries the planned profit. */
-  private withPlan(t: TripInput): TripInput {
-    // A trip that already carries its plan (the commerce model matched it) keeps it.
-    if (t.planned_profit_auec !== undefined && t.planned_profit_auec !== null) return t;
+  /**
+   * The planned profit goes to AT MOST ONE trip per plan: the first trade run that ended after the plan was applied
+   * (a hauling contract never carries it, and a second run of the same goods does not: the plan would be counted twice
+   * in the efficiency). The run is remembered by its key so the same one keeps it on every look.
+   */
+  private withPlans(trips: readonly TripInput[]): TripInput[] {
     const p = this.plan;
-    if (!p || typeof p.expected_profit_auec !== "number" || !p.commodity || !t.commodity) return t;
-    return t.commodity.toLowerCase().includes(p.commodity.toLowerCase()) ||
-      p.commodity.toLowerCase().includes(t.commodity.toLowerCase())
-      ? { ...t, planned_profit_auec: p.expected_profit_auec }
-      : t;
+    const planned = p && typeof p.expected_profit_auec === "number" ? p.expected_profit_auec : null;
+    const runs = trips
+      .filter((t) => t.kind === "trade" && Date.parse(t.ended_at) >= this.planAppliedAt)
+      .sort((a, b) => Date.parse(a.ended_at) - Date.parse(b.ended_at));
+    const matches = (t: TripInput) => {
+      if (t.planned_profit_auec !== undefined && t.planned_profit_auec !== null) return true;
+      if (!p?.commodity || !t.commodity) return false;
+      const a = t.commodity.toLowerCase();
+      const b = p.commodity.toLowerCase();
+      return a.includes(b) || b.includes(a);
+    };
+    if (planned !== null && this.planTripKey === null) {
+      this.planTripKey = runs.find(matches)?.key ?? null;
+    }
+    return trips.map((t) => {
+      const mine = planned !== null && t.key === this.planTripKey;
+      return { ...t, planned_profit_auec: mine ? (t.planned_profit_auec ?? planned) : null };
+    });
   }
 
   /** The plan now (for the commerce model, which matches it to a run). */
@@ -335,6 +352,8 @@ export class SessionManager {
   /** The route plan Claude passed when it opened the dashboard (memory only): marks the trips that follow. */
   setPlan(plan: PlanForTrips | undefined): void {
     this.plan = plan;
+    this.planAppliedAt = this.now();
+    this.planTripKey = null;
   }
 
   /**
