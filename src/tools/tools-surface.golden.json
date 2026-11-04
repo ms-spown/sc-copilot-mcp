@@ -678,9 +678,10 @@
           "type": "string",
           "enum": [
             "search",
-            "apply"
+            "apply",
+            "preflight"
           ],
-          "description": "search for routes, or apply an option of a previous answer as the plan."
+          "description": "search for routes, apply an option of a previous answer as the plan, or check that the plan in force still holds (preflight, no other argument)."
         },
         "objective": {
           "type": "string",

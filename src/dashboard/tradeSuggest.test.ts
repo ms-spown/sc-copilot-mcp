@@ -29,6 +29,7 @@ function fakeOption(i: number, over: Partial<TripOption> = {}): TripOption {
     commodity: c,
     from: {
       terminal: from,
+      terminal_id: 11,
       system: "Stanton",
       planet: "Hurston",
       kind: "city",
@@ -37,6 +38,7 @@ function fakeOption(i: number, over: Partial<TripOption> = {}): TripOption {
     },
     to: {
       terminal: to,
+      terminal_id: 22,
       system: "Stanton",
       planet: "ArcCorp",
       kind: "city",
@@ -587,8 +589,8 @@ describe("Feature: a plan built from the balance stays private", () => {
     )) as any;
     expect(shown.private).toBe(true);
     expect(infos).toEqual([
-      { private: true, withBalance: false },
-      { private: true, withBalance: true },
+      { private: true, withBalance: false, ids: { buy: 11, sell: 22 } },
+      { private: true, withBalance: true, ids: { buy: 11, sell: 22 } },
     ]);
   });
 
@@ -600,7 +602,7 @@ describe("Feature: a plan built from the balance stays private", () => {
       suggestInputSchema.parse({ action: "apply", id: found.options[0].id }),
     )) as any;
     expect(a.private).toBe(false);
-    expect(infos[0]).toEqual({ private: false, withBalance: false });
+    expect(infos[0]).toEqual({ private: false, withBalance: false, ids: { buy: 11, sell: 22 } });
   });
 });
 

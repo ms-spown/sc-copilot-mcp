@@ -51,6 +51,8 @@ export class DashboardService {
   private cache = new Map<boolean, { at: number; result: Promise<PollResult> }>();
 
   private plan: PlanForLedger | undefined;
+  /** UEX ids of the plan's two terminals, only for a plan this server's planner built (see setPlan). */
+  private planIds: { buy: number | null; sell: number | null } | undefined;
 
   constructor(
     private readonly telemetry: Telemetry | undefined,
@@ -74,9 +76,24 @@ export class DashboardService {
   }
 
   /** The route plan Claude passed when it opened the dashboard (memory only), for the ledger's planned/measured. */
-  setPlan(plan: PlanForLedger | undefined): void {
+  setPlan(
+    plan: PlanForLedger | undefined,
+    ids?: { buy: number | null; sell: number | null },
+  ): void {
     this.plan = plan;
+    // Any other plan (Claude's, none) has no ids: they belong to the plan the planner built, never to a text.
+    this.planIds = plan ? ids : undefined;
     this.cache.clear();
+  }
+
+  /** The UEX ids of the plan's terminals when the planner built it (server-side only, never sent to the page). */
+  currentPlanIds(): { buy: number | null; sell: number | null } | undefined {
+    return this.planIds;
+  }
+
+  /** The plan in force (memory only): the pre-flight check reads its names and unit prices, nothing else. */
+  currentPlan(): PlanForLedger | undefined {
+    return this.plan;
   }
 
   /** The answer for one View: the shared answer, cut to what that View still needs. */

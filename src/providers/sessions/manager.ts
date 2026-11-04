@@ -324,6 +324,7 @@ export class SessionManager {
       connection: conn ? { state: conn.state, since: conn.since } : null,
       game: info,
       trips: this.withPlans(collected.trips, collected.plan_distance),
+      ...(collected.price_refusals ? { priceRefusals: collected.price_refusals } : {}),
       context: collected.context,
     };
     await this.apply((s) => observe(s, obs, this.rc));

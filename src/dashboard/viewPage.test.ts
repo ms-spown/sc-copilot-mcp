@@ -93,7 +93,7 @@ describe("Feature: the page itself is safe and self-contained", () => {
     expect(html).not.toMatch(/connect-src[^"]*(\*|https?)/);
     expect(html).toContain('name="color-scheme" content="light dark"');
     expect(html).toContain("light-dark(");
-    expect(html).toContain("background: transparent");
+    expect(html).toContain("background:transparent");
   });
 
   it("Given the page, Then colours come from host variables, with a fallback each, and nothing else is hard-coded", () => {

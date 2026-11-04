@@ -3,6 +3,7 @@
  * the server builds (dashboard/tradeSuggest.ts). Invented figures: not UEX data, not a real market.
  */
 import type { SuggestLeg, SuggestOption } from "../tradeSuggest.js";
+import { preflightAnswer, type PreflightVariant } from "./preflightFixtures.js";
 
 type Rep = "reported" | "estimate" | "unverified";
 
@@ -175,6 +176,8 @@ export interface SuggestFixtureOptions {
   variant?: SuggestVariant;
   /** Which tool answer id prefix to use (so two answers do not share ids). */
   batch?: string;
+  /** What the pre-flight check answers (default: the plan still holds). */
+  preflight?: PreflightVariant;
 }
 
 /** The structured answer of sc_trade_suggest for the given arguments. */
@@ -183,6 +186,7 @@ export function suggestAnswer(
   options: SuggestFixtureOptions = {},
 ): Record<string, unknown> {
   const variant = options.variant ?? "ok";
+  if (args["action"] === "preflight") return preflightAnswer(options.preflight ?? "valid");
   if (args["action"] === "apply") {
     // The plan of the option with that id, as the server builds it: the outbound leg.
     const found = [...candidates(false, true), ...chains(false, true)].find(

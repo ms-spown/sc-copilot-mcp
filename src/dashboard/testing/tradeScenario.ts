@@ -73,6 +73,18 @@ export function cargoErrorLine(base: number, s: number): string {
   return `${stamp(base, s)} [Error] <CEntityComponentCommodityUIProvider::RmToken_CommodityTransactionResponse> Commodity Transaction Response Error - playerId[1111111111] result[TransactionCostMismatch] type[Buy] [Team_NAPU][Shops]`;
 }
 
+/**
+ * An invented refusal line: the game refused a transaction because the price moved (TransactionCostMismatch). It carries
+ * no amount; the type says the side.
+ */
+export function cargoMismatchLine(
+  base: number,
+  s: number,
+  side: "Buying" | "Selling" = "Buying",
+): string {
+  return `${stamp(base, s)} [Error] <CEntityComponentCommodityUIProvider::RmToken_CommodityTransactionResponse> Commodity Transaction Response Error - playerId[1111111111] result[TransactionCostMismatch] type[${side}] [Team_NAPU][Shops]`;
+}
+
 /** The four lines of the run, `base` being epoch ms of the loop's start. */
 export function tradeLines(base: number): string[] {
   const f = TRADE_FIGURES;
@@ -133,7 +145,15 @@ export function tradeHistory(base: number, nowMs: number): BalancePoint[] {
 }
 
 export type TradeVariant =
-  "story" | "unknown" | "partial" | "none" | "second" | "estimated" | "reward" | "rewardcut";
+  | "story"
+  | "unknown"
+  | "partial"
+  | "none"
+  | "second"
+  | "estimated"
+  | "reward"
+  | "rewardcut"
+  | "refusal";
 
 /**
  * The ledger payload (with its trade section) at `nowMs` for a variant:
@@ -145,6 +165,7 @@ export type TradeVariant =
  *   rewardcut the same with the stream cut around the sales: the deduced fees would be negative, so they are refused.
  *   none    no trade journal feeds the dashboard.
  *   second  the run above followed by a second, smaller one (a new purchase after the sales).
+ *   refusal the run above, then a purchase (400 s) that the game refuses a quarter of a second later because the price moved.
  */
 export function tradeLedger(
   nowMs: number,
@@ -160,6 +181,12 @@ export function tradeLedger(
     lines.push(
       cargoBuyLine(base, 300, 60_000, 300, AGRICIUM_GUID),
       cargoSellLine(base, 330, 71_000, 300, AGRICIUM_GUID),
+    );
+  }
+  if (variant === "refusal") {
+    lines.push(
+      cargoBuyLine(base, 400, 50_000, 100, AGRICIUM_GUID),
+      cargoMismatchLine(base, 400.25),
     );
   }
   // Only what the game had written by `nowMs`; "partial" never writes the second sale.

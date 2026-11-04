@@ -17,6 +17,9 @@
 //                 transport=story|off|loading|unreadable|empty|none   (the transport ledger; story by default, none = no field)
 //                 suggest=ok|wait|error|empty|nospeed|reported|slow  (what the commerce action bar's tool answers: invented
 //                 routes from src/dashboard/testing/suggestFixtures.ts, no UEX; slow = 4 s of virtual waiting)
+//                 preflight=valid|watch|drifted|unknown|estimate|wait  (what the pre-flight check of the plan answers: invented verdicts from
+//                 src/dashboard/testing/preflightFixtures.ts, no UEX; press it with click=Vérifier avant de partir; needs a plan: plan=1 or trade=...)
+//                 trade=refusal  (the story, then a purchase the game refuses at 400 s because the price moved: the alert; use t=410)
 //                 calib=1  (the route calibration section the server sends with the balance: invented ratios for Laranite on the
 //                 route Port Tressler > Area18 TDD (4 runs), Gold (2 runs, wide spread) and Agricium (8 runs); needs balance=1)
 //                 click=<button label>  (presses it once the page is up, e.g. click=Plus rentable)
@@ -116,12 +119,13 @@ const deliver = (m) => {
   if (m.method === "ui/notifications/host-context-changed" && m.params?.displayMode) applyMode();
 };
 const suggestVariant = q.get("suggest") ?? "ok";
+const preflightVariant = q.get("preflight") ?? "valid";
 host = createFakeHost({
   scenario,
   theme: $("theme").value,
   deliver,
   suggest: (args) => {
-    const answer = suggestAnswer(args, { variant: suggestVariant === "slow" ? "ok" : suggestVariant });
+    const answer = suggestAnswer(args, { variant: suggestVariant === "slow" ? "ok" : suggestVariant, preflight: preflightVariant });
     return suggestVariant === "slow" ? new Promise((resolve) => setTimeout(() => resolve(answer), 4000)) : answer;
   },
 });

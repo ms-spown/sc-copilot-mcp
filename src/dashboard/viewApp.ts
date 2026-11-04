@@ -916,7 +916,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     // button that opens the full screen is shown.
     R.trade = L.tradePanel(doc, L, SVG_NS);
     R.tradeActions = L.tradeActionsPanel(doc, L);
-    add(R.trade.slot, R.tradeActions.root);
+    // "Avant de partir" (tradePreflight.ts): the pre-flight check of the plan and the price-refusal alert, in the same slot.
+    R.preflight = L.tradePreflightPanel(doc, L);
+    add(R.trade.slot, R.preflight.root, R.tradeActions.root);
     // "Mouvements du solde" (movementsPanel.ts): a folded block in the card's details.
     R.movements = L.movementsPanel(doc, L);
     add(R.trade.more, R.movements.root);
@@ -942,6 +944,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.inline,
       R.ledger.line,
       R.trade.line,
+      R.preflight.line,
       R.tradeActions.opener,
       R.full,
       R.sr,
@@ -1490,6 +1493,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.tradeActions.render(
       tradeActionsContext(actionsOn, tradeLedger ? tradeLedger.trade : null, now, calibration),
     );
+    R.preflight.render(
+      tradePreflightContext(actionsOn, tradeLedger ? tradeLedger.trade : null, now),
+    );
     const I = L.instrumentInfo(view.poll, view);
     const sheetIns = view.poll && view.poll.ship && view.poll.ship.instruments;
     I.speed = L.speedWithSheet(
@@ -1540,6 +1546,28 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       takeLead,
       // Without a full-screen mode the bar has no room: the compact view offers no way in.
       openFull: availableModes.indexOf("fullscreen") >= 0 ? () => requestMode("fullscreen") : null,
+      later: (fn: () => void, ms: number) => win.setTimeout(fn, ms),
+      cancel: (id: any) => win.clearTimeout(id),
+      changed: render,
+    };
+  }
+
+  /** What the pre-flight block may use: the plan, the commerce section (no amount in what it reads) and the tool call. */
+  function tradePreflightContext(on: boolean, trade: any, now: number): any {
+    return {
+      enabled: on,
+      fullscreen: displayMode === "fullscreen",
+      follower: isFollower(),
+      now,
+      clock,
+      plan: view.plan,
+      trade,
+      call: async (name: string, args: any, timeoutMs: number) =>
+        request("tools/call", { name, arguments: args }, timeoutMs),
+      say: (text: string) =>
+        request("ui/message", { role: "user", content: [{ type: "text", text }] }),
+      feedback,
+      takeLead,
       later: (fn: () => void, ms: number) => win.setTimeout(fn, ms),
       cancel: (id: any) => win.clearTimeout(id),
       changed: render,
@@ -2087,6 +2115,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     stopTimers();
     // The action bar's own timers (a re-search after an option changed, a wait) must not fire in a dead View.
     if (R.tradeActions) R.tradeActions.dispose();
+    if (R.preflight) R.preflight.dispose();
     if (timer !== null) win.clearTimeout(timer);
     timer = null;
     closeChannel();

@@ -129,6 +129,8 @@ export interface LegView {
 
 export interface PlaceView {
   terminal: string;
+  /** UEX's id of the terminal (the dashboard keeps it server-side to find the same terminal again by id). */
+  terminal_id: number;
   system: string | null;
   planet: string | null;
   kind: string | null;
@@ -283,9 +285,10 @@ interface Context {
   priceByKey: Map<string, PriceRow>;
 }
 
-function placeView(p: TerminalPlace | undefined, terminal: string): PlaceView {
+function placeView(p: TerminalPlace | undefined, terminal: string, id: number): PlaceView {
   return {
     terminal,
+    terminal_id: id,
     system: p?.systemName ?? null,
     planet: p?.planetName ?? null,
     kind: p?.kind ?? null,
@@ -711,8 +714,8 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
     const iso = (t: number | null) => (t === null ? null : new Date(t).toISOString());
     return {
       commodity: l.commodity,
-      from: placeView(places.byTerminal.get(l.fromId), l.from),
-      to: placeView(places.byTerminal.get(l.toId), l.to),
+      from: placeView(places.byTerminal.get(l.fromId), l.from, l.fromId),
+      to: placeView(places.byTerminal.get(l.toId), l.to, l.toId),
       buy_price: l.buyPrice,
       sell_price: l.sellPrice,
       profit_per_scu: l.profitPerScu,

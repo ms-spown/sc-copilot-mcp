@@ -160,12 +160,27 @@ export function ledgerTradeNormalize(raw: any): any {
       ignored: ledgerNum(r.ignored) || 0,
       money: ledgerTradeMoney(r.money),
     }));
-  return {
+  // The game refused a transaction because the price moved: a time, a side, a kind. Never an amount.
+  const refusals = (Array.isArray(raw.price_refusals) ? raw.price_refusals : [])
+    .slice(-20)
+    .filter((x: any) => x && typeof x === "object" && ledgerIso(x.at) !== null)
+    .slice(-3)
+    .map((x: any) => ({
+      // Re-written from the parsed time: nothing of the sender's text survives.
+      at: new Date(Date.parse(x.at)).toISOString(),
+      side: x.side === "sell" ? "sell" : "buy",
+      kind: x.kind === "item" ? "item" : "commodity",
+      confidence: x.confidence === "ambiguous" ? "ambiguous" : "confirmed",
+      superseded: x.superseded === true,
+    }));
+  const section: any = {
     v: 1,
     source: raw.source === "journal" ? "journal" : "none",
     runs_total: Math.max(runs.length, ledgerNum(raw.runs_total) || 0),
     runs,
   };
+  if (refusals.length > 0) section.price_refusals = refusals;
+  return section;
 }
 
 /** The payload as the View keeps it: well-formed, bounded, or null. Unknown fields are dropped. */
