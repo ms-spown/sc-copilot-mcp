@@ -179,8 +179,8 @@ once). The rules:
   the work itself. A fixed `setTimeout` is accepted only to check that something does NOT happen (it can then pass
   too early, but never fail), or as the delay a fake itself needs.
 - **Real I/O is allowed where it is the point** (the session store's lock files, the fake game's loopback socket).
-  Bound it by a generous hang detector (20 s for a wait, 30 s per test by default in `vitest.config.ts`), not by what
-  an idle machine needs. A lower bound on elapsed time is safe (a timer never fires early); an upper bound is not.
+  Bound it by a generous hang detector (20 s for a wait, 30 s per test by default in `vitest.config.ts`, 120 s in the
+  session-store tests, which fsync at every change), not by what an idle machine needs. A lower bound on elapsed time is safe (a timer never fires early); an upper bound is not.
 - **No shared ports or folders.** Use port 0 and `mkdtemp`. For "nothing listens here", use `UNUSED_PORT` from
   `src/providers/telemetry/testing/fakeServer.ts`, never a port you just closed: another test file can be handed it.
 - **A fake must not lose what it is given.** The fake game queues frames sent before its stream is registered; keep it

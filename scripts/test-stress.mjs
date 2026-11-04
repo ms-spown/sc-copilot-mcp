@@ -26,6 +26,9 @@ function arg(name, fallback) {
   return n;
 }
 
+// `--only a b` (last on the line): run just the test files whose path contains a or b, instead of the whole suite.
+const onlyAt = process.argv.indexOf("--only");
+const only = onlyAt === -1 ? [] : process.argv.slice(onlyAt + 1);
 const rounds = arg("rounds", 3);
 const parallel = Math.max(1, arg("parallel", 4));
 const burners = arg("burners", os.cpus().length);
@@ -43,7 +46,20 @@ const stopBurners = () => burnerProcs.forEach((p) => p.kill());
 process.on("exit", stopBurners);
 process.on("SIGINT", () => process.exit(130));
 
-const firstLine = (text) => String(text ?? "").split(/[\r\n]/)[0].trim().slice(0, 160);
+// First informative line. A test that hits its timeout is reported by vitest as an "Error: STACK_TRACE_ERROR"
+// placeholder with the runner's own stack (no message), so say what it is; an assertion keeps its own message.
+function firstLine(text, durationMs) {
+  const all = String(Array.isArray(text) ? text.join("\n") : (text ?? ""));
+  if (all.includes("STACK_TRACE_ERROR"))
+    return `TIMEOUT (the test ran ${Math.round(durationMs ?? 0)} ms)`;
+  return (
+    all
+      .split(/[\r\n]/)
+      .map((l) => l.trim())
+      .find((l) => l !== "")
+      ?.slice(0, 160) ?? ""
+  );
+}
 const counts = new Map();
 const firstMessage = new Map();
 
@@ -53,27 +69,42 @@ function runOnce(round, index) {
   const report = path.join(work, `${tag}.json`);
   fs.mkdirSync(tmp, { recursive: true });
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [vitestBin, "run", `--maxWorkers=${workers}`, "--reporter=json", `--outputFile=${report}`], {
-      cwd: root,
-      // Own temp folder per run: concurrent suites must not share the cache folder that vitest.config.ts derives
-      // from os.tmpdir().
-      env: { ...process.env, TEMP: tmp, TMP: tmp, TMPDIR: tmp },
-      stdio: "ignore",
-    });
+    const child = spawn(
+      process.execPath,
+      [
+        vitestBin,
+        "run",
+        `--maxWorkers=${workers}`,
+        "--reporter=json",
+        `--outputFile=${report}`,
+        ...only,
+      ],
+      {
+        cwd: root,
+        // Own temp folder per run: concurrent suites must not share the cache folder that vitest.config.ts derives
+        // from os.tmpdir().
+        env: { ...process.env, TEMP: tmp, TMP: tmp, TMPDIR: tmp },
+        stdio: "ignore",
+      },
+    );
     child.on("exit", (code) => {
       const failed = [];
       try {
         const json = JSON.parse(fs.readFileSync(report, "utf8"));
         for (const file of json.testResults) {
           const rel = path.relative(root, file.name).replaceAll("\\", "/");
-          if (file.status === "failed" && file.assertionResults.every((a) => a.status !== "failed")) {
+          if (
+            file.status === "failed" &&
+            file.assertionResults.every((a) => a.status !== "failed")
+          ) {
             failed.push(`${rel} :: ${firstLine(file.message) || "file-level failure"}`);
           }
           for (const a of file.assertionResults) {
             if (a.status !== "failed") continue;
             const name = `${rel} :: ${a.fullName}`;
             failed.push(name);
-            if (!firstMessage.has(name)) firstMessage.set(name, firstLine(a.failureMessages?.[0]));
+            if (!firstMessage.has(name))
+              firstMessage.set(name, firstLine(a.failureMessages, a.duration));
           }
         }
       } catch {
@@ -88,7 +119,9 @@ let runs = 0;
 let failedRuns = 0;
 const started = Date.now();
 for (let round = 1; round <= rounds; round++) {
-  const results = await Promise.all(Array.from({ length: parallel }, (_, i) => runOnce(round, i + 1)));
+  const results = await Promise.all(
+    Array.from({ length: parallel }, (_, i) => runOnce(round, i + 1)),
+  );
   for (const r of results) {
     runs++;
     if (r.code !== 0 || r.failed.length > 0) failedRuns++;

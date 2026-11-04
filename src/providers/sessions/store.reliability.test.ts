@@ -1,11 +1,16 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LOCK_STALE_MS, LOCK_WAIT_MS, SessionStore, StoreBusyError } from "./store.js";
 import type { StoreState } from "./types.js";
 import { session } from "./fixtures.testing.js";
 import { MAX_FILE_BYTES, MAX_TRIPS, WRITE_SOFT_BYTES } from "./types.js";
+
+// Every change to the session file is a real write with fsync (the store's promise: a power cut keeps the old file or
+// the new one), and these tests make dozens of them. An idle disk takes a few ms each; a disk shared with other
+// work can stall for seconds. A timeout here only detects a hang.
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
 /** Enough sessions of the largest size to pass the byte bound several times over (all 200 would only slow the suite). */
 const SESSIONS_IN_TEST = 40;

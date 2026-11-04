@@ -13,8 +13,9 @@ versions follow [Semantic Versioning](https://semver.org/).
   work (bytes copied by the gRPC framer, field budget of the decoder), frozen timers or lower bounds; sleeps used to
   wait for a socket or a timer replaced by waits on the event itself; the fake game no longer drops a frame sent
   before its stream is registered; "nothing listens" tests use a port no test server can be handed (`UNUSED_PORT`)
-  instead of a port just closed; the 5 s default test timeout (a hang detector, 30 times what real-I/O tests need on an
-  idle machine) is now 30 s, 120 s for the 400-round ledger read test.
+  instead of a port just closed. Where real I/O is the point, the limit is a generous hang detector rather than a
+  speed claim: the default test timeout goes from 5 s to 30 s, and to 120 s for the 400-round ledger read test and for
+  the session-store tests (one fsync per change, dozens per test).
 
 ### Changed
 - `npm run test:stress` (local, not in CI) runs the suite under CPU load and lists the tests that fail; the rules for
