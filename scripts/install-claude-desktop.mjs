@@ -24,7 +24,10 @@ const name = opt("name", "sc-copilot");
 const configPath =
   opt("config") ?? path.join(process.env.APPDATA ?? path.join(process.env.HOME ?? ".", ".config"), "Claude", "claude_desktop_config.json");
 
-const env = { SCMCP_PROFILES: opt("profiles", "core,trade,data,local") };
+// Only what the caller asks for overwrites; the profiles default applies to a NEW entry (the existing env is kept).
+const env = {};
+if (opt("profiles")) env.SCMCP_PROFILES = opt("profiles");
+const defaults = { SCMCP_PROFILES: "core,trade,data,local" };
 if (opt("install-dir")) env.SC_INSTALL_DIR = opt("install-dir");
 if (opt("game-log")) env.SC_GAME_LOG_PATH = opt("game-log");
 
@@ -44,7 +47,7 @@ try {
 
 let plan;
 try {
-  plan = planMerge(raw, name, entry);
+  plan = planMerge(raw, name, entry, defaults);
 } catch (error) {
   if (error instanceof ConfigError) {
     console.error(error.message);

@@ -147,7 +147,11 @@ describe("describePlan hides what the user's own file holds", () => {
 
   it("Given the same file, Then neither the plan's text nor an error carries it either", () => {
     const plan = planMerge(raw, NAME, entry);
-    expect(plan.text).not.toContain("UEXTOKEN"); // the old entry is replaced, not kept
+    // The installer replaces the command, the arguments and any other key of the old entry (the flag, the header);
+    // the env keys are the user's and stay (the value is written back, never printed: see the preview test above).
+    expect(plan.text).not.toContain("--api-token");
+    expect(plan.text).not.toContain("Bearer");
+    expect(JSON.parse(plan.text as string).mcpServers[NAME].env.UEXTOKEN).toBe(FAKE);
     let message = "";
     try {
       planMerge(raw, NAME, { ...entry, env: { UEXTOKEN: "x" } });

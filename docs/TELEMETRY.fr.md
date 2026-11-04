@@ -432,7 +432,7 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
      n'existe qu'après un premier lancement, ou le dossier est faux), ou lu. La page montre le NOM du réglage et une
      courte étiquette fixe (`LIVE/Game.log`, `Game.log`, `custom`), jamais un chemin et jamais une valeur : le serveur
      construit l'étiquette et la page n'accepte que cette liste. Le remède est la ligne à ajouter à la main dans le
-     bloc `env` de l'entrée `sc-copilot` (`npm run install:claude` remplacerait ce bloc, il n'est donc pas proposé).
+     bloc `env` de l'entrée `sc-copilot` (`npm run install:claude` garde ce bloc tel quel mais n'ajoute pas cette ligne, il n'est donc pas proposé).
   3. **La ligne d'enregistrement** du service de télémétrie dans `Game.log` : vue, non vue (le jeu a été lancé sans
      `GRPC_CLIENT_SERVER_ENABLED` : quittez complètement le RSI Launcher, icône de la zone de notification comprise),
      ou pas encore vérifiable.
