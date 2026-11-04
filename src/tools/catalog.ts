@@ -268,6 +268,9 @@ export const CATALOG: Record<string, CatalogEntry> = {
   sc_session_stats: { ...sessionFile, profiles: ["local", "trade"] },
   sc_session_new: { ...sessionFile, profiles: ["local"] },
   sc_session_end: { ...sessionFile, profiles: ["local"] },
+  // The report of a session (Markdown / CSV): long strings, so a larger bound than the other session tools. The player's
+  // labels and note come back in it, cleaned and escaped; still text, still untrusted.
+  sc_session_debrief: { ...sessionFile, maxText: 400_000, profiles: ["local"] },
 
   sc_local_datasets: { ...local, profiles: ["local"] },
   sc_search_local: { ...local, profiles: ["local"] },

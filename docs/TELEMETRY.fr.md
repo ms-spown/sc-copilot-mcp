@@ -934,8 +934,35 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
 - **Outils** (profil `local` ; les trois premiers aussi dans `trade`) : `sc_session_current` (la session jusqu'ici, le
   dernier lieu et les dernières marchandises nommés par le journal, les derniers trajets : ce qu'il faut à Claude pour
   vous accompagner et proposer la prochaine route), `sc_session_list`, `sc_session_stats`, `sc_session_new`,
-  `sc_session_end`. Les deux derniers n'écrivent que le fichier du serveur. Le prompt `trade_copilot` les enchaîne avec les
-  outils de routes UEX.
+  `sc_session_end`, `sc_session_debrief` (le bilan, voir plus bas). `sc_session_new` et `sc_session_end` n'écrivent que le
+  fichier du serveur. Le prompt `trade_copilot` enchaîne les autres avec les outils de routes UEX.
+- **Le bilan de session.** Pour SORTIR une session du serveur (la partager avec un équipage ou une org, garder un journal,
+  coller les trajets dans un tableur) : dans le menu des sessions, ouvrez une session et appuyez sur **Copier le bilan** (le texte
+  va dans le presse-papiers ; si l'hôte refuse le presse-papiers, il s'affiche sélectionné, faites Ctrl+C) ou, quand la page
+  sait faire un fichier, **Télécharger .md** / **Télécharger .csv** (l'hôte peut bloquer un téléchargement : la copie marche
+  toujours). Claude peut produire la même chose avec `sc_session_debrief` (`format` markdown, csv ou both ; `id` pour une
+  session passée ou `last` pour les N dernières, jusqu'à 10). Le Markdown (en français, heures en UTC, sans horloge ni
+  réglage régional : la même session donne le même texte) contient : l'en-tête (début, fin, durée, temps de jeu, version et
+  canal du jeu, les coupures et leur cause : jeu fermé normalement ou sans marqueur de fin), les chiffres clés (trajets, par heure,
+  marge brute, frais, meilleur trajet, efficacité face au plan, fiabilité des routes avec son nombre de trajets, sa confiance
+  et la mise en garde « marchandise non vérifiée (lien par prix) »), le tableau des trajets (heure, libellé et route, SCU, coût,
+  revenu, marge brute, frais, net, chacun étiqueté *mesuré*, *calculé*, *estimé* ou *inconnu*), ce qui n'est pas expliqué, et un
+  pied de page qui dit ce qui est mesuré et ce qui est estimé, et que les prix UEX sont collaboratifs. Le CSV ne contient que les
+  trajets, avec des noms de colonnes en anglais (`session,ended_at,kind,label,commodity,buy_terminal,sell_terminal,scu`, puis,
+  avec les montants, `cost_auec,revenue_auec,gross_margin_auec,fees_auec,fees_method,net_auec,net_method,counted,planned_profit_auec,plan_link`),
+  des virgules, des fins de ligne CRLF, une cellule vide pour ce qui est inconnu (jamais 0), et une cellule de texte qui
+  commence par `=`, `+`, `-` ou `@` est précédée d'une apostrophe pour qu'un tableur ne l'exécute pas. **Excel en français
+  attend le point-virgule** : ouvrez le fichier par Données > À partir d'un fichier texte/CSV et choisissez la virgule comme séparateur.
+  **Confidentialité.** Tout chiffre en aUEC vient du solde : le bilan n'en contient que si le solde est affiché (choix du
+  tableau de bord) ou si `include_balance` est vrai. Sinon c'est le bilan sans montants (comptes, durées, SCU, libellés), qui
+  dit que les montants sont retenus ; le meilleur trajet, l'efficacité face au plan, la fiabilité des routes et les méthodes des
+  trajets sont retenus avec eux. Le solde de départ et celui du dernier relevé n'y figurent jamais, même avec les montants, sauf si
+  vous activez aussi **Soldes de départ et final** (`include_start_balance` ; à chaque usage, jamais retenu, ignoré sans
+  `include_balance`). Aucun pseudo, identifiant de compte, adresse, GUID, ligne brute du journal ni chemin n'y figure ; les
+  libellés et votre note sont nettoyés à nouveau, bornés et échappés (ni HTML, ni lien, ni tableau cassé). Une longue session
+  reste bornée : le tableau Markdown montre les 100 derniers trajets et dit combien il en laisse de côté ; le CSV garde jusqu'à
+  500 lignes. Le texte est construit à la demande, gardé dans la page le temps de le regarder, et jeté quand vous masquez le
+  solde, quittez la session ou fermez le menu ; il n'est jamais enregistré ni envoyé ailleurs par le serveur.
 - **Confidentialité du solde.** Tout chiffre en aUEC (soldes, résultats, chiffre d'affaires, marge brute, rythmes) est
   retenu au modèle sauf appel avec `include_balance` (Claude vous demande d'abord), et n'est dessiné dans le tableau de
   bord, envoyé dans son interrogation et entre tableaux de bord qu'après votre clic sur « Afficher le solde ». Les

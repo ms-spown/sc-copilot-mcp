@@ -57,6 +57,10 @@ export const SESSION_CSS = `
 .ses-trips { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .ses-trip { font-size: var(--fs-s); color: var(--sc-text2); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 
+.ses-export { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2) 0; }
+.ses-export-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.ses-export-pre { margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--fs-xs) ui-monospace, monospace; background: var(--sc-bg3); border: 1px solid var(--sc-line); border-radius: var(--r-s); padding: var(--sp-2); user-select: all; -webkit-user-select: all; }
+
 @media (max-width: 520px) {
   .ses { padding: var(--sp-3); }
   .ses-row { grid-template-columns: 3.5em minmax(0, 1fr) auto; }

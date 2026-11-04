@@ -36,6 +36,7 @@ import {
   type CalibrationReport,
   type CalibrationSection,
 } from "./calibration.js";
+import { buildDebrief, type Debrief } from "./debrief.js";
 import type { SessionStore } from "./store.js";
 import type { TripInput } from "./types.js";
 import type { Session, StoreState } from "./types.js";
@@ -510,6 +511,40 @@ export class SessionManager {
         : ("withheld" as const),
     };
     return out;
+  }
+
+  /**
+   * The debrief (providers/sessions/debrief.ts) of one session by id, else of the newest `last` sessions that hold something
+   * (an empty one waiting for the game is not a debrief). Money only with `includeMoney`, the start and last balance only
+   * with `includeBalances` on top of it. Null when there is nothing to report.
+   */
+  async debrief(opts: {
+    id?: string;
+    last?: number;
+    includeMoney: boolean;
+    includeBalances: boolean;
+  }): Promise<Debrief | null> {
+    this.poke();
+    const state = await this.deps.store.read();
+    let picked: readonly Session[];
+    if (opts.id) {
+      const one = state.sessions.find((x) => x.id === opts.id);
+      picked = one ? [one] : [];
+    } else {
+      picked = usedSessions(state.sessions, opts.last ?? 1);
+    }
+    if (picked.length === 0) return null;
+    return buildDebrief(picked, {
+      includeMoney: opts.includeMoney,
+      includeBalances: opts.includeBalances,
+      // The ratios come from the balance: built only for a caller that was allowed it.
+      calibration: opts.includeMoney
+        ? buildCalibration(usedSessions(state.sessions), {
+            nowMs: this.now(),
+            gameVersion: latest(state)?.game_version ?? null,
+          })
+        : null,
+    });
   }
 
   private calibrationMemo: { key: string; report: CalibrationReport } | null = null;

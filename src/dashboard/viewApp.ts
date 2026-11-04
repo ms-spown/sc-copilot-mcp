@@ -904,6 +904,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     // Saved play sessions (sessionPanel.ts): the bar under the header; the data live on the server.
     R.sessions = L.sessionPanel(doc, L, {
       call: callSessionTool,
+      copy: copyText,
+      download: downloadText,
+      canDownload: canDownload,
       refresh: () => pollOnce(),
       say: (text: string) => feedback(text),
       toggleBalance: () => toggleBalance(),
@@ -1887,6 +1890,46 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     }
     select();
     return Promise.resolve(false);
+  }
+
+  /** Can this page make a file at all? (The host may still refuse the download: it is never required.) */
+  function canDownload(): boolean {
+    try {
+      const u = win.URL;
+      return (
+        typeof win.Blob === "function" &&
+        !!u &&
+        typeof u.createObjectURL === "function" &&
+        typeof doc.createElement === "function"
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /** Offers a text as a file through a temporary link. True when the click was made; the host decides what follows. */
+  function downloadText(name: string, mime: string, text: string): boolean {
+    try {
+      if (!canDownload()) return false;
+      // A byte-order mark lets a spreadsheet read the accents of a CSV as UTF-8.
+      const bom = mime === "text/csv" ? "\uFEFF" : "";
+      const blob = new win.Blob([bom + text], { type: mime + ";charset=utf-8" });
+      const url = win.URL.createObjectURL(blob);
+      const a = doc.createElement("a");
+      a.setAttribute("href", url);
+      a.setAttribute("download", name);
+      a.click();
+      win.setTimeout(() => {
+        try {
+          win.URL.revokeObjectURL(url);
+        } catch {
+          /* nothing to release */
+        }
+      }, 10000);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async function sendAction(kind: string) {

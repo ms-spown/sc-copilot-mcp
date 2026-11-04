@@ -72,6 +72,7 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
      cargo success is inferred (no error line), say so; a commodity shown as "unknown commodity" stays unknown.
    - The player's saved play session (trips, time, the last place and goods the log named: an estimate): sc_session_current
      to resume and accompany, sc_session_stats and sc_session_list to look back; money figures only with include_balance.
+     To keep or share a session (crew, org, spreadsheet): sc_session_debrief (Markdown, or CSV of the trips).
    - Accompanying a trade run: end with one concrete next step. Propose one main run and up to two alternatives (what to
      buy and where, where to sell, SCU, cost, profit, why it fits, the risks), after checking uex_get_price_history and
      uex_get_market_status. To debrief a run, use sc_trade_journal (gross margin) and the sell price now.
@@ -114,6 +115,9 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    UEX prices are crowdsourced estimates: when the player agreed to the money figures, read route_reliability in
    sc_session_stats before quoting a planned profit, and quote it with its number of runs and its confidence (an estimate,
    no figure below 2 runs, never carried from one commodity to another, no cause claimed).
+   If the player wants to keep or share a session, sc_session_debrief gives the report (Markdown, or a CSV of the trips): without
+   include_balance it has no aUEC amount and says so; ask before include_balance, and again before include_start_balance
+   (the balances at the start and the end stay out unless the player asks). Hand it over as it is; add no figure.
 ```
 
 ## Canary test: are the server instructions honoured?

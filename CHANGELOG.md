@@ -6,6 +6,21 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Session report: take a session out of the server.** The stats were in `sc_session_stats` and the session bar, with no
+  clean way to share them with a crew or an org, keep a log or paste the trips into a spreadsheet. New pure formatter
+  `src/providers/sessions/debrief.ts`, new tool `sc_session_debrief` (`format` markdown, csv or both; `id` or `last`;
+  `include_balance`; `include_start_balance`) and, in the detail of a session in the dashboard, **Copier le bilan** (clipboard,
+  with a selectable block when the host refuses it) and **Télécharger .md** / **.csv** (only where the page can make a file;
+  never required). The Markdown report (French, UTC, deterministic) has the header (times, active time, game version and
+  channel, breaks and why), the key numbers (trips, per hour, gross margin, fees, best trip, efficiency against the plan, route
+  reliability with its runs, confidence and the "marchandise non vérifiée (lien par prix)" caveat), a trips table with
+  mesuré / calculé / estimé / inconnu tags, what is unexplained, and a footer on what is measured and what is estimated. The CSV
+  (English columns, RFC 4180, spreadsheet-formula safe) has one row per trip. Amounts exist only when the balance is shown /
+  `include_balance`; the start and last balance only with the separate `include_start_balance`; unknown stays unknown, never
+  0; no trend is invented. A 500-trip session is bounded (the table keeps the newest 100 and says so). The prompt
+  `session_debrief` and the server instructions tell Claude it can produce it. Docs EN/FR, SECURITY.
+
 ## [2.3.0] - 2026-11-04
 
 ### Added

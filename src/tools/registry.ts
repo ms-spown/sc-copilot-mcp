@@ -31,6 +31,7 @@ import { gameLogTools } from "./gamelog.js";
 import { tradeJournalTools } from "./tradejournal.js";
 import { sctTools } from "./sctools.js";
 import { statusTools, type StatusProbe } from "./status.js";
+import { sessionDebriefTools } from "./sessionDebrief.js";
 import { sessionTools } from "./sessions.js";
 import { telemetryTools } from "./telemetry.js";
 import type {
@@ -78,6 +79,7 @@ export function allTools(clients: ToolClients, probes: StatusProbe[] = []): Tool
     ...telemetryTools(clients),
     ...dashboardTools(clients),
     ...sessionTools(clients),
+    ...sessionDebriefTools(clients),
     ...fleetTools(clients),
     ...localTools(),
     ...vocabularyTools(clients),
@@ -126,7 +128,13 @@ function withDashboardSet(names: Set<string>): Set<string> {
     names.add("sc_live_mark");
     names.add("sc_trade_suggest");
     // The session bar of the View reads and writes sessions through these.
-    for (const n of ["sc_session_current", "sc_session_list", "sc_session_new", "sc_session_end"])
+    for (const n of [
+      "sc_session_current",
+      "sc_session_list",
+      "sc_session_new",
+      "sc_session_end",
+      "sc_session_debrief",
+    ])
       names.add(n);
   }
   return names;

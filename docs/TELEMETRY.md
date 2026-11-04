@@ -879,8 +879,32 @@ compares what the plan promised with what you really got (`src/providers/session
   case a new one is made.
 - **Tools** (`local` profile; the first three also in `trade`): `sc_session_current` (the session so far, the last place
   and goods the log named, the latest trips: what Claude needs to accompany you and propose the next run),
-  `sc_session_list`, `sc_session_stats`, `sc_session_new`, `sc_session_end`. The last two write only the server's own file.
-  The prompt `trade_copilot` chains them with the UEX route tools.
+  `sc_session_list`, `sc_session_stats`, `sc_session_new`, `sc_session_end`, `sc_session_debrief` (the report, see below).
+  `sc_session_new` and `sc_session_end` write only the server's own file. The prompt `trade_copilot` chains the others with the UEX route tools.
+- **The session report (bilan).** To TAKE a session out of the server (share it with a crew or an org, keep a log, paste the
+  trips into a spreadsheet): in the session menu, open a session and press **Copier le bilan** (the text goes to the
+  clipboard; if the host refuses the clipboard it is shown selected, press Ctrl+C) or, when the page can make a file,
+  **Télécharger .md** / **Télécharger .csv** (the host may block a download: copying always works). Claude can produce the same
+  with `sc_session_debrief` (`format` markdown, csv or both; `id` for a past session or `last` for the newest N, up to 10).
+  The Markdown (in French, times in UTC, no clock or locale: the same session gives the same text) has: the header (start,
+  end, duration, active time, game version and channel, the breaks and why: game closed normally or no end marker), the key
+  numbers (trips, per hour, gross margin, fees, best trip, efficiency against the plan, route reliability with its number of
+  runs, its confidence and the "marchandise non vérifiée (lien par prix)" caveat), the trips table (time, label and route,
+  SCU, cost, revenue, gross margin, fees, net, each tagged *mesuré*, *calculé*, *estimé* or *inconnu*), what is unexplained, and a
+  plain footer saying what is measured and what is estimated, and that UEX prices are crowdsourced. The CSV has the trips only,
+  with English column names (`session,ended_at,kind,label,commodity,buy_terminal,sell_terminal,scu`, then, with amounts,
+  `cost_auec,revenue_auec,gross_margin_auec,fees_auec,fees_method,net_auec,net_method,counted,planned_profit_auec,plan_link`),
+  commas, CRLF line ends, empty cells for what is unknown (never 0), and a text cell that starts with `=`, `+`, `-` or `@` is
+  prefixed with an apostrophe so a spreadsheet does not run it.
+  **Privacy.** Every aUEC figure comes from the balance, so the report holds amounts only when the balance is shown (the
+  dashboard's choice) or `include_balance` is true. Otherwise it is the non-monetary report (counts, durations, SCU, labels) and
+  says amounts are withheld; the best trip, the plan efficiency, the route reliability and the trips' methods are withheld with
+  them. The balance at the start and at the last sighting never appear, even with amounts, unless you also switch on
+  **Soldes de départ et final** (`include_start_balance`; per use, never remembered, ignored without `include_balance`). No
+  handle, account id, address, GUID, raw log line or path is in it; the labels and your note are cleaned again, bounded and
+  escaped (no HTML, no link, no table break). A long session stays bounded: the Markdown table shows the newest 100 trips and says
+  how many it left out; the CSV keeps up to 500 rows. The text is built on request, held in the page only while you look at it, and is
+  dropped when you hide the balance, leave the session or close the menu; it is never stored and never sent anywhere by the server.
 - **Balance privacy.** Every aUEC figure (balances, results, turnover, gross margin, rates) is withheld from the model
   unless the tool is called with `include_balance` (Claude asks you first), and is drawn in the dashboard, and
   sent in its poll and between dashboards, only after you click "Afficher le solde". Counts, times and place names are

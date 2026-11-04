@@ -89,6 +89,7 @@ describe("Feature: the capabilities guide names real tools and misses none", () 
       "sc_live_poll",
       "sc_live_state",
       "sc_session_current",
+      "sc_session_debrief",
       "sc_session_end",
       "sc_session_list",
       "sc_session_new",
