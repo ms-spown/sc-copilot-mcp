@@ -352,6 +352,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       copy: copyText,
       say: (text: string) => feedback(text),
       later: (fn: () => void, ms: number) => win.setTimeout(fn, ms),
+      changed: () => render(),
+      inline: () => displayMode !== "fullscreen",
     });
     add(R.topActions, R.age, R.btnAnalyse, R.health.help, R.btnMode);
     add(R.top, R.status, R.verdict, R.topActions);
@@ -436,7 +438,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.iBalanceValue = el("span", "balance-value", "••••••");
     R.btnBalance = button("Afficher le solde", () => toggleBalance(), "mini");
     add(R.iBalance, R.iBalanceLabel, R.iBalanceValue, R.btnBalance);
-    add(R.inline, R.iDials, R.iBalance);
+    add(R.inline, R.iDials);
 
     // ---------------------------------------------------------------- cockpit
     R.full = el("div", "full");
@@ -906,18 +908,19 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     add(
       root,
       R.top,
-      R.sessions.root,
       R.toastTop,
       R.supersede,
       R.notice,
-      R.health.root,
-      R.ctx,
+      R.preflight.line,
       R.alerts,
       R.pinbar,
       R.inline,
+      R.ctx,
+      R.sessions.root,
+      R.iBalance,
+      R.health.root,
       R.ledger.line,
       R.trade.line,
-      R.preflight.line,
       R.tradeActions.opener,
       R.full,
       R.sr,
@@ -927,7 +930,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   // ---------------------------------------------------------------------------------------------
   // Rendering: only text and attributes that change are written
   // ---------------------------------------------------------------------------------------------
-  function renderStatus(now: number, conds: any[]): any {
+  function renderStatus(now: number, conds: any[], refusal: any): any {
     const info = L.streamInfo(view, now);
     setAttr(root, "data-grey", info.grey ? "1" : "0");
     setAttr(root, "data-stream", info.id);
@@ -937,7 +940,10 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const detailInNotice = info.id !== "live" && info.id !== "stale" && info.id !== "init";
     setText(R.statusDetail, detailInNotice ? "" : info.detail);
     const live = info.id === "live" || info.id === "stale";
-    setText(R.age, live ? "Données de " + L.formatAge(L.frameAge(view, now)) : "");
+    // The compact header keeps to one line: only the age there, the words are its tooltip.
+    const ageText = live ? L.formatAge(L.frameAge(view, now)) : "";
+    setText(R.age, ageText && (displayMode === "fullscreen" ? "Données de " : "") + ageText);
+    setAttr(R.age, "title", ageText && "Données de " + ageText);
     if (displayMode === "fullscreen") {
       for (const c of R.cards) setText(c.age, live ? L.formatAge(L.frameAge(view, now)) : "");
     }
@@ -965,10 +971,11 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     show(R.btnResume, retired);
     show(R.supersede, isFollower() && !retired);
     // The verdict at a glance
-    const verdict = info.grey ? null : L.summaryInfo(view.poll, conds);
+    const verdict = info.grey ? null : L.summaryInfo(view.poll, conds, refusal);
     show(R.verdict, !!verdict);
     if (verdict) {
       setAttr(R.verdict, "data-tone", verdict.tone);
+      setAttr(R.verdict, "title", verdict.title || "");
       setText(R.verdict, verdict.label);
     }
     return info;
@@ -1020,6 +1027,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       L.coveredAlertKeys(view.poll),
     );
     show(R.alertsEmpty, current && list.length === 0 && conds.length === 0);
+    // The compact view spends no row on "no alert": the verdict in the header already says it.
+    show(R.alerts, displayMode === "fullscreen" || list.length > 0 || conds.length > 0);
     for (let i = 0; i < R.alertList.length; i++) {
       const slot = R.alertList[i];
       const a = list[i];
@@ -1056,6 +1065,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
 
   function renderInline(I: any, V: any, now: number) {
     setDial(R.iSpeed, Object.assign({}, I.speed, { sub: I.speed.subShort || I.speed.sub }));
+    // The short line is one line; the source and the scale ("d'après la fiche (wiki)") are its tooltip.
+    setAttr(R.iSpeed.sub, "title", I.speed.sub || "");
     setDial(R.iHydrogen, {
       text: I.hydrogen.text.replace("\u00a0%", ""),
       unit: I.hydrogen.known ? "%" : "",
@@ -1421,7 +1432,15 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       .filter((c: any) => c.id !== "in_quantum" && c.id !== "in_jump")
       .slice(0, R.condList.length);
     R.health.render(view.poll, { showBalance, now, link: view.link });
-    const info = renderStatus(now, conds);
+    const tradeLedger = L.ledgerNormalize(view.poll && view.poll.ledger);
+    // The action bar asks the server for routes; it needs a server that answers, not a live stream.
+    const actionsOn =
+      initialised && !tornDown && !retired && !!view.poll && view.poll.state !== "off";
+    // A price refused at the kiosk goes into the verdict: it is the most urgent thing the page knows.
+    const refusal = actionsOn
+      ? L.tradeRefusalInfo(L, tradeLedger ? tradeLedger.trade : null, now)
+      : null;
+    const info = renderStatus(now, conds, refusal);
     streamLive = !info.grey;
     renderContext(now);
     renderAlerts(now, conds, !info.grey);
@@ -1433,10 +1452,6 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     });
     // The commerce card: the plan from the model, the commerce section of the ledger, and the balance change only
     // as a labelled fallback while no trade journal feeds the dashboard.
-    const tradeLedger = L.ledgerNormalize(view.poll && view.poll.ledger);
-    // The action bar asks the server for routes; it needs a server that answers, not a live stream.
-    const actionsOn =
-      initialised && !tornDown && !retired && !!view.poll && view.poll.state !== "off";
     // Where the money went: read from the raw payload (ledgerNormalize does not keep it), drawn only with the balance.
     const moved = showBalance
       ? L.movementsFromLedger(L, view.poll && view.poll.ledger)
@@ -1456,6 +1471,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       baseline: L.baselineLabel(view.poll),
       actionsEnabled: actionsOn,
       decomposition: moved.decomposition,
+      movements: R.movements,
     });
     R.movements.render({
       section: moved.section,
@@ -1539,6 +1555,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
         request("tools/call", { name, arguments: args }, timeoutMs),
       say: (text: string) =>
         request("ui/message", { role: "user", content: [{ type: "text", text }] }),
+      rerun: () => R.tradeActions.rerun(),
       feedback,
       takeLead,
       later: (fn: () => void, ms: number) => win.setTimeout(fn, ms),

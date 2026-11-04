@@ -98,8 +98,8 @@ describe("Feature: route reliability from the player's own runs", () => {
       "Port Tressler",
       "Area18 TDD",
     );
-    expect(line.text).toContain("Tes 2 derniers trajets");
-    expect(line.text).toContain("marchandise non vérifiée, lien par prix");
+    expect(line.text).toContain("tes 2 trajets similaires (marchandise non vérifiée)");
+    expect(line.more).toContain("lien par prix");
     expect(line.goods_unverified).toBe(true);
     // The same report through the tool.
     const stats = (await w.call("sc_session_stats", { include_balance: true })).data;

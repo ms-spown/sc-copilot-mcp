@@ -76,9 +76,7 @@ describe("Feature: a ratio that rests on a tiny plan is not printed as a percent
   it("Given a ratio of 666, Then the line says the gap is very high and shows no percentage of it", () => {
     const c = calib(group({ gross_ratio: 666, net_ratio: 650 }));
     const line = calibrationLine(c, "Laranite", null, null);
-    expect(NBSP_FREE(line.text)).toContain(
-      "écart très élevé entre le réalisé (marge brute) et le prévu",
-    );
+    expect(NBSP_FREE(line.text)).toContain("écart très élevé entre le réalisé et le prévu");
     expect(line.text).not.toMatch(/66\s?600|\b666\b/);
     // no calibrated expectation either: a huge ratio times the plan is not an estimate
     expect(calibrationExpected(c.groups[0], 100_000, 300_000)).toBeNull();
@@ -97,24 +95,30 @@ describe("Feature: unverified goods are said where the figure is shown", () => {
     const c = calib(group({ goods_unverified: true, confidence: "medium" }));
     const line = calibrationLine(c, "Laranite", null, null);
     expect(NBSP_FREE(line.text)).toBe(
-      "Tes 4 derniers trajets qui ressemblent au plan (marchandise non vérifiée, lien par prix) : réalisé (marge brute) ≈ 80 % du prévu, frais ≈ 5 % du chiffre d’affaires.",
+      "D’après tes 4 trajets similaires (marchandise non vérifiée) : tu réalises ≈ 80 % du prévu (frais ≈ 5 %).",
     );
     expect(line.text).not.toContain("de cette marchandise");
-    expect(line.tag).toBe("estimé · confiance moyenne");
+    // the jargon is not in the visible line: it is one fold away
+    expect(line.text).not.toMatch(/lien par prix|premier tronçon|marge brute/);
+    expect(line.more).toContain("lien par prix");
+    expect(line.tag).toBe("estimé · 4 trajets · confiance moyenne");
+    expect(line.hint).toContain("Confiance moyenne.");
     expect(line.hint).toContain("plafonnée à « moyenne »");
     expect(line.hint).toContain("une ressemblance, pas une preuve");
     const route = calib(
       group({ kind: "route", buy_terminal: "A", sell_terminal: "B", goods_unverified: true }),
     );
     expect(calibrationLine(route, "Laranite", "A", "B").text).toContain(
-      "qui ressemblent au plan sur cette route (marchandise non vérifiée, lien par prix)",
+      "tes 4 trajets similaires (marchandise non vérifiée)",
     );
   });
 
   it("Given a verified group, Then the wording is the plain one and there is no hint", () => {
     const line = calibrationLine(calib(group()), "Laranite", null, null);
-    expect(line.text).toContain("Tes 4 derniers trajets de cette marchandise");
-    expect(line.hint).toBe("");
+    expect(line.text).toContain("D’après tes 4 trajets de cette marchandise");
+    expect(line.more).not.toContain("lien par prix");
+    // the tooltip still says the confidence, and nothing about a cap
+    expect(line.hint).toMatch(/^Confiance \w+\.$/);
   });
 
   it("Given the tile of an unverified group, Then its sub-line says so too and carries the hint", () => {
@@ -131,24 +135,33 @@ describe("Feature: unverified goods are said where the figure is shown", () => {
   });
 });
 
-describe("Feature: the ceiling is said in the visible text, not only in the tooltip", () => {
-  it("Given a group held at medium by the price link, Then the line says why and what the link leaves out; a group that is not capped says nothing of it", () => {
+describe("Feature: the ceiling is said in written text (the fold under the line), not only in the tooltip", () => {
+  it("Given a group held at medium by the price link, Then the fold says why and what the link leaves out; a group that is not capped says nothing of it", () => {
     const capped = calib(group({ goods_unverified: true, confidence_capped: true, n: 8 }));
-    const text = NBSP_FREE(calibrationLine(capped, "Laranite", null, null).text);
-    expect(text).toContain("Confiance plafonnée à « moyenne » : plan rattaché par les prix");
-    expect(text).toContain("moins de la moitié du prévu ne sont pas rattachés");
+    const line = calibrationLine(capped, "Laranite", null, null);
+    const more = NBSP_FREE(line.more);
+    expect(more).toContain("Confiance plafonnée à « moyenne » : les trajets qui rendent moins");
+    expect(more).toContain("moins de la moitié du prévu ne sont pas rattachés");
+    // the visible line keeps only the honest short form, the caveat is behind « Comment lire ça »
+    expect(line.text).not.toContain("plafonnée");
     const plain = calib(group({ goods_unverified: true, confidence_capped: false }));
-    expect(calibrationLine(plain, "Laranite", null, null).text).not.toContain("plafonnée");
+    expect(calibrationLine(plain, "Laranite", null, null).more).not.toContain("plafonnée");
   });
 });
 
 describe("Feature: a two-leg card says which leg the line is about", () => {
-  it("Given a card with two legs, Then the line ends with that sentence; a one-leg card has none", () => {
+  it("Given a card with two legs, Then the line says it is about the 1st leg and the fold says it is no round-trip figure; a one-leg card has none of it", () => {
     const c = calib(group());
-    expect(calibrationLine(c, "Laranite", null, null, 2).text).toContain(
-      "Ligne calculée pour le premier tronçon seulement.",
-    );
-    expect(calibrationLine(c, "Laranite", null, null, 1).text).not.toContain("tronçon");
-    expect(calibrationLine(c, "Laranite", null, null).text).not.toContain("tronçon");
+    const two = calibrationLine(c, "Laranite", null, null, 2);
+    expect(two.text).toContain("Sur le 1er tronçon, d’après tes 4 trajets");
+    expect(two.more).toContain("premier tronçon seulement");
+    expect(two.more).toContain("pas un chiffre pour l’aller-retour");
+    for (const one of [
+      calibrationLine(c, "Laranite", null, null, 1),
+      calibrationLine(c, "Laranite", null, null),
+    ]) {
+      expect(one.text).not.toContain("tronçon");
+      expect(one.more).not.toContain("tronçon");
+    }
   });
 });

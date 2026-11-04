@@ -211,6 +211,7 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
       visible: true,
       empty: true,
       title: "Aucune session",
+      line: "Aucune session",
       chip: "",
       sub: "Elle démarre quand le jeu est détecté, ou avec « Nouvelle session ».",
       kpis: [],
@@ -303,7 +304,7 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
       id: "net",
       label: "Gain",
       value: "masqué",
-      sub: "Afficher le solde pour le voir",
+      sub: "Solde masqué",
       tone: "",
     });
   }
@@ -316,17 +317,31 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
     );
   if (cur.interruptions > 0)
     notes.push(
-      "Reprise après " +
+      "Session reprise après " +
         cur.interruptions +
-        (cur.interruptions > 1 ? " coupures" : " coupure") +
-        " (voir le détail).",
+        (cur.interruptions > 1 ? " arrêts" : " arrêt") +
+        " du jeu (détail dans Sessions).",
     );
   if (hasMoney && money.start_balance_quality && money.start_balance_quality !== "game_start")
     notes.push("Solde de départ : " + sessionQualityLabel(money.start_balance_quality) + ".");
   if (notice) notes.push(notice);
+  // The compact view's one line: the net per hour comes from the same `money` as the kpis, so it exists only while the
+  // balance is shown.
+  const rate = hasMoney && money.net_per_hour_auec !== null ? money.net_per_hour_auec : null;
+  const line = ["Session " + cur.number, cur.trips + (cur.trips > 1 ? " trajets" : " trajet")];
+  if (cur.active_ms > 0) line.push(L.formatDuration(cur.active_ms));
+  if (rate !== null) line.push(L.fmtAuec(rate, true) + "\u00a0aUEC/h");
+  if (cur.status === "ended" || bar.stale) line.push(sessionStateLabel(cur, bar.stale));
+  // A warning note (a read-only or degraded store, a start balance that is not the game's) must not be hidden by the fold.
+  if (
+    notice ||
+    (hasMoney && money.start_balance_quality && money.start_balance_quality !== "game_start")
+  )
+    line.push("note");
   return {
     visible: true,
     empty: false,
+    line: line.join(" · "),
     title: "Session " + cur.number,
     chip: sessionStateLabel(cur, bar.stale),
     chipState: cur.status === "ended" ? "ended" : bar.stale ? "stale" : "open",
@@ -513,6 +528,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   const root = el("section", "ses");
   root.setAttribute("aria-label", "Session");
   const bar = el("div", "ses-bar");
+  bar.setAttribute("id", "ses-bar");
   const id = el("div", "ses-id");
   const title = el("span", "ses-title", "Session");
   const chip = el("span", "ses-chip", "");
@@ -530,8 +546,17 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     kpis.push(k);
     add(kpiBox, k);
   }
+  // The compact view's one line, and the control that unfolds the card (the card stays whole in full screen).
+  // The line is the text; the arrow is a decoration (aria-hidden), so that the accessible name is the line alone.
+  const one = button("", () => toggleFold(), "ses-one");
+  const oneText = el("span", "", "Session");
+  const oneCaret = el("span", "", " ▾");
+  oneCaret.setAttribute("aria-hidden", "true");
+  add(one, oneText, oneCaret);
+  one.setAttribute("aria-expanded", "false");
+  one.setAttribute("aria-controls", "ses-bar");
   const actions = el("div", "ses-actions");
-  const btnNew = button("Nouvelle session", () => onNew(), "small primary");
+  const btnNew = button("Nouvelle session", () => onNew(), "small");
   const btnMenu = button("Sessions", () => toggleMenu(), "small");
   btnMenu.setAttribute("aria-expanded", "false");
   const btnBalance = button("Afficher le solde", () => api.toggleBalance(), "small");
@@ -622,11 +647,12 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   add(exportBox, exportRow, exportHint, exportMsg, exportPre);
   add(detail, detailHead, exportBox, facts, tripsTitle, tripList, breaksTitle, breaksList);
   add(menu, menuHead, menuMsg, stats, list, detail);
-  add(root, bar, notes, menu);
+  add(root, one, bar, notes, menu);
 
   // ------------------------------------------------------------------------------ state
   const st: any = {
     open: false,
+    fold: true, // compact view: the card is one line until the player unfolds it
     view: "list", // "list" | "detail"
     ctx: { showBalance: false, now: 0 },
     asked: null, // the balance choice the menu data was fetched with
@@ -711,6 +737,19 @@ export function sessionPanel(doc: any, L: any, api: any): any {
           sessionText(err && err.message ? err.message : "erreur", 100),
       );
     }
+  }
+
+  function toggleFold() {
+    st.fold = !st.fold;
+    renderFold();
+    one.focus();
+  }
+
+  function renderFold() {
+    setAttr(root, "data-fold", st.fold ? "1" : "0");
+    setAttr(one, "aria-expanded", st.fold ? "false" : "true");
+    setText(oneText, (st.info && st.info.line) || "Session");
+    setText(oneCaret, st.fold ? " ▾" : " ▴");
   }
 
   function toggleMenu() {
@@ -1246,6 +1285,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       if (!info.visible) return;
       setAttr(root, "data-empty", info.empty ? "1" : "0");
       setAttr(root, "data-state", info.chipState || "");
+      renderFold();
       setText(title, info.title);
       setText(chip, info.chip);
       show(chip, !!info.chip);

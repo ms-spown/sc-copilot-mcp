@@ -188,14 +188,28 @@ export function movementsFromLedger(L: any, ledger: any): any {
   };
 }
 
-/** The words of the card's warning when the net holds more than the margin and the fees explain. */
-export function movementsWarningText(d: any): string {
+/**
+ * The card's warning when the net holds more than the margin and the fees explain: ONE sentence naming what else moved the
+ * balance (the full account is in the "Mouvements du solde" block, which the warning points to).
+ */
+export function movementsWarningText(L: any, d: any): string {
   if (!d || !Array.isArray(d.explanation) || d.explanation.length === 0) return "";
-  let text = d.explanation.join(" ");
-  if (d.fees_doubtful)
-    text +=
-      " Les frais mesurés tombent dans une fenêtre qui contient aussi une autre cause possible (achat d’objet, récompense ou assurance) : ils peuvent l’inclure.";
-  return text + " La variation du solde n’est pas le bénéfice de ce seul trajet.";
+  const p = d.parts || {};
+  const named: string[] = [];
+  const add = (amount: number, what: string) => {
+    if (amount)
+      named.push(L.fmtAuec(amount, true) + String.fromCharCode(160) + "aUEC (" + what + ")");
+  };
+  add(p.probable_rewards, "récompense probable");
+  add(p.probable_costs, "coût possible");
+  add(p.items, "objets achetés");
+  add((p.unexplained || 0) + (p.ambiguous || 0) + (p.stream_gap || 0), "non expliqué");
+  return (
+    "Le solde a aussi bougé" +
+    (named.length ? " de " + named.join(", ") : "") +
+    " : ce n’est pas le bénéfice de ce trajet seul." +
+    (d.fees_doubtful ? " Les frais mesurés peuvent inclure l’une de ces causes." : "")
+  );
 }
 
 export function movementsCategoryLabel(m: any): string {
@@ -327,6 +341,7 @@ export function movementsPanel(doc: any, L: any): any {
   const { el, add, setText, setAttr, show } = L.domKit(doc);
 
   const root = el("details", "mv");
+  root.setAttribute("id", "mv");
   root.setAttribute("data-hidden", "1");
   const sum = el("summary", "mv-sum", "Mouvements du solde");
   const body = el("div", "mv-body");
@@ -514,7 +529,12 @@ export function movementsPanel(doc: any, L: any): any {
     show(foot, footText !== "");
   }
 
-  return { root, render };
+  /** The card's warning opens and closes the block; the card's folded details are opened by the caller. */
+  const toggle = () => {
+    root.open = !root.open;
+    if (root.open && root.scrollIntoView) root.scrollIntoView({ block: "nearest" });
+  };
+  return { root, render, toggle, isOpen: () => root.open === true };
 }
 
 /** The functions of this file, in the order they are serialised (page.ts). */

@@ -5,7 +5,7 @@
  * nothing that moves (the panel has no animation, so prefers-reduced-motion has nothing to switch off).
  */
 export const LEDGER_CSS = `
-.lg-line { margin: var(--sp-2) 0 0; padding: var(--sp-2) var(--sp-3); background: var(--tint-info); color: var(--sc-info); border-radius: var(--r-m); font-size: var(--fs-s); font-weight: 600; overflow-wrap: anywhere; }
+.lg-line { margin: var(--sp-2) 0 0; padding: 5px var(--sp-3); background: var(--tint-info); color: var(--sc-info); border-radius: var(--r-m); font-size: var(--fs-s); font-weight: 600; overflow-wrap: anywhere; }
 
 /* Greyed with the rest of the dashboard when the stream is not live (the card is inside .full, already greyed). */
 [data-grey="1"] .lg-line { opacity: 0.5; filter: grayscale(1); }

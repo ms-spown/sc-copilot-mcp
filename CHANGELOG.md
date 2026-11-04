@@ -44,6 +44,21 @@ versions follow [Semantic Versioning](https://semver.org/).
   one shared `domKit` in `viewLogic.ts`, three functions nobody called are no longer shipped, and two style rules for classes the
   page never produces are gone (a test now fails on a dead rule or a dead function). The budget of `npm run check:page-size` is
   345 kB (the new size plus about 8 %).
+- **Dashboard, first UX pass (from the independent UX audit).** The compact (inline) view puts what a glance in flight
+  needs first: header and verdict, the alerts (no row while there is none), the three dials, then the ship on a small row,
+  the session on ONE line (a button with `aria-expanded` unfolds the card; the net per hour is in the line only while the
+  balance is shown) and the rest. In real Chrome on the preview's made-up flight: 691 px to 326 px at 560 px wide, 915 px to
+  510 px at 360 px with a price refusal. **Nouvelle session** is a secondary button; the objective buttons are one
+  segmented choice (the chosen one is filled, with its check mark). A price refused at the kiosk now enters the verdict of
+  the header ("Prix changé : achat refusé · il y a 40 s", the clock time as its tooltip) instead of a green "Tout va bien",
+  and shows as one line right under the header; the pre-flight verdict "dérivé" offers "Relancer la recherche" as a real
+  button. On the commerce card the long amber paragraph about the balance moved under the figures and became one sentence
+  with a "Détail" button (the full account stays in "Mouvements du solde"); before a run only the planned profit is drawn,
+  no more wall of empty tiles. The health strip is one line ("N réglages à faire", "Voir" unfolds the fixes). The route
+  calibration line is plain French ("D'après tes N trajets similaires (marchandise non vérifiée) : tu réalises ≈ X % du
+  prévu (frais ≈ Y %)", "Sur le 1er tronçon" for a two-leg route), the caveats are in a fold "Comment lire ça", the tag is
+  "estimé · N trajets". Small copy fixes: "Session reprise après 1 arrêt du jeu", "Solde masqué", shorter health sentences.
+  No data, tool or network change; the balance rules are unchanged. The page grows by about 4.6 kB (the features, on top of the slim page).
 
 ## [2.4.0] - 2026-11-04
 

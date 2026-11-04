@@ -140,27 +140,30 @@ describe("Feature: the line under a suggestion is quiet, honest and tied to its 
   it("Given a route with four runs, Then the line gives n, the realised share, the fee rate and the confidence, as an estimate", () => {
     const line = calibrationLine(calib, "Laranite", "Port Tressler", "Area18 TDD");
     expect(NBSP_FREE(line.text)).toBe(
-      "Tes 4 derniers trajets sur cette route : réalisé (marge brute) ≈ 74 % du prévu, frais ≈ 14 % du chiffre d’affaires.",
+      "D’après tes 4 trajets sur cette route : tu réalises ≈ 74 % du prévu (frais ≈ 14 %).",
     );
-    expect(line.tag).toBe("estimé · confiance moyenne");
+    expect(line.more).toContain("la marge brute");
+    expect(line.tag).toBe("estimé · 4 trajets · confiance moyenne");
     expect(line.scope).toBe("route");
   });
 
   it("Given another route of the same goods, Then the goods' own group answers and the line says 'de cette marchandise'", () => {
     const line = calibrationLine(calib, "laranite", "Lorville CBD", "Area18 TDD");
     expect(line.scope).toBe("commodity");
-    expect(line.text).toContain("Tes 4 derniers trajets de cette marchandise");
+    expect(line.text).toContain("D’après tes 4 trajets de cette marchandise");
   });
 
   it("Given two runs, Then the line says that few runs only give an indication", () => {
     const line = calibrationLine(calib, "Gold", "Everus Harbor", "Seraphim Station");
     // the plan was tied to these runs by their prices: they only resemble it, and the line says the goods are unverified
     expect(NBSP_FREE(line.text)).toContain(
-      "Tes 2 derniers trajets qui ressemblent au plan (marchandise non vérifiée, lien par prix)",
+      "D’après tes 2 trajets similaires (marchandise non vérifiée)",
     );
+    expect(line.more).toContain("lien par prix");
     expect(line.hint).toMatch(/plafonnée à « moyenne »/);
     expect(line.text).toContain("Peu de trajets : indicatif seulement.");
-    expect(line.tag).toBe("estimé · confiance faible");
+    // a low confidence stays in the visible words
+    expect(line.tag).toBe("estimé · 2 trajets · confiance faible");
   });
 
   it("Given wild results, Then the range is shown", () => {
@@ -197,7 +200,8 @@ describe("Feature: the calibrated expectation and the tile 'Si tu refais ce traj
   it("Given the net ratio of four runs, Then the tile is the planned profit times it, an estimate with n and the confidence", () => {
     const tile = calibrationNextTile(calib, plan, { planned_profit: 180_000 });
     expect(tile.auec).toBe(Math.round(180_000 * NET));
-    expect(tile.tag).toBe("estimé · confiance moyenne");
+    expect(tile.tag).toBe("estimé · 4 trajets · confiance moyenne");
+    expect(tile.hint).toContain("Confiance moyenne.");
     expect(NBSP_FREE(tile.sub)).toBe("prévu × 76 % (net typique de tes 4 trajets sur cette route)");
     expect(tile.basis).toBe("net_ratio");
   });
@@ -219,7 +223,7 @@ describe("Feature: the calibrated expectation and the tile 'Si tu refais ce traj
     expect(NBSP_FREE(tile.sub)).toBe(
       "prévu × 74 % (marge brute typique de tes 3 trajets sur cette marchandise), moins les frais habituels (14 % du chiffre d’affaires du plan) · peu de trajets : indicatif seulement",
     );
-    expect(tile.tag).toBe("estimé · confiance faible");
+    expect(tile.tag).toBe("estimé · 3 trajets · confiance faible");
     // no turnover for the plan: nothing is invented
     expect(
       calibrationNextTile(only, { commodity: "Laranite" }, { planned_profit: 180_000 }),
@@ -470,17 +474,19 @@ describe("Feature: the line under the suggestions, in the assembled page", () =>
     const t = text(w);
     // Laranite, Port Tressler -> Area18 TDD: the route's own group
     expect(t).toContain(
-      "Tes 4 derniers trajets sur cette route : réalisé (marge brute) ≈ 74 % du prévu, frais ≈ 14 % du chiffre d’affaires.",
+      "tes 4 trajets sur cette route : tu réalises ≈ 74 % du prévu (frais ≈ 14 %).",
     );
     // Gold: two runs, unverified goods, said to be an indication only
-    expect(t).toContain("Tes 2 derniers trajets qui ressemblent au plan (marchandise non vérifiée");
-    // a two-leg card says the line is about the first leg
-    expect(t).toContain("Ligne calculée pour le premier tronçon seulement.");
+    expect(t).toContain("tes 2 trajets similaires (marchandise non vérifiée");
+    // a two-leg card says the line is about the first leg, and the fold says it is no round-trip figure
+    expect(t).toContain("Sur le 1er tronçon, d’après tes");
+    expect(t).toContain("pas un chiffre pour l’aller-retour");
     expect(t).toContain("Peu de trajets : indicatif seulement.");
-    expect(t).toContain("estimé · confiance moyenne");
-    expect(t).toContain("estimé · confiance faible");
+    expect(t).toContain("estimé · 4 trajets · confiance moyenne");
+    expect(t).toContain("estimé · 2 trajets · confiance faible");
+    expect(t).toContain("Comment lire ça");
     // goods with no group have no line (Quartz, Scrap, Agricium); the chain that also starts with Laranite has the same one
-    expect(t.match(/Tes \d+ derniers trajets/g)).toHaveLength(3);
+    expect(t.match(/d’après tes \d+ trajets/gi)).toHaveLength(3);
   });
 
   it("Given the balance is hidden, Then there is no line, even when the server sent the section anyway", async () => {
@@ -489,8 +495,8 @@ describe("Feature: the line under the suggestions, in the assembled page", () =>
     await w.advance(300);
     const t = text(w);
     expect(t).toContain("Port Tressler");
-    expect(t).not.toContain("Tes 4 derniers trajets");
-    expect(t).not.toContain("réalisé (marge brute)");
+    expect(t).not.toContain("tes 4 trajets");
+    expect(t).not.toContain("tu réalises");
     expect(t).not.toMatch(/74\s%|14\s%/);
   });
 
@@ -500,10 +506,10 @@ describe("Feature: the line under the suggestions, in the assembled page", () =>
     await w.advance(3 * SECOND);
     findButton(w.root, "Plus rentable").click();
     await w.advance(300);
-    expect(text(w)).toContain("Tes 4 derniers trajets");
+    expect(text(w)).toContain("tes 4 trajets");
     findButton(w.root, "Masquer").click();
     await w.advance(3 * SECOND);
-    expect(text(w)).not.toContain("Tes 4 derniers trajets");
+    expect(text(w)).not.toContain("tes 4 trajets");
   });
 
   it("Given the line is shown, Then it is in no message to the agent, no context update and no message on the channel", async () => {
@@ -512,16 +518,18 @@ describe("Feature: the line under the suggestions, in the assembled page", () =>
     await w.advance(3 * SECOND);
     findButton(w.root, "Plus rentable").click();
     await w.advance(300);
-    expect(text(w)).toContain("Tes 4 derniers trajets");
+    expect(text(w)).toContain("tes 4 trajets");
     shown(w, "Demander à l’agent")[0]!.click();
     await w.advance(2 * SECOND);
     expect(w.host.log.messages.length).toBeGreaterThan(0);
     for (const m of w.host.log.messages) {
       const clean = NBSP_FREE(m);
-      expect(clean).not.toMatch(/derniers trajets|réalisé|marge brute|74 %|14 %|0\.737/);
+      expect(clean).not.toMatch(
+        /d’après tes \d+ trajets|tu réalises|marge brute|74 %|14 %|0\.737/i,
+      );
     }
     for (const c of w.host.log.contexts)
-      expect(c).not.toMatch(/derniers trajets|réalisé|74 %|0\.737/);
+      expect(c).not.toMatch(/d’après tes \d+ trajets|tu réalises|74 %|0\.737/i);
     for (const posted of w.bus!.log) expect(JSON.stringify(posted.data)).not.toMatch(WIRE);
   });
 });
@@ -533,7 +541,9 @@ describe("Feature: the tile 'Si tu refais ce trajet' prefers the player's own ru
     await w.advance(3 * SECOND);
     const t = text(w);
     // 180 000 x 0.762
-    expect(t).toMatch(/Si tu refais ce trajet\s*estimé · confiance moyenne\s*≈ \+137 160 aUEC/);
+    expect(t).toMatch(
+      /Si tu refais ce trajet\s*estimé · 4 trajets · confiance moyenne\s*≈ \+137 160 aUEC/,
+    );
     expect(t).toContain("prévu × 76 % (net typique de tes 4 trajets sur cette route)");
     expect(t).not.toMatch(/Si tu refais ce trajet\s*estimé\s*≈ \+136 432/);
   });

@@ -106,8 +106,12 @@ describe("Feature: the rows say what is wired, per combination", () => {
     const rows = rowsFor("unreadable", { state: "waiting" });
     const log = rows.find((r: any) => r.id === "log");
     expect(log.kind).toBe("todo");
-    expect(log.detail).toContain("SC_INSTALL_DIR");
-    expect(log.detail).toContain("LIVE/Game.log");
+    // One plain sentence in the line; the setting that is used and what is read sit in the fix, behind the fold.
+    expect(log.detail).toBe(
+      "Game.log introuvable. Lance le jeu une fois, ou corrige le dossier du jeu.",
+    );
+    expect(log.fix.text).toContain("SC_INSTALL_DIR");
+    expect(log.fix.text).toContain("LIVE/Game.log");
     expect(JSON.stringify(rows)).not.toMatch(/Users/);
   });
 
@@ -166,7 +170,7 @@ describe("Feature: the rows say what is wired, per combination", () => {
   it("Given a degraded write, Then the line says they stay in memory and when the last save was", () => {
     const row = rowsFor("degraded").find((r: any) => r.id === "sessions");
     expect(row.detail).toContain("en mémoire");
-    expect(row.detail).toContain("Dernière écriture");
+    expect(row.fix.text).toContain("Dernière écriture");
   });
 
   it("Given the balance, Then the line says what the button reveals and what stays local, in both states", () => {
@@ -210,9 +214,10 @@ const WIRED: HealthVariant[] = ["ok", "sessionsoff", "custom", "degraded"];
 
 async function page(
   variant: HealthVariant | null,
-  options: Parameters<typeof startPage>[0] = {},
+  options: Parameters<typeof startPage>[0] & { fullscreen?: boolean } = {},
   poll: (base: any) => any = (b) => b,
 ) {
+  const { fullscreen, ...startOptions } = options;
   const scenario = options.scenario ?? new Scenario();
   // Where the log is read and the game is there, the connection and the ledger exist: that is what "wired" looks like.
   if (variant && WIRED.includes(variant) && !scenario.forced) {
@@ -224,7 +229,13 @@ async function page(
     };
     scenario.ledger = (include, nowMs) => transportLedger(nowMs, scenario.epoch, include, "story");
   }
-  const w = await startPage({ ...options, scenario });
+  const w = await startPage({ ...startOptions, scenario });
+  if (fullscreen)
+    w.fromHost({
+      jsonrpc: "2.0",
+      method: "ui/notifications/host-context-changed",
+      params: { displayMode: "fullscreen" },
+    });
   // A wired setup is past the menus: the stream is live (30 s into the story).
   if (variant && WIRED.includes(variant) && !scenario.forced) await w.advance(30 * SECOND);
   w.host.overrides.poll = (base: any) => {
@@ -238,10 +249,37 @@ async function page(
 
 const FLAG = "sc-copilot-help-seen";
 const isOpen = (w: PageWorld) => text(w).includes("Comment lire ce tableau");
+/** The strip is one line ("N réglages à faire · Voir ▸") until the player unfolds it. */
+const unfold = async (w: PageWorld) => {
+  findButton(w.root, "Voir ▸").click();
+  await w.advance(1500);
+};
 
 describe("Feature: first open, the legend; afterwards, a quiet '?'", () => {
-  it("Given a first open with everything wired, Then 'Tout est branché' and the legend show, with the five words", async () => {
+  it("Given a first open in the compact view with everything wired, Then nothing opens (the dials stay first); the '?' brings the legend", async () => {
     const w = await page("ok", { storage: new Map() });
+    await w.advance(5 * SECOND);
+    expect(isOpen(w)).toBe(false);
+    expect(text(w)).not.toContain("Tout est branché");
+    findAll(w.root, (n) => n.tag === "button" && n.textContent === "?")[0]!.click();
+    await w.advance(100);
+    expect(text(w)).toContain("Tout est branché");
+    expect(isOpen(w)).toBe(true);
+  });
+
+  it("Given a first open with something to set up in the compact view, Then it opens for that, and 'Compris' keeps ONE flag", async () => {
+    const store = new Map<string, string>();
+    const w = await page("nolog", { storage: store });
+    await w.advance(5 * SECOND);
+    expect(isOpen(w)).toBe(true);
+    findButton(w.root, "Compris").click();
+    await w.advance(100);
+    expect(isOpen(w)).toBe(false);
+    expect([...store.entries()]).toEqual([[FLAG, "1"]]);
+  });
+
+  it("Given a first open with everything wired in full screen, Then 'Tout est branché' and the legend show, with the five words", async () => {
+    const w = await page("ok", { storage: new Map(), fullscreen: true });
     await w.advance(5 * SECOND);
     const t = text(w);
     expect(t).toContain("Tout est branché");
@@ -254,7 +292,7 @@ describe("Feature: first open, the legend; afterwards, a quiet '?'", () => {
   it("Given nothing to set up but a game that has not started, Then it says 'Rien à régler pour l’instant', not 'Tout est branché'", async () => {
     const scenario = new Scenario();
     scenario.forced = "waiting";
-    const w = await page("ok", { scenario, storage: new Map() });
+    const w = await page("ok", { scenario, storage: new Map(), fullscreen: true });
     await w.advance(8 * SECOND);
     expect(text(w)).toContain("Rien à régler pour l’instant");
     expect(text(w)).not.toContain("Tout est branché");
@@ -318,7 +356,7 @@ describe("Feature: first open, the legend; afterwards, a quiet '?'", () => {
     findButton(w.root, "Compris").click();
     await w.advance(3 * SECOND);
     expect(isOpen(w)).toBe(false);
-    expect(text(w)).toContain("À régler pour tout voir");
+    expect(text(w)).toMatch(/\d réglages? à faire/);
   });
 
   it("Given a working storage, Then the legend opens once and the flag decides, with or without something to set up", async () => {
@@ -355,7 +393,24 @@ describe("Feature: first open, the legend; afterwards, a quiet '?'", () => {
     const row = rowsFor("nolog").find((r: any) => r.id === "log");
     expect(row.fix.cmd).not.toMatch(/,\s*$/);
     expect(row.fix.text).toContain("une virgule si une autre ligne suit");
+    await unfold(w);
     expect(text(w)).toContain("une virgule si une autre ligne suit");
+  });
+
+  it("Given the 'Voir' control, Then it names what it controls, its arrow is hidden from its name, and the focus stays on it", async () => {
+    const w = await page("nolog", { storage: new Map([[FLAG, "1"]]) });
+    await w.advance(5 * SECOND);
+    const b = findAll(w.root, (n) => n.tag === "button" && n.textContent === "Voir ▸")[0]!;
+    const list = findAll(w.root, (n) => n.className === "hl-list")[0]!;
+    expect(b.attrs["aria-controls"]).toBe(list.attrs["id"]);
+    expect(b.children[0]!.textContent).toBe("Voir");
+    expect(b.children[1]!.attrs["aria-hidden"]).toBe("true");
+    FakeNode.focused = null;
+    b.click();
+    await w.advance(100);
+    expect(FakeNode.focused).toBe(b);
+    expect(b.textContent).toBe("Masquer ▴");
+    expect(b.attrs["aria-expanded"]).toBe("true");
   });
 
   it("Given a server without health (an older one), Then there is no strip and no '?'", async () => {
@@ -377,8 +432,16 @@ describe("Feature: what is missing shows with its fix, once, and nothing when al
   it("Given no game log, Then the block names what is lost and offers the line to copy", async () => {
     const w = await page("nolog", { storage: new Map([[FLAG, "1"]]) });
     await w.advance(5 * SECOND);
+    // Folded: one line and a control, nothing of the fix yet.
+    const folded = text(w);
+    expect(folded).toContain("1 réglage à faire");
+    expect(folded).not.toContain("renvoi pour inactivité");
+    const fold = findButton(w.root, "Voir ▸");
+    expect(fold.attrs["aria-expanded"]).toBe("false");
+    await unfold(w);
+    expect(findButton(w.root, "Masquer ▴").attrs["aria-expanded"]).toBe("true");
     const t = text(w);
-    expect(t).toContain("À régler pour tout voir");
+    expect(t).toContain("1 réglage à faire");
     expect(t).toContain("Journal du jeu (Game.log)");
     expect(t).toContain("renvoi pour inactivité");
     expect(t).toContain('"SC_INSTALL_DIR"');
@@ -428,8 +491,12 @@ describe("Feature: what is missing shows with its fix, once, and nothing when al
     const w = await page("off", { scenario, storage: new Map([[FLAG, "1"]]) });
     await w.advance(8 * SECOND);
     const t = text(w);
+    // Folded, the strip carries no command: the notice keeps its own, so the fix is never behind a click.
     expect(t.split("npm run telemetry -- enable")).toHaveLength(2);
-    expect(t).toContain("À régler pour tout voir");
+    expect(t).toMatch(/\d réglages? à faire/);
+    await unfold(w);
+    // Unfolded, the strip owns the command (with its copy button) and the notice leaves its own out: still once.
+    expect(text(w).split("npm run telemetry -- enable")).toHaveLength(2);
     expect(isShown(findButton(w.root, "Copier"))).toBe(true);
   });
 
@@ -438,6 +505,7 @@ describe("Feature: what is missing shows with its fix, once, and nothing when al
     scenario.forced = "game_without_telemetry";
     const w = await page("unregistered", { scenario, storage: new Map([[FLAG, "1"]]) });
     await w.advance(8 * SECOND);
+    await unfold(w);
     const t = text(w);
     expect(t).toContain("lancé sans la télémétrie");
     expect(t).toContain("npm run telemetry -- status");
@@ -449,7 +517,7 @@ describe("Feature: what is missing shows with its fix, once, and nothing when al
     await w.advance(5 * SECOND);
     findButton(w.root, "Plus tard").click();
     await w.advance(1500);
-    expect(text(w)).not.toContain("À régler pour tout voir");
+    expect(text(w)).not.toMatch(/réglages? à faire/);
     findAll(w.root, (n) => n.tag === "button" && n.textContent === "?")[0]!.click();
     await w.advance(100);
     expect(text(w)).toContain("1 point à régler");
@@ -469,6 +537,7 @@ describe("Feature: what is missing shows with its fix, once, and nothing when al
   it("Given a degraded session file, Then it IS a reminder, with its fix and the last save time", async () => {
     const w = await page("degraded", { storage: new Map([[FLAG, "1"]]) });
     await w.advance(5 * SECOND);
+    await unfold(w);
     expect(text(w)).toContain("Sessions enregistrées");
     expect(text(w)).toContain("en mémoire");
     expect(text(w)).toContain("SCMCP_SESSIONS_FILE");
@@ -540,8 +609,10 @@ describe("Feature: the other Views of the conversation show the same strip", () 
     const b = await page("nolog", { bus, clock, scenario, storage: new Map([[FLAG, "1"]]) });
     await clock.advance(6 * SECOND);
     // b leads; a only follows and still shows what is missing.
+    expect(text(a)).toMatch(/\d réglages? à faire/);
+    expect(text(b)).toMatch(/\d réglages? à faire/);
+    await unfold(a);
     expect(text(a)).toContain("Journal du jeu (Game.log)");
-    expect(text(b)).toContain("Journal du jeu (Game.log)");
   });
 
   it("Given a hostile peer that posts a health with a path and amounts, Then the follower draws none of it", async () => {
@@ -576,10 +647,12 @@ describe("Feature: the other Views of the conversation show the same strip", () 
     await clock.advance(10);
     bus.inject("sc-copilot-dashboard-v2", { ...evil, rank: clock.now + 1000 });
     await clock.advance(1500);
+    await unfold(a);
     expect(text(a)).not.toContain("jdoe-secret");
     // The snapshot WAS taken (the code "unreadable" got through), only the label that is not on the list was dropped.
+    expect(text(a)).toContain("Game.log introuvable");
     expect(text(a)).toContain("mais illisible");
-    expect(text(a)).toContain("Configuré (Game.log, réglé par SC_INSTALL_DIR)");
+    expect(text(a)).toContain("Configuré (Game.log) mais illisible");
   });
 });
 

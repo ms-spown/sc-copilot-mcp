@@ -112,6 +112,8 @@ export function visibleText(root: FakeNode): string {
     if (n.className === "full" && !fullscreen) return;
     // ... and hides the compact view in full screen.
     if (n.className.split(" ").includes("inline") && fullscreen) return;
+    // ... and the balance row, which the compact view alone shows.
+    if (n.className.split(" ").includes("balance-row") && fullscreen) return;
     // ... and the toast near the header, which only the compact view has room for.
     if (n.className.split(" ").includes("toast-top") && fullscreen) return;
     if (n.children.length === 0) {

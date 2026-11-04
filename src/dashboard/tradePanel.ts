@@ -361,7 +361,26 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
 
   const message = el("p", "tr-message", "");
   // Warnings that change how a figure must be read (shown with the word "Attention", never by colour alone).
-  const warn = el("p", "tr-warn", "");
+  const warn = el("div", "tr-warn");
+  const warnText = el("p", "tr-warn-text", "");
+  // The account of the balance movements is one fold away: this opens it.
+  const warnMore = el("button", "btn mini", "Détail ▸");
+  warnMore.setAttribute("type", "button");
+  warnMore.setAttribute("aria-controls", "mv");
+  let mvBlock: any = null;
+  // The label and aria-expanded follow the block, whoever opened it (this button or the summary of the block).
+  const syncMore = () => {
+    const on = !!mvBlock && mvBlock.isOpen();
+    setText(warnMore, on ? "Détail ▴" : "Détail ▸");
+    setAttr(warnMore, "aria-expanded", on ? "true" : "false");
+  };
+  warnMore.addEventListener("click", () => {
+    if (!mvBlock) return;
+    more.open = true;
+    mvBlock.toggle();
+    syncMore();
+  });
+  add(warn, warnText, warnMore);
 
   // ---- the headline numbers (value first)
   const hero = el("div", "tr-hero");
@@ -522,7 +541,7 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
   add(moreBody, assumptionsTitle, assumptions, defsTitle, defs, historyTitle, history);
   add(more, moreSum, moreBody);
 
-  add(root, head, message, warn, hero, slot, flow, duo, courseBox, more);
+  add(root, head, message, hero, warn, slot, flow, duo, courseBox, more);
 
   function render(ctx: any) {
     const trade = ctx && ctx.trade ? ctx.trade : null;
@@ -530,6 +549,7 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     // A plan built from the player's balance shows its quantity and profit only while the balance is shown.
     const plan = ctx && ctx.plan && !(ctx.plan.private === true && !showBalance) ? ctx.plan : null;
     const full = !!(ctx && ctx.fullscreen);
+    mvBlock = ctx && ctx.movements ? ctx.movements : null;
     const run = trade && trade.runs && trade.runs.length > 0 ? trade.runs[0] : null;
     const m = run && showBalance ? run.money : null;
 
@@ -569,19 +589,16 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
 
     // ---- what is missing, said once and plainly
     let msg = "";
-    let statusOk = true;
     if (!trade || trade.source !== "journal") {
-      statusOk = false;
       const st = ctx && ctx.ledgerStatus;
       msg =
         st === "loading"
           ? "Lecture du journal de jeu… le bilan réel du trajet apparaîtra ensuite."
-          : "Le journal de jeu est désactivé ou illisible (voir sc_log_status) : le bilan réel du trajet (chiffre d’affaires, frais, bénéfice net) n’est pas calculé. Ci-dessous, le plan et la variation du solde, qui n’est pas un bénéfice.";
+          : "Journal du jeu non lisible : pas de bilan réel pour ce trajet (voir les réglages à faire en haut de la page).";
     } else if (!run) {
-      statusOk = false;
-      msg = "Aucune transaction de marchandise dans le journal pour l’instant.";
+      msg =
+        "Aucune transaction de marchandise dans le journal pour l’instant : le bilan (chiffre d’affaires, frais, bénéfice net) apparaîtra après le trajet.";
     } else if (!showBalance) {
-      statusOk = false;
       msg =
         "Le solde est masqué : les montants du bilan (chiffre d’affaires, frais, bénéfice net) apparaissent quand tu affiches le solde.";
     }
@@ -592,6 +609,8 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
 
     // ---- headline tiles
     const net = m ? m.net : null;
+    setText(tiles.turnover.label, "Chiffre d’affaires");
+    setText(tiles.fees.label, "Frais");
     const tileValue = (
       t: any,
       text: string,
@@ -600,6 +619,7 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       estimate: boolean,
       sub: string,
     ) => {
+      show(t.root, true);
       setText(t.value, text);
       setAttr(t.value, "data-tone", tone);
       setText(t.tag, tag);
@@ -703,13 +723,39 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
         tileValue(tiles.next, "—", "", "", false, "il faut un plan et des frais observés");
       }
     } else {
-      const hidden = run && !showBalance ? "solde masqué" : "";
-      tileValue(tiles.net, "—", "", "", false, hidden || "pas de bilan sans journal");
-      tileValue(tiles.turnover, "—", "", "", false, hidden);
-      tileValue(tiles.fees, "—", "", "", false, hidden);
-      tileValue(tiles.next, "—", "", "", false, hidden);
+      // Nothing measured yet (no run, or the balance is hidden): no wall of dashes, only what exists is drawn.
+      for (const k of ["net", "turnover", "fees", "next"]) show(tiles[k].root, false);
+      if (plan && typeof plan.expected_profit_auec === "number") {
+        setText(tiles.turnover.label, "Bénéfice prévu");
+        tileValue(
+          tiles.turnover,
+          tradeAmount(L, plan.expected_profit_auec, true),
+          "",
+          "plan",
+          false,
+          "marge du plan, avant frais",
+        );
+      }
+      // No journal: the balance change, called by its name.
+      if (plan && (!trade || trade.source !== "journal") && showBalance && ctx.balance) {
+        const bal = ctx.balance;
+        if (typeof bal.delta === "number") {
+          setText(tiles.fees.label, "Variation du solde");
+          tileValue(
+            tiles.fees,
+            tradeAmount(L, bal.delta, true),
+            "",
+            "",
+            false,
+            (ctx.baseline || "") + " · pas un bénéfice : tout est mêlé",
+          );
+        }
+      }
     }
-    show(hero, !bare);
+    const shownTiles = ["net", "turnover", "fees", "next"].filter(
+      (k) => tiles[k].root["_a_data-hidden"] !== "1",
+    ).length;
+    show(hero, !bare && shownTiles > 0);
 
     // ---- waterfall
     const layout = tradeWaterfallLayout(tradeWaterfall(m));
@@ -765,32 +811,20 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       m &&
       m.fees.unexplained !== null &&
       m.turnover &&
-      Math.abs(m.fees.unexplained) > m.turnover * 0.02 &&
-      ctx.decomposition
-    )
-      // The net is taken apart change by change (movementsPanel.ts / balanceMovements.ts): say what it is made of.
-      warns.push(L.movementsWarningText(ctx.decomposition));
-    else if (
-      m &&
-      m.fees.unexplained !== null &&
-      m.turnover &&
       Math.abs(m.fees.unexplained) > m.turnover * 0.02
     )
+      // The net is taken apart change by change (movementsPanel.ts / balanceMovements.ts): say what it is made of.
       warns.push(
-        "Le solde a " +
-          (m.fees.unexplained > 0 ? "baissé" : "monté") +
-          " de " +
-          tradeAmount(L, Math.abs(m.fees.unexplained)) +
-          " de plus que la marge brute et les frais ne l’expliquent (" +
-          (m.fees.unexplained > 0
-            ? "un autre achat ou une autre dépense pendant le trajet ?"
-            : "une récompense ou la vente d’autre chose ?") +
-          ") : la variation du solde n’est pas le bénéfice de ce seul trajet.",
+        ctx.decomposition
+          ? L.movementsWarningText(L, ctx.decomposition)
+          : "Le solde a bougé de " +
+              tradeAmount(L, Math.abs(m.fees.unexplained)) +
+              " de plus que la marge brute et les frais ne l’expliquent : ce n’est pas le bénéfice de ce trajet seul.",
       );
     // Fees measured in a window that also holds another possible cause (a shop item, a contract reward, an insurance or
     // hangar cost): the "mesuré" tag stays, but the card must say they may include it, whatever the size of the gap.
     const dec = ctx.decomposition;
-    if (dec && dec.fees_doubtful && warns.join(" ").indexOf(L.movementsWarningText(dec)) < 0)
+    if (dec && dec.fees_doubtful && warns.join(" ").indexOf(L.movementsWarningText(L, dec)) < 0)
       warns.push(
         "Les frais mesurés tombent dans une fenêtre qui contient aussi une autre cause possible (achat d’objet, récompense ou assurance) : ils peuvent l’inclure.",
       );
@@ -799,8 +833,10 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
         dec.unmatched_transactions +
           " ligne(s) du journal n’ont trouvé aucun mouvement du solde correspondant : les frais mesurés sont à lire avec prudence.",
       );
-    setText(warn, warns.length ? "Attention : " + warns.join(" ") : "");
+    setText(warnText, warns.length ? "Attention : " + warns.join(" ") : "");
     show(warn, warns.length > 0);
+    show(warnMore, !!dec);
+    syncMore();
 
     // ---- fees
     const fm = m ? m.fees : null;
@@ -833,15 +869,11 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
         setAttr(feeRows[2].root, "data-estimate", tradeIsEstimate(fm.method) ? "1" : "0");
       }
       let fn = "";
+      // A reason (another movement, earlier stock, unconfirmed lines) is already said by the tile and the warning above.
       if (fm.total === null) {
-        fn =
-          fm.reason === "solde_autre_raison"
-            ? "Le solde a bougé pour une autre raison : l’écart avec la marge n’est pas un frais plausible, il n’est pas affiché comme tel."
-            : fm.reason === "stock_anterieur"
-              ? "Des SCU vendus n’ont pas été achetés pendant ce trajet : les frais ne peuvent pas être déduits du solde."
-              : run && run.uncertain > 0
-                ? "Des lignes non confirmées du journal empêchent de mesurer ou de déduire les frais : elles ont peut-être bougé le solde."
-                : "Le journal n’a pas de ligne de frais. Ils sont mesurés quand le solde a bougé à côté d’une transaction, ou déduits de l’écart entre la marge et le bénéfice net ; ici aucun des deux n’est possible.";
+        fn = fm.reason
+          ? ""
+          : "Le journal n’a pas de ligne de frais. Ils sont mesurés quand le solde a bougé à côté d’une transaction, ou déduits de l’écart entre la marge et le bénéfice net ; ici aucun des deux n’est possible.";
       } else if (fm.rate_from === "trajet_precedent") {
         fn =
           "Taux de frais repris du trajet précédent : " +
@@ -1070,28 +1102,6 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
             ")",
         );
       setText(historyItems[i], bits.join(" · "));
-    }
-
-    // ---- no journal: the plan, and the balance change called by its name
-    if (!statusOk && (!trade || trade.source !== "journal") && plan) {
-      const bal =
-        showBalance && ctx.balance && typeof ctx.balance.delta === "number" ? ctx.balance : null;
-      setText(tiles.net.sub, "pas de bilan sans journal");
-      if (typeof plan.expected_profit_auec === "number") {
-        setText(tiles.turnover.label, "Bénéfice prévu");
-        setText(tiles.turnover.value, tradeAmount(L, plan.expected_profit_auec, true));
-        setText(tiles.turnover.sub, "marge du plan, avant frais");
-        show(tiles.turnover.sub, true);
-      }
-      if (bal) {
-        setText(tiles.fees.label, "Variation du solde");
-        setText(tiles.fees.value, tradeAmount(L, bal.delta, true));
-        setText(tiles.fees.sub, (ctx.baseline || "") + " · pas un bénéfice : tout est mêlé");
-        show(tiles.fees.sub, true);
-      }
-    } else {
-      setText(tiles.turnover.label, "Chiffre d’affaires");
-      setText(tiles.fees.label, "Frais");
     }
   }
 
