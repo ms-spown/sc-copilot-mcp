@@ -28,6 +28,8 @@ interface Fixture {
   quality?: string;
   /** Ships destroyed with the player aboard during the session (invented: a model, a cause, the SCU presumed lost). */
   shipLosses?: number;
+  /** How long ago the game was last seen in an open session (default: just now). A quiet session is hours old. */
+  idleMs?: number;
 }
 
 /** What the server paid, in the story, for the cargo lost with a ship (invented). */
@@ -110,7 +112,7 @@ export function sessionSummary(f: Fixture, now: number, includeBalance: boolean,
     started_at: new Date(startedAt).toISOString(),
     ended_at: status === "ended" ? new Date(startedAt + f.activeMs + 10 * MIN).toISOString() : null,
     last_activity_at: new Date(
-      status === "ended" ? startedAt + f.activeMs : now - 4000,
+      status === "ended" ? startedAt + f.activeMs : now - (f.idleMs ?? 4000),
     ).toISOString(),
     duration_ms: f.activeMs + 10 * MIN,
     active_ms: f.activeMs,
@@ -173,7 +175,11 @@ export function sessionBar(
     return {
       ...base,
       status: "ok",
-      current: sessionSummary({ ...CURRENT, startedAgoMs: 4 * HOUR }, nowMs, includeBalance),
+      current: sessionSummary(
+        { ...CURRENT, startedAgoMs: 4 * HOUR, idleMs: 3.5 * HOUR },
+        nowMs,
+        includeBalance,
+      ),
       stale: true,
     };
   if (variant === "ended")
@@ -220,6 +226,7 @@ export function sessionBar(
           ...CURRENT,
           interruptions: 1,
           quality: "late",
+          idleMs: 5 * HOUR,
           shipLosses: variant === "losses" ? 3 : 5,
         },
         nowMs,

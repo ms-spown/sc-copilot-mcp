@@ -143,6 +143,7 @@ export function ledgerTradeNormalize(raw: any): any {
     .map((r: any) => ({
       id: ledgerText(r.id, 40),
       commodity: r.commodity === null ? null : ledgerText(r.commodity, 60) || null,
+      commodity_name: typeof r.commodity_name === "string" ? ledgerText(r.commodity_name, 60) : "",
       more_commodities: ledgerTexts(r.more_commodities, 3, 60),
       buy_shops: ledgerTexts(r.buy_shops, 3, 60),
       sell_shops: ledgerTexts(r.sell_shops, 3, 60),

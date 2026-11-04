@@ -35,6 +35,7 @@ import {
   TradeSuggestService,
   type FlownShip,
 } from "../dashboard/tradeSuggest.js";
+import { CommodityNameResolver, commodityNamesSwitchedOff } from "../dashboard/commodityNames.js";
 import type { ConnectionTracker } from "../providers/gamelog/connection.js";
 import type { SessionManager } from "../providers/sessions/manager.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
@@ -97,6 +98,8 @@ export interface DashboardOverrides {
   plan?: (req: TripRequest) => Promise<TripPlanResult>;
   now?: () => number;
   minIntervalMs?: number;
+  /** The environment the dashboard's own switches are read from (SC_COMMODITY_NAMES); default `process.env`. */
+  env?: NodeJS.ProcessEnv;
 }
 
 const SHIP_MEMO_MS = 10 * 60_000;
@@ -142,6 +145,11 @@ export function dashboardTools(
       log: logConfigFacts(gameLog),
       sessionsOff: sessionsSwitchedOff(),
     },
+    // The names of the goods of the trade runs, from the wiki's public commodity list (background, bounded, nothing sent).
+    // SC_COMMODITY_NAMES=off keeps it fully local. It is also never asked while telemetry is off (the poll stops before it).
+    scwClient && !commodityNamesSwitchedOff(overrides.env ?? process.env)
+      ? new CommodityNameResolver(scwClient, overrides.now ?? Date.now)
+      : undefined,
   );
   const enabled = () => telemetry?.enabled === true;
   // The server's runtime balance choice. Without one passed (some tests), a private one: shown, until a click.

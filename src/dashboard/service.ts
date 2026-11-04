@@ -17,6 +17,7 @@ import {
   type SessionState,
 } from "./poll.js";
 import type { ShipSpecsResolver } from "./specs.js";
+import type { CommodityNameResolver } from "./commodityNames.js";
 import type { TradeSource } from "./tradeRun.js";
 
 /**
@@ -69,6 +70,8 @@ export class DashboardService {
     private readonly sessions?: SessionManager,
     /** How the game log and the sessions are configured (health.ts). Absent: no `health` in the answer. */
     private readonly health?: HealthStatic,
+    /** Names of the goods of the trade runs, looked up in the background (commodityNames.ts). Absent: the goods stay unnamed. */
+    private readonly commodityNames?: CommodityNameResolver,
   ) {}
 
   get enabled(): boolean {
@@ -201,6 +204,9 @@ export class DashboardService {
     const history =
       includeBalance && telemetry.balanceHistory ? await telemetry.balanceHistory() : [];
     const trades = this.trades ? this.trades() : undefined;
+    // The names of the goods: what is known now (a lookup of the missing ones runs in the background, never awaited).
+    const commodityNames =
+      this.commodityNames && trades ? this.commodityNames.current(resourcesOf(trades)) : undefined;
     // Insurance, hangar and session events, for the balance movement explainer (only used with the balance).
     const movementEvents = includeBalance && this.ledger ? this.ledger.movementEvents() : undefined;
     // How the player's own saved runs compare with their plans: derived from the balance, so only with it.
@@ -215,6 +221,7 @@ export class DashboardService {
       plan: this.plan,
       nowMs,
       ...(trades ? { trades } : {}),
+      ...(commodityNames ? { commodityNames } : {}),
       ...(movementEvents ? { movementEvents } : {}),
       ...(calibration ? { calibration } : {}),
       // The ship losses: their SCU go with or without the balance, the aUEC paid only with it (tradeRun.ts).
@@ -275,4 +282,14 @@ export class DashboardService {
     push("reset_delta");
     return done(true, "Balance change reset to zero.");
   }
+}
+
+/** The distinct resource GUIDs of the newest cargo transactions (at most 16), newest first: the goods worth a name. */
+function resourcesOf(trades: readonly { resource?: string | undefined }[]): string[] {
+  const out: string[] = [];
+  for (let i = trades.length - 1; i >= 0 && out.length < 16; i--) {
+    const r = trades[i]?.resource;
+    if (typeof r === "string" && !out.includes(r)) out.push(r);
+  }
+  return out;
 }

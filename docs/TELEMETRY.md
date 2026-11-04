@@ -385,6 +385,10 @@ that this server provides and that the client renders next to the chat.
   | `not_breathable` | critical, unverified | The atmosphere is reported as not breathable |
   | `in_quantum`, `in_jump` | info | Quantum mode on; a jump in progress |
 
+  The health dial uses the same limit as `health_low`: red under 30 percent, amber from 30 to under 50 percent, green from
+  50 percent (a choice, not a measure). The health band sent to the model follows it: low under 30 percent, medium
+  under 50 percent.
+
   Measured on a real Aegis Harbinger (4.10.2): in quantum mode the SHLD light goes off and both shield power flags go
   false, and everything comes back on arrival. Events `shields_powered_off` and `shields_powered_on` (confirmed,
   debounced, silent at the baseline of a new vehicle) record it, the first with the quantum context. A ship that was
@@ -635,8 +639,10 @@ same thing. Each figure now has one meaning:
   transactions: only the completed ones count, exactly as the journal does; failed lines and unconfirmed ones (the
   ambiguous ones included) are left out and counted in a note on the card; an amount in another currency than aUEC is
   never added. The journal names goods by an id only (the first 8 characters of the game's GUID); the names that
-  `sc_trade_journal` finds in the wiki list are not looked up here, so the card shows "marchandise 5c2e9a41" unless the
-  plan names the goods, and a plan cannot be checked against the journal's goods ("supposé"). Without the game log
+  `sc_trade_journal` finds in the wiki list are looked up by the server in the background (one request for the public
+  list, matched locally on the full GUID, at most every 5 minutes per GUID, never awaited by the poll, only with telemetry on, and
+  not at all with `SC_COMMODITY_NAMES=off`): the run then carries `commodity_name`. Until it is known the card says "marchandise inconnue" (the id is never shown) and the
+  compact line of a run under way takes the goods from the plan, labelled "d’après ton plan", and a plan cannot be checked against the journal's goods ("supposé"). Without the game log
   there is no journal: the card says so, shows the plan and shows the balance change under its own name ("Variation du
   solde", with the warning that it is not a profit). Tests and the preview feed invented log lines through the same
   parser.

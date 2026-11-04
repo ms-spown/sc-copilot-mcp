@@ -2,6 +2,8 @@
 import { describe, expect, it } from "vitest";
 import {
   sessionBarInfo,
+  sessionIdleText,
+  sessionNoticeText,
   sessionBarNormalize,
   sessionBarStripBalance,
   sessionChannelClean,
@@ -14,6 +16,7 @@ import {
   SESSION_VIEW_FUNCTIONS,
 } from "./sessionPanel.js";
 import { sessionBar, sessionToolAnswer } from "./testing/sessionScenario.js";
+import { tradeLossCargo, tradeLossCause } from "./tradePreflight.js";
 import { dashboardHtml, viewScript } from "./page.js";
 import {
   FakeBus,
@@ -182,9 +185,65 @@ describe("Feature: what the bar says first", () => {
     expect(info("stale", true).chip).toBe("inactive");
     expect(info("ended", true).chip).toBe("terminée");
     expect(info("ended", true).canEnd).toBe(false);
-    expect(info("readonly", true).notes.join(" ")).toContain("newer version");
+    expect(info("readonly", true).notes.join(" ")).toContain(
+      "vient d’une version plus récente de ce serveur",
+    );
+    expect(info("readonly", true).notes.join(" ")).not.toMatch(/newer version|session file/);
     expect(info("off", true).visible).toBe(false);
     expect(sessionBarInfo(L, null, { showBalance: false, now: NOW }).visible).toBe(false);
+  });
+
+  it("Given the store's notices, Then the page says them in French and never prints the server's English", () => {
+    const say = (status: string, notice: string | null) => sessionNoticeText({ status, notice });
+    expect(
+      say(
+        "degraded",
+        "Sessions could not be saved (EACCES); they are kept in memory and the next change tries again.",
+      ),
+    ).toBe(
+      "Les sessions n’ont pas pu être enregistrées sur le disque : elles restent en mémoire et le prochain changement réessaiera.",
+    );
+    expect(say("readonly", "The session file is larger than expected and was not read.")).toContain(
+      "plus gros que prévu",
+    );
+    expect(say("readonly", "The session file is not valid and could not be set aside.")).toContain(
+      "pas pu être mis de côté",
+    );
+    expect(say("readonly", "anything else")).toBe(
+      "Les sessions restent en mémoire : le fichier est en lecture seule.",
+    );
+    expect(
+      say("ok", "The session file is not valid and will be set aside at the next change."),
+    ).toBe("");
+    for (const status of ["readonly", "degraded"])
+      expect(say(status, "The session file is from a newer version (3)")).not.toMatch(
+        /[A-Za-z]+ file|Sessions could/,
+      );
+  });
+
+  it("Given a quiet session, Then the pill says for how long, and the notes of the pill name their cause", () => {
+    const hours = (h: number) => ({
+      last_activity_at: new Date(NOW - h * 3_600_000).toISOString(),
+    });
+    expect(sessionIdleText(hours(2), NOW)).toBe("inactive depuis 2\u00a0h");
+    expect(sessionIdleText(hours(0.2), NOW)).toBe("inactive depuis 12\u00a0min");
+    expect(sessionIdleText({}, NOW)).toBe("inactive");
+    expect(sessionIdleText(hours(-1), NOW)).toBe("inactive");
+    const line = (variant: any, show: boolean) =>
+      NB(
+        sessionBarInfo(
+          { ...L, tradeLossCargo, tradeLossCause },
+          sessionBarNormalize(sessionBar(NOW, show, variant), show),
+          { showBalance: show, now: NOW },
+        ).line,
+      );
+    // "inactive · note" told nothing: now the time, and which note
+    expect(line("stale", false)).toContain("inactive depuis 3 h");
+    expect(line("readonly", false)).toContain("fichier en lecture seule");
+    expect(line("losses", true)).toContain("enregistrement impossible");
+    expect(line("losses", true)).toContain("solde de départ approximatif");
+    expect(line("losses", false)).not.toContain("solde de départ approximatif");
+    expect(line("losses", true)).not.toMatch(/\bnote\b/);
   });
 
   it("Given an unknown rate, Then it is a dash with the reason, never zero", () => {

@@ -234,6 +234,11 @@ export interface TradeRunView {
   /** Time of the first counted transaction. */
   id: string;
   commodity: string | null;
+  /**
+   * The name of the main goods, when the server could look it up (the wiki's commodity list, matched on the full GUID,
+   * commodityNames.ts). Absent: the journal names no good, only an id, which is never shown.
+   */
+  commodity_name?: string;
   /** Other goods of the same run, when there are several. */
   more_commodities: string[];
   buy_shops: string[];
@@ -310,6 +315,8 @@ export interface TradeInput {
   dayHours?: number;
   /** The ships destroyed (ledgerService.shipLosses()): a loss with cargo cuts the run it interrupted. */
   losses?: readonly ShipLoss[] | undefined;
+  /** Names of goods by lower-case resource GUID (commodityNames.ts), for display only. Absent: none known. */
+  commodityNames?: ReadonlyMap<string, string> | undefined;
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -929,8 +936,16 @@ function moneyOf(
   };
 }
 
-function viewOf(f: RunFacts, prep: Prepared, money: RunMoney | undefined): TradeRunView {
+function viewOf(
+  f: RunFacts,
+  prep: Prepared,
+  money: RunMoney | undefined,
+  names?: ReadonlyMap<string, string>,
+): TradeRunView {
   const goods = goodsOf(f.txs);
+  // The name of the main goods, looked up on the full GUID of its first transaction (display only: nothing is matched on it).
+  const guid = goods.main ? f.txs.find((x) => x.commodity === goods.main)?.src.resource : undefined;
+  const name = guid && names ? cleanLabel(names.get(guid.toLowerCase()), TRADE_LABEL_MAX) : null;
   const first = f.txs[0]!.t;
   const last = f.txs[f.txs.length - 1]!.t;
   const failedHere = prep.failed.filter(
@@ -939,6 +954,7 @@ function viewOf(f: RunFacts, prep: Prepared, money: RunMoney | undefined): Trade
   return {
     id: new Date(first).toISOString(),
     commodity: goods.main,
+    ...(name ? { commodity_name: name } : {}),
     more_commodities: goods.more,
     buy_shops: distinct(
       f.buys.map((x) => x.shop),
@@ -1007,7 +1023,7 @@ export function buildTradeSection(input: TradeInput): TradeSection {
         carried = money.fees.rate;
     });
   }
-  const views = runs.map((f, i) => viewOf(f, prep, moneys[i]));
+  const views = runs.map((f, i) => viewOf(f, prep, moneys[i], input.commodityNames));
   const newest = views.slice(-TRADE_MAX_RUNS).reverse();
   const refusals = priceRefusalsOf(input.transactions).slice(-TRADE_MAX_REFUSALS);
   const losses = lossViews(input.losses, runs, input.includeBalance);

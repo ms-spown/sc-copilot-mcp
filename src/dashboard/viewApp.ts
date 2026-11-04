@@ -450,8 +450,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       [0.1, 0.25, "warn"],
     ]);
     R.iHealth = dial("health", "Santé", "small", [
-      [0, 0.15, "bad"],
-      [0.15, 0.3, "warn"],
+      [0, 0.3, "bad"],
+      [0.3, 0.5, "warn"],
     ]);
     R.iDials = el("div", "dials");
     add(R.iDials, R.iSpeed.root, R.iHydrogen.root, R.iHealth.root);
@@ -692,8 +692,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.colPilot = el("div", "col col-pilot");
     const cPilot = card("Pilote");
     R.xHealth = dial("health", "Santé", "m", [
-      [0, 0.15, "bad"],
-      [0.15, 0.3, "warn"],
+      [0, 0.3, "bad"],
+      [0.3, 0.5, "warn"],
     ]);
     widget("health", R.xHealth.root);
     add(R.xHealth.root, pinButton("health", "santé"));
@@ -1626,6 +1626,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       trade: tradeLedger?.trade ?? null,
       ledgerStatus: tradeLedger ? tradeLedger.status : null,
       plan: view.plan,
+      planAt: view.planAt,
+      conn: view.poll && view.poll.connection ? view.poll.connection.state : null,
       showBalance,
       fullscreen: displayMode === "fullscreen",
       balance: showBalance && view.poll ? view.poll.balance : null,
@@ -1692,7 +1694,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       say: (text: string) =>
         request("ui/message", { role: "user", content: [{ type: "text", text }] }),
       setPlan: (plan: any) => {
-        view = Object.assign({}, view, { plan });
+        view = Object.assign({}, view, { plan, planAt: clock() });
         render();
       },
       feedback,
@@ -2322,7 +2324,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     } else if (m.method === "ui/notifications/tool-result") {
       const sc = m.params && m.params.structuredContent;
       if (sc && typeof sc === "object" && sc.plan) {
-        view = Object.assign({}, view, { plan: L.cleanPlan(sc.plan) });
+        view = Object.assign({}, view, { plan: L.cleanPlan(sc.plan), planAt: clock() });
         render();
       }
       resumeIfAllowed();

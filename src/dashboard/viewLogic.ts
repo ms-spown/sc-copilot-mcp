@@ -345,6 +345,8 @@ export function initialViewState(): any {
     lastSeq: 0,
     series: {},
     plan: null,
+    /** When this View received the plan (ms, its own clock): a plan that came after a run began is not that run's. */
+    planAt: null,
     /** The hashes of the sections held, as the server sent them (the next poll says which ones it already has). */
     hash: {},
     /** What the stream never contains, once the server has said it. */
@@ -631,6 +633,20 @@ export function modeInfo(poll: any): any {
   return { id: "unknown", label: "Inconnu" };
 }
 
+/**
+ * A shop as the journal gives it is a class name ("SCShop_Cargo_Tressler"): its words without the generic prefixes
+ * ("Tressler"). "" when nothing but prefixes remains. A name that is not a class name (no underscore) is kept as it is.
+ */
+export function shopWords(token: unknown): string {
+  if (typeof token !== "string") return "";
+  if (token.indexOf("_") < 0) return token;
+  const generic = ["scshop", "shop", "cargo", "commodity"];
+  return token
+    .split("_")
+    .filter((w: string) => w !== "" && generic.indexOf(w.toLowerCase()) < 0)
+    .join(" ");
+}
+
 export function levelFor(fraction: number, low: number, critical: number): string {
   if (!Number.isFinite(fraction)) return "none";
   if (fraction <= critical) return "bad";
@@ -638,7 +654,12 @@ export function levelFor(fraction: number, low: number, critical: number): strin
   return "ok";
 }
 
-/** Health 0 is "down or dead": the stream cannot tell which. An absent gauge is not zero. */
+/**
+ * Health 0 is "down or dead": the stream cannot tell which. An absent gauge is not zero. The dial is red under 30 % (as
+ * the server's `health_low` alert, which fires under 30 %) and amber under 50 % (a choice, not a measure): at 35 % just
+ * after a fight it must not read green. The zones of the dial's marks (viewApp.ts) and the bands sent to the model
+ * (contextSummary: low under 30 %, mid under 50 %) follow the same two limits.
+ */
 export function healthInfo(pilot: any): any {
   const g = pilot && pilot.health;
   if (!g || typeof g.current !== "number" || !(g.max > 0)) {
@@ -651,7 +672,7 @@ export function healthInfo(pilot: any): any {
   return {
     known: true,
     text: fmtNum(Math.round(fraction * 100)) + "\u00a0%",
-    level: levelFor(fraction, 0.3, 0.15),
+    level: fraction < 0.3 ? "bad" : fraction < 0.5 ? "warn" : "ok",
     fraction,
     zero: false,
   };
@@ -1195,8 +1216,7 @@ export function contextSummary(poll: any, events: any[], balanceHidden?: boolean
   const vehicle = poll.ship && isSafeId(poll.ship.name) ? shipTitle(poll.ship) : "";
   const h = healthInfo(poll.pilot);
   let band = "none";
-  if (h.known)
-    band = h.zero ? "zero" : h.fraction <= 0.3 ? "low" : h.fraction <= 0.6 ? "mid" : "ok";
+  if (h.known) band = h.zero ? "zero" : h.fraction < 0.3 ? "low" : h.fraction < 0.5 ? "mid" : "ok";
   let seq = 0;
   for (const e of events) {
     if (e && e.confidence === "confirmed" && e.group !== "wallet" && e.seq > seq) seq = e.seq;
@@ -2231,6 +2251,7 @@ export const VIEW_FUNCTIONS = [
   visibleEvents,
   pollingDecision,
   modeInfo,
+  shopWords,
   levelFor,
   healthInfo,
   gaugeInfo,

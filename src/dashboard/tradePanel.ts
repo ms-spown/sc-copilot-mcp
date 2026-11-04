@@ -95,25 +95,196 @@ export function tradeNetTag(net: any): string {
       : "estimé";
 }
 
+/** Is it the journal's id of a good (the first 8 characters of the game's GUID), which is not a name? */
+export function tradeIsGoodsId(id: string | null | undefined): boolean {
+  return typeof id === "string" && /^[0-9a-f]{8}$/.test(id);
+}
+
 /**
- * The journal names goods by an id only (the first 8 characters of the game's GUID): shown as "marchandise 5c2e9a41"
- * until a name lookup exists. A plan's own name is always preferred.
+ * The journal names goods by an id only (the first 8 characters of the game's GUID). That id is never shown: a good
+ * without a name is "marchandise inconnue". A plan's own name is always preferred where there is a plan.
  */
 export function tradeGoodsLabel(id: string | null | undefined): string {
   if (!id) return "";
-  return /^[0-9a-f]{8}$/.test(id) ? "marchandise " + id : id;
+  return tradeIsGoodsId(id) ? "marchandise inconnue" : id;
+}
+
+/**
+ * The goods of a run as words: the name the server resolved when there is one, else "marchandise inconnue" (the id of the
+ * journal is never shown). "" without a run.
+ */
+export function tradeRunGoods(run: any): string {
+  if (!run) return "";
+  if (run.commodity_name) return run.commodity_name;
+  return tradeGoodsLabel(run.commodity);
+}
+
+/** The name of the run's goods when there is one (resolved, or a journal label that is not an id); "" otherwise. */
+export function tradeRunNamed(run: any): string {
+  if (!run) return "";
+  if (run.commodity_name) return String(run.commodity_name);
+  return run.commodity && !tradeIsGoodsId(run.commodity) ? String(run.commodity) : "";
 }
 
 /** The route of the plan or of the run, as one line. */
-export function tradeRouteText(plan: any, run: any): string {
+export function tradeRouteText(L: any, plan: any, run: any): string {
   const parts: string[] = [];
-  const goods = (plan && plan.commodity) || tradeGoodsLabel(run && run.commodity);
+  const goods = tradeRunNamed(run) || (plan && plan.commodity) || tradeRunGoods(run);
   if (goods) parts.push(goods);
-  const from = (plan && plan.buy_terminal) || (run && run.buy_shops && run.buy_shops[0]) || "";
-  const to = (plan && plan.sell_terminal) || (run && run.sell_shops && run.sell_shops[0]) || "";
+  const from =
+    (plan && plan.buy_terminal) || L.shopWords(run && run.buy_shops && run.buy_shops[0]) || "";
+  const to =
+    (plan && plan.sell_terminal) || L.shopWords(run && run.sell_shops && run.sell_shops[0]) || "";
   if (from && to) parts.push(from + " → " + to);
   else if (from || to) parts.push(from || to);
   return parts.join(" · ");
+}
+
+/** A time that has passed, coarsely: "moins d’1 min", "6 min", "1 h 05 min". Null when it is not a usable time. */
+export function tradeAgo(ms: number | null | undefined): string | null {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return null;
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 1) return "moins d’1\u00a0min";
+  if (minutes < 60) return minutes + "\u00a0min";
+  const m = minutes % 60;
+  return Math.floor(minutes / 60) + "\u00a0h\u00a0" + (m < 10 ? "0" + m : m) + "\u00a0min";
+}
+
+/** How long the run has lasted so far, from its first purchase to `now` (both in ms); null when unknown or in the future. */
+export function tradeElapsed(run: any, now: any): number | null {
+  if (!run || typeof now !== "number" || !Number.isFinite(now)) return null;
+  const from = Date.parse(run.started_at);
+  if (!Number.isFinite(from)) return null;
+  // The log's clock and the page's can differ a little: a first purchase "in the future" says nothing.
+  return now >= from ? now - from : null;
+}
+
+/** Like tradeAgo for a run that has been left: whole hours ("5 h"), and days from 48 h ("3 j"). */
+export function tradeAgoLong(ms: number | null | undefined): string | null {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return null;
+  const hours = Math.floor(ms / 3600000);
+  if (hours < 1) return tradeAgo(ms);
+  if (hours < 48) return hours + "\u00a0h";
+  return Math.floor(hours / 24) + "\u00a0j";
+}
+
+/**
+ * A run whose movement can no longer be claimed: its first purchase is more than 3 hours old, or the game says the player
+ * is not in a server session (menu, disconnected, closed). Then the line says when the purchase was and nothing about a
+ * trip under way or a plan. An unknown connection (no state read) does not make a run idle.
+ */
+export function tradeRunIdle(run: any, now: any, conn: any): boolean {
+  if (conn === "menu" || conn === "disconnected" || conn === "closed") return true;
+  const e = tradeElapsed(run, now);
+  return e !== null && e > 3 * 3600000;
+}
+
+/**
+ * Has the journal's shop no SPECIFIC word in common with the plan's place? Generic words (shop, cargo, port, station,
+ * hub, admin, centre...) are ignored on both sides of the comparison: a word every place has proves nothing. A shop with
+ * no specific word left, or a missing side, is not compared (false: it does not contradict).
+ */
+export function tradeShopContradicts(L: any, terminal: any, token: any): boolean {
+  if (!terminal || !token) return false;
+  const generic = [
+    "scshop",
+    "shop",
+    "cargo",
+    "commodity",
+    "port",
+    "station",
+    "center",
+    "centre",
+    "admin",
+    "hub",
+    "outpost",
+    "terminal",
+    "trade",
+    "trading",
+    "depot",
+    "market",
+    "kiosk",
+    "exchange",
+    "tdd",
+  ];
+  const plain = (x: string) =>
+    x
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  const words = plain(L.shopWords(token))
+    .split(/[^a-z0-9]+/)
+    .filter((w: string) => w.length >= 3 && generic.indexOf(w) < 0);
+  if (words.length === 0) return false;
+  const place = plain(String(terminal));
+  return words.every((w: string) => place.indexOf(w) < 0);
+}
+
+/**
+ * May the plan be said to be THIS run's? { ok, note }. Not when:
+ *   - the run's goods are named and the plan names other goods;
+ *   - the journal's shop (buying, or selling) has no specific word in the plan's place for it;
+ *   - this View received the plan (`planAt`, ms) after the run's first purchase (note), or another run of the list
+ *     (finished or not) began after `planAt` and before this one: the plan is spent, it belongs to the first run
+ *     that began after it (note).
+ * Without `planAt` the plan cannot be dated: it is attached as it is (the callers label it "d’après ton plan").
+ * `runs` is the list of the payload (newest first, at most four): a run missing from it is older than all of those.
+ */
+export function tradePlanAttached(L: any, plan: any, run: any, planAt: any, runs: any): any {
+  const no = (note: string) => ({ ok: false, note });
+  if (!plan || typeof plan !== "object" || !run) return { ok: !!plan, note: "" };
+  const known = tradeRunNamed(run);
+  if (known && plan.commodity) {
+    const a = known.toLowerCase();
+    const b = String(plan.commodity).toLowerCase();
+    if (a.indexOf(b) !== 0 && b.indexOf(a) !== 0) return no("");
+  }
+  const buyShop = run.buy_shops ? run.buy_shops[0] : null;
+  const sellShop = run.sell_shops ? run.sell_shops[0] : null;
+  if (
+    tradeShopContradicts(L, plan.buy_terminal, buyShop) ||
+    tradeShopContradicts(L, plan.sell_terminal, sellShop)
+  )
+    return no("");
+  const first = Date.parse(run.started_at);
+  if (typeof planAt === "number" && Number.isFinite(first)) {
+    if (first < planAt) return no("plan reçu après le premier achat, non rattaché");
+    const list = Array.isArray(runs) ? runs : [];
+    for (const other of list) {
+      const at = other && other !== run && other.id !== run.id ? Date.parse(other.started_at) : NaN;
+      if (Number.isFinite(at) && at >= planAt && at < first)
+        return no("plan déjà utilisé par un trajet précédent, non rattaché");
+    }
+  }
+  return { ok: true, note: "" };
+}
+
+/**
+ * The part of the plan that may be said about a run that is not over, each element only if the plan has it. The plan is
+ * not checked against the journal (it names goods and places the journal does not): the caller says "d’après ton plan".
+ * Nothing when `tradePlanAttached` says it is not this run's (with its note). The target price is a market price of the
+ * plan, not the balance (a plan built from the balance never reaches here while the balance is hidden).
+ * Returns { facts, note }.
+ */
+export function tradePlanFacts(L: any, plan: any, run: any, planAt: any, runs: any): any {
+  const out: any = { facts: [], note: "" };
+  if (!plan || typeof plan !== "object") return out;
+  const att = tradePlanAttached(L, plan, run, planAt, runs);
+  if (!att.ok) {
+    out.note = att.note;
+    return out;
+  }
+  const known = tradeRunNamed(run);
+  const facts: string[] = out.facts;
+  if (plan.commodity && !known) facts.push(plan.commodity);
+  if (plan.buy_terminal && plan.sell_terminal)
+    facts.push(plan.buy_terminal + " → " + plan.sell_terminal);
+  else if (plan.buy_terminal || plan.sell_terminal)
+    facts.push(plan.buy_terminal || plan.sell_terminal);
+  if (plan.est_trip_minutes) facts.push("estimé " + plan.est_trip_minutes + "\u00a0min");
+  if (typeof plan.sell_unit_price === "number")
+    facts.push("vente visée " + L.fmtNum(Math.round(plan.sell_unit_price)) + "/SCU");
+  return out;
 }
 
 /**
@@ -283,14 +454,53 @@ export function tradeLevelY(at: number, h: number): number {
   return Math.round((pad + (1 - at) * (h - 2 * pad)) * 10) / 10;
 }
 
-/** The compact line of the small view; "" when there is nothing to say. Amounts only with the balance. */
-export function tradeInlineText(L: any, trade: any, showBalance: boolean): string {
+/**
+ * The compact line of the small view; "" when there is nothing to say. Amounts only with the balance.
+ * A run under way says what the journal gives (the goods when named, the SCU, how long ago the first purchase was) and,
+ * apart, what the plan says ("d’après ton plan": goods, route, estimated time, target price). Each element is there only
+ * if its data exists; an id of the journal is never shown. `plan` is the plan already cleaned of what the balance
+ * choice hides; `now` is the page's clock (ms); `extra` = { conn, planAt }: the connection state read from Game.log and when
+ * this View received the plan. A run more than 3 hours old, or with the game not in a server session, is "non terminé":
+ * only when its first purchase was, no trip under way, no plan.
+ */
+export function tradeInlineText(
+  L: any,
+  trade: any,
+  showBalance: boolean,
+  plan?: any,
+  now?: any,
+  extra?: any,
+): string {
   if (!trade || trade.source !== "journal" || trade.runs.length === 0) return "";
   const r = trade.runs[0];
-  const goods = tradeGoodsLabel(r.commodity) || "marchandise";
+  const goods = tradeRunGoods(r) || "marchandise inconnue";
   // The run a destroyed ship interrupted is over, whatever its stage says.
   if (Array.isArray(trade.ship_losses) && trade.ship_losses.some((l: any) => l.run_id === r.id))
     return "Trajet interrompu · " + goods + " · vaisseau détruit";
+  if (r.stage === "open" || r.stage === "partial") {
+    const idle = tradeRunIdle(r, now, extra && extra.conn);
+    const attached = idle
+      ? { facts: [], note: "" }
+      : tradePlanFacts(L, plan, r, extra && extra.planAt, trade.runs);
+    // When the plan names the goods, the journal's "inconnue" would contradict it: the plan's name leads its own group.
+    const planNamesGoods = !tradeRunNamed(r) && attached.facts.length > 0 && !!plan.commodity;
+    const parts: string[] = [idle ? "Trajet non terminé" : "Trajet en cours"];
+    if (!planNamesGoods) parts.push(goods);
+    if (r.stage === "open") {
+      if (r.scu_bought !== null) parts.push(L.fmtNum(r.scu_bought) + "\u00a0SCU achetés");
+    } else if (r.scu_sold !== null && r.scu_bought !== null) {
+      parts.push(L.fmtNum(r.scu_sold) + " / " + L.fmtNum(r.scu_bought) + "\u00a0SCU vendus");
+    }
+    const elapsed = tradeElapsed(r, now);
+    const ago = idle ? tradeAgoLong(elapsed) : tradeAgo(elapsed);
+    if (ago)
+      parts.push(
+        idle || r.stage === "partial" ? "premier achat il y a " + ago : "en route depuis " + ago,
+      );
+    if (attached.facts.length > 0) parts.push("d’après ton plan : " + attached.facts.join(", "));
+    else if (attached.note) parts.push(attached.note);
+    return parts.join(" · ");
+  }
   if (r.stage === "complete" && showBalance && r.money && r.money.net.auec !== null) {
     return (
       "Dernier trajet · " +
@@ -303,20 +513,6 @@ export function tradeInlineText(L: any, trade: any, showBalance: boolean): strin
     );
   }
   if (r.stage === "complete") return "Dernier trajet · " + goods + " : terminé";
-  if (r.stage === "open")
-    return (
-      "Trajet en cours · " +
-      goods +
-      (r.scu_bought !== null ? " · " + L.fmtNum(r.scu_bought) + "\u00a0SCU achetés" : "")
-    );
-  if (r.stage === "partial")
-    return (
-      "Trajet en cours · " +
-      goods +
-      (r.scu_sold !== null && r.scu_bought !== null
-        ? " · " + L.fmtNum(r.scu_sold) + " / " + L.fmtNum(r.scu_bought) + "\u00a0SCU vendus"
-        : "")
-    );
   return "";
 }
 
@@ -561,7 +757,12 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     const run = trade && trade.runs && trade.runs.length > 0 ? trade.runs[0] : null;
     const m = run && showBalance ? run.money : null;
 
-    const inline = full ? "" : tradeInlineText(L, trade, showBalance);
+    const inline = full
+      ? ""
+      : tradeInlineText(L, trade, showBalance, plan, ctx && ctx.now, {
+          conn: ctx && ctx.conn,
+          planAt: ctx && ctx.planAt,
+        });
     setText(line, inline);
     show(line, inline !== "");
 
@@ -579,7 +780,16 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
         : null;
 
     // ---- header
-    setText(route, tradeRouteText(plan, run));
+    // The header says the plan only if it may be this run's (the same rule as the compact line, tradePlanAttached), and a
+    // run left behind (old, or the game not in a server session) is not a trip under way, so it has no plan either.
+    const att =
+      run && plan ? tradePlanAttached(L, plan, run, ctx && ctx.planAt, trade && trade.runs) : null;
+    const left =
+      !!run &&
+      (run.stage === "open" || run.stage === "partial") &&
+      tradeRunIdle(run, ctx && ctx.now, ctx && ctx.conn);
+    const headPlan = plan && (!run || (att && att.ok && !left)) ? plan : null;
+    setText(route, tradeRouteText(L, headPlan, run));
     const metaParts: string[] = [];
     const scu =
       run && run.scu_bought !== null
@@ -588,14 +798,26 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           ? plan.scu
           : null;
     if (scu !== null) metaParts.push(L.fmtNum(scu) + "\u00a0SCU");
-    if (plan && plan.est_trip_minutes)
-      metaParts.push("trajet estimé " + plan.est_trip_minutes + " min");
-    if (run && run.duration_ms > 0) metaParts.push("durée " + L.formatDuration(run.duration_ms));
+    if (headPlan && headPlan.est_trip_minutes)
+      metaParts.push("trajet estimé " + headPlan.est_trip_minutes + " min");
+    // A run under way has no duration yet: what exists is the time since its first purchase (its last transaction is
+    // only the latest purchase). The final duration is for a finished run; an interrupted one has neither.
+    if (run && !lost) {
+      if (run.stage === "open" || run.stage === "partial") {
+        const idle = tradeRunIdle(run, ctx && ctx.now, ctx && ctx.conn);
+        const elapsed = tradeElapsed(run, ctx && ctx.now);
+        const ago = idle ? tradeAgoLong(elapsed) : tradeAgo(elapsed);
+        if (ago) metaParts.push(idle ? "premier achat il y a " + ago : "en cours depuis " + ago);
+      } else if (run.duration_ms > 0) {
+        metaParts.push("durée " + L.formatDuration(run.duration_ms));
+      }
+    }
     if (run && run.failed > 0) metaParts.push(run.failed + " échec(s) non compté(s)");
     if (run && run.uncertain > 0)
       metaParts.push(run.uncertain + " ligne(s) non confirmée(s) non comptée(s)");
-    if (plan && plan.safety_note) metaParts.push(plan.safety_note);
-    if (plan && plan.note) metaParts.push(plan.note);
+    if (headPlan && headPlan.safety_note) metaParts.push(headPlan.safety_note);
+    if (headPlan && headPlan.note) metaParts.push(headPlan.note);
+    if (att && !att.ok && att.note) metaParts.push(att.note);
     setText(meta, metaParts.join(" · "));
     setText(
       stage,
@@ -1130,9 +1352,7 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       show(historyItems[i], !!r);
       if (!r) continue;
       const bits = [
-        (tradeGoodsLabel(r.commodity) || "marchandise") +
-          " · " +
-          tradeStageLabel(r.stage).toLowerCase(),
+        (tradeRunGoods(r) || "marchandise") + " · " + tradeStageLabel(r.stage).toLowerCase(),
       ];
       if (r.scu_bought !== null) bits.push(L.fmtNum(r.scu_bought) + "\u00a0SCU");
       if (showBalance && r.money && r.money.net.auec !== null)
@@ -1162,8 +1382,18 @@ export const TRADE_VIEW_FUNCTIONS = [
   tradeNetReason,
   tradeNetSource,
   tradeNetTag,
+  tradeIsGoodsId,
   tradeGoodsLabel,
+  tradeRunGoods,
+  tradeRunNamed,
   tradeRouteText,
+  tradeAgo,
+  tradeElapsed,
+  tradeAgoLong,
+  tradeRunIdle,
+  tradeShopContradicts,
+  tradePlanAttached,
+  tradePlanFacts,
   tradeWaterfall,
   tradeWaterfallLayout,
   tradeCourse,

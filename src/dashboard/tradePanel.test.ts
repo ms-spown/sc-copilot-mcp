@@ -138,9 +138,9 @@ describe("Feature: the compact line", () => {
     const line = (include: boolean) =>
       tradeInlineText(L, trade(include), include).replace(/[\u00a0\u202f]/g, " ");
     expect(line(true)).toBe(
-      "Dernier trajet · marchandise 5c2e9a41 : bénéfice net +143 000 aUEC (mesuré)",
+      "Dernier trajet · marchandise inconnue : bénéfice net +143 000 aUEC (mesuré)",
     );
-    expect(line(false)).toBe("Dernier trajet · marchandise 5c2e9a41 : terminé");
+    expect(line(false)).toBe("Dernier trajet · marchandise inconnue : terminé");
     expect(tradeInlineText(L, null, true)).toBe("");
     expect(tradeInlineText(L, { source: "none", runs: [] }, true)).toBe("");
   });

@@ -260,14 +260,18 @@ export function movementsHintText(hint: string): string {
   return names[hint] || "";
 }
 
-/** The detail under a row: what the log names, and what is only possible. Never a cause for an unexplained change. */
-export function movementsDetailText(m: any): string {
+/**
+ * The detail under a row: what the log names, and what is only possible. Never a cause for an unexplained change.
+ * The id of a good (8 characters of the game's GUID) is never shown: the journal names no good, so it is "inconnue".
+ */
+export function movementsDetailText(m: any, L: any): string {
   const parts: string[] = [];
   if (m.ref) {
-    const id = /^[0-9a-f]{8}$/.test(m.ref) ? "marchandise " + m.ref : m.ref;
+    const id = /^[0-9a-f]{8}$/.test(m.ref) ? "marchandise inconnue" : m.ref;
     parts.push(id);
   }
-  if (m.shop) parts.push(m.shop);
+  const shop = m.shop ? L.shopWords(m.shop) : "";
+  if (shop) parts.push(shop);
   if (m.category === "probable_contract_reward")
     parts.push(
       m.several
@@ -493,7 +497,7 @@ export function movementsPanel(doc: any, L: any): any {
       setText(r.amount, L.fmtAuec(m.amount, true) + String.fromCharCode(160) + "aUEC");
       setAttr(r.amount, "data-tone", m.amount > 0 ? "ok" : m.amount < 0 ? "bad" : "");
       setAttr(r.root, "data-category", m.category);
-      const detail = movementsDetailText(m);
+      const detail = movementsDetailText(m, L);
       setText(r.detail, detail);
       show(r.detail, detail !== "");
     }

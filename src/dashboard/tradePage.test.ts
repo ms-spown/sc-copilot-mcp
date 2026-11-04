@@ -163,12 +163,12 @@ describe("Feature: no amount without the balance", () => {
   it("Given the small view, Then one line says where the run stands, with an amount only when the balance is shown", async () => {
     const w = await page();
     await w.advance(215 * SECOND);
-    expect(text(w)).toContain("Dernier trajet · marchandise 5c2e9a41 : terminé");
+    expect(text(w)).toContain("Dernier trajet · marchandise inconnue : terminé");
     expect(text(w)).not.toMatch(AMOUNTS);
     findButton(w.root, "Afficher le solde").click();
     await w.advance(3 * SECOND);
     expect(text(w)).toContain(
-      "Dernier trajet · marchandise 5c2e9a41 : bénéfice net +143 000 aUEC (mesuré)",
+      "Dernier trajet · marchandise inconnue : bénéfice net +143 000 aUEC (mesuré)",
     );
   });
 

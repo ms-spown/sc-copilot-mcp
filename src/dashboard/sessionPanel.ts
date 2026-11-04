@@ -197,6 +197,35 @@ export function sessionStateLabel(cur: any, stale: boolean): string {
   return stale ? "inactive" : "en cours";
 }
 
+/** "inactive depuis 2 h", "inactive depuis 12 min": how long an open session has been quiet. "inactive" when that is unknown. */
+export function sessionIdleText(cur: any, now: number): string {
+  const t =
+    cur && typeof cur.last_activity_at === "string" ? Date.parse(cur.last_activity_at) : NaN;
+  if (!Number.isFinite(t) || !Number.isFinite(now) || now <= t) return "inactive";
+  const minutes = Math.floor((now - t) / 60000);
+  if (minutes < 1) return "inactive";
+  if (minutes < 60) return "inactive depuis " + minutes + "\u00a0min";
+  return "inactive depuis " + Math.floor(minutes / 60) + "\u00a0h";
+}
+
+/**
+ * What the store's notice says, in French. The server's own text is English and is never shown: the bar's status says
+ * which case it is, and the start of the text which of the store's cases ("could not be saved" is the degraded status).
+ */
+export function sessionNoticeText(bar: any): string {
+  if (!bar || (bar.status !== "readonly" && bar.status !== "degraded")) return "";
+  const raw = typeof bar.notice === "string" ? bar.notice : "";
+  if (bar.status === "degraded")
+    return "Les sessions n’ont pas pu être enregistrées sur le disque : elles restent en mémoire et le prochain changement réessaiera.";
+  if (raw.indexOf("larger than expected") >= 0)
+    return "Le fichier des sessions est plus gros que prévu : il n’a pas été lu, les sessions restent en mémoire.";
+  if (raw.indexOf("newer version") >= 0)
+    return "Le fichier des sessions vient d’une version plus récente de ce serveur : il n’a pas été modifié et les sessions restent en mémoire jusqu’à la mise à jour.";
+  if (raw.indexOf("could not be set aside") >= 0)
+    return "Le fichier des sessions n’est pas valide et n’a pas pu être mis de côté : les sessions restent en mémoire.";
+  return "Les sessions restent en mémoire : le fichier est en lecture seule.";
+}
+
 /** The three words of a break: the game closed itself, or no end marker was left. */
 export function sessionInterruptionLabel(kind: string): string {
   return kind === "game_closed"
@@ -223,7 +252,7 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
   const showBalance = !!(ctx && ctx.showBalance);
   if (!bar || bar.status === "off") return { visible: false };
   const cur = bar.current;
-  const notice = bar.status === "readonly" || bar.status === "degraded" ? bar.notice || "" : "";
+  const notice = sessionNoticeText(bar);
   if (!cur) {
     return {
       visible: true,
@@ -381,7 +410,8 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
   const line = ["Session " + cur.number, cur.trips + (cur.trips > 1 ? " trajets" : " trajet")];
   if (cur.active_ms > 0) line.push(L.formatDuration(cur.active_ms));
   if (rate !== null) line.push(L.fmtAuec(rate, true) + "\u00a0aUEC/h");
-  if (cur.status === "ended" || bar.stale) line.push(sessionStateLabel(cur, bar.stale));
+  if (cur.status === "ended") line.push(sessionStateLabel(cur, false));
+  else if (bar.stale) line.push(sessionIdleText(cur, now));
   if (cur.ship_losses_count > 0)
     line.push(
       cur.ship_losses_count +
@@ -390,11 +420,11 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
           : "\u00a0vaisseau\u00a0détruit"),
     );
   // A warning note (a read-only or degraded store, a start balance that is not the game's) must not be hidden by the fold.
-  if (
-    notice ||
-    (hasMoney && money.start_balance_quality && money.start_balance_quality !== "game_start")
-  )
-    line.push("note");
+  // It says which one, not just that there is one.
+  if (notice)
+    line.push(bar.status === "degraded" ? "enregistrement impossible" : "fichier en lecture seule");
+  if (hasMoney && money.start_balance_quality && money.start_balance_quality !== "game_start")
+    line.push("solde de départ approximatif");
   return {
     visible: true,
     empty: false,
@@ -1039,8 +1069,8 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       exportHint,
       money
         ? st.exportBalances
-          ? "Le bilan contient des montants et les soldes de départ et final. Relis-le avant de le partager."
-          : "Le bilan contient des montants, mais pas les soldes de départ et final. Relis-le avant de le partager."
+          ? "Le bilan exporté contient des montants et les soldes de départ et final. Relis-le avant de le partager."
+          : "Le bilan exporté contient des montants, mais pas les soldes de départ et final (le détail affiché plus bas, lui, les montre). Relis-le avant de le partager."
         : "Solde masqué : le bilan ne contient aucun montant (trajets, durées, SCU). Relis-le avant de le partager.",
     );
     setText(exportMsg, st.exportMsg);
@@ -1391,6 +1421,8 @@ export const SESSION_VIEW_FUNCTIONS = [
   sessionBarStripBalance,
   sessionWhen,
   sessionStateLabel,
+  sessionIdleText,
+  sessionNoticeText,
   sessionInterruptionLabel,
   sessionQualityLabel,
   sessionBarInfo,
