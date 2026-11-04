@@ -662,30 +662,7 @@ export function tradeNextWanted(trade: any, plan: any, tried: string, now: numbe
 export function tradeActionsPanel(doc: any, L: any): any {
   const cfg = tradeActionsConfig();
   const objectives = tradeObjectives();
-  const el = (tag: string, cls?: string, text?: string): any => {
-    const n = doc.createElement(tag);
-    if (cls) n.className = cls;
-    if (text !== undefined) n.textContent = text;
-    return n;
-  };
-  const add = (parent: any, ...kids: any[]): any => {
-    for (const k of kids) if (k) parent.appendChild(k);
-    return parent;
-  };
-  const setText = (n: any, text: string) => {
-    if (n._t !== text) {
-      n._t = text;
-      n.textContent = text;
-    }
-  };
-  const setAttr = (n: any, name: string, value: string) => {
-    const key = "_a_" + name;
-    if (n[key] !== value) {
-      n[key] = value;
-      n.setAttribute(name, value);
-    }
-  };
-  const show = (n: any, on: boolean) => setAttr(n, "data-hidden", on ? "0" : "1");
+  const { el, add, setText, setAttr, show } = L.domKit(doc);
 
   // ---- the state
   const S: any = {

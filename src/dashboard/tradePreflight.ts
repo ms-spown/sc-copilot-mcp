@@ -199,29 +199,7 @@ export function tradePreflightMatches(plan: any, r: any): boolean {
  */
 export function tradePreflightPanel(doc: any, L: any): any {
   const cfg = tradePreflightConfig();
-  const el = (tag: string, cls: string, text?: string): any => {
-    const n = doc.createElement(tag);
-    n.className = cls;
-    if (text !== undefined) n.textContent = text;
-    return n;
-  };
-  const add = (parent: any, ...kids: any[]): any => {
-    for (const k of kids) parent.appendChild(k);
-    return parent;
-  };
-  const setText = (n: any, text: string) => {
-    if (n._t !== text) {
-      n._t = text;
-      n.textContent = text;
-    }
-  };
-  const setAttr = (n: any, name: string, value: string) => {
-    if (n["_a_" + name] !== value) {
-      n["_a_" + name] = value;
-      n.setAttribute(name, value);
-    }
-  };
-  const show = (n: any, on: boolean) => setAttr(n, "data-hidden", on ? "0" : "1");
+  const { el, add, setText, setAttr, show } = L.domKit(doc);
 
   const S: any = { phase: "idle", result: null, at: 0, wait: 0, busy: false, disposed: false };
   let H: any = {};

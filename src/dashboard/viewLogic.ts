@@ -2175,9 +2175,50 @@ export function pinnedItems(poll: any, view: any, pins: any): any[] {
   return out;
 }
 
+/**
+ * The DOM helpers every panel uses, built once on a document: text only goes through textContent, and a text, an attribute or a
+ * style variable is only written when it changed (the last value is remembered on the node). One copy for the whole page: the
+ * panels take it with `const { el, add, setText } = L.domKit(doc)`.
+ */
+export function domKit(doc: any): any {
+  const el = (tag: string, cls?: string, text?: string): any => {
+    const n = doc.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  };
+  const add = (parent: any, ...kids: any[]): any => {
+    for (const k of kids) if (k) parent.appendChild(k);
+    return parent;
+  };
+  const setText = (n: any, text: string) => {
+    if (n._t !== text) {
+      n._t = text;
+      n.textContent = text;
+    }
+  };
+  const setAttr = (n: any, name: string, value: string) => {
+    const key = "_a_" + name;
+    if (n[key] !== value) {
+      n[key] = value;
+      n.setAttribute(name, value);
+    }
+  };
+  const setVar = (n: any, name: string, value: string) => {
+    const key = "_v_" + name;
+    if (n[key] !== value) {
+      n[key] = value;
+      n.style.setProperty(name, value);
+    }
+  };
+  const show = (n: any, on: boolean) => setAttr(n, "data-hidden", on ? "0" : "1");
+  return { el, add, setText, setAttr, setVar, show };
+}
+
 /** The names the page needs, in the order they are serialised. */
 export const VIEW_FUNCTIONS = [
   viewConfig,
+  domKit,
   fmtNum,
   fmtAuec,
   formatAge,
