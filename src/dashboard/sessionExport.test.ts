@@ -65,7 +65,7 @@ describe("Feature: the pure part", () => {
   it("Given an answer, Then the View rebuilds two bounded, clean strings", () => {
     const out = sessionDebriefNormalize(
       {
-        markdown: "# Bilan‮​\nligne\u0007",
+        markdown: "# Bilan\u202e\u200b\nligne\u0007",
         csv: "a,b\r\n" + "x".repeat(500_000),
         money_included: false,
         balances_included: false,
@@ -284,7 +284,7 @@ describe("Feature: files, only when the page can make one", () => {
     expect(files[0]).toMatchObject({ name: "bilan-session-2.md", mime: "text/markdown" });
     expect(files[0]!.text).toContain("# Bilan de la session 2");
     expect(files[1]).toMatchObject({ name: "bilan-session-2.csv", mime: "text/csv" });
-    expect(files[1]!.text.startsWith("﻿session,ended_at,kind,label,scu\r\n")).toBe(true);
+    expect(files[1]!.text.startsWith("\ufeffsession,ended_at,kind,label,scu\r\n")).toBe(true);
     expect(files.every((f) => !NET.test(f.text))).toBe(true);
     expect(text(w)).toContain("Si rien ne s’enregistre");
     // a file is never the only way: nothing is kept on screen, the copy button is still there

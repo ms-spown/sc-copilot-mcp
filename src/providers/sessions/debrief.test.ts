@@ -370,7 +370,7 @@ describe("Feature: hostile text, the Markdown", () => {
     "x".repeat(10_000),
     "\uD800 lone",
     "\u0000nul\u0007bell",
-    "𝔘𝔫𝔦𝔠𝔬𝔡𝔢 😀 ok",
+    "\u{1d518}\u{1d52b}\u{1d526}\u{1d520}\u{1d52c}\u{1d521}\u{1d522} 😀 ok",
   ];
 
   const sessionWith = (texts: string[]): Session =>
