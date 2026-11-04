@@ -195,6 +195,7 @@ export function dashboardTools(
           name,
           cargoScu: found.cargo_scu ?? wikiCargo,
           quantumSpeedMs: found.quantum_speed_ms,
+          spoolSeconds: found.spool_seconds,
         };
       } catch {
         // A sheet that cannot be matched in UEX still gives a hold; the planner then says the speed is unknown.

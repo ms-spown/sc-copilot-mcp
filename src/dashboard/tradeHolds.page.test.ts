@@ -451,7 +451,7 @@ describe("Feature: the list is a real, quiet, labelled control", () => {
     expect(w.host.log.holdsCalls).toBe(asked + 1);
   });
 
-  it("Given a hold of 696 SCU, Then the quantity reaches neither the model's context, nor a message, nor the channel between Views", async () => {
+  it("Given a hold of 696 SCU, Then the quantity reaches neither the model's context nor the channel between Views, and a message holds it only in the recipe and in the card's own figures", async () => {
     const w = await form({ trade: true });
     findButton(w.root, "Plus rentable").click();
     await w.advance(2 * SECOND);
@@ -464,7 +464,13 @@ describe("Feature: the list is a real, quiet, labelled control", () => {
     expect(w.host.log.messages.length).toBeGreaterThan(0);
     const quantity = /\b696\b/;
     for (const c of w.host.log.contexts) expect(c).not.toMatch(quantity);
-    for (const m of w.host.log.messages) expect(NBSP_FREE(m)).not.toMatch(quantity);
+    // The card's message carries the hold as the cargo_scu of the call that reproduces the card (the agent must plan with the
+    // same hold to compare like with like): a ship's capacity is not derived from the balance. Nowhere else.
+    for (const m of w.host.log.messages) {
+      const text = NBSP_FREE(m);
+      expect(text.match(/\b696\b/g) ?? []).toHaveLength(2); // the recipe, and the card's own step (this budget is typed, not the balance)
+      expect(text).toContain("cargo_scu=696");
+    }
     // The channel between Views carries the state of the page (the leading View posts it): not empty, and no quantity.
     expect(w.bus!.log.length).toBeGreaterThan(0);
     for (const posted of w.bus!.log) expect(JSON.stringify(posted.data)).not.toMatch(quantity);

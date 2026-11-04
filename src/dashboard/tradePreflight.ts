@@ -325,7 +325,7 @@ export function tradePreflightClean(raw: any): any {
       ? "La réponse du serveur n’est pas cohérente : impossible de vérifier."
       : tradePfText(t.headline, 200),
     margin: bad ? "" : tradePfText(t.margin, 120),
-    agent: bad ? "" : tradePfText(t.agent, 1500),
+    agent: bad ? "" : tradePfText(t.agent, 2600),
     action: bad ? "Vérifie au terminal avant d’acheter." : tradePfText(t.action, 200),
     notes: (Array.isArray(t.notes) ? t.notes : [])
       .slice(0, 3)
@@ -486,7 +486,8 @@ export function tradePreflightPanel(doc: any, L: any): any {
   async function askAgent() {
     if (!H.say || !S.result || !S.result.agent) return;
     try {
-      await H.say(S.result.agent);
+      // The player's choice is read now: hidden (or unknown), the one instruction about the balance; shown, nothing about it.
+      await H.say(S.result.agent + (H.showBalance === true ? "" : " Ne lis pas mon solde."));
       if (H.feedback) H.feedback("Message envoyé à Claude. Réduis la vue pour lire sa réponse.");
     } catch {
       if (H.feedback) H.feedback("Envoi impossible.");

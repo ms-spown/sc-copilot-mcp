@@ -329,7 +329,8 @@ describe("Feature: the balance is never used, shown or not, and a private plan s
     const m = NBSP_FREE(w.host.log.messages.at(-1)!);
     expect(m).toContain("revérifier mon plan actuel avant le départ");
     expect(m).toContain('"Laranite"');
-    expect(m).toContain("Ne lis pas mon solde.");
+    // Shown: nothing about the balance (Claude's tools answer with the amounts by default).
+    expect(m).not.toMatch(/solde|include_balance/i);
     expect(m).not.toMatch(BALANCE);
     expect(m).not.toMatch(/\b696\b|180\D?000|320\D?000|463\D?000/);
     for (const posted of w.bus!.log) expect(JSON.stringify(posted.data)).not.toMatch(BALANCE);

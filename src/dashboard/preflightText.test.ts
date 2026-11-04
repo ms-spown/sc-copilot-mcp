@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { judgePreflight, type PreflightPlanEcho } from "../providers/uex/preflight.js";
-import { describePreflight } from "./preflightText.js";
+import {
+  judgePreflight,
+  type PreflightPlanEcho,
+  type PreflightResult,
+} from "../providers/uex/preflight.js";
+import { AGENT_MESSAGE_MAX, describePreflight } from "./preflightText.js";
+import { tradePreflightClean } from "./tradePreflight.js";
 
 /** The sentences of a verdict: every state has its own words, and a state that is not green never says "tu peux partir". */
 
@@ -77,5 +82,72 @@ describe("Feature: the words of each verdict", () => {
     const future = words({ date_modified: 4_000_000_000 }, {});
     expect(future.legs[0]?.lines?.join(" ")).toContain("date du prix absente ou incohérente");
     expect(future.text?.action).toContain("Prix périmé");
+  });
+});
+
+describe("Feature: the message to the agent never loses its closing instruction", () => {
+  const LONG = (c: string) => `${c}${"x".repeat(80)}`; // far past the 60 characters a name is cut at
+  const long = (): PreflightResult => {
+    const base = judgePreflight(
+      {
+        commodity: LONG("Laranite"),
+        buy_terminal: LONG("Port Tressler"),
+        sell_terminal: LONG("Area18 TDD"),
+        buy_price: 200,
+        sell_price: 500,
+      },
+      [
+        { ...row(LONG("Port Tressler"), { price_buy: 205 }) },
+        { ...row(LONG("Area18 TDD"), { price_sell: 495 }) },
+      ],
+      NOW,
+    );
+    // several warnings on each leg: the longest detail lines the check can write
+    const warnings = [
+      "buy_out_of_stock",
+      "buy_shortage",
+      "sell_no_demand",
+      "sell_saturating",
+      "sell_strong_demand",
+    ] as never;
+    return { ...base, legs: base.legs.map((l) => ({ ...l, warnings })) };
+  };
+  const CLOSING = "et propose une meilleure alternative si elle existe.";
+
+  it("Given long names and many warnings, Then the message is bounded, keeps both recipe calls and its closing order", () => {
+    const agent = describePreflight(long()).text!.agent;
+    // longer than the old 1500-character cut, which lost the closing order on exactly this input
+    expect(agent.length).toBeGreaterThan(1500);
+    expect(agent.length).toBeLessThanOrEqual(AGENT_MESSAGE_MAX);
+    expect(agent.endsWith(CLOSING)).toBe(true);
+    expect(agent).toContain('side="buy")');
+    expect(agent).toContain('side="sell")');
+    expect(agent).toContain(
+      "dis explicitement ce qui diffère et pourquoi (stock, âge des prix, relevés) avant de donner ton verdict",
+    );
+    // the head is intact too, names cut at 60 characters
+    expect(agent).toContain("verdict :");
+    expect(agent).not.toMatch(/x{61}/);
+  });
+
+  it("Given the page's own cleaning and its click-time sentence, Then the closing order is intact shown and the one instruction follows it hidden", () => {
+    const agent = tradePreflightClean({
+      ...(describePreflight(long()) as object),
+      v: 1,
+      state: "preflight",
+    } as never)?.agent as string;
+    expect(typeof agent).toBe("string");
+    expect(agent.endsWith(CLOSING)).toBe(true);
+    // what the page posts: shown, the text as it is; hidden, the one instruction added after the closing order
+    const hidden = agent + " Ne lis pas mon solde.";
+    expect(hidden.endsWith(CLOSING + " Ne lis pas mon solde.")).toBe(true);
+    expect(agent).not.toMatch(/solde/i);
+  });
+
+  it("Given a short plan, Then nothing is dropped", () => {
+    const r = words({}, {});
+    expect(r.text?.agent).toContain("Plan :");
+    expect(r.text?.agent).toContain("Achat :");
+    expect(r.text?.agent).toContain("Vente :");
   });
 });

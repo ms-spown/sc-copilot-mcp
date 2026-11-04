@@ -223,6 +223,7 @@ describe("Feature: the message to the agent is fixed text and never holds the ba
     flags: { avoidPyro: true },
     priv: false,
     from: "",
+    showBalance: false,
     ...over,
   });
 
@@ -234,9 +235,15 @@ describe("Feature: the message to the agent is fixed text and never holds the ba
     expect(m).toContain("Gain estimé : environ 214 368 aUEC par trajet pour 816 SCU");
     expect(m).toContain("c’est une estimation UEX");
     expect(m).toContain("Contraintes choisies : éviter Pyro.");
-    expect(m).toContain("uex_get_trade_routes");
-    expect(m).toContain("Ne lis pas mon solde.");
-    expect(m.length).toBeLessThanOrEqual(1500);
+    expect(m).toContain('uex_plan_trade(objective="profit_per_hour"');
+    expect(m).toContain("dis explicitement ce qui diffère et pourquoi");
+    // hidden (or not said): the one instruction about the balance; shown: nothing about it
+    expect(m).toMatch(/ Ne lis pas mon solde\.$/);
+    const shown = NBSP_FREE(tradeAgentMessage(L, o, view({ showBalance: true })));
+    expect(shown).toBe(m.replace(" Ne lis pas mon solde.", ""));
+    expect(shown).not.toMatch(/solde|balance/i);
+    expect(shown).toMatch(/une meilleure alternative si elle existe\.$/);
+    expect(m.length).toBeLessThanOrEqual(2600);
   });
 
   it("Given a budget that is the balance, Then no quantity, total or hourly figure is in it", () => {

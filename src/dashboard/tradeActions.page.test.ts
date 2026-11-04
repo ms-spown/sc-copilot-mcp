@@ -467,7 +467,10 @@ describe("Feature: the balance is used only by choice, and never leaves the scre
     shownButtons(w, "Demander à l’agent")[0]!.click();
     await w.advance(300);
     const m = NBSP_FREE(w.host.log.messages.at(-1)!);
-    expect(m).toContain("Mon budget est celui de mon solde : je ne le communique pas");
+    // Shown: the message does not write the balance, and tells the agent to read it itself and use it as the budget.
+    expect(m).toContain("Mon budget est celui de mon solde : je ne l’écris pas dans ce message");
+    expect(m).toContain("lis-le avec sc_live_state");
+    expect(m).not.toMatch(/budget=\d/);
     expect(m).not.toMatch(BALANCE);
     expect(m).not.toContain("Gain estimé");
     expect(m).not.toContain("soit environ");
@@ -545,7 +548,9 @@ describe("Feature: a plan built from the balance does not outlive the balance be
     const quantity = /\b696\b|186\D?528|\b816\b/;
     for (const posted of w.bus!.log) expect(JSON.stringify(posted.data)).not.toMatch(quantity);
     for (const c of w.host.log.contexts) expect(c).not.toMatch(quantity);
-    for (const m of w.host.log.messages) expect(NBSP_FREE(m)).not.toMatch(quantity);
+    // the hold (cargo_scu in the recipe) is the ship's, not derived from the balance: it is the one number allowed
+    for (const m of w.host.log.messages)
+      expect(NBSP_FREE(m).replace(/cargo_scu=\d+/g, "")).not.toMatch(quantity);
   });
 
   it("Given a route from a typed budget is applied, Then it stays when the balance is hidden", async () => {
@@ -585,6 +590,10 @@ describe("Feature: the wording about the balance is exact", () => {
     const t = text(w);
     expect(t).toContain("envoyé au serveur local (par l’hôte) pour ce calcul");
     expect(t).toContain("jamais envoyé à UEX");
+    // and plainly: Claude reads the balance itself for its own call, so it can reach the conversation that way
+    expect(t).toContain(
+      "il lit lui-même ton solde pour l’utiliser comme budget dans son appel d’outil",
+    );
     expect(t).not.toContain("sans être affiché ni transmis");
     expect(t).not.toContain("reste sur cet écran");
   });

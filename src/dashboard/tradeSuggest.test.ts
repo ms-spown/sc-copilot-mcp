@@ -292,6 +292,7 @@ describe("Feature: the answer is compact, bounded and clean", () => {
         "notes",
         "objective",
         "options",
+        "origin",
         "partial",
         "private",
         "reports_incomplete",
@@ -302,6 +303,16 @@ describe("Feature: the answer is compact, bounded and clean", () => {
         "v",
       ].sort(),
     );
+  });
+
+  it("Given a starting place, Then the answer echoes it as the server resolved it, cleaned; without one it is null", async () => {
+    const { ask } = service();
+    expect(((await ask({ cargo_scu: 100 })) as any).origin).toBeNull();
+    const { ask: askFrom } = service();
+    expect(((await askFrom({ cargo_scu: 100, origin: " Area18 TDD " })) as any).origin).toEqual({
+      kind: "terminal",
+      name: "Area18 TDD",
+    });
   });
 });
 
