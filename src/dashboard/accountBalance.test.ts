@@ -123,6 +123,24 @@ describe("Feature: where the account balance comes from, and nothing invented", 
     ).toEqual({ source: "unknown", reason: "no_reading" });
   });
 
+  it("Given a stream that only waits (the game may be open in its menus), Then it never says the game is closed", () => {
+    for (const connection of [
+      undefined,
+      null,
+      { state: "unknown" as const },
+      { state: "menu" as const },
+    ]) {
+      expect(
+        buildAccountBalance({
+          status: { state: "waiting" },
+          snapshot: null,
+          connection,
+          nowMs: NOW,
+        }),
+      ).toEqual({ source: "unknown", reason: "no_reading" });
+    }
+  });
+
   it("Given a frame without a balance, Then it is not read as zero", () => {
     const a = buildAccountBalance({
       status: { state: "live" },

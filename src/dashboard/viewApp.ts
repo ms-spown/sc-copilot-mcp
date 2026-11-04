@@ -819,12 +819,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.sesFlight.root,
     );
     R.sesBalanceBox = widget("balance", el("div", "facts ses-balance"));
-    R.sesBalance = fact("Solde");
-    R.btnBalance2 = button("Afficher le solde", () => toggleBalance(), "mini");
-    add(R.sesBalance.root, R.btnBalance2);
     R.sesDelta = fact("Variation");
     R.sesRate = fact("Rythme");
-    add(R.sesBalanceBox, R.sesBalance.root, R.sesDelta.root, R.sesRate.root);
+    add(R.sesBalanceBox, R.sesDelta.root, R.sesRate.root);
     R.sesNote = el("p", "note", "");
     add(cSes.body, R.sesEmpty, R.sesButtons, R.sesRows, R.sesBalanceBox, R.sesNote);
     // One chronology
@@ -1588,9 +1585,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       setRow(R.sesFlight, "≈\u00a0" + L.formatDuration(s.flight_ms));
     }
     const bal = balanceInfo(p);
-    setRow(R.sesBalance, bal ? L.fmtAuec(bal.uec) + "\u00a0aUEC" : showBalance ? "—" : "masqué");
-    setText(R.btnBalance2, showBalance ? "Masquer" : "Afficher le solde");
-    setAttr(R.btnBalance2, "aria-label", showBalance ? "Masquer le solde" : "Afficher le solde");
+    // The balance itself is the header's reminder (renderAccount); this card keeps what only the stream's own counters say.
+    show(R.sesBalanceBox, !!bal);
     show(R.sesDelta.root, !!bal);
     show(R.sesRate.root, !!bal);
     if (bal) {

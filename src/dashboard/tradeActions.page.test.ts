@@ -485,7 +485,7 @@ describe("Feature: the balance is used only by choice, and never leaves the scre
     findButton(w.root, "Plus rentable").click();
     await w.advance(200);
     expect(text(w)).toContain("Port Tressler");
-    findButton(w.root, "Masquer").click();
+    findButton(w.root, "Masquer le solde").click();
     await w.advance(2 * SECOND);
     expect(text(w)).toContain("Résultats effacés : ils dépendaient du solde, qui est masqué.");
     expect(text(w)).not.toContain("Appliquer comme plan");
@@ -522,7 +522,7 @@ describe("Feature: a plan built from the balance does not outlive the balance be
     expect(text(w)).toContain("Laranite · Port Tressler → Area18 TDD");
     expect(text(w)).toMatch(SCU_AND_PROFIT);
     // hidden again: the plan is gone, with its quantity and its profit, and so is the "applied" mark
-    findButton(w.root, "Masquer").click();
+    findButton(w.root, "Masquer le solde").click();
     await w.advance(8 * SECOND);
     const t = text(w);
     expect(t).not.toContain("Laranite · Port Tressler → Area18 TDD");

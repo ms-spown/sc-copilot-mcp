@@ -52,6 +52,11 @@ const fullscreen = async (w: PageWorld) => {
   await w.advance(100);
 };
 
+const inside = (n: FakeNode, c: string): boolean => {
+  for (let p: FakeNode | null = n; p; p = p.parentNode)
+    if (p.className.split(" ").includes(c)) return true;
+  return false;
+};
 const zone = (w: PageWorld): FakeNode =>
   findAll(w.root, (n) => n.className.split(" ").includes("acct"))[0]!;
 const zoneText = (w: PageWorld) => NB(visibleText(zone(w)));
@@ -90,6 +95,20 @@ describe("Feature: the account balance is a permanent reminder in the header", (
       findAll(header, (n) => n.tag === "button" && n.textContent === "Masquer le solde"),
     ).toHaveLength(1);
     expect(findAll(w.root, (n) => n.className.split(" ").includes("balance-row"))).toHaveLength(0);
+  });
+
+  it("Given full screen, Then the balance is said once: the stream's counters card no longer repeats it, it keeps its change and pace", async () => {
+    const w = await page(() => ({ source: "live", uec: BAL }));
+    await fullscreen(w);
+    const solde = findAll(w.root, (n) => n.textContent === "Solde" && isShown(n));
+    expect(solde).toHaveLength(1);
+    expect(solde[0]!.className).toBe("acct-label");
+    // The legacy card's own toggle is gone: the buttons that name the balance are the header's and the session card's.
+    const toggles = findAll(
+      w.root,
+      (n) => n.tag === "button" && /le solde$/.test(n.attrs["aria-label"] ?? n.textContent),
+    );
+    expect(toggles.some((n) => n.className.includes("mini") && !inside(n, "acct"))).toBe(false);
   });
 
   it("Given the game closed and a balance saved 15 hours ago, Then it is the last known balance, labelled with its age", async () => {

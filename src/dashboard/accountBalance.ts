@@ -101,6 +101,7 @@ export function buildAccountBalance(input: AccountInput): AccountBalance {
       from: "session",
     };
   }
-  const closed = connection?.state === "closed" || status.state === "waiting";
+  // "Closed" only on the game's own quit line: a stream that waits (menus, loading) does not say the game is not running.
+  const closed = connection?.state === "closed";
   return { source: "unknown", reason: closed ? "game_closed" : "no_reading" };
 }

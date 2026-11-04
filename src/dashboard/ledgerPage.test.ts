@@ -154,7 +154,7 @@ describe("Feature: the full-screen panel", () => {
     findButton(w.root, "Afficher le solde").click();
     await w.advance(3 * SECOND);
     expect(text(w)).toContain("Gain mesuré");
-    findButton(w.root, "Masquer").click();
+    findButton(w.root, "Masquer le solde").click();
     expect(text(w)).not.toContain("Gain mesuré");
   });
 
