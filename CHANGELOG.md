@@ -6,6 +6,31 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Health strip and legend in the live dashboard: the page explains what is wired and what is missing.** A new player
+  used to get a dashboard that silently showed less than it could (no connection state without the game log, no trade
+  journal or ledger, nothing with telemetry off, only "Jeu lancé sans télémétrie" for a game started without the
+  variable). A compact block under the header now lists what is missing, what is lost and the exact fix, with a copy
+  button (a selectable text and "Ctrl+C" when the host refuses the clipboard). It is invisible while nothing needs
+  doing; the "?" button in the header opens the full list of eight lines (telemetry, game log, registration line,
+  connection state, trade journal and ledger, saved sessions, balance, data freshness) with "Tout est branché", and
+  the legend "Comment lire ce tableau" (Mesuré, Calculé, Estimé, Probable, Inconnu, each with a glyph: colour is never
+  the only signal), which is also shown at the first open.
+  - Server: a small `health` object in the `sc_live_poll` answer (`src/dashboard/health.ts`, pure): codes, the name of
+    the log setting (`SC_INSTALL_DIR` or `SC_GAME_LOG_PATH`, never its value) and a fixed label (`LIVE/Game.log`,
+    `Game.log`, `custom`), never a path. Built from facts the server already holds: no new network, no new file read,
+    nothing read at all while telemetry is off, no amount, outside the section hashes. The session manager now keeps the
+    time of its last write in memory; the telemetry service exposes the game-log hint it already holds.
+  - View: every code is re-validated in the page (the whole object is dropped when one is unknown), also for what
+    arrives on the channel between dashboards. No new live region. One best-effort flag in the browser's storage
+    (`sc-copilot-help-seen`), never required; the two tests that forbade any use of `localStorage` now pin that single
+    use.
+  - The built page goes from 382.9 kB to 405.0 kB (budget 410 kB).
+  - Docs: `docs/TELEMETRY.md` and `docs/TELEMETRY.fr.md` (live dashboard, troubleshooting), `SECURITY.md`. Item 8
+    (SCMDB and UEX ages) is not measured by the page: it needs the sources, so the network; the line points to
+    `sc_data_status`. `npm run doctor` is unchanged: its facts (Claude config, user variable, port) are not available at
+    runtime, so the two do not share code; the strip points to it.
+
 ## [2.2.0] - 2026-11-04
 
 ### Added

@@ -251,6 +251,8 @@ export interface PageWorld {
   setHidden: (hidden: boolean) => void;
   setIntersecting: (on: boolean) => void;
   pendingTimers: () => number;
+  /** The node the View selected last (the copy fallback), or null. */
+  selected: () => FakeNode | null;
   /** Listeners and observers still registered by the View (window, document, observers). */
   listenerCount: () => number;
   bus: FakeBus | null;
@@ -273,6 +275,13 @@ export interface WorldOptions {
   /** What the fake host answers to sc_trade_suggest (see fakeHost.ts). */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   suggest?: (args: any) => unknown | Promise<unknown>;
+  /**
+   * The browser's storage: omitted = the window has none (like a sandbox that hides it), "throws" = reaching it throws
+   * (an opaque origin), a Map = a working one that the test can read back.
+   */
+  storage?: "throws" | Map<string, string>;
+  /** The clipboard: omitted = none, "refuses" = writeText rejects, an array = a working one that collects the texts. */
+  clipboard?: "refuses" | string[];
 }
 
 /**
@@ -366,10 +375,53 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     },
   };
 
+  // Optional browser features, each present only when the test asks for it.
+  const store = options.storage;
+  if (store === "throws") {
+    Object.defineProperty(win, "localStorage", {
+      get() {
+        throw new Error("SecurityError: the storage is not available here");
+      },
+    });
+  } else if (store) {
+    Object.assign(win, {
+      localStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, String(v)),
+      },
+    });
+  }
+  const clip = options.clipboard;
+  if (clip) {
+    Object.assign(win, {
+      navigator: {
+        clipboard: {
+          writeText: (text: string) =>
+            clip === "refuses"
+              ? Promise.reject(new Error("NotAllowedError"))
+              : (clip.push(text), Promise.resolve()),
+        },
+      },
+    });
+  }
+  let selected: FakeNode | null = null;
+  Object.assign(win, {
+    getSelection: () => ({
+      removeAllRanges() {},
+      addRange: (r: { node: FakeNode }) => void (selected = r.node),
+    }),
+  });
+
   const root = new FakeNode("div");
   const body = new FakeNode("body");
   const doc = {
     hidden: false,
+    createRange: () => ({
+      node: null as FakeNode | null,
+      selectNodeContents(n: FakeNode) {
+        this.node = n;
+      },
+    }),
     documentElement: new FakeNode("html"),
     body,
     createElement: (tag: string) => new FakeNode(tag),
@@ -437,6 +489,7 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
       }
     },
     pendingTimers: () => vclock.timers.length,
+    selected: () => selected,
     firePageHide() {
       for (const fn of [...(listeners["pagehide"] ?? [])]) fn({});
     },

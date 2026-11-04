@@ -1,6 +1,7 @@
 import type { TelemetryEvent } from "./events.js";
 import type {
   BalancePoint,
+  GameLogHint,
   TelemetryServiceOptions,
   TelemetrySnapshot,
   TelemetryStatusReport,
@@ -31,6 +32,8 @@ export interface Telemetry {
    * Optional: a source without it simply has no history. Does not start the reader.
    */
   balanceHistory?(): Promise<BalancePoint[]>;
+  /** The game-log hint the service already holds (no read). Absent on a source without one. */
+  gameHint?(): Promise<GameLogHint | null>;
   stop(): Promise<void>;
 }
 
@@ -76,6 +79,7 @@ export function createTelemetry(config: TelemetryConfig): Telemetry {
     events: async (afterSeq, limit, keep) => (await load()).recentEvents(afterSeq, limit, keep),
     resetUecDelta: async () => (await load()).resetUecDelta(),
     balanceHistory: async () => (await load()).balanceHistory(),
+    gameHint: async () => (service ? (await service).gameHint : null),
     // Nothing was loaded, nothing to stop: do not import the reader just to close it.
     stop: async () => {
       if (service) await (await service).stop();

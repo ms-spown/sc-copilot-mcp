@@ -388,11 +388,11 @@ describe("Feature: the bar in the page", () => {
     expect(w.host.log.tools.filter((t) => t.name === "sc_session_end")).toHaveLength(1);
   });
 
-  it("Given the page, Then the markup rules hold: text only through textContent, nothing written to the browser's storage", () => {
+  it("Given the page, Then the markup rules hold: text only through textContent, no session data in the browser's storage", () => {
     const script = viewScript();
-    expect(script).not.toMatch(
-      /innerHTML|insertAdjacentHTML|localStorage|sessionStorage|indexedDB/,
-    );
+    // The only thing the page remembers is the health strip's "legend read" flag (see viewPage.test.ts); sessions never.
+    expect(script).not.toMatch(/innerHTML|insertAdjacentHTML|sessionStorage|indexedDB/);
+    expect(script).not.toMatch(/localStorage[^\n]*session|session[^\n]*localStorage/i);
     expect(dashboardHtml()).toContain("Session");
   });
 });

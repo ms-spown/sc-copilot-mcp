@@ -24,6 +24,10 @@
 //                 sessions=story|empty|off|stale|ended|readonly|gross|none  (the saved play session bar; story by default; the
 //                 figures are invented, see src/dashboard/testing/sessionScenario.ts)
 //                 menu=1|detail  (opens the "Sessions" menu, or the detail of session 2, after the page has loaded)
+//                 health=ok|nolog|unreadable|unregistered|sessionsoff|degraded|readonly|off|custom|everything  (the health strip: what is
+//                 wired and what is missing; made-up facts through the server builder, see src/dashboard/testing/healthScenario.ts;
+//                 without it the page behaves like a server that sends no health)   seen=1  (this browser remembers the legend was read)
+//                 help=1  (presses the "?" button once the page is up)
 //                 specs=ready|unknown|ambiguous|pending|error|none  (the ship sheet from the wiki; default ready; the figures
 //                 are synthetic, see src/dashboard/testing/specsFixtures.ts; the story's ship is always the same Cutter)
 import http from "node:http";
@@ -70,6 +74,7 @@ import { specsSamples } from "/dist/dashboard/testing/specsFixtures.js";
 import { sessionBar, sessionToolAnswer } from "/dist/dashboard/testing/sessionScenario.js";
 import { tradeBalanceAt, tradeLedger } from "/dist/dashboard/testing/tradeScenario.js";
 import { suggestAnswer } from "/dist/dashboard/testing/suggestFixtures.js";
+import { healthSection } from "/dist/dashboard/testing/healthScenario.js";
 import { movementBalanceAt, movementsLedger } from "/dist/dashboard/testing/movementsScenario.js";
 const q = new URLSearchParams(location.search);
 const seek = Number(q.get("t") ?? 0);
@@ -132,6 +137,18 @@ if (sess !== "none") {
   host.overrides.poll = (base, include) => ({ ...base, sessions: sessionBar(scenario.now, include, sess) });
   host.overrides.tool = (name, args) => sessionToolAnswer(name, args, scenario.now);
 }
+// health=...: the health strip. Composed with the session override above (both rewrite the poll).
+const hv = q.get("health");
+if (hv) {
+  const prev = host.overrides.poll;
+  host.overrides.poll = (base, include) => ({ ...(prev ? prev(base, include) : base), health: healthSection(hv, scenario.now) });
+}
+// seen=1: the legend was read in this browser; otherwise it is the first open (the flag lives in this origin's storage).
+try { if (q.get("seen")) localStorage.setItem("sc-copilot-help-seen", "1"); else localStorage.removeItem("sc-copilot-help-seen"); } catch {}
+if (q.get("help")) frame.addEventListener("load", () => setTimeout(() => {
+  const b = [...frame.contentDocument.querySelectorAll("button")].find((x) => x.textContent === "?");
+  if (b) b.click();
+}, 1800));
 // trade=...: the commerce card. The made-up stream carries the balance of the trade story, and the ledger holds the
 // trade section that the real model builds from invented transactions.
 const TRADE_PLAN = { commodity: "Laranite", buy_terminal: "Port Tressler", sell_terminal: "Area18 TDD", scu: 696, expected_profit_auec: 180000, buy_unit_price: 189, sell_unit_price: 457, est_trip_minutes: 25, safety_note: "Route peu risquée", price_points: [430, 436, 441, 450, 447, 455, 462, 458, 449, 452, 460, 457, 463, 459], price_points_label: "14 derniers relevés" };
