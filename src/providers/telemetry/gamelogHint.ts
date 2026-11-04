@@ -1,4 +1,4 @@
-import fs from "node:fs/promises";
+import { openLogFile } from "../gamelog/openLog.js";
 import type { GameLog } from "../gamelog/reader.js";
 import { decodeLog } from "../gamelog/parser.js";
 import type { GameLogHint } from "./service.js";
@@ -21,7 +21,7 @@ export function createGameLogHint(
     if (!gameLog.configured) return null;
     let handle;
     try {
-      handle = await fs.open(gameLog.source().file, "r");
+      handle = await openLogFile(gameLog.source().file);
     } catch {
       return null;
     }

@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { openLogFile } from "./openLog.js";
 import { connectionFromText, UNKNOWN_CONNECTION, type ConnectionInfo } from "./connectionState.js";
 import { decodeLog } from "./parser.js";
 import type { GameLog } from "./reader.js";
@@ -60,7 +61,7 @@ export class ConnectionTracker {
     }
     let handle;
     try {
-      handle = await fs.open(file, "r");
+      handle = await openLogFile(file);
     } catch (error) {
       // A file that is not there (the game is restarting) is "nothing to report"; a transient error (antivirus,
       // sharing) keeps what is known instead of forgetting it.

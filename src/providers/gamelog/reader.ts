@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { shortPath } from "../../core/paths.js";
+import { GameLogError, openLogFile } from "./openLog.js";
 import { decodeLog, parseLog, type ParsedLog } from "./parser.js";
 
 /**
@@ -41,7 +42,7 @@ export function suggestedInstallDirs(env: NodeJS.ProcessEnv = process.env): stri
 // Kept here for the callers that already import it from the log reader.
 export { shortPath };
 
-export class GameLogError extends Error {}
+export { GameLogError };
 
 export interface LogSource {
   file: string;
@@ -139,8 +140,9 @@ export class GameLog {
   ): Promise<ReadResult> {
     let handle;
     try {
-      handle = await fs.open(file, "r"); // read-only; Node/libuv shares read, write and delete
+      handle = await openLogFile(file); // read-only; a link only to another .log
     } catch (error) {
+      if (error instanceof GameLogError) throw error;
       const code = (error as NodeJS.ErrnoException).code;
       throw new GameLogError(
         code === "ENOENT"
