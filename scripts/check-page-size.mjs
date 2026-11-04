@@ -14,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // History: 382.9 kB against a 410 kB budget, then 331.2 kB against 360 kB once the indentation was dropped, then 357.3 kB
 // as the features landed (2.7 kB of margin: every new View feature was blocked). The script then lost its blanks
-// (scriptMinify.ts), eight copies of the DOM helpers and some dead code: 319.1 kB. 345 kB is that size plus about 8 %
+// (scriptMinify.ts), eight copies of the DOM helpers and some dead code: 319.3 kB. 345 kB is that size plus about 8 %
 // (25 kB of room for the next features); passing it is a decision to take in a review, and slimming the page again comes first.
 const BUDGET_BYTES = 345_000;
 

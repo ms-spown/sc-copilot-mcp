@@ -25,7 +25,7 @@ describe("Feature: the generated page stays within its size budget", () => {
     const names = list![1].split(",").map((s) => s.trim());
     expect(names.length).toBeGreaterThan(200);
     // a function reached by a computed name (`L[name]`) would not show in the count below: none may exist
-    expect(script).not.toMatch(/L\[/);
+    expect(script).not.toMatch(/\bL\[/);
     const seen = new Map<string, number>();
     for (const t of tokenizer(script, { ecmaVersion: "latest", sourceType: "script" })) {
       if (t.type.label === "name") {
@@ -33,7 +33,9 @@ describe("Feature: the generated page stays within its size budget", () => {
         seen.set(v, (seen.get(v) ?? 0) + 1);
       }
     }
-    // its declaration and its entry in the list of the page are two uses that count for nothing
+    // its declaration and its entry in the list of the page are two uses that count for nothing.
+    // LIMIT: this counts name tokens, so it does not see a function that only another dead function calls, nor one whose
+    // name is only used as a property name (`a.name`). It catches the common case (a function nobody mentions).
     expect(names.filter((n) => (seen.get(n) ?? 0) <= 2)).toEqual([]);
   });
 });

@@ -111,4 +111,86 @@ describe("Feature: removing the blanks of the script changes no token and no nod
       expect(() => minifyScript(input)).not.toThrow();
     }
   });
+
+  it("Given a slash after a postfix ++ or --, Then it is a division (a regex there would swallow a line into a comment)", () => {
+    for (const input of [
+      "var i=1,z;i++ / 2; // n's\nz=1",
+      "var i=1,z;i-- / 2; // n's\nz=1",
+      "var i=1,z;z = i++ / 2 / 3; // it's\nz=1",
+    ]) {
+      expect(same(input, minifyScript(input))).toBe(true);
+    }
+  });
+
+  it("Given a prefix ++, a spread before a keyword-named property, or a number before a name, Then each is read as JavaScript reads it", () => {
+    for (const input of [
+      "var o;++/a b/.lastIndex;",
+      "var a=[1],b;b=[...a.in / 2 / 1]",
+      "var a=[1],b=[2];b=[...a, ...b.of]",
+      "var x=12. in{};",
+      "var x=1_000 .toString();",
+      "var x=[...0 .toString()];",
+    ]) {
+      expect(same(input, minifyScript(input))).toBe(true);
+    }
+  });
+
+  it("Given a slash after a word, Then a keyword used as a property or a plain name divides, and an ambiguous word is refused", () => {
+    for (const input of [
+      "var w={of:4,in:2,new:1,do:3,typeof:5},y;y = w.of / 2; // n's\ny=w.in / 2 / 1;y=w.new / 2 / 1;y=w.do / 2 / 1;y=w.typeof / 2 / 1",
+      "var w={a:4},y;y=w?.a / 2; // n's\ny=1",
+      "var a=1,y;y = typeof /x y/.source",
+    ]) {
+      expect(same(input, minifyScript(input))).toBe(true);
+    }
+    for (const input of ["var of=4,y;y = of / 2; // n\ny=1", "async function f(){await /x/g}"]) {
+      expect(() => minifyScript(input)).toThrow(/ambiguous/);
+    }
+  });
+
+  it("Given a slash after a closing parenthesis or brace, Then it follows the statement that was closed", () => {
+    for (const input of [
+      "var a=1,b=2,c,d;c=(a) / b / 2; // n's\nd=1",
+      "var a=1;if (a) /x y/.test('x y');",
+      "var a=1;while (a--) /x y/.test('x y');",
+      "var a=1;for (;a;) /x y/.test('x y'),a=0;",
+      "var a=1;if (a) {}\n/x y/.test('x y')",
+      "var a=1;function f() {}\n/x y/.test('x y')",
+    ]) {
+      expect(same(input, minifyScript(input))).toBe(true);
+    }
+  });
+
+  it("Given tokens that would form an HTML-like comment, Then a space is kept between them", () => {
+    for (const input of [
+      "var a=3,b=2,x;x=a<! --b",
+      "var a=3,b=2,x;x=a < ! --b",
+      "var a=3,x;x=a<!(a--) /* c */ >a",
+    ]) {
+      const small = minifyScript(input);
+      expect(small).not.toContain("<!--");
+      expect(small).not.toContain("-->");
+      expect(same(input, small)).toBe(true);
+    }
+    expect(minifyScript("x=a-- >b")).toBe("x=a-- >b");
+  });
+
+  it("Given input that holds an HTML-like comment or a hashbang, Then it is refused (it would swallow the rest of a line)", () => {
+    for (const input of [
+      "#!/usr/bin/env node\nx=1",
+      "x=a<!--b\ny=2",
+      "x=1;\n--> c\ny=2",
+      "--> c\ny=2",
+      "x=1;/*\n*/ --> c\ny=2",
+    ]) {
+      expect(() => minifyScript(input)).toThrow(/cannot be minified/);
+    }
+    // a `-->` that is not at the start of a line is an ordinary `--` and `>`
+    expect(same("var a=1,b;b=a-->0", minifyScript("var a=1,b;b=a-->0"))).toBe(true);
+  });
+
+  it("Given the page's function boundaries, Then the shipped script keeps a line break there, so an error trace is readable", () => {
+    const small = viewScript();
+    expect(small.split("\n").length).toBeGreaterThan(150);
+  });
 });
