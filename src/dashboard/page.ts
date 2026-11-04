@@ -50,12 +50,21 @@ export function compactCss(css: string): string {
   let from = 0;
   const flush = (to: number) => {
     // Outside a string: comments out, blanks collapsed, then the blanks around the four punctuation marks.
+    // A punctuation mark after an odd number of backslashes is escaped: it is part of a name (`.e\, .f` is one class and a
+    // descendant), and the blanks around it mean something. They are kept.
+    const escaped = (text: string, at: number) => {
+      let n = 0;
+      while (at - 1 - n >= 0 && text[at - 1 - n] === "\\") n += 1;
+      return n % 2 === 1;
+    };
     const plain = css
       .slice(from, to)
       .replace(/\/\*[\s\S]*?\*\//g, " ")
       .replace(/\s+/g, " ")
-      .replace(/ ?([{};,]) ?/g, "$1")
-      .replace(/: /g, ":");
+      .replace(/( ?)([{};,])( ?)/g, (m, a, c, _b, at, text) =>
+        escaped(text, at + a.length) ? m : c,
+      )
+      .replace(/: /g, (m, at, text) => (escaped(text, at) ? m : ":"));
     parts.push(plain);
   };
   while (i < css.length) {
@@ -76,7 +85,10 @@ export function compactCss(css: string): string {
     }
   }
   flush(css.length);
-  return parts.join("").replace(/;}/g, "}").trim();
+  return parts
+    .join("")
+    .replace(/(?<!\\);}/g, "}")
+    .trim();
 }
 
 /** The style sheet as written, every module's rules in one string (the page ships `compactCss` of it). */

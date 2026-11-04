@@ -40,6 +40,54 @@ versions follow [Semantic Versioning](https://semver.org/).
   it (a total and per session). The alert is muted once a later transaction of the same side and kind went through, and its
   live region holds only the stable sentence and the absolute time. Nothing is parsed a second time. Measured read-only on the reference install's 95 logs: 2
   refusals, 162 and 247 ms after the request.
+- **End-to-end replay of a complete trade run (tests only).** Every part of the trade and session pipeline was tested on
+  its own; none had been played together. A harness (`src/testing/replay/`) now drives the real objects from one
+  synthetic timeline: a Game.log that grows (commerce lines, errors, contracts, connection lines), telemetry frames
+  carrying a balance that changes at precise times (through the fake game and the frame encoder), a plan applied by the
+  action bar's tool, the session manager writing a temp file, a crash and restart, and every tool called through an
+  in-memory MCP client, on one injected clock. Sixteen scenarios (`src/e2e/replay.*.behaviour.test.ts`) assert the exact
+  figures and the privacy guarantees at every step: the player's run (gross margin 186 568, fees 19 468 / 24 100, net
+  +143 000, price deviation +6 568, nothing unexplained), a second and a third run (calibration, a foreign spending kept
+  out), a late sale of stock from before, rejected cargo lines, a disconnection and a restart, a quiet telemetry around a
+  sale, a reward paid near a sale, hostile text in the log and in a note, and a stack switched off. Seven bugs it found
+  are fixed below. How to add a scenario: CONTRIBUTING.
+- `createSessionStack` (`src/providers/sessions/stack.ts`): the server's wiring of the ledger reader, the session file and
+  the session manager, shared by `index.ts` and the replay harness so that they cannot drift apart. No change of behaviour.
+
+### Fixed
+- **A restarted server no longer replaces a measured trip by an unknown one.** After a restart the server re-reads the
+  whole log and offers every trade run again, but the balance history of the runs it did not watch is gone (memory only):
+  their net and fees came out unknown, and the stored trip (the frozen, measured one) was overwritten with `null` net and
+  `null` fees. The session total silently fell back to the run's gross margin (186 568 instead of 143 000 in the replay),
+  and the run left the net ratio of the route calibration. A trade trip is now replaced only when the run grew (a later
+  sale) or when the new version loses nothing the stored one measured.
+- **A run that grows after a restart keeps what was measured.** Same cause as above, for a run that also got a later sale
+  while the server was down: its measured net and fees were replaced by unknown ones. A known figure is never replaced by an
+  unknown one: they are kept, the trip carries the new optional tag `figures_from_before` (they do not cover the last
+  lines, withheld without the balance like `net_doubtful`) and its net is flagged doubtful, so the calibration and the
+  efficiency against the plan leave it out. The session file stays version 2 (an additive optional key; an older build
+  drops it harmlessly).
+- **A reward paid inside the window of a cargo sale is no longer added to the "probable rewards" by the sale's own changes.**
+  When the fee of a sale could not be measured because of the reward, the sale's changes were read as probable rewards (the
+  total exceeded the reward by the sale's revenue). A variation on the side of such a line, inside its window, is now
+  `unexplained` and `ambiguous` with both causes named; the sum invariant holds.
+- **Fees deduced from the balance (`estime`) no longer feed anything else.** Gross margin minus net may hold a reward or a
+  purchase made elsewhere (first run with a stream gap: nothing to compare with). They are no longer carried to the next run
+  as its reference rate, no longer net the plan, and no longer enter the fee rate of the route reliability. The card says
+  "estimé, flux interrompu ou fenêtre illisible" and that the figure may hold another spending; the "next run" tile names
+  the origin of the rate it nets the plan with (`planned_net.rate_from`: the earlier run's, never the deduced one). Fees
+  measured before a restart on a run that grew are not in the fee rate either.
+- **The session's efficiency against the plan no longer counts a net the commerce model flagged doubtful.** A reward paid
+  during the run, or fuel bought elsewhere, is in the balance variation; the calibration already left such a net out, but
+  `money.plan` of `sc_session_current`, `sc_session_list` and `sc_session_stats` (and the session bar) still compared it with
+  the plan: 113 % of the plan for a run that made 79 % of it, or a negative efficiency after 500 000 of fuel. Such a trip is
+  now left out of the plan comparison (the session total stays the raw measure of the balance, flagged on the trip).
+- **`fees_method` leaked what the balance did, without the balance.** `sc_session_current` (the text the model reads and the
+  structured copy the View reads) gave `fees_method` (`mesure`, `estime` or null) with no `include_balance`: it tells that the stream was cut around the
+  sales, or that the balance moved for another reason, which the neighbouring `net_doubtful` and `net_kind` already hid. It
+  is withheld with them.
+- **The commerce card now counts a rejected sale of zero as failed**, as the trade journal does (the card dropped any line
+  without a positive amount, so it said 1 failed line where the journal listed 2).
 
 ## [2.3.0] - 2026-11-04
 

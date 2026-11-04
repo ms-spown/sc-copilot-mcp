@@ -250,6 +250,25 @@ export function unknownPreflight(
 type Found =
   { kind: "row"; row: Row } | { kind: "none" } | { kind: "ambiguous" } | { kind: "other_version" };
 
+/** The version most rows of the goods carry (ties: the higher), or null when none says. */
+function mostCommonVersion(rows: readonly Row[]): string | null {
+  const counts = new Map<string, { n: number; parts: number[] }>();
+  for (const r of rows) {
+    const parts = versionParts(r.game_version);
+    if (!parts) continue;
+    const key = parts.join(".");
+    const held = counts.get(key);
+    if (held) held.n += 1;
+    else counts.set(key, { n: 1, parts });
+  }
+  let best: { n: number; parts: number[] } | null = null;
+  for (const c of counts.values()) {
+    if (!best || c.n > best.n || (c.n === best.n && compareVersions(c.parts, best.parts) > 0))
+      best = c;
+  }
+  return best ? best.parts.join(".") : null;
+}
+
 /**
  * Among the rows of ONE terminal, the one to judge. With LIVE's version known, only a row of that version (or a row with no
  * version, which is kept as everywhere else) counts: a newer-dated row of another game version must not give a verdict.
@@ -292,8 +311,10 @@ export function findTerminalRow(
   live: string | null = null,
 ): Found {
   if (id !== null) {
+    // A known id is the terminal: when no row has it, there is nothing to judge (a terminal that now carries the same name
+    // under another id is another terminal, never a fallback).
     const byId = rows.filter((r) => toNumber(r.id_terminal) === id);
-    if (byId.length > 0) return chooseRow(byId, live);
+    return byId.length > 0 ? chooseRow(byId, live) : { kind: "none" };
   }
   const ellipsis = wanted.endsWith("…");
   const base = ellipsis ? wanted.slice(0, -1) : wanted;
@@ -377,7 +398,7 @@ function judgeLeg(
     data_age_hours: age === null ? null : Math.round(age * 24 * 10) / 10,
     stale,
     reports,
-    estimate: reports === null ? null : reports === 0,
+    estimate: reports === null ? null : reports < 1,
     stock_level: stock.level ? label(stock.level, 60) : null,
     stock_fill: stock.fill ? label(stock.fill, 12) : null,
     stock_scu: side === "buy" ? status.buy.scu_available : status.sell.demand_scu,
@@ -394,7 +415,8 @@ function judgeLeg(
   if (criticalCondition) verdict = worst(verdict, "drifted");
   else if (warnCondition || stale) verdict = worst(verdict, "watch");
   // Green needs a player behind the price: a UEX estimate (0 reports) or an unknown count only gets "valid_estimate".
-  if (verdict === "valid" && (reports === null || reports === 0)) verdict = "valid_estimate";
+  // `reports` is finite here (toNumber): green needs at least one report, so a count of 0, -1 or none is never green.
+  if (verdict === "valid" && !(reports !== null && reports >= 1)) verdict = "valid_estimate";
   return {
     side,
     terminal,
@@ -417,7 +439,9 @@ export function judgePreflight(
 ): PreflightResult {
   const planMargin = plan.sell_price - plan.buy_price;
   if (!(planMargin > 0)) return unknownPreflight("plan_incomplete", plan);
-  const live = opts.live ?? null;
+  // LIVE's version when known; else the most common version among the goods' rows (a PTU row or two must not win by being
+  // the highest or the newest).
+  const live = opts.live ?? mostCommonVersion(rows);
   const buyRow = findTerminalRow(rows, plan.buy_terminal, opts.ids?.buy ?? null, live);
   const sellRow = findTerminalRow(rows, plan.sell_terminal, opts.ids?.sell ?? null, live);
   const legs = [

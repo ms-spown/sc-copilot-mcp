@@ -175,6 +175,46 @@ describe("Feature: sc_session_current gives what Claude needs to accompany the p
     expect(shown.data.data.recent_trips[1].gross_margin_auec).toBe(111_111);
   });
 
+  it("Given a trade run whose fees were deduced, Then the way they were obtained is withheld with the balance it comes from (found by the end-to-end replay)", async () => {
+    // "estime" says the stream was cut around the sales, "mesure" that it was not, null that the balance moved for another
+    // reason: all of it is what the balance did, so it goes with net_doubtful and net_kind.
+    const t = rig(true, {
+      key: "00000000000000cc",
+      kind: "trade",
+      source: "trade_journal",
+      ended_at: new Date(T0 + 3 * MIN).toISOString(),
+      label: "Cargo Waste",
+      commodity: "Waste",
+      cost_auec: 123_456,
+      revenue_auec: 234_567,
+      gross_margin_auec: 111_111,
+      fees_auec: 7_777,
+      fees_method: "estime",
+      net_auec: 103_334,
+      net_kind: "balance_delta",
+      net_doubtful: true,
+      unexplained_auec: 4_321,
+    });
+    await t.play(20);
+    const hidden = await t.call("sc_session_current");
+    const trip = hidden.data.data.recent_trips[1];
+    expect(trip).toMatchObject({
+      commodity: "Waste",
+      fees_method: null,
+      net_doubtful: null,
+      net_kind: null,
+      unexplained_auec: null,
+    });
+    expect(hidden.text).not.toMatch(/estime|7777|4321/);
+    expect(JSON.stringify(hidden.r.structuredContent)).not.toMatch(/estime|7777|4321/);
+    const shown = await t.call("sc_session_current", { include_balance: true });
+    expect(shown.data.data.recent_trips[1]).toMatchObject({
+      fees_method: "estime",
+      net_doubtful: true,
+      unexplained_auec: 4_321,
+    });
+  });
+
   it("Given include_balance=true, Then the figures are there, with their basis", async () => {
     const t = rig();
     await t.play(20);

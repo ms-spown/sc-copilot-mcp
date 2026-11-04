@@ -384,6 +384,14 @@ describe("Feature: green needs a player behind BOTH prices", () => {
     expect(verdictOf({ price_buy_users_rows: 0 }, {}).verdict).toBe("valid_estimate");
   });
 
+  it("Given a report count of 0, a negative one, NaN or Infinity, Then it is never green", () => {
+    for (const n of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, "-3"]) {
+      const r = judgePreflight(PLAN, rows(205, 495, { price_buy_users_rows: n }), NOW);
+      expect(r.verdict, String(n)).toBe("valid_estimate");
+      expect(r.legs[0]?.verdict).toBe("valid_estimate");
+    }
+  });
+
   it("Given a report count that is absent or not a number, Then it is not green either", () => {
     expect(verdictOf({ price_buy_users_rows: undefined }, {}).verdict).toBe("valid_estimate");
     expect(verdictOf({}, { price_sell_users_rows: "n/a" }).verdict).toBe("valid_estimate");
@@ -458,6 +466,21 @@ describe("Feature: a date from the future, and rows of another game version", ()
     expect(r.legs[0]?.now_price).toBe(205);
   });
 
+  it("Given LIVE's version is unknown, Then a PTU row that is newer and higher does not win: the common version does", () => {
+    const r = judgePreflight(
+      PLAN,
+      [
+        row("Port Tressler", { price_buy: 150, game_version: "4.11.0", date_modified: ago(HOUR) }),
+        row("Port Tressler", { price_buy: 205, game_version: "4.10.2", date_modified: ago(DAY) }),
+        row("Area18 TDD", { price_sell: 495, game_version: "4.10.2" }),
+        row("Other", { price_sell: 400, game_version: "4.10.2" }),
+      ],
+      NOW,
+    );
+    expect(r.legs[0]?.now_price).toBe(205);
+    expect(r.verdict).toBe("valid");
+  });
+
   it("Given the game-versions request fails, Then the check still answers", async () => {
     const uex = fakeUex((url) => {
       if (url === "/game_versions") throw new Error("down");
@@ -489,9 +512,16 @@ describe("Feature: terminals are found by UEX id first, then by exact name", () 
     expect(r.legs[1]?.now_price).toBe(495);
   });
 
-  it("Given an id that no row has, Then the exact name is the fallback", () => {
+  it("Given an id that no row has, Then the terminal is not found: a same-name terminal with another id is not a fallback", () => {
     const r = judgePreflight(PLAN, rows(205, 495), NOW, { ids: { buy: 99999, sell: null } });
-    expect(r.legs.map((l) => l.now_price)).toEqual([205, 495]);
+    expect(r.legs[0]).toMatchObject({
+      verdict: "unknown",
+      problem: "terminal_not_found",
+      now_price: null,
+    });
+    // the leg without an id still matches by name
+    expect(r.legs[1]?.now_price).toBe(495);
+    expect(r.verdict).not.toBe("valid");
   });
 
   it("Given a plan from Claude (no ids), Then two terminals with the same name are ambiguous, never guessed", () => {

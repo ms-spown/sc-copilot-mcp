@@ -627,7 +627,12 @@ same thing. Each figure now has one meaning:
   | `probable_insurance_or_hangar_cost` | an otherwise unexplained fall from 3 s before to 20 s after an insurance claim request or a hangar request completed. The log has no line for what these cost, so ANY fall in that window (fuel, a purchase) qualifies: the card says "Coût possible (hangar ou assurance)", tag "possible", and never names the cause | `probable` (shown as "possible") |
   | `unexplained` | everything else; reasons `no_cause`, `ambiguous` (two kinds of cause fit: none is chosen) or `stream_gap` (the change spans a cut in the stream: neither its time nor its content is known) | `none` / `ambiguous` |
 
-  A change goes to at most one cause (strong evidence, an amount that matches, comes before time proximity). **Fuel,
+  A change goes to at most one cause (strong evidence, an amount that matches, comes before time proximity). A change on
+  the side of a cargo line whose fee could not be measured, inside that line's window (a reward paid just after a sale
+  spoils the reconciliation), could be the sale or the reward: it is `unexplained` and `ambiguous`, with both causes named,
+  never counted as a probable reward. Fees deduced from the balance (`estime`: gross margin minus net, when the stream was
+  cut or the window unreadable) may hold a reward or a purchase made elsewhere: the card says so, and they feed neither the
+  planned net, nor the rate carried to the next run, nor the fee rate of the route reliability. **Fuel,
   repairs, fines, transfers between players and rewards without a nearby event leave no line in the log: they can only be
   "non expliqué"**, and the block says what they could be without picking one. A contract that failed or was abandoned
   just before a fall only adds a hint, never a penalty claim. Invariant, tested: the amounts of all the entries add up,
@@ -929,8 +934,12 @@ compares what the plan promised with what you really got (`src/providers/session
   for the balance, from the channel between Views, from `ui/update-model-context` and from the message of "Demander à l'agent".
   The View ignores it while the balance is hidden, even if a server sent it.
 - **Stored (file version 2).** For a trade trip: the plan's quantity, the plan's two terminals (UEX names: the plan's, not
-  observed places), `plan_link`, how the fees were obtained, and what the balance holds beyond the run (`unexplained_auec`,
-  `net_doubtful`: both come from the balance and are withheld like the money). Never frames, raw lines, handle or identifiers.
+  observed places), `plan_link`, how the fees were obtained (`fees_method`), and what the balance holds beyond the run
+  (`unexplained_auec`, `net_doubtful`: all of them come from the balance and are withheld like the money, and a trip whose
+  net is `net_doubtful` is not compared with its plan in the session's efficiency). A restarted server never replaces a stored
+  trade trip by a version that has lost a figure the stored one measured; when the run also grew (a later sale), the
+  measured net and fees are kept, `figures_from_before` is true and the net is `net_doubtful` (it no longer covers the
+  whole run). Never frames, raw lines, handle or identifiers.
   A version 1 file is read as is (the new fields are unknown, so those trips count by goods, without scaling, and with no
   net); the format number moved so that an older build leaves a version 2 file alone: it opens it read-only, in memory,
   with a notice, and the data is not lost. Before the first write in the new format the server copies the version 1 file once

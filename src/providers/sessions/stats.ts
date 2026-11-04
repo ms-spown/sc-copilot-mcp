@@ -63,7 +63,8 @@ export interface SessionMoney {
     /**
      * Measured result (net, else gross margin) over the planned profit AS PLANNED (not rescaled to the quantity moved: the
      * route calibration, calibration.ts, compares the gross margin with a plan rescaled to the quantity, so the two figures
-     * can differ on purpose).
+     * can differ on purpose). A trip whose net the commerce model flagged doubtful (the balance held a reward, a purchase
+     * made elsewhere: not the run's own) is not compared with its plan, as the calibration leaves it out of the net ratio.
      */
     efficiency: number | null;
     trips: number;
@@ -169,7 +170,9 @@ export function summarizeSession(s: Session): SessionSummary {
     null,
   );
   const grossRuns = known(counted.map((t) => t.gross_margin_auec));
-  const planned = withResult.filter((e) => e.trip.planned_profit_auec !== null);
+  const planned = withResult.filter(
+    (e) => e.trip.planned_profit_auec !== null && e.trip.net_doubtful !== true,
+  );
   const plannedSum = sum(known(planned.map((e) => e.trip.planned_profit_auec)));
   const measuredSum = sum(planned.map((e) => e.result as number));
   return {
@@ -377,7 +380,9 @@ export function aggregate(
     };
   }
 
-  const planned = allEff.filter((e) => e.trip.planned_profit_auec !== null && e.result !== null);
+  const planned = allEff.filter(
+    (e) => e.trip.planned_profit_auec !== null && e.result !== null && e.trip.net_doubtful !== true,
+  );
   const plannedSum = sum(known(planned.map((e) => e.trip.planned_profit_auec)));
 
   const routes = new Map<string, { t: Trip[] }>();

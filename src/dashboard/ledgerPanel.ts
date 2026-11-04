@@ -108,6 +108,7 @@ export function ledgerTradeMoney(raw: any): any {
             auec: ledgerNum(pn.auec),
             basis: ledgerOneOf(pn.basis, ["prix_du_plan", "chiffre_affaires_observe"], ""),
             fee_rate: ledgerNum(pn.fee_rate),
+            rate_from: ledgerOneOf(pn.rate_from, ["ce_trajet", "trajet_precedent"], ""),
             fee: ledgerNum(pn.fee),
           }
         : null,

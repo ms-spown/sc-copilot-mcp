@@ -8,14 +8,15 @@ import { compactCss, pageCss } from "./page.js";
  */
 
 // lightningcss keeps the raw tokens of a custom property and of `color-mix(...)`, blanks after commas included; a blank after a
-// comma means nothing to a browser, so it is removed from both sides before comparing (no string of the sheet holds ", ").
+// comma means nothing to a browser there, so it is removed from both sides before comparing. A comma after a backslash is part of
+// a name (`.e\, .f`) and stays significant: it is NOT masked, so a compaction that glued it would fail this test.
 const parsed = (css: string) =>
   Buffer.from(
     transform({ filename: "page.css", code: Buffer.from(css), minify: true, errorRecovery: false })
       .code,
   )
     .toString("utf8")
-    .replace(/,\s+/g, ",");
+    .replace(/(?<!\\),\s+/g, ",");
 
 describe("Feature: compacting the style sheet changes no rule", () => {
   it("Given the real sheet of the page, Then a CSS parser reads the compacted one exactly as the original", () => {
@@ -42,6 +43,16 @@ describe("Feature: compacting the style sheet changes no rule", () => {
     expect(small).toContain("font-family:\"Segoe UI\",'Mono',sans-serif");
     expect(small).toContain('[data-hidden="1"]{display:none !important}');
     expect(small).not.toContain("comment");
+    expect(parsed(small)).toBe(parsed(css));
+  });
+
+  it("Given an escaped comma, brace or colon in a selector, Then the blanks around it are kept (it would change the selector)", () => {
+    const css = ".e\\, .f { color: red; } .g\\: .h { margin: 0; } .i\\\\, .j { top: 0; }";
+    const small = compactCss(css);
+    expect(small).toContain(".e\\, .f{color:red}");
+    expect(small).toContain(".g\\: .h{margin:0}");
+    // an escaped backslash does not escape the comma that follows it
+    expect(small).toContain(".i\\\\,.j{top:0}");
     expect(parsed(small)).toBe(parsed(css));
   });
 
