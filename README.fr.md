@@ -249,6 +249,11 @@ l'activer** : c'est une fonction non documentée du jeu, et le risque est le vô
   la mise en page a été testée dans un navigateur contre un faux hôte, et une page de test jetable a été affichée dans
   Claude Desktop, mais le mainteneur n'a pas encore vu ce tableau de bord lui-même dans Claude Desktop (voir
   [docs/ROADMAP.md](docs/ROADMAP.md)).
+- **Raccourcis selon le contexte (dans ce tableau de bord).** Une zone « Raccourcis » rappelle les actions qui
+  conviennent au moment (train sorti, à pied, verrouillage hostile...), à partir d'états déjà dans le flux. Quelques
+  touches par défaut sont affichées, marquées « défaut », tirées de sources publiques et non vérifiées en jeu sur la
+  4.10 ; les autres actions n'ont pas de touche. Elle ne prétend jamais que les phares sont éteints ni qu'il fait
+  sombre, et c'est un simple affichage. Voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#raccourcis-selon-le-contexte).
 - **Un carnet de transport (optionnel, il faut le journal de jeu).** Dans ce tableau de bord, les contrats de la
   session avec leurs étapes de chargement et de livraison (quand le journal les contient : absentes des journaux du
   build 4.10 de l'installation de référence) et, une fois le solde affiché, la variation brute du solde sur chaque

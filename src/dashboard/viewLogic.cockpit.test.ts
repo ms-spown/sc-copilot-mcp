@@ -79,6 +79,23 @@ describe("Feature: the ship banner and the verdict at a glance", () => {
     expect(ctx.chips.find((c: any) => c.id === "lights").unverified).toBe(true);
   });
 
+  it("Given lights_on false, Then the chip never says the lights are off (false means off or not reported): it says the state is unread", () => {
+    const chip = (lights_on: boolean) =>
+      L.shipContext(live({ ship: ship({ lights_on }), derived: {} })).chips.find(
+        (c: any) => c.id === "lights",
+      );
+    expect(chip(false)).toMatchObject({
+      label: "Phares : état non lu",
+      on: false,
+      unverified: true,
+    });
+    expect(chip(false).label).not.toMatch(/éteint/i);
+    expect(chip(true)).toMatchObject({ label: "Phares allumés", on: true });
+    // no field at all: no chip
+    const none = L.shipContext(live({ ship: ship(), derived: {} })).chips;
+    expect(none.find((c: any) => c.id === "lights")).toBeUndefined();
+  });
+
   it("Given quantum mode, a jump, the ground and the powerplant off, Then each state is named, the strongest first", () => {
     const id = (over: any) => L.shipContext(live({ ship: ship(), ...over })).state.id;
     expect(id({ derived: { in_quantum_mode: true } })).toBe("quantum");

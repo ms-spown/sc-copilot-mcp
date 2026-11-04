@@ -6,6 +6,32 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (dashboard)
+- A "Raccourcis" zone under the ship banner: reminders of the actions that fit the moment, chosen from states the stream
+  and Game.log already carry (landing gear out and not landed, on foot, EVA, ground vehicle, powerplant off, quantum mode,
+  hostile lock, shields cut). Three in the compact view (nothing at all when the context is unknown), six in full screen
+  (where an unknown context is said), the rest, the sentence on keys and the "Il fait sombre" button behind one
+  `aria-expanded` button. Nothing contextual without a live stream, with Game.log saying menu, disconnected or closed, or
+  with stale frames. Auto land only with the gear deployed and the ship not landed, worded "si la demande est accordée".
+  It never says the lights are off (`lights_on` cannot tell off from not reported), never reads the HUD preferences as the
+  flight mode, never guesses darkness (the suit light is a low priority "si besoin" on foot and in EVA; the button is
+  kept in the page's memory only), reads no figure and no balance, adds no live region and no storage.
+- Default keys are data (`shortcutsTable()` in `src/dashboard/shortcutsPanel.ts`, one row per action with the letters of its
+  sources; the sources, dates, version and the reason each action has no key are in `src/dashboard/shortcutsSources.ts`,
+  not shipped in the page). A key is shown only when at least two independent public sources give it and none another:
+  X (brake), H (decoys), J (noise) and T (suit light), labelled "défaut" with a tip to check them in the game's settings;
+  none was checked in the game on 4.10. Everything else is shown without a key, on purpose: B is the SCM/NAV toggle, not
+  the quantum mode (the jump is a hold of the left mouse button); cruise and decoupled mode are swapped in a 4.10.2 guide;
+  a 4.10.2 guide gives right Alt + R for Flight Ready; the decoys are a tap, not a hold. Shields "down" (spent) no longer
+  get the advice to power them, only shields cut (power off), in flight and outside quantum mode. "Il fait sombre" is
+  dropped when going from foot to a vehicle or back; a button that disappears hands its keyboard focus to the fold button
+  or the zone; the fold button says "Masquer" when open; the colon of "Contexte inconnu" takes a non-breaking space
+  (built by code). The preview has `gear=out` (gear kept out in flight). The banner chip no longer says "Phares éteints"
+  for `lights_on` false (off and not reported are the same value): it says "Phares : état non lu".
+- Tests: the table, one made-up poll per context and the invariants (`shortcuts.test.ts`), the assembled page against the
+  fake host (`shortcuts.page.test.ts`), and a test that no `node:` import reaches the code the browser runs
+  (`browserGraph.test.ts`).
+
 ### Fixed (accessibility of the dashboard)
 - Short readings that were hover-only native tooltips are now reachable without a mouse: in the compact view the age of the
   data ("Données de 0,8 s") and the legend under the speed dial (its scale and source); in both views the clock time of a

@@ -550,6 +550,50 @@ puis ouvrez l'adresse locale qu'il affiche (boucle locale, port 4173 par défaut
 quantique complet compris, face à un hôte factice ; ni jeu ni Claude n'interviennent. La liste qui suit n'est pas complète (`scripts/dashboard-preview.mjs` lit aussi `conn`, `preflight`, `transport`, `sessions`, `health`, `seen`, `help`, `calib`, `specs`, `balance`, `card`, `menu` et `open`) : lisez ce script pour la liste à jour. Paramètres : `t`, `theme`,
 `w`, `mode`, `scroll`, `forced`, `cut`, `plan`, `trade` (la carte Commerce avec un journal de commerce inventé : `story`, `estimated`, `unknown`, `partial`, `second`, `none`), `fw` (largeur du cadre en plein écran), `suggest` (ce que répond l'outil de la barre d'actions de commerce, avec des routes inventées et sans UEX : `ok`, `wait`, `error`, `empty`, `nospeed`, `reported`, `slow`), `click` (le libellé d'un bouton à presser) et `refine=1` (ouvre « Affiner »).
 
+### Raccourcis selon le contexte
+
+Une zone « Raccourcis », sous le bandeau du vaisseau, rappelle les actions qui ont du sens à cet instant (train sorti, à
+pied, dans un véhicule terrestre...). Elle ne lit que des états que le flux et `Game.log` portent déjà, jamais un
+chiffre ni le solde, et elle n'appuie sur rien : c'est un affichage.
+
+- **Quand elle s'affiche.** Seulement quand le flux est vivant, que `Game.log` ne dit pas menu, déconnecté ou fermé, et
+  que les valeurs ne sont pas grisées (pas de trames périmées). Sinon elle est masquée. Pour un contexte qu'elle ne sait
+  pas nommer, elle n'affiche rien dans la vue compacte et, en plein écran, « Contexte inconnu : aucun rappel pour
+  l'instant. »
+- **Ce qui déclenche quoi.** Train sorti (`ship.gear` vaut « deployed ») et vaisseau pas posé (`ship.landed` est faux) :
+  « Atterrissage automatique », formulé « si la demande est accordée » parce qu'un pad accordé n'est pas dans le flux,
+  puis la demande d'atterrissage. Posé : la demande de décollage. Centrale éteinte : Flight Ready. Mode quantique :
+  le saut. Verrouillage hostile : leurres et brouillage (une contre-mesure que le flux dit épuisée est omise).
+  Boucliers coupés, c'est-à-dire alimentation coupée (en vol seulement, et pas en mode quantique, où ils sont coupés
+  exprès) : alimenter les boucliers ; des boucliers simplement tombés n'ont aucun conseil, puisqu'alimenter un
+  générateur qui fonctionne ne les ramène pas. À pied ou en
+  EVA : la lampe de combinaison, en priorité basse (« si besoin »). Véhicule terrestre (reconnu environ 12 s après
+  l'assise) : les phares. Assis sans trame de vaisseau pour l'instant : Flight Ready, « si c'est un vaisseau ».
+- **Combien.** Vue compacte : trois au plus, sur une ligne qui passe à la ligne. Plein écran : six au plus. Le reste, la
+  phrase sur les touches et le bouton « Il fait sombre » sont derrière UN bouton (`aria-expanded`), le seul arrêt de
+  tabulation de la zone tant qu'elle est repliée. Aucune zone « live », rien n'est enregistré.
+- **Les touches.** La règle : une touche n'est écrite que si au moins deux sources publiques indépendantes la donnent et
+  qu'aucune n'en donne une autre. Il reste X (frein spatial), H (leurres), J (brouillage) et T (lampe de combinaison),
+  toujours à côté du mot « défaut », avec une info-bulle qui dit de vérifier dans vos propres réglages, et **aucune n'a
+  été vérifiée en jeu sur la 4.10**. Toute autre action est affichée SANS touche, exprès : le saut quantique (B est la
+  bascule SCM/NAV des modes maîtres ; le saut est un appui long sur le bouton gauche de la souris, qui n'est pas affiché
+  non plus), le régulateur de vitesse et le mode découplé (un guide 4.10.2 les inverse par rapport au wiki), Flight Ready
+  (un guide 4.10.2 dit Alt droit + R, pas R), le train, l'atterrissage automatique, la demande d'atterrissage, le
+  décollage, les phares, la puissance des boucliers et quitter le siège. La table est une donnée, `shortcutsTable()` dans
+  `src/dashboard/shortcutsPanel.ts`, une ligne par action avec les lettres des sources derrière sa touche (`src`) ; les
+  sources elles-mêmes, leurs dates, la version de la table, la version du jeu, la liste des touches que quelqu'un a vues
+  fonctionner en jeu (vide) et la raison pour laquelle chaque action écartée n'a pas de touche sont dans
+  `src/dashboard/shortcutsSources.ts`, qui n'est pas livré dans la page. Un test exige deux sources distinctes pour
+  chaque touche. Sur un clavier à la disposition AZERTY, les lettres X, H, J et T gardent leur place ; on n'a pas vérifié
+  si le jeu suit la disposition ou la position physique.
+- **Ce qu'elle ne dit jamais.** Que les phares sont éteints : `ship.lights_on` ne distingue pas « éteint » de « non
+  rapporté », donc le rappel des phares ne porte aucun état (« état non lu »). Le mode de vol courant :
+  `advanced_hud_enabled_scm` et `advanced_hud_enabled_nav` sont des préférences d'affichage et ne sont pas lus. Qu'il
+  fait sombre : rien dans le flux ni dans le journal ne le dit. La lampe de combinaison est listée à pied et en EVA, et
+  « Il fait sombre » est un bouton que vous pressez : il met les lumières en tête, et ne vit que dans la mémoire de la
+  page (rien n'est enregistré, c'est perdu au rechargement).
+- **Pas encore construit.** Vos propres touches (`actionmaps.xml`) et l'état du casque ; voir [ROADMAP.md](ROADMAP.md).
+
 ### Carnet de transport
 
 Un panneau du tableau de bord en plein écran (« Carnet de transport ») qui relie le journal de jeu à la variation du

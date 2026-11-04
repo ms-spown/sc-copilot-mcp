@@ -133,6 +133,15 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    asks). Give it as it is, add no figure, and say the player downloads the full Markdown and CSV from the session bar of the dashboard.
 ```
 
+## The dashboard's shortcuts zone: what Claude should and should not say about keys
+
+The live dashboard has a "Raccourcis" zone (see [TELEMETRY.md](TELEMETRY.md#context-shortcuts)) that reminds the player of
+actions that fit the moment (gear out, on foot, hostile lock...). It is a display, built in the page: Claude does not
+call anything for it. If the player asks Claude about a key, treat the keys it shows as defaults taken from public
+sources and never checked in the game on 4.10: say "the default is R, check it in your Keybindings", never "press R".
+The page does not know whether the player rebound a key, whether it is dark, or whether the lights are on (the stream
+cannot tell off from not reported), and Claude should not claim any of them from it either.
+
 ## Canary test: are the server instructions honoured?
 
 Run it once after installing and after each update. Open a NEW chat with no project and no custom instructions

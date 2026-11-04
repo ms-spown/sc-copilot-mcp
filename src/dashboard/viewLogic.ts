@@ -1708,10 +1708,12 @@ export function shipContext(poll: any): any {
   };
   if (ship.vtol && vtol[ship.vtol]) out.chips.push({ id: "vtol", label: vtol[ship.vtol] });
   if (typeof ship.lights_on === "boolean") {
-    // The lights field is not in the list of verified data: the chip says so.
+    // The lights field is not in the list of verified data: the chip says so. The server reads it as a bool(), so false
+    // means "off" and "not reported" alike: only true is a statement, false is said as an unread state.
     out.chips.push({
       id: "lights",
-      label: ship.lights_on ? "Phares allumés" : "Phares éteints",
+      label: ship.lights_on ? "Phares allumés" : "Phares : état non lu",
+      on: ship.lights_on === true,
       unverified: true,
     });
   }
