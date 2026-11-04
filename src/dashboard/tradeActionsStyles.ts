@@ -51,7 +51,7 @@ export const TRADE_ACTIONS_CSS = `
 .ta-status { margin: 0; font-size: var(--fs-s); color: var(--sc-text2); overflow-wrap: anywhere; }
 .ta-status[data-tone="warn"] { color: var(--sc-warn); }
 .ta-status[data-tone="bad"] { color: var(--sc-bad); }
-.ta-status[data-tone="warn"]::before, .ta-status[data-tone="bad"]::before { content: "\\26A0\\00a0"; }
+.ta-status[data-tone="warn"]::before, .ta-status[data-tone="bad"]::before { content: "\\26A0\\00a0"; content: "\\26A0\\00a0" / ""; }
 .ta-skeleton { display: flex; flex-direction: column; gap: var(--sp-2); }
 .ta-skel { height: 84px; border-radius: var(--r-m); background: var(--sc-bg3); border: 1px dashed var(--sc-line); }
 .ta-skel:first-child { height: 130px; }

@@ -393,31 +393,58 @@ describe("Feature: what goes to the model is rare, compact and never the balance
     expect(L.actionMessage("unknown", {})).toBeNull();
   });
 
-  it("Given the contextual Ask Claude kinds, Then each message is fixed, names its tools, and carries no number, no ship and no balance", () => {
-    const tools: Record<string, string[]> = {
-      loss: ["sc_session_current", "sc_trade_journal", "sc_log_context"],
-      refusal: ["sc_trade_journal", "uex_get_price_history", "uex_get_market_status"],
-      debrief: ["sc_trade_journal", "sc_session_current", "uex_get_price_history"],
-    };
-    for (const kind of Object.keys(tools)) {
-      // whatever the context holds (a balance, a ship, markup), the text is the same
-      const plain = L.actionMessage(kind, {})!;
-      const rich = L.actionMessage(kind, { balance: 424242, vehicle: "MISC_Hull_C" })!;
-      expect(rich).toBe(plain);
-      for (const t of tools[kind]!) expect(plain).toContain(t);
-      expect(plain).not.toMatch(/\d/);
-      expect(plain).not.toMatch(/MISC|Hull|<|>/);
-      expect(NB(plain)).toContain("include_balance false");
-      expect(plain).not.toMatch(/include_balance (true|vrai)/);
-      expect(NB(plain)).toContain("N’inclus pas mon solde");
-      // the dashboard's own tools stay out of the model's hands (the server's manual says so)
-      expect(plain).not.toMatch(/sc_live_poll|sc_live_mark|sc_trade_suggest/);
-      // and it says what to do when a tool is not offered, instead of inventing
-      expect(plain).toMatch(/manque, dis-le/);
-    }
-    expect(L.actionMessage("loss", {})).toContain(
-      "valeur perdue, suite donnée à l’assurance, coût de remplacement, responsable",
-    );
+  for (const showBalance of [false, true]) {
+    it(`Given the contextual Ask Claude kinds (amounts ${showBalance ? "shown" : "hidden"}), Then each message is fixed, names its tools, and carries no number, no ship and no balance`, () => {
+      const tools: Record<string, string[]> = {
+        analyse: ["sc_live_state", "sc_live_events"],
+        bilan: ["sc_live_state", "sc_live_events"],
+        loss: ["sc_session_current", "sc_trade_journal", "sc_log_context"],
+        refusal: ["sc_trade_journal", "uex_get_price_history", "uex_get_market_status"],
+        debrief: ["sc_trade_journal", "sc_session_current", "uex_get_price_history"],
+      };
+      for (const kind of Object.keys(tools)) {
+        // whatever else the context holds (a balance, a ship, markup), the text is the same: only the player's choice matters
+        const plain = L.actionMessage(kind, { showBalance })!;
+        const rich = L.actionMessage(kind, {
+          showBalance,
+          balance: 424242,
+          vehicle: "MISC_Hull_C",
+        })!;
+        expect(rich).toBe(plain);
+        for (const t of tools[kind]!) expect(plain).toContain(t);
+        expect(plain).not.toMatch(/\d/);
+        expect(plain).not.toMatch(/MISC|Hull|<|>/);
+        expect(plain).not.toMatch(/include_balance (true|vrai)/);
+        // The choice is read at click time: hidden says include_balance false and not to include the balance; shown does not
+        // name include_balance at all (the server applies the player's choice).
+        if (showBalance) {
+          expect(plain).not.toContain("include_balance");
+          expect(plain).not.toMatch(/N’inclus pas mon solde|Ne lis pas mon solde/);
+        } else {
+          expect(NB(plain)).toContain("include_balance false");
+          expect(NB(plain)).toMatch(/N’inclus pas mon solde|Ne lis pas mon solde/);
+        }
+        // the dashboard's own tools stay out of the model's hands (the server's manual says so)
+        expect(plain).not.toMatch(/sc_live_poll|sc_live_mark|sc_trade_suggest/);
+        if (kind !== "analyse" && kind !== "bilan") expect(plain).toMatch(/manque, dis-le/);
+      }
+      expect(L.actionMessage("loss", { showBalance })).toContain(
+        "valeur perdue, suite donnée à l’assurance, coût de remplacement, responsable",
+      );
+      // the selling terminal is never guessed
+      for (const kind of ["refusal", "debrief"])
+        expect(L.actionMessage(kind, { showBalance })).toContain(
+          "utilise le terminal de vente nommé par le journal ou par moi, sinon demande-le-moi",
+        );
+    });
+  }
+
+  it("Given no flag about the balance, Then the safe side is taken: hidden", () => {
+    for (const kind of ["analyse", "bilan", "loss", "refusal", "debrief"])
+      expect(L.actionMessage(kind, {})).toContain("include_balance false");
+    expect(L.actionMessage("analyse", null)).toContain("include_balance false");
+    // only an explicit true shows
+    expect(L.actionMessage("analyse", { showBalance: "yes" })).toContain("include_balance false");
   });
 });
 
@@ -440,6 +467,38 @@ describe("Feature: the verdict puts a ship loss above everything", () => {
       label: "Vaisseau détruit · il y a 31 s (+1)",
     });
     expect(v.title).toBe("à 12:12:00");
+  });
+
+  it("Given the time since the loss and the age of a red condition, Then the loss leads only while fresh and while no red condition is newer", () => {
+    const at = Date.parse("2026-11-04T12:00:00Z");
+    const l = { ...loss, atMs: at };
+    const red = (ageMs: number | null) => [{ tone: "bad", label: "Boucliers tombés", ageMs }];
+    // fresh (under 3 minutes): leads, over an older red condition or an unknown age
+    expect(L.lossLeads(l, red(120_000), at + 60_000)).toBe(true);
+    expect(L.lossLeads(l, red(null), at + 60_000)).toBe(true);
+    expect(L.lossLeads(l, [], at + 179_000)).toBe(true);
+    // a red condition that began after the loss (younger than the loss) takes the verdict
+    expect(L.lossLeads(l, red(10_000), at + 60_000)).toBe(false);
+    // after the lead time: the normal order, whatever the conditions
+    expect(L.lossLeads(l, [], at + 181_000)).toBe(false);
+    // not a loss, or no clock: as before
+    expect(L.lossLeads(refusal, [], at)).toBe(false);
+    expect(L.lossLeads(l, red(1), undefined)).toBe(true);
+    expect(L.lossLeads(null, [], at)).toBe(false);
+  });
+
+  it("Given a loss that no longer leads, Then the verdict says it as an amber entry in the normal order (red conditions first)", () => {
+    const at = Date.parse("2026-11-04T12:00:00Z");
+    const l = { ...loss, atMs: at, ago: "il y a 6 min" };
+    const now = at + 6 * 60_000;
+    expect(L.summaryInfo(live, [], l, now)).toMatchObject({
+      id: "watch",
+      tone: "warn",
+      label: "Vaisseau détruit · il y a 6 min",
+    });
+    expect(L.summaryInfo(live, [{ tone: "bad", label: "Boucliers tombés" }], l, now)).toMatchObject(
+      { id: "alert", tone: "bad", label: "Alerte : Boucliers tombés (+1)" },
+    );
   });
 
   it("Given the scale, Then a refusal stays amber and a red condition stays red", () => {

@@ -238,7 +238,12 @@ describe("Feature: a ship loss, as one box of two lines and a fold", () => {
     paid_auec: 137_911,
     ...extra,
   });
-  const trade = (...ship_losses: object[]): any => ({ source: "journal", runs: [], ship_losses });
+  // the newest run is the one the losses below are tied to (run_id), unless a test says otherwise
+  const trade = (...ship_losses: object[]): any => ({
+    source: "journal",
+    runs: [{ id: "2026-11-04T11:00:00.000Z" }],
+    ship_losses,
+  });
   const refusalAt = (msAgo: number) => ({
     at: new Date(NOW - msAgo).toISOString(),
     side: "sell",
@@ -287,6 +292,41 @@ describe("Feature: a ship loss, as one box of two lines and a fold", () => {
 
   it("Given a loss with no cargo bought for it, Then no run was cut", () => {
     expect(tradeLossInfo(L, trade(loss(1000, { run_id: null })), NOW, false).run).toBe(false);
+  });
+
+  it("Given a loss tied to an OLDER run than the newest (a respawn and a new run), Then the current run is not said to be cut", () => {
+    const two = {
+      source: "journal",
+      runs: [{ id: "2026-11-04T11:30:00.000Z" }, { id: "2026-11-04T11:00:00.000Z" }],
+      ship_losses: [loss(1000)],
+    };
+    expect(tradeLossInfo(L, two, NOW, false).run).toBe(false);
+    // tied to the newest, it is; with no run in the section at all, nothing is claimed
+    expect(
+      tradeLossInfo(
+        L,
+        { ...two, ship_losses: [loss(1000, { run_id: two.runs[0]!.id })] },
+        NOW,
+        false,
+      ).run,
+    ).toBe(true);
+    expect(tradeLossInfo(L, { ...two, runs: [] }, NOW, false).run).toBe(false);
+  });
+
+  it("Given two fresh losses, Then the newest one is the alert", () => {
+    const info = tradeLossInfo(L, trade(loss(9 * 60_000), loss(40_000)), NOW, false);
+    expect(info.ago).toBe("il y a 40 s");
+  });
+
+  it("Given a refused ITEM, Then the button is the plain one; a refused good gives the question", () => {
+    const item = {
+      source: "journal",
+      runs: [],
+      price_refusals: [{ ...refusalAt(5_000), kind: "item" }],
+    };
+    expect(tradeAskInfo(L, item, NOW, true)).toEqual({ kind: "analyse", label: "Analyser" });
+    const good = { source: "journal", runs: [], price_refusals: [refusalAt(5_000)] };
+    expect(tradeAskInfo(L, good, NOW, true).kind).toBe("refusal");
   });
 
   it("Given a loss and a refusal, Then the alert keeps the newer one, each with its own tone", () => {

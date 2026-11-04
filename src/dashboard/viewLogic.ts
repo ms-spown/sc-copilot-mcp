@@ -38,6 +38,11 @@ export function viewConfig() {
     sampleMinGapMs: 400,
     requestTimeoutMs: 8000,
     alertWindowMs: 180000,
+    /**
+     * A ship loss leads the header verdict ("fatal") for this long only; after it, or when a red condition that began after the
+     * loss is on, the verdict goes back to the normal order of gravity (the alert box keeps the loss for 15 minutes).
+     */
+    lossLeadMs: 180000,
     /** Channel shared by the Views of this connector (same sandbox origin). No network is involved. */
     channelName: "sc-copilot-dashboard-v2",
     /** A peer not heard for this long is gone (its heartbeat is every heartbeatMs). */
@@ -1188,23 +1193,56 @@ export function cleanPlan(input: any): any {
 /** Fixed French texts for ui/message. Only a ship identifier that passed isSafeId, and for "route" the balance. */
 export function actionMessage(kind: string, ctx: any): string | null {
   const ship = ctx && isSafeId(ctx.vehicle) ? String(ctx.vehicle) : "";
+  // The fixed messages that ask Claude to read tools (analyse, bilan and the contextual ones below). FIXED words and tool names
+  // only: no number, no ship, nothing read from the log or the game, no name, never the balance, and no tool of the dashboard
+  // itself. The player's choice is read at CLICK time (`ctx.showBalance`): hidden, every tool call says include_balance false and
+  // the message says not to include the balance; shown, include_balance is not named at all (the server applies the player's
+  // choice, which is how the dashboard itself shows its amounts). Without the flag the safe side is taken: hidden.
+  const shown = !!ctx && ctx.showBalance === true;
+  const both = shown ? "" : ", tous deux avec include_balance false";
+  const tail = shown
+    ? " Le serveur applique mon choix pour les montants."
+    : " N’inclus pas mon solde.";
   if (kind === "analyse") {
-    return "Analyse ma situation dans le jeu à partir de la télémétrie en direct : appelle sc_live_state (sections ship, pilot et weapons) et sc_live_events, tous deux avec include_balance false, dis l\u2019âge des données et ce que le flux ne contient pas, puis ce qui demande mon attention. Ne lis pas mon solde.";
+    return (
+      "Analyse ma situation dans le jeu à partir de la télémétrie en direct : appelle sc_live_state (sections ship, pilot et weapons) et sc_live_events" +
+      both +
+      ", dis l’âge des données et ce que le flux ne contient pas, puis ce qui demande mon attention." +
+      (shown ? tail : " Ne lis pas mon solde.")
+    );
   }
   if (kind === "bilan") {
-    return "Fais le bilan de ma session à partir de la télémétrie en direct : appelle sc_live_events et sc_live_state, tous deux avec include_balance false, résume décollages, atterrissages, sauts, alertes et combats en distinguant les événements confirmed et unverified. N\u2019inclus pas mon solde.";
+    return (
+      "Fais le bilan de ma session à partir de la télémétrie en direct : appelle sc_live_events et sc_live_state" +
+      both +
+      ", résume décollages, atterrissages, sauts, alertes et combats en distinguant les événements confirmed et unverified." +
+      tail
+    );
   }
-  // The contextual "Ask Claude" button (tradePreflight.ts tradeAskInfo picks the kind). FIXED words and tool names only: no
-  // number, no ship, nothing read from the log or the game, no name, never the balance (every tool call says include_balance
-  // false, as "analyse" and "bilan" do), and no tool of the dashboard itself. A tool that is not offered: Claude says so.
+  // The contextual "Ask Claude" button (tradePreflight.ts tradeAskInfo picks the kind). A tool that is not offered: Claude says so.
   if (kind === "loss") {
-    return "Analyse la perte de mon vaisseau : appelle sc_session_current puis sc_trade_journal, tous deux avec include_balance false, et dis ce qu’ils établissent (vaisseau détruit avec moi à bord, cargo acheté et non vendu, seulement présumé perdu) et ce qu’ils ne disent pas (valeur perdue, suite donnée à l’assurance, coût de remplacement, responsable). Regarde aussi sc_log_context : il ne donne que le nombre de demandes d’assurance de la session, sans lien établi avec cette perte, dis-le tel quel. N’invente rien. Si un de ces outils manque, dis-le. N’inclus pas mon solde.";
+    return (
+      "Analyse la perte de mon vaisseau : appelle sc_session_current puis sc_trade_journal" +
+      both +
+      ", et dis ce qu’ils établissent (vaisseau détruit avec moi à bord, cargo acheté et non vendu, seulement présumé perdu) et ce qu’ils ne disent pas (valeur perdue, suite donnée à l’assurance, coût de remplacement, responsable). Regarde aussi sc_log_context : il ne donne que le nombre de demandes d’assurance de la session, sans lien établi avec cette perte, dis-le tel quel. N’invente rien. Si un de ces outils manque, dis-le." +
+      tail
+    );
   }
   if (kind === "refusal") {
-    return "Que faire maintenant ? Un prix a changé au kiosque pendant ma transaction. Appelle sc_trade_journal avec include_balance false pour voir ce qui a été refusé et où j’en suis du trajet, puis relis les prix avec uex_get_price_history et uex_get_market_status pour cette marchandise en disant leur âge (prix collaboratifs). Propose un seul prochain pas concret, sans inventer de chiffre. Si un outil manque, dis-le. N’inclus pas mon solde.";
+    return (
+      "Que faire maintenant ? Un prix a changé au kiosque pendant ma transaction. Appelle sc_trade_journal" +
+      (shown ? "" : " avec include_balance false") +
+      " pour voir ce qui a été refusé et où j’en suis du trajet, puis relis les prix avec uex_get_price_history et uex_get_market_status pour cette marchandise en disant leur âge (prix collaboratifs). Pour uex_get_price_history, utilise le terminal de vente nommé par le journal ou par moi, sinon demande-le-moi. Propose un seul prochain pas concret, sans inventer de chiffre. Si un outil manque, dis-le." +
+      tail
+    );
   }
   if (kind === "debrief") {
-    return "Fais le debrief de mon dernier trajet : appelle sc_trade_journal puis sc_session_current, tous deux avec include_balance false, regarde le prix de vente actuel avec uex_get_price_history, et dis ce qui a bien marché, ce que je changerais et la prochaine route. Distingue ce qui est mesuré de ce qui est estimé. Si un outil manque, dis-le. N’inclus pas mon solde.";
+    return (
+      "Fais le debrief de mon dernier trajet : appelle sc_trade_journal puis sc_session_current" +
+      both +
+      ", regarde le prix de vente actuel avec uex_get_price_history (utilise le terminal de vente nommé par le journal ou par moi, sinon demande-le-moi), et dis ce qui a bien marché, ce que je changerais et la prochaine route. Distingue ce qui est mesuré de ce qui est estimé. Si un outil manque, dis-le." +
+      tail
+    );
   }
   if (kind === "route") {
     if (!ctx || ctx.balance === undefined || ctx.balance === null) return null;
@@ -1765,11 +1803,27 @@ export function shipContext(poll: any): any {
 }
 
 /**
+ * Does the ship loss (`refusal.loss`, from tradeAlertInfo) still lead the verdict? Only for viewConfig().lossLeadMs after it,
+ * and never over a red condition (conditionItems) that began AFTER the loss: the live state matters more then. Without `now`
+ * (or without the loss's time) it leads, as before.
+ */
+export function lossLeads(refusal: any, items: any[], now?: number): boolean {
+  if (!refusal || refusal.loss !== true) return false;
+  if (typeof now !== "number" || typeof refusal.atMs !== "number") return true;
+  const since = now - refusal.atMs;
+  if (since > viewConfig().lossLeadMs) return false;
+  for (const i of items) {
+    if (i && i.tone === "bad" && typeof i.ageMs === "number" && i.ageMs < since) return false;
+  }
+  return true;
+}
+
+/**
  * The first-glance verdict: "all is well", "watch this" or "alert", from the conditions, or null without data. `refusal`
  * (tradeRefusalInfo, optional) is a price refused at the kiosk: it is the most urgent thing and goes in even when the ship
  * is off (the player is at a terminal); it never turns the verdict red, and a real red condition (hostile lock, hull) still comes first.
  */
-export function summaryInfo(poll: any, items: any[], refusal?: any): any {
+export function summaryInfo(poll: any, items: any[], refusal?: any, now?: number): any {
   if (!poll || poll.state !== "live") return null;
   // A ship just destroyed leaves no ship in the stream, and perhaps no pilot yet: the loss is still worth saying.
   if (!poll.ship && !poll.pilot && !(refusal && refusal.loss)) return null;
@@ -1783,8 +1837,10 @@ export function summaryInfo(poll: any, items: any[], refusal?: any): any {
     return { id: "off", tone: "neutral", label: "Vaisseau éteint", count: 0 };
   }
   const more = total - 1 > 0 ? " (+" + (total - 1) + ")" : "";
-  // A ship lost with the player aboard is above every red condition: the one tone nothing else uses ("fatal").
-  if (refusal && refusal.loss === true)
+  // A ship lost with the player aboard is above every red condition ("fatal", the one tone nothing else uses), but only for
+  // the first minutes and only while no red condition began after it (lossLeads); then the normal order applies and the
+  // loss, still in the alert box, is an amber entry of the verdict.
+  if (lossLeads(refusal, list, now))
     return {
       id: "loss",
       tone: "fatal",
@@ -2303,6 +2359,7 @@ export const VIEW_FUNCTIONS = [
   shipIsOff,
   shipContext,
   summaryInfo,
+  lossLeads,
   instrumentInfo,
   vitalsInfo,
   weaponsInfo,

@@ -78,7 +78,7 @@ h2, h3 { margin: 0; }
 .verdict[data-tone="warn"] { color: var(--sc-warn); background: var(--tint-warn); border-color: transparent; }
 .verdict[data-tone="bad"] { color: var(--sc-bad); background: var(--tint-bad); border-color: transparent; }
 .verdict[data-tone="fatal"] { color: var(--sc-bg); background: var(--sc-bad); border-color: transparent; font-weight: 700; }
-.verdict[data-tone="fatal"]::before { content: "\\2715"; margin-right: 6px; }
+.verdict[data-tone="fatal"]::before { content: "\\2715"; content: "\\2715" / ""; margin-right: 6px; }
 .top-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-left: auto; }
 .age { color: var(--sc-text3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 
@@ -120,8 +120,10 @@ h2, h3 { margin: 0; }
 .alert[data-tone="info"] { color: var(--sc-info); background: var(--tint-info); border-color: transparent; }
 .alert:not(.condition) { background: transparent; border: 1px solid currentColor; opacity: 0.85; }
 .alert[data-verified="0"] { border-style: dashed; border-color: currentColor; }
-.alert[data-reduced="1"] { padding: 1px 8px; font-size: var(--fs-xs); opacity: 0.55; background: transparent; border: 1px solid var(--sc-line); color: var(--sc-text3); }
-.alert[data-reduced="1"] .alert-meta { display: none; }
+/* Reduced = smaller and without a tint, nothing else: the age and "non vérifié" stay, the dashed border of an unverified one stays
+   (only the border COLOUR changes, never its style), and no opacity: the text keeps the contrast of the secondary text colour. */
+.alert[data-reduced="1"] { padding: 1px 8px; font-size: var(--fs-xs); background: transparent; border-color: var(--sc-border); color: var(--sc-text2); opacity: 1; }
+.alert[data-reduced="1"] .alert-meta { font-size: 10px; }
 .alert-label { font-weight: 600; }
 .alert-meta { color: var(--sc-text2); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 

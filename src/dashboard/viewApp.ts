@@ -1125,7 +1125,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     show(R.btnResume, retired);
     show(R.supersede, isFollower() && !retired);
     // The verdict at a glance
-    const verdict = info.grey ? null : L.summaryInfo(view.poll, conds, refusal);
+    const verdict = info.grey ? null : L.summaryInfo(view.poll, conds, refusal, now);
     show(R.verdict, !!verdict);
     if (verdict) {
       setAttr(R.verdict, "data-tone", verdict.tone);
@@ -1615,14 +1615,15 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     setAttr(
       R.btnAnalyse,
       "title",
-      (ask.kind === "analyse" ? "Analyser ma situation" : ask.label) +
-        " : demande à Claude de lire les outils concernés",
+      ask.kind === "analyse"
+        ? "Analyser ma situation : demande à Claude d’analyser la télémétrie"
+        : ask.label + " : demande à Claude de lire les outils concernés",
     );
     const info = renderStatus(now, conds, refusal);
     streamLive = !info.grey;
     renderContext(now);
     R.shortcuts.render(view.poll, { grey: info.grey, fullscreen: displayMode === "fullscreen" });
-    renderAlerts(now, conds, !info.grey, !!refusal && refusal.loss === true);
+    renderAlerts(now, conds, !info.grey, L.lossLeads(refusal, conds, now));
     R.sessions.render(view.poll && view.poll.sessions, { showBalance, now });
     R.ledger.render(view.poll && view.poll.ledger, {
       showBalance,
@@ -2200,7 +2201,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
           sc && sc.balance && typeof sc.balance.uec === "number" ? sc.balance.uec : undefined;
       }
       const vehicle = view.poll && view.poll.ship ? view.poll.ship.name : "";
-      const text = L.actionMessage(kind, { vehicle, balance });
+      const text = L.actionMessage(kind, { vehicle, balance, showBalance });
       if (!text) {
         feedback(
           kind === "route" ? "Solde indisponible : rien n\u2019a été envoyé." : "Rien à envoyer.",

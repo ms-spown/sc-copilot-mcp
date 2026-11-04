@@ -477,8 +477,12 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   `sc_trade_journal`), « Que faire maintenant ? » après un prix refusé (`sc_trade_journal`, `uex_get_price_history`,
   `uex_get_market_status`), « Debrief du trajet » pendant une demi-heure après la fin d'un trajet (`sc_trade_journal`,
   `sc_session_current`, `uex_get_price_history`), sinon l'analyse simple. Chaque message est un texte fixe : aucun nombre, aucun vaisseau,
-  rien venu du journal ni du jeu, jamais un solde (chaque appel d'outil y dit `include_balance false`, comme pour les deux
-  anciens boutons), et le modèle doit le dire si un outil manque.
+  rien venu du journal ni du jeu, jamais un solde. Votre choix est lu au moment du clic :
+  montants masqués, chaque appel d'outil du message dit `include_balance false` et le message demande de ne pas inclure le
+  solde ; montants affichés, le message ne nomme pas `include_balance` (le serveur applique votre choix, donc les réponses
+  portent les montants que le tableau de bord affiche lui-même). Même règle pour « Analyser », « Bilan de session » et les
+  trois messages contextuels. Un objet refusé (pas une marchandise) laisse le simple « Analyser ». Le modèle doit dire si un outil
+  manque et, pour l'historique des prix, utiliser le terminal de vente nommé par le journal ou par vous, sinon le demander.
   Les repères de session vivent dans la mémoire de ce serveur. Rien dans la page n'envoie quoi que ce soit au jeu.
 - **Plusieurs tableaux de bord : les faits.** Chaque tableau de bord est une iframe distincte qui fait ses propres
   appels à `sc_live_poll`, une fois par seconde tant qu'elle est visible. Claude Desktop ne démonte jamais les plus
@@ -926,8 +930,8 @@ prennent le ton le plus haut d'une échelle (orange : à regarder, un coup ou un
 les pastilles d'événements de plus d'une minute deviennent petites et discrètes tant qu'il est là, l'encadré tient en deux lignes (ce qui s'est passé ; le cargo présumé perdu, les aUEC payés
 seulement montants affichés), les doutes sont repliés sous « Pourquoi ce n'est pas certain ? » (un élément details natif, accessible au clavier : propriété du vaisseau non vérifiée,
 valeur perdue, suite donnée à l’assurance, coût de remplacement et responsable non journalisés, attribution vérifiée sur des journaux de 2025 seulement, type de responsable déduit de la forme d'un nom, achats et ventes
-que le journal n'a pas pu confirmer), et « Et maintenant » ne dit que des faits : le trajet en cours est interrompu quand le journal avait du cargo acheté pour ce vaisseau, et une nouvelle
-session ou un nouveau trajet peut commencer. **Aucune réclamation d'assurance n'est affichée, pas même « aucune vue » :** le parseur lit la ligne d'une demande de réclamation
+que le journal n'a pas pu confirmer), et « Et maintenant » ne dit que des faits : le trajet interrompu par la perte ne sera pas terminé (dit seulement quand ce trajet est encore le plus récent du journal ; replié en vue compacte), et une nouvelle
+session ou un nouveau trajet peut commencer. Le ton fatal ne mène le verdict d'en-tête que 3 minutes, et jamais devant une condition rouge apparue après la perte ; ensuite le verdict reprend l'ordre normal de gravité (la perte y est alors une entrée orange) pendant que l'encadré garde la perte 15 minutes. Les pastilles réduites gardent leur âge et leur mention « non vérifié ». **Aucune réclamation d'assurance n'est affichée, pas même « aucune vue » :** le parseur lit la ligne d'une demande de réclamation
 (`insurance_claim_requested`), mais le tableau de bord ne la reçoit que dans l'explicateur de mouvements du solde (construit, et gardé, seulement montants affichés, et jamais comme fait isolé) : « aucune réclamation vue »
 serait faux dès que les montants sont masqués. L'afficher demanderait un nouveau champ dans la section commerce ; ce n'est pas fait. Il est lu dans la
 ligne `[ActorState] Dead ... destroyed vehicle` de la build 4.10 (l'acteur doit être le joueur, comparé à une empreinte de

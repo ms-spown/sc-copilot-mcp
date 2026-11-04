@@ -9,14 +9,14 @@ export const TRADE_PREFLIGHT_CSS = `
 .pf-alert-text { margin: 0; font-weight: 650; color: var(--sc-warn); white-space: pre-line; }
 .pf-alert[data-tone="fatal"] { border-color: var(--sc-bad); background: var(--tint-bad); }
 .pf-alert[data-tone="fatal"] .pf-alert-text { color: var(--sc-bad); font-size: var(--fs-m); }
-.pf-alert[data-tone="fatal"] .pf-alert-text::before { content: "\\2715"; margin-right: 6px; }
+.pf-alert[data-tone="fatal"] .pf-alert-text::before { content: "\\2715"; content: "\\2715" / ""; margin-right: 6px; }
 .pf-loss { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: var(--sp-2); font-size: var(--fs-s); color: var(--sc-text2); min-width: 0; }
 .pf-why-sum { cursor: pointer; color: var(--sc-text2); font-weight: 600; }
 .pf-why-sum:focus-visible { outline: 2px solid var(--sc-ring); outline-offset: 2px; }
 .pf-why-text, .pf-next-text { margin: var(--sp-1) 0 0; white-space: pre-line; overflow-wrap: anywhere; }
 .pf-next-title { margin: var(--sp-1) 0 0; font-size: var(--fs-xs); font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase; color: var(--sc-text2); }
 .pf-loss .pf-ask { align-self: flex-start; margin-top: var(--sp-1); }
-.pf-alert-text::before { content: "\\26A0\\00a0"; }
+.pf-alert-text::before { content: "\\26A0\\00a0"; content: "\\26A0\\00a0" / ""; }
 .pf-alert-when { margin: 2px 0 0; font-size: var(--fs-s); color: var(--sc-text2); }
 .pf-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); }
 .pf-title { margin: 0; font-size: var(--fs-l); font-weight: 650; }

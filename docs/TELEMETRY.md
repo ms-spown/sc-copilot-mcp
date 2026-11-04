@@ -460,8 +460,12 @@ that this server provides and that the client renders next to the chat.
   `sc_trade_journal`), "Que faire maintenant ?" after a refused price (`sc_trade_journal`, `uex_get_price_history`,
   `uex_get_market_status`), "Debrief du trajet" for half an hour after a run ended (`sc_trade_journal`,
   `sc_session_current`, `uex_get_price_history`), else the plain analysis. Each message is fixed text: no number, no ship,
-  nothing read from the log or the game, never a balance (every tool call in it says `include_balance false`, as for the
-  two older buttons), and the model is told to say so if a tool is missing. Session markers live in this
+  nothing read from the log or the game, never a balance. The player's choice is read at the moment of the click:
+  with the amounts hidden, every tool call in the message says `include_balance false` and the message says not to include
+  the balance; with them shown, the message does not name `include_balance` at all (the server applies the player's
+  choice, so the answers carry the amounts the dashboard itself shows). This rule is the same for "Analyser", "Bilan de
+  session" and the three contextual messages. A refused item (not goods) leaves the plain "Analyser". The model is told to
+  say so if a tool is missing, and, for the price history, to use the selling terminal named by the journal or by you, else to ask. Session markers live in this
   server's memory. Nothing in the page sends anything to the game.
 - **Several dashboards: the facts.** Each dashboard is a separate iframe with its own calls to `sc_live_poll`, once
   a second while it is visible. Claude Desktop never unmounts the older ones. Server side nothing multiplies: one
@@ -875,8 +879,10 @@ use the top tone of a scale (amber: worth a look, a hit or a refused price; red 
 events older than a minute are made small and quiet while it stands, the box holds two lines (what happened; the cargo presumed lost, the aUEC paid only
 with the amounts shown), the doubts are folded under "Pourquoi ce n'est pas certain ?" (a native details element, reachable with the keyboard: the ownership of
 the ship not verified, the value lost, what became of an insurance claim, the replacement cost and the one responsible not logged, the attribution checked on 2025 logs only, the kind of causer
-deduced from the shape of a name, the purchases and sales the journal could not confirm), and "Et maintenant" says facts only: the run in progress is cut when the journal
-had cargo bought for that ship, and a new session or a new run can begin. **No insurance claim is shown, not even "none seen":** the log parser reads the line
+deduced from the shape of a name, the purchases and sales the journal could not confirm), and "Et maintenant" says facts only: the run the loss interrupted will not be finished (said only when
+that run is still the newest of the journal), and a new session or a new run can begin (folded in the compact view). The fatal tone leads the header verdict for 3 minutes only, and
+never over a red condition that began after the loss; after that the verdict goes back to the normal order of gravity (the loss is then an amber entry) while the box keeps
+the loss for 15 minutes. The reduced chips keep their age and their "non vérifié" flag. **No insurance claim is shown, not even "none seen":** the log parser reads the line
 of a claim request (`insurance_claim_requested`), but the dashboard receives it only inside the balance movement explainer (built, and kept, only with the
 balance shown, and never as a standalone fact), so "no claim seen" would be false whenever the amounts are hidden. Showing it would take a new field in the
 commerce section; it is not done. It is read from build 4.10's

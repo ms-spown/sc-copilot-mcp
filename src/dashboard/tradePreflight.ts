@@ -184,8 +184,9 @@ export function tradeLossInfo(L: any, trade: any, now: number, showBalance: bool
       // The top of the scale (warn < bad < fatal): a ship lost is the gravest thing the page knows.
       tone: "fatal",
       item: false,
-      // The run the loss interrupted (the cargo bought for it), if any: a fact of the journal.
-      run: !!l.run_id,
+      // The run the loss interrupted (the cargo bought for it) is still the CURRENT run (the newest of the section): only then
+      // is it right to say that the run is cut. After a respawn and a new run it is not.
+      run: !!l.run_id && !!trade.runs && !!trade.runs[0] && trade.runs[0].id === l.run_id,
       label: "Vaisseau détruit",
       text:
         "Vaisseau détruit " +
@@ -235,7 +236,8 @@ export function tradeAlertInfo(L: any, trade: any, now: number, showBalance: boo
  */
 export function tradeAskInfo(L: any, trade: any, now: number, on: boolean): any {
   const alert = on ? tradeAlertInfo(L, trade, now, false) : null;
-  if (alert) {
+  // A refused ITEM (not goods) has no run and no commodity to ask about: the plain button, not the one about the trip.
+  if (alert && !alert.item) {
     return alert.loss
       ? { kind: "loss", label: "Analyser la perte" }
       : { kind: "refusal", label: "Que faire maintenant ?" };
@@ -399,7 +401,14 @@ export function tradePreflightPanel(doc: any, L: any): any {
         if (H.ask) H.ask();
       });
     }
-    add(box, fold, el("p", "pf-next-title", "Et maintenant"), next);
+    if (withAsk) add(box, fold, el("p", "pf-next-title", "Et maintenant"), next);
+    else {
+      // The compact view is short of room: "Et maintenant" is folded too (measured: the open box added more than 110 px to
+      // the one line of a refused price when the amounts are shown).
+      const nextFold = el("details", "pf-why pf-next-fold");
+      add(nextFold, el("summary", "pf-why-sum", "Et maintenant"), next);
+      add(box, fold, nextFold);
+    }
     if (ask) add(box, ask);
     return { box, why, next, ask };
   };
@@ -497,7 +506,7 @@ export function tradePreflightPanel(doc: any, L: any): any {
     // said at all: the dashboard does not receive it without the balance (so "none seen" would be false), see CHANGELOG.
     const nextText =
       alert && alert.loss
-        ? (alert.run ? "Le trajet en cours est interrompu : il ne sera pas terminé.\n" : "") +
+        ? (alert.run ? "Le trajet interrompu par la perte ne sera pas terminé.\n" : "") +
           "Une nouvelle session ou un nouveau trajet peut commencer quand tu veux."
         : "";
     // The compact line: the alert alone.

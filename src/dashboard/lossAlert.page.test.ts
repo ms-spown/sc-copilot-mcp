@@ -10,6 +10,9 @@ import {
   type PageWorld,
 } from "./testing/pageHarness.js";
 import { Scenario } from "./testing/scenario.js";
+import { TRADE_ACTIONS_CSS } from "./tradeActionsStyles.js";
+import { TRADE_PREFLIGHT_CSS } from "./tradePreflightStyles.js";
+import { VIEW_CSS } from "./viewStyles.js";
 import { tradeBalanceAt, tradeLedger } from "./testing/tradeScenario.js";
 
 /**
@@ -36,14 +39,24 @@ interface Options {
   /** The page starts with the amounts shown (the server's default), else hidden (the harness default). */
   shown?: boolean;
   lossAgoMs?: number | null;
+  /** A second, older loss. */
+  olderLossAgoMs?: number;
+  /** Which run (0 = the newest) the loss is tied to. Default 0. */
+  lossRun?: number;
   refusalAgoMs?: number;
-  /** The trade story variant (tradeScenario.ts): "partial" is a run still open, "story" a run complete. */
-  stage?: "partial" | "story";
+  /** Kind of the refused price (default commodity). */
+  refusalKind?: "commodity" | "item";
+  /** The trade story variant (tradeScenario.ts): "partial" is a run still open, "story" a run complete, "second" two runs. */
+  stage?: "partial" | "story" | "second";
   cause?: "collision" | "combat";
   causer?: "npc" | "other" | "unknown";
   noRun?: boolean;
   /** The second of the story the page is read at (default 215). */
   atSeconds?: number;
+  /** What Game.log says about the connection. */
+  conn?: "disconnected" | "menu" | "closed";
+  /** Force a stream state. */
+  forced?: "off" | "waiting";
 }
 
 async function page(opts: Options = {}) {
@@ -53,22 +66,24 @@ async function page(opts: Options = {}) {
   const AT = scenario.epoch + (opts.atSeconds ?? 215) * SECOND;
   scenario.ledger = (include, nowMs) => {
     const l: any = tradeLedger(nowMs, scenario.epoch, include, opts.stage ?? "partial");
-    const run = l.trade.runs[0];
+    const run = l.trade.runs[opts.lossRun ?? 0];
+    const loss = (agoMs: number) => ({
+      at: new Date(AT - agoMs).toISOString(),
+      ship_class: "MISC_Hull_C",
+      cause: opts.cause ?? "combat",
+      causer: opts.causer ?? "other",
+      zone: "OOC_Stanton_3a_Lyria",
+      cargo_scu: 56,
+      cargo_buys: 1,
+      unconfirmed_buys: 1,
+      unconfirmed_sells: 0,
+      run_id: opts.noRun ? null : run.id,
+      ...(include ? { paid_auec: 10_581 } : {}),
+    });
     if (opts.lossAgoMs !== null && opts.lossAgoMs !== undefined) {
       l.trade.ship_losses = [
-        {
-          at: new Date(AT - opts.lossAgoMs).toISOString(),
-          ship_class: "MISC_Hull_C",
-          cause: opts.cause ?? "combat",
-          causer: opts.causer ?? "other",
-          zone: "OOC_Stanton_3a_Lyria",
-          cargo_scu: 56,
-          cargo_buys: 1,
-          unconfirmed_buys: 1,
-          unconfirmed_sells: 0,
-          run_id: opts.noRun ? null : run.id,
-          ...(include ? { paid_auec: 10_581 } : {}),
-        },
+        ...(opts.olderLossAgoMs !== undefined ? [loss(opts.olderLossAgoMs)] : []),
+        loss(opts.lossAgoMs),
       ];
     }
     if (opts.refusalAgoMs !== undefined)
@@ -76,13 +91,21 @@ async function page(opts: Options = {}) {
         {
           at: new Date(AT - opts.refusalAgoMs).toISOString(),
           side: "sell",
-          kind: "commodity",
+          kind: opts.refusalKind ?? "commodity",
           confidence: "confirmed",
           superseded: false,
         },
       ];
     return l;
   };
+  if (opts.conn)
+    scenario.connection = {
+      state: opts.conn,
+      since: new Date(AT - 185_000).toISOString(),
+      code: null,
+      reason: null,
+    };
+  if (opts.forced) scenario.forced = opts.forced;
   const w = await startPage({ scenario, balanceHidden: opts.shown ? false : true });
   w.fromHost({
     jsonrpc: "2.0",
@@ -150,7 +173,7 @@ for (const shown of [false, true]) {
       const box = lossBoxes(w)[0]!;
       const t = NBSP_FREE(box.textContent);
       expect(t).toContain("Et maintenant");
-      expect(t).toContain("Le trajet en cours est interrompu : il ne sera pas terminé.");
+      expect(t).toContain("Le trajet interrompu par la perte ne sera pas terminé.");
       expect(t).toContain(
         "Une nouvelle session ou un nouveau trajet peut commencer quand tu veux.",
       );
@@ -161,11 +184,76 @@ for (const shown of [false, true]) {
       expect(t).not.toMatch(/coût de remplacement\s+\d|valeur.*\d/i);
     });
 
+    it("Given the compact view, Then 'Et maintenant' is a closed fold (room), and in full screen it is open text", async () => {
+      const w = await page({ shown, lossAgoMs: 31 * SECOND });
+      const nextFolds = () =>
+        findAll(
+          w.root,
+          (n) => n.tag === "details" && n.className === "pf-why pf-next-fold" && isShown(n),
+        );
+      expect(nextFolds()).toHaveLength(1);
+      const summary = nextFolds()[0]!.children.find((c) => c.tag === "summary")!;
+      expect(summary.textContent).toBe("Et maintenant");
+      expect(nextFolds()[0]!.attrs["open"]).toBeUndefined();
+      await fullscreen(w);
+      expect(nextFolds()).toHaveLength(0);
+      expect(
+        findAll(w.root, (n) => n.className === "pf-next-title" && isShown(n)).map(
+          (n) => n.textContent,
+        ),
+      ).toEqual(["Et maintenant"]);
+    });
+
     it("Given a loss with no cargo bought for it, Then there is no 'trajet interrompu' sentence (nothing was cut that the journal knows)", async () => {
       const w = await page({ shown, lossAgoMs: 31 * SECOND, noRun: true });
       const t = NBSP_FREE(lossBoxes(w)[0]!.textContent);
-      expect(t).not.toContain("Le trajet en cours est interrompu");
+      expect(t).not.toContain("ne sera pas terminé");
       expect(t).toContain("Une nouvelle session ou un nouveau trajet peut commencer");
+    });
+
+    it("Given the loss cut the run before the CURRENT one (a respawn and a new run began), Then the box does not say the current run is cut", async () => {
+      // the story's second run starts at 300 s: the loss is tied to the first run, which is no longer the newest
+      const w = await page({
+        shown,
+        lossAgoMs: 31 * SECOND,
+        stage: "second",
+        lossRun: 1,
+        atSeconds: 340,
+      });
+      const box = lossBoxes(w)[0]!;
+      expect(box).toBeDefined();
+      const t = NBSP_FREE(box.textContent);
+      expect(t).not.toContain("ne sera pas terminé");
+      expect(t).toContain("Une nouvelle session ou un nouveau trajet peut commencer");
+      // and the same loss, tied to the newest run, does say it
+      const w2 = await page({
+        shown,
+        lossAgoMs: 31 * SECOND,
+        stage: "second",
+        lossRun: 0,
+        atSeconds: 340,
+      });
+      expect(NBSP_FREE(lossBoxes(w2)[0]!.textContent)).toContain("ne sera pas terminé");
+    });
+
+    it("Given two losses, Then the box and the verdict speak of the newest one only", async () => {
+      const w = await page({ shown, lossAgoMs: 31 * SECOND, olderLossAgoMs: 8 * 60 * SECOND });
+      const said = NBSP_FREE(compactLine(w)!.textContent);
+      expect(said.match(/Vaisseau détruit à/g)).toHaveLength(1);
+      expect(NBSP_FREE(verdict(w).textContent)).toMatch(/^Vaisseau détruit · il y a \d+ s/);
+      expect(lossBoxes(w)).toHaveLength(1);
+    });
+
+    it("Given a loss and a new run begun after it, Then the loss is still in the box but the button asks about the loss, not the debrief", async () => {
+      const w = await page({
+        shown,
+        lossAgoMs: 60 * SECOND,
+        stage: "second",
+        lossRun: 1,
+        atSeconds: 340,
+      });
+      expect(asks(w).map((b) => b.textContent)).toContain("Analyser la perte");
+      expect(asks(w).map((b) => b.textContent)).not.toContain("Debrief du trajet");
     });
 
     it("Given the full screen, Then the box says it once with the age outside the status line, and its own button asks Claude about the loss", async () => {
@@ -230,9 +318,17 @@ for (const shown of [false, true]) {
       expect(m).not.toMatch(PAID);
       expect(m).not.toMatch(/\d/);
       expect(m).not.toMatch(/MISC|Hull|Lyria|OOC_|<|>/);
-      expect(m).toContain("include_balance false");
+      // The player's choice is read at CLICK time. Hidden: every tool call says include_balance false and the message says not to
+      // include the balance. Shown: include_balance is not named at all (the server applies the choice).
+      if (shown) {
+        expect(m).not.toContain("include_balance");
+        expect(m).not.toMatch(/N’inclus pas mon solde|Ne lis pas mon solde/);
+        expect(m).toContain("Le serveur applique mon choix pour les montants.");
+      } else {
+        expect(m).toContain("include_balance false");
+        expect(m).toMatch(/N’inclus pas mon solde|Ne lis pas mon solde/);
+      }
       expect(m).not.toMatch(/include_balance (true|vrai)/);
-      expect(m).toContain("N’inclus pas mon solde");
       expect(m).not.toContain("sc_live_poll");
       expect(m).not.toContain("sc_trade_suggest");
       expect(m).not.toContain("sc_live_mark");
@@ -276,7 +372,8 @@ for (const shown of [false, true]) {
       expect(asks(w).map((b) => b.textContent)).toContain("Analyser");
       const m = await ask(w, "Analyser");
       expect(m).toContain("sc_live_state");
-      expect(m).toContain("include_balance false");
+      expect(m.includes("include_balance false")).toBe(!shown);
+      expect(m.includes("include_balance")).toBe(!shown);
       await fullscreen(w);
       findButton(w.root, "Analyser ma situation");
     });
@@ -329,3 +426,125 @@ describe("Feature: the history makes room for a ship loss", () => {
     expect(chips(w).map((c) => c.attrs["data-reduced"])).toContain("0");
   });
 });
+
+describe("Feature: the reduced history keeps its facts", () => {
+  const chips = (w: PageWorld) =>
+    findAll(
+      w.root,
+      (n: FakeNode) =>
+        /(^| )alert( |$)/.test(n.className) && !n.className.includes("condition") && isShown(n),
+    );
+
+  it("Given reduced chips, Then each keeps its age, its verified flag and its label in the tree", async () => {
+    const w = await page({ lossAgoMs: 20 * SECOND, atSeconds: 160 });
+    const list = chips(w);
+    expect(list.length).toBeGreaterThan(0);
+    for (const c of list) {
+      expect(c.attrs["data-reduced"]).toBe("1");
+      expect(c.attrs["data-verified"]).toMatch(/^[01]$/);
+      const meta = findAll(c, (n) => n.className === "alert-meta")[0]!;
+      expect(NBSP_FREE(meta.textContent)).toMatch(/il y a \d/);
+      expect(isShown(meta)).toBe(true);
+    }
+  });
+
+  it("Given the style sheet, Then a reduced chip loses size and tint only: no opacity, no hidden meta, no border shorthand over the dashed style", () => {
+    const rules = VIEW_CSS.split("\n").filter((l) => l.includes('[data-reduced="1"]'));
+    expect(rules.length).toBeGreaterThan(0);
+    for (const r of rules) {
+      expect(r).not.toMatch(/display:\s*none/);
+      expect(r).not.toMatch(/opacity:\s*0?\.\d/);
+      expect(r).not.toMatch(/(^|[ {;])border:/);
+    }
+    expect(rules.join("\n")).toContain("opacity: 1");
+    // the text colour is the secondary text colour (about 8:1 in light and 10:1 in dark), not the faint one
+    expect(rules.join("\n")).toContain("color: var(--sc-text2)");
+  });
+
+  it("Given the glyphs of the alerts, Then each has an empty alternative text so a screen reader does not read it", () => {
+    const all = [VIEW_CSS, TRADE_PREFLIGHT_CSS, TRADE_ACTIONS_CSS].join("\n");
+    const lines = all.split("\n").filter((l) => /2715|26A0/.test(l));
+    expect(lines.length).toBeGreaterThanOrEqual(4);
+    for (const line of lines) expect(line).toContain('/ ""');
+  });
+});
+
+describe("Feature: the loss leads the verdict only for a while, and never over a newer red condition", () => {
+  const T = (w: PageWorld) => verdict(w).attrs["data-tone"];
+
+  it("Given a loss six minutes ago and no other condition, Then the verdict is amber and still says it; the box keeps it", async () => {
+    const w = await page({ lossAgoMs: 6 * 60 * SECOND });
+    expect(T(w)).toBe("warn");
+    expect(NBSP_FREE(verdict(w).textContent)).toMatch(/^Vaisseau détruit · il y a 6 min/);
+    expect(compactLine(w)!.attrs["data-tone"]).toBe("fatal");
+    expect(lossBoxes(w)).toHaveLength(1);
+  });
+
+  it("Given a loss six minutes ago and shields down now, Then the live red condition leads the verdict", async () => {
+    const w = await page({ lossAgoMs: 6 * 60 * SECOND, atSeconds: 70 });
+    expect(T(w)).toBe("bad");
+    expect(NBSP_FREE(verdict(w).textContent)).toMatch(/^Alerte : /);
+    expect(lossBoxes(w)).toHaveLength(1);
+  });
+
+  it("Given a loss that came BEFORE the red condition, Then the condition leads; if the condition is older, the loss leads", async () => {
+    // the shields went down at about 65 s of the story
+    const after = await page({ lossAgoMs: 60 * SECOND, atSeconds: 70 });
+    expect(T(after)).toBe("bad");
+    const before = await page({ lossAgoMs: 1 * SECOND, atSeconds: 70 });
+    expect(T(before)).toBe("fatal");
+  });
+
+  it("Given a fresh loss only, Then the verdict is fatal and the history reduces; after the lead time it does not", async () => {
+    const fresh = await page({ lossAgoMs: 20 * SECOND, atSeconds: 160 });
+    expect(T(fresh)).toBe("fatal");
+    const late = await page({ lossAgoMs: 5 * 60 * SECOND, atSeconds: 160 });
+    expect(T(late)).toBe("warn");
+    expect(findAll(late.root, (n: FakeNode) => n.attrs["data-reduced"] === "1")).toHaveLength(0);
+  });
+});
+
+for (const shown of [false, true]) {
+  describe(`Feature: a refused item, the stream states and the button (${shown ? "amounts shown" : "amounts hidden"})`, () => {
+    it("Given a refused ITEM, Then the button stays the plain one (there is no trip and no goods to ask about)", async () => {
+      const w = await page({ shown, refusalAgoMs: 20 * SECOND, refusalKind: "item" });
+      const labels = asks(w).map((b) => b.textContent);
+      expect(labels).toContain("Analyser");
+      for (const l of labels) expect(["Analyser", "Analyser ma situation"]).toContain(l);
+      findButton(w.root, "Analyser").click();
+      await w.advance(100);
+      const m = NBSP_FREE(w.host.log.messages.at(-1)!);
+      expect(m).toContain("sc_live_state");
+      expect(m).not.toMatch(/marchandise|trajet|uex_get_price_history/);
+    });
+
+    it("Given a refused price for goods, Then the message tells Claude not to guess the selling terminal", async () => {
+      const w = await page({ shown, refusalAgoMs: 20 * SECOND });
+      findButton(w.root, "Que faire maintenant ?").click();
+      await w.advance(100);
+      expect(NBSP_FREE(w.host.log.messages.at(-1)!)).toContain(
+        "utilise le terminal de vente nommé par le journal ou par moi, sinon demande-le-moi",
+      );
+    });
+
+    for (const [name, opts] of [
+      ["disconnected", { conn: "disconnected" }],
+      ["in the menus", { conn: "menu" }],
+      ["a forced waiting stream", { forced: "waiting" }],
+      ["telemetry off", { forced: "off" }],
+    ] as const) {
+      it(`Given a loss and ${name}, Then the page still renders, shows no fatal verdict over a stream that is not live, and a click sends a fixed message without amounts`, async () => {
+        const w = await page({ shown, lossAgoMs: 31 * SECOND, ...opts });
+        const v = verdict(w);
+        if (isShown(v)) expect(v.attrs["data-tone"]).not.toBe("fatal");
+        const labels = asks(w).map((b) => b.textContent);
+        expect(labels.length).toBeGreaterThan(0);
+        for (const l of labels)
+          expect(["Analyser", "Analyser ma situation", "Analyser la perte"]).toContain(l);
+        findButton(w.root, labels[0]!).click();
+        await w.advance(100);
+        expect(NBSP_FREE(w.host.log.messages.at(-1) ?? "")).not.toMatch(PAID);
+      });
+    }
+  });
+}
