@@ -56,6 +56,18 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   let lastStreamId = "";
   // What the "Ask Claude" buttons do right now (tradeAskInfo): read at CLICK time, written by render().
   let ask: any = { kind: "analyse", label: "Analyser" };
+  // The order of the sections in full screen (layoutOrder.ts). All of it lives in the memory of this View: the player's
+  // choice of the button ("auto", "station" or "flight"), the order on screen ("" = the default one, nothing applied yet),
+  // the order that waits for its moment of stability, the situation last read, and the player's own fold of the commerce
+  // card (null = follow the rule). Nothing is stored anywhere.
+  let orderPref = "auto";
+  let orderApplied = "";
+  let orderWant = "";
+  let orderSince = 0;
+  let orderAtOnce = false;
+  let orderSeen = false;
+  let orderCtx = "unknown";
+  let tradeFoldUser: boolean | null = null;
   let lastSize = "";
   const pins: Record<string, boolean> = {};
   // Several Views of one conversation: only the leader polls (see viewLogic.electLeader).
@@ -377,7 +389,17 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       changed: () => render(),
       inline: () => displayMode !== "fullscreen",
     });
-    add(R.topActions, R.age, R.btnAnalyse, R.health.help, R.btnMode);
+    // Full screen only: which order the sections take (layoutOrder.ts). It sits in the header, which never moves.
+    R.btnOrder = button(
+      L.layoutLabel("auto", "unknown", ""),
+      () => {
+        orderPref = L.layoutNextPref(orderPref);
+        orderAtOnce = true;
+        render();
+      },
+      "mini",
+    );
+    add(R.topActions, R.age, R.btnAnalyse, R.health.help, R.btnOrder, R.btnMode);
     add(R.top, R.status, R.verdict, R.topActions);
     R.toastTop = el("div", "toast toast-top", "");
     R.toastTop.setAttribute("aria-hidden", "true");
@@ -924,7 +946,30 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.movements = L.movementsPanel(doc, L);
     add(R.trade.more, R.movements.root);
 
-    add(R.full, R.offNote, R.trade.card, R.colInstr, R.colShip, R.colPilot, R.wide);
+    // The commerce card sits in a box with its fold bar: in the flight order the box can be folded to one line (the card is
+    // not touched, the style sheet hides it), in the other order the bar is hidden and the box is just the card.
+    R.tradeBox = el("div", "trbox");
+    R.trade.card.setAttribute("id", "trade-card");
+    R.tfold = el("div", "tfold");
+    R.tfoldTitle = el("span", "tfold-title", "Commerce");
+    R.tfoldSum = el("span", "tfold-sum", "");
+    R.tfoldBtn = button(
+      "",
+      () => {
+        tradeFoldUser = R.tradeBox["_a_data-fold"] === "1";
+        render();
+      },
+      "mini",
+    );
+    R.tfoldBtn.setAttribute("aria-controls", "trade-card");
+    R.tfoldText = el("span", "", "");
+    R.tfoldCaret = el("span", "", "");
+    R.tfoldCaret.setAttribute("aria-hidden", "true");
+    add(R.tfoldBtn, R.tfoldText, R.tfoldCaret);
+    add(R.tfold, R.tfoldTitle, R.tfoldSum, R.tfoldBtn);
+    add(R.tradeBox, R.tfold, R.trade.card);
+
+    add(R.full, R.offNote, R.tradeBox, R.colInstr, R.colShip, R.colPilot, R.wide);
 
     // Stream state changes are announced here, out of sight: the header already shows them.
     R.sr = el("div", "sr-only", "");
@@ -958,6 +1003,29 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.sr,
       R.tip,
     );
+    // The two orders of full screen (layoutOrder.ts), complete lists of the children of `root` and of `R.full`. The default
+    // one is the order the page was just built in; the flight one takes the shortcuts, the session and the health strip into
+    // the cockpit grid after the instruments, and puts the line of the trip under way right under the ship banner.
+    R.rootStation = Array.prototype.slice.call(root.children);
+    R.fullStation = Array.prototype.slice.call(R.full.children);
+    R.rootFlight = [];
+    const moving = [R.shortcuts.root, R.sessions.root, R.health.root, R.trade.line];
+    for (const n of R.rootStation) {
+      if (moving.indexOf(n) >= 0) continue;
+      R.rootFlight.push(n);
+      if (n === R.ctx) R.rootFlight.push(R.trade.line);
+    }
+    R.fullFlight = [
+      R.offNote,
+      R.colInstr,
+      R.colShip,
+      R.colPilot,
+      R.shortcuts.root,
+      R.tradeBox,
+      R.sessions.root,
+      R.health.root,
+      R.wide,
+    ];
     buildTips();
   }
 
@@ -1583,6 +1651,102 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     setText(R.btnMode, displayMode === "fullscreen" ? "Réduire" : "Plein écran");
     show(R.btnMode, availableModes.indexOf("fullscreen") >= 0);
     show(R.btnAnalyse, displayMode !== "fullscreen");
+    show(R.btnOrder, displayMode === "fullscreen");
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // The order of the sections in full screen (layoutOrder.ts): placement and fold only, never content
+  // ---------------------------------------------------------------------------------------------
+  /** Is the page in its flight order right now (full screen, and the flight order is the one on screen)? */
+  const flightOn = (): boolean => displayMode === "fullscreen" && orderApplied === "flight";
+
+  /** Puts the sections in the order of `mode`; false (nothing moved) while the keyboard focus is in a node that would move. */
+  function placeOrder(mode: string, force?: boolean): boolean {
+    const steps =
+      mode === "flight"
+        ? [
+            [R.full, R.fullFlight],
+            [root, R.rootFlight],
+          ]
+        : [
+            [root, R.rootStation],
+            [R.full, R.fullStation],
+          ];
+    // `force`: leaving full screen. The cockpit is about to be hidden and the focus with it, and the compact view must not
+    // be left without its session bar and shortcuts because the focus was in one of them.
+    if (!L.layoutPlace(steps, force ? null : doc.activeElement)) return false;
+    setAttr(root, "data-order", mode);
+    return true;
+  }
+
+  /**
+   * Decides the order from the situation and applies it: at once the first time a known situation is read, and when the
+   * player presses the button; otherwise only after the situation has held for `stableMs` (a `landed` that flips does not
+   * move the page). Compact view: always the default order (the flight order puts sections inside the full-screen grid).
+   */
+  function syncOrder(info: any, now: number) {
+    if (displayMode !== "fullscreen") {
+      orderCtx = "unknown";
+      orderWant = "";
+      orderSeen = false;
+      orderAtOnce = false;
+      if (orderApplied !== "" && placeOrder("station", true)) {
+        orderApplied = "";
+        tradeFoldUser = null;
+      }
+      return;
+    }
+    const cls = L.layoutContext(L, view.poll, info.grey);
+    orderCtx = cls.id;
+    const first = !orderSeen;
+    if (cls.id !== "unknown") orderSeen = true;
+    const want = L.layoutWant(orderPref, cls.id);
+    if (want === (orderApplied || "station")) {
+      orderWant = "";
+      orderAtOnce = false;
+      return;
+    }
+    if (orderWant !== want) {
+      orderWant = want;
+      orderSince = now;
+    }
+    if (!(first || orderAtOnce || now - orderSince >= L.layoutConfig().stableMs)) return;
+    if (placeOrder(want)) {
+      orderApplied = want;
+      orderWant = "";
+      orderAtOnce = false;
+      tradeFoldUser = null;
+    }
+  }
+
+  /** The button's words, and the fold bar of the commerce card (flight order only). Run after the commerce card rendered. */
+  function renderOrderUi() {
+    const label = L.layoutLabel(orderPref, orderCtx, orderApplied);
+    setText(R.btnOrder, label);
+    setAttr(
+      R.btnOrder,
+      "title",
+      "Ordre des sections en plein écran. Auto : instruments d’abord en vol, commerce d’abord posé, à pied ou si le contexte est inconnu. Un clic passe à l’ordre suivant : auto, commerce, vol.",
+    );
+    const on = flightOn();
+    const shown = R.trade.visible();
+    show(R.tradeBox, shown);
+    show(R.tfold, shown && on);
+    if (!on) {
+      setAttr(R.tradeBox, "data-fold", "0");
+      return;
+    }
+    // Fresh = what the "Ask Claude" button already counts as a commerce event (a loss, a refused price, a run just ended).
+    // The player's own fold wins; the rule never folds the card while the keyboard focus is inside it.
+    const fresh = ask.kind !== "analyse";
+    const wasOpen = R.tradeBox["_a_data-fold"] === "0";
+    let open = tradeFoldUser !== null ? tradeFoldUser : fresh;
+    if (!open && wasOpen && L.layoutHolds(R.trade.card, doc.activeElement)) open = true;
+    setAttr(R.tradeBox, "data-fold", open ? "0" : "1");
+    setText(R.tfoldSum, R.trade.summary() || "aucun trajet ni plan");
+    setText(R.tfoldText, open ? "Replier" : "Déplier");
+    setText(R.tfoldCaret, open ? " ▴" : " ▸");
+    setAttr(R.tfoldBtn, "aria-expanded", open ? "true" : "false");
   }
 
   function render() {
@@ -1621,8 +1785,13 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     );
     const info = renderStatus(now, conds, refusal);
     streamLive = !info.grey;
+    syncOrder(info, now);
     renderContext(now);
-    R.shortcuts.render(view.poll, { grey: info.grey, fullscreen: displayMode === "fullscreen" });
+    R.shortcuts.render(view.poll, {
+      grey: info.grey,
+      fullscreen: displayMode === "fullscreen",
+      keyed: flightOn(),
+    });
     renderAlerts(now, conds, !info.grey, L.lossLeads(refusal, conds, now));
     R.sessions.render(view.poll && view.poll.sessions, { showBalance, now });
     R.ledger.render(view.poll && view.poll.ledger, {
@@ -1649,6 +1818,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       conn: view.poll && view.poll.connection ? view.poll.connection.state : null,
       showBalance,
       fullscreen: displayMode === "fullscreen",
+      flightLine: flightOn(),
       balance: showBalance && view.poll ? view.poll.balance : null,
       baseline: L.baselineLabel(view.poll),
       now,
@@ -1662,6 +1832,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       showBalance,
       fullscreen: displayMode === "fullscreen",
     });
+    renderOrderUi();
     R.tradeActions.render(
       tradeActionsContext(actionsOn, tradeLedger ? tradeLedger.trade : null, now, calibration),
     );

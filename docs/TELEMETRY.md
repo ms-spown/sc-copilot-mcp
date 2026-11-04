@@ -554,7 +554,8 @@ the balance, and it presses nothing: it is a display.
   Flight Ready, "si c'est un vaisseau".
 - **How much.** Compact view: at most three, in a wrapping line. Full screen: at most six. The rest, the sentence on keys
   and the "Il fait sombre" button sit behind ONE button (`aria-expanded`), the zone's only tab stop while folded. No live
-  region, nothing stored.
+  region, nothing stored. In the flight order of full screen (next section) it is limited to what has a key (X, H, J, T) or is
+  an alert; the rest is behind the same button.
 - **Keys.** The rule: a key is printed only when at least two independent public sources give it and none gives another
   one. That leaves X (space brake), H (decoys), J (noise) and T (suit light), always next to the word "défaut", with a
   tip that says to check it in your own settings, and **none has been checked in the game on 4.10**. Every other action
@@ -573,6 +574,33 @@ the balance, and it presses nothing: it is a display.
   says so. The suit light is listed on foot and in EVA, and "Il fait sombre" is a button you press: it puts the lights
   first, and lives only in the memory of the page (nothing is saved, it is gone when the page reloads).
 - **Not built yet.** Your own key bindings (`actionmaps.xml`) and the helmet state; see [ROADMAP.md](ROADMAP.md).
+
+### Order of the sections in full screen
+
+Full screen has two orders of its sections, chosen from what the page already knows. Only the placement and one fold change:
+no section changes its words, no figure is added, and the balance choice is untouched (the new words carry no amount).
+
+- **Flight order** ("vol"). The verdict and the alerts, the ship banner, the line of the trip under way (the same text as the
+  compact view, only for a run that is open or partial and not cut by a ship loss), then the instruments; after them the
+  shortcuts (limited as above), the commerce card, the session, the health strip, then the rest. The commerce card is
+  folded to one line (its stage and its route, nothing else) with a button (`aria-expanded`, `aria-controls`) while nothing
+  fresh happened in it: fresh means what the "Ask Claude" button already counts as a commerce event (a ship loss, a refused
+  price, a run that ended in the last half hour). Your own fold wins and lasts until the order changes; the rule never folds
+  the card while the keyboard focus is inside it.
+- **Commerce order** ("commerce"): the order the page always had (banner, shortcuts, session, commerce card, instruments),
+  because preparing a route is the job on the ground.
+- **What decides.** Flight: the stream is live and the ship section says it is not landed (in the air, in quantum mode or
+  in a jump). Commerce: landed, on foot, in EVA or in a ground vehicle. **Unknown, which gets the commerce order and says so on
+  the button** ("Ordre : auto · contexte inconnu, ordre commerce"): no live stream, `Game.log` saying menu, disconnected
+  or closed, a ship whose `landed` is not reported, a powered-off ship, a seat with no ship, or a ship section that
+  contradicts the pilot's locomotion. The landing gear is not read: gear out would be a guess that you are about to land.
+- **No jumping.** A change is applied only after the situation has held for 3 seconds (a `landed` that flips every second
+  moves nothing), at once the first time a known situation is read, and never while the keyboard focus is inside a section
+  that would move (it waits for the focus to leave). The compact view never changes order.
+- **The button** "Ordre : auto / commerce / vol" in the header (full screen only) cycles auto, commerce, vol and applies at
+  once. The choice lives in the memory of the page: no storage, no file, no new `localStorage` key.
+- **Keyboard.** The page moves the nodes themselves (no CSS `order`), so the tab order is the drawn order; tests walk it for
+  both orders. No new live region.
 
 ### Transport ledger
 

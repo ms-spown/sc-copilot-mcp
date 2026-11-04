@@ -221,7 +221,8 @@ export function shortcutsFor(L: any, poll: any, opts: any): any {
  * the context named, the unknown context said. The rest, the explanation of the keys and the "Il fait sombre" button sit
  * behind ONE button (aria-expanded) that is the zone's only tab stop while folded. No live region, no storage, no tab stop
  * on a key (its tip is for the pointer; the same sentence is written in the unfolded part).
- * `render(poll, { grey, fullscreen })`.
+ * `render(poll, { grey, fullscreen, keyed })`: `keyed` (full screen in its flight order, layoutOrder.ts) shows only the reminders
+ * that have a key or are an alert; the rest is behind the fold.
  */
 export function shortcutsPanel(doc: any, L: any): any {
   const { el, add, setText, setAttr, show, setTip } = L.domKit(doc);
@@ -284,7 +285,12 @@ export function shortcutsPanel(doc: any, L: any): any {
     // The compact view spends no line on "no context" or "nothing to say".
     show(root, r.show && (a.fullscreen || r.items.length > 0));
     const vis = a.fullscreen ? 6 : 3;
-    const extra = Math.max(0, r.items.length - vis);
+    // `keyed` (full screen in its flight order): only what has a key or is an alert shows; the rest is behind the fold.
+    const keyedOnly = a.fullscreen && a.keyed;
+    const front = (it: any, i: number): boolean =>
+      keyedOnly ? it.keys.length > 0 || it.tier === 0 : i < vis;
+    let extra = 0;
+    for (let i = 0; i < r.items.length; i++) if (!front(r.items[i], i)) extra++;
     const canFold = extra > 0 || r.lightable || r.items.some((it: any) => it.keys.length > 0);
     setText(ctxName, r.label ? "· " + r.label : "");
     setText(empty, r.empty);
@@ -293,7 +299,7 @@ export function shortcutsPanel(doc: any, L: any): any {
     for (let i = 0; i < MAX; i++) {
       const li = rows[i];
       const it = r.items[i];
-      show(li, !!it && (i < vis || st.open));
+      show(li, !!it && (front(it, i) || st.open));
       if (!it) continue;
       setAttr(li, "data-tier", String(it.tier));
       setText(li.t, it.label);
@@ -335,7 +341,7 @@ export function shortcutsPanel(doc: any, L: any): any {
   return {
     root,
     render(poll: any, ctx: any) {
-      st.last = { poll, grey: !!ctx.grey, fullscreen: !!ctx.fullscreen };
+      st.last = { poll, grey: !!ctx.grey, fullscreen: !!ctx.fullscreen, keyed: !!ctx.keyed };
       paint();
     },
   };

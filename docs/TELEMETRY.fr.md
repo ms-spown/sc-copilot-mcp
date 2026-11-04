@@ -579,7 +579,9 @@ chiffre ni le solde, et elle n'appuie sur rien : c'est un affichage.
   l'assise) : les phares. Assis sans trame de vaisseau pour l'instant : Flight Ready, « si c'est un vaisseau ».
 - **Combien.** Vue compacte : trois au plus, sur une ligne qui passe à la ligne. Plein écran : six au plus. Le reste, la
   phrase sur les touches et le bouton « Il fait sombre » sont derrière UN bouton (`aria-expanded`), le seul arrêt de
-  tabulation de la zone tant qu'elle est repliée. Aucune zone « live », rien n'est enregistré.
+  tabulation de la zone tant qu'elle est repliée. Aucune zone « live », rien n'est enregistré. Dans l'ordre « vol » du plein
+  écran (section suivante), elle se limite à ce qui a une touche (X, H, J, T) ou une alerte ; le reste est derrière le même
+  bouton.
 - **Les touches.** La règle : une touche n'est écrite que si au moins deux sources publiques indépendantes la donnent et
   qu'aucune n'en donne une autre. Il reste X (frein spatial), H (leurres), J (brouillage) et T (lampe de combinaison),
   toujours à côté du mot « défaut », avec une info-bulle qui dit de vérifier dans vos propres réglages, et **aucune n'a
@@ -601,6 +603,36 @@ chiffre ni le solde, et elle n'appuie sur rien : c'est un affichage.
   « Il fait sombre » est un bouton que vous pressez : il met les lumières en tête, et ne vit que dans la mémoire de la
   page (rien n'est enregistré, c'est perdu au rechargement).
 - **Pas encore construit.** Vos propres touches (`actionmaps.xml`) et l'état du casque ; voir [ROADMAP.md](ROADMAP.md).
+
+### Ordre des sections en plein écran
+
+Le plein écran a deux ordres de sections, choisis d'après ce que la page sait déjà. Seuls le placement et un pli changent :
+aucune section ne change de mots, aucun chiffre n'est ajouté, et le choix du solde est inchangé (les nouveaux mots ne portent
+aucun montant).
+
+- **Ordre « vol ».** Le verdict et les alertes, le bandeau du vaisseau, la ligne du trajet en cours (le même texte que la vue
+  compacte, seulement pour un trajet ouvert ou partiel et non coupé par une perte de vaisseau), puis les instruments ; viennent
+  ensuite les raccourcis (limités comme ci-dessus), la carte Commerce, la session, la bande d'état, puis le reste. La carte
+  Commerce est repliée en une ligne (son étape et sa route, rien d'autre) avec un bouton (`aria-expanded`, `aria-controls`)
+  tant qu'il ne s'y est rien passé de frais : « frais » veut dire ce que le bouton « Demander à Claude » compte déjà comme un
+  événement de commerce (une perte de vaisseau, un prix refusé, un trajet terminé depuis moins d'une demi-heure). Votre pli
+  l'emporte et dure jusqu'au changement d'ordre ; la règle ne replie jamais la carte quand le focus clavier est dedans.
+- **Ordre « commerce »** : l'ordre que la page a toujours eu (bandeau, raccourcis, session, carte Commerce, instruments),
+  parce que préparer une route est l'objet au sol.
+- **Ce qui décide.** Vol : le flux est vivant et la section vaisseau dit qu'il n'est pas posé (en l'air, en mode quantique ou
+  en saut). Commerce : posé, à pied, en EVA ou dans un véhicule terrestre. **Inconnu, qui reçoit l'ordre commerce et le dit
+  sur le bouton** (« Ordre : auto · contexte inconnu, ordre commerce ») : pas de flux vivant, `Game.log` disant menu,
+  déconnecté ou fermé, un vaisseau dont `landed` n'est pas rapporté, un vaisseau éteint, un siège sans vaisseau, ou une
+  section vaisseau qui contredit la locomotion du pilote. Le train n'est pas lu : train sorti serait une supposition que vous
+  allez vous poser.
+- **Pas de saut.** Un changement n'est appliqué qu'après 3 secondes de stabilité (un `landed` qui oscille chaque seconde ne
+  déplace rien), tout de suite la première fois qu'une situation connue est lue, et jamais tant que le focus clavier est dans
+  une section qui bougerait (il attend que le focus parte). La vue compacte ne change jamais d'ordre.
+- **Le bouton** « Ordre : auto / commerce / vol » de l'en-tête (plein écran seulement) fait tourner auto, commerce, vol et
+  s'applique tout de suite. Le choix vit dans la mémoire de la page : ni stockage, ni fichier, aucune nouvelle clé
+  `localStorage`.
+- **Clavier.** La page déplace les nœuds eux-mêmes (pas de CSS `order`), donc l'ordre de tabulation est l'ordre dessiné ; des
+  tests le parcourent pour les deux ordres. Aucune nouvelle zone « live ».
 
 ### Carnet de transport
 

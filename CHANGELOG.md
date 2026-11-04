@@ -6,6 +6,29 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed (dashboard, UX wave C: full screen has a flight order and a commerce order)
+- **The order of the sections in full screen follows the situation (audit recommendation R3).** In flight (stream live, ship
+  section "not landed": in the air, quantum mode or a jump) the page shows the verdict and the alerts, the ship banner, the line
+  of the trip under way (the compact view's text, for an open or partial run not cut by a loss), then the instruments; the
+  shortcuts, the commerce card, the session and the rest follow. In real Chrome at 1000 px, with the preview story, the instruments
+  start at y=149 px instead of 781 px in normal flight, and at y=185 px instead of 1558 px during a commerce trip. Landed, on foot, in
+  EVA or in a ground vehicle keep the order the page always had (the instruments start at y=735 px landed in the same story, y=690
+  px on foot with the card of a route to prepare first). **An unknown situation (no live stream, menu, disconnected, closed,
+  a ship whose landed state is not reported, a powered-off ship, a seat with no ship, a contradiction between the ship and the
+  pilot's locomotion) gets the default order and says so on the button.** The landing gear is deliberately not read.
+- **No jumping.** A change is applied only after the situation has held for 3 seconds (a `landed` flipping every second moves
+  nothing), at once for the first known situation and for the player's own press, and never while the keyboard focus is in a
+  section that would move. Nodes are moved in the document (no CSS `order`): the tab order is the drawn order, and tests walk it
+  for both orders. A discreet header button "Ordre : auto / commerce / vol" forces one; the choice lives in the memory of the
+  page only (no storage, no new `localStorage` key). The compact view never changes order.
+- **In flight the commerce card is one line** (its stage and route, no amount) with a fold button (`aria-expanded`) while nothing
+  fresh happened in it; fresh is what the "Ask Claude" button already counts (a loss, a refused price, a run ended less than 30
+  minutes ago). The player's fold wins until the order changes; the card is never folded while the focus is inside it. The shortcuts
+  show only what has a key (X, H, J, T) or is an alert, the rest behind the same button. No section changes its content, no new
+  live region, no new amount (tests in both balance modes), `textContent` only. The page grows from 357.7 kB to 364.6 kB, inside
+  the internal budget of 368 kB (our own guard, not a proven host limit). Not verified in Claude Desktop (how the host sizes
+  full screen, whether its frame keeps the scroll position when sections move).
+
 ### Changed (dashboard, UX wave B: the ship loss and the contextual "Ask Claude" button)
 - **A ship loss is the gravest event of the page (audit recommendation R2).** One new top tone, "fatal" (solid red fill, built on
   the existing danger colour: no new hue), above the red tint of shields down and a hostile lock and the amber of a hit or a
