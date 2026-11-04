@@ -310,6 +310,23 @@ export function calibrationHint(group: any, confidence: string): string {
 }
 
 /**
+ * calibrationExpected with ONE minimum for everything the player sees (the tile and the route cards): under `minRatioRuns`
+ * runs behind the very figure used (the net ratio's runs, the fee rate's runs, the gross ratio's runs) it gives nothing.
+ * The profit given is that of ONE leg (the plan's, or the card's first leg), never a round-trip total.
+ */
+export function calibrationApply(group: any, profit: unknown, turnover?: unknown): any {
+  if (!group) return null;
+  const min = calibrationConfig().minRatioRuns;
+  if (group.n < min) return null;
+  const enough = (v: number) => (v >= min ? v : 0);
+  return calibrationExpected(
+    { ...group, net_n: enough(group.net_n), fee_n: enough(group.fee_n) },
+    profit,
+    turnover,
+  );
+}
+
+/**
  * The calibrated "Si tu refais ce trajet": the expectation for the plan in force (the same plan the card's own figure is
  * built on, whether or not the journal could confirm the goods), when the group has what it needs. null otherwise (the card
  * keeps its own figure).
@@ -323,7 +340,7 @@ export function calibrationNextTile(calib: any, plan: any, money: any): any {
     typeof plan.sell_unit_price === "number" && typeof plan.scu === "number"
       ? plan.sell_unit_price * plan.scu
       : null;
-  const e = calibrationExpected(hit.group, money.planned_profit, turnover);
+  const e = calibrationApply(hit.group, money.planned_profit, turnover);
   if (!e) return null;
   const unverified = e.goods_unverified === true;
   const where = unverified
@@ -417,17 +434,8 @@ export function calibrationCompare(L: any, calib: any, o: any): any {
   if (g.n < cfg.minRatioRuns) return out;
 
   // The ratio and what it gives: only with enough runs behind the very figure used (the net, or the fees), else the gross one.
-  const enough = (v: number) => (v >= cfg.minRatioRuns ? v : 0);
   const legProfit = Math.round(leg.profit_per_scu * leg.scu);
-  const turnover = leg.sell_price * leg.scu;
-  const e =
-    legProfit > 0
-      ? calibrationExpected(
-          { ...g, net_n: enough(g.net_n), fee_n: enough(g.fee_n) },
-          legProfit,
-          turnover,
-        )
-      : null;
+  const e = legProfit > 0 ? calibrationApply(g, legProfit, leg.sell_price * leg.scu) : null;
   const net = !!e && e.basis === "net_ratio";
   const ratio = e ? e.ratio : g.gross_ratio;
   const n = e ? e.n : g.n;
@@ -506,6 +514,7 @@ export const CALIBRATION_VIEW_FUNCTIONS = [
   calibrationMoreTail,
   calibrationTag,
   calibrationHint,
+  calibrationApply,
   calibrationNextTile,
   calibrationCompare,
 ];

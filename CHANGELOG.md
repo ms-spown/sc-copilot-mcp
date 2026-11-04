@@ -43,6 +43,10 @@ versions follow [Semantic Versioning](https://semver.org/).
   round-trip figure; an hourly figure only for a card of one leg); a huge gap is worded, not printed; the fold "Comment lire
   ça" says the ratio is censored to about 50 % to 200 % and is not the measured mean over today's estimate. Shown only with the
   balance, and emptied (hidden nodes and attributes included) when it is hidden again.
+- **The tile "Si tu refais ce trajet" follows the same minimum.** It used to give a coefficient from 2 runs while the route cards
+  need 3; both now go through one function (`calibrationApply`): no coefficient under 3 runs behind the figure in use (the net
+  ratio's runs, the fee rate's runs), above 500 % no value, and the plan's profit is that of its one leg. With 2 runs the tile
+  keeps the card's own figure. `sc_session_stats` still reports groups from 2 runs, with their confidence.
 - The calibration groups of `sc_session_stats` (`route_reliability`) and of the dashboard poll carry four new mean amounts
   (`gross_avg_auec`, `gross_planned_avg_auec`, `net_avg_auec`, `net_planned_avg_auec`), derived from the balance like the ratios
   and withheld with them.

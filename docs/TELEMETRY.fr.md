@@ -1113,7 +1113,7 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   PRÉVU : le même ratio que la tuile ci-dessous (le ratio net, sinon le ratio brut moins les frais habituels), avec une petite
   barre sur une échelle de 0 à 200 %, l'étiquette « estimé · N trajets · confiance ... » (son infobulle explique la
   confiance) et ce qu'il donne : « Si tu refais ce trajet ≈ X aUEC (prévu Y × Z %) ». **Règles.** Sous 3 trajets derrière le
-  chiffre utilisé, la carte donne leur nombre et rien d'autre (ni ratio, ni chiffre appliqué, ni étiquette ; la tuile et les
+  chiffre utilisé, la carte donne leur nombre et rien d'autre (ni ratio, ni chiffre appliqué, ni étiquette ; la tuile « Si tu refais ce trajet » suit la même règle : aucun coefficient sous 3 trajets ; les
   outils gardent leur minimum de 2 trajets). Le ratio s'applique au profit du PREMIER tronçon seulement, ce que « Appliquer
   comme plan » enregistre et donc ce à quoi les trajets ont été comparés : une carte à deux tronçons dit « Si tu refais le 1er
   tronçon » et ne donne aucun chiffre d'aller-retour ; un chiffre par heure n'est appliqué qu'à une carte d'un seul tronçon,
@@ -1122,7 +1122,7 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   l'estimation d'aujourd'hui (le repli le dit). Le repli « Comment lire ça » dit aussi que le ratio est censuré à environ
   50 % à 200 % (voir le biais de sélection ci-dessus). Le bloc n'existe que tant que le solde est affiché et il est vidé, pas
   seulement caché, quand on le masque de nouveau. La tuile « Si tu refais ce
-  trajet » de la carte de commerce, qui préfère le chiffre calibré quand le plan en cours a un groupe de 2 cargaisons ou
+  trajet » de la carte de commerce, qui préfère le chiffre calibré quand le plan en cours a un groupe de 3 cargaisons ou
   plus ; une phrase dans les instructions du serveur et dans le prompt `trade_copilot` pour que Claude la cite avec son
   nombre de cargaisons.
 - **Confidentialité.** Un ratio fois le plan révèle le résultat réalisé : la section n'existe que là où le solde est

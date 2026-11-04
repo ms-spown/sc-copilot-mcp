@@ -252,6 +252,68 @@ describe("Feature: the calibrated expectation and the tile 'Si tu refais ce traj
     expect(calibrationNextTile(calib, null, { planned_profit: 1 })).toBeNull();
     expect(calibrationExpected(null, 100)).toBeNull();
   });
+
+  it("Given two runs, Then the tile gives no coefficient (the same 3-run minimum as the route cards); given three, Then it does", () => {
+    const two = calibrationNormalize(L, {
+      v: 1,
+      groups: [group({ n: 2, net_n: 2, fee_n: 2, confidence: "low" })],
+    })!;
+    expect(calibrationNextTile(two, plan, { planned_profit: 180_000 })).toBeNull();
+    const three = calibrationNormalize(L, {
+      v: 1,
+      groups: [group({ n: 3, net_n: 3, fee_n: 3, confidence: "low", net_confidence: "low" })],
+    })!;
+    const tile = calibrationNextTile(three, plan, { planned_profit: 180_000 });
+    expect(tile.auec).toBe(Math.round(180_000 * NET));
+    expect(tile.tag).toBe("estimé · 3 trajets · confiance faible");
+    // the card and the tile agree: the same group gives a figure to both, or to neither
+    const leg = {
+      commodity: "Laranite",
+      from: "Port Tressler",
+      to: "Area18 TDD",
+      buy_price: 189,
+      sell_price: 457,
+      profit_per_scu: 258,
+      scu: 696,
+    };
+    for (const c of [two, three]) {
+      const card = calibrationCompare({ ...L, fmtAuec }, c, {
+        legs: [leg],
+        profit_per_trip: 180_000,
+        profit_per_hour: null,
+        cycle_minutes: null,
+      });
+      const t = calibrationNextTile(c, plan, {
+        planned_profit: Math.round(leg.profit_per_scu * leg.scu),
+      });
+      expect(
+        card.apply !== "" && card.mode === "ratio" && !card.apply.startsWith("Pas assez"),
+      ).toBe(t !== null);
+    }
+  });
+
+  it("Given three runs but a net on two only and fees on two, Then the tile gives nothing (no figure rests on fewer than three runs); with fees on three it falls back to the gross ratio less fees", () => {
+    const thin = calibrationNormalize(L, {
+      v: 1,
+      groups: [group({ n: 5, net_n: 2, fee_n: 2 })],
+    })!;
+    expect(calibrationNextTile(thin, plan, { planned_profit: 180_000 })).toBeNull();
+    const fees = calibrationNormalize(L, {
+      v: 1,
+      groups: [group({ n: 5, net_n: 2, fee_n: 3 })],
+    })!;
+    expect(calibrationNextTile(fees, plan, { planned_profit: 180_000 }).basis).toBe(
+      "gross_ratio_minus_fees",
+    );
+  });
+
+  it("Given a ratio above 500 %, Then the tile gives no value (as the cards)", () => {
+    const huge = calibrationNormalize(L, {
+      v: 1,
+      groups: [group({ gross_ratio: 666, net_ratio: 650 })],
+    })!;
+    expect(calibrationNextTile(huge, plan, { planned_profit: 180_000 })).toBeNull();
+  });
 });
 
 describe("Feature: the three values of a route card (calibrationCompare)", () => {
@@ -1046,5 +1108,50 @@ describe("Feature: the tile 'Si tu refais ce trajet' prefers the player's own ru
     await w.advance(3 * SECOND);
     expect(text(w)).not.toContain("net typique de tes");
     expect(text(w)).toMatch(/Si tu refais ce trajet\s*estimé\s*≈ \+136 432/);
+  });
+
+  const runsSection = (n: number): CalibrationSection => ({
+    v: 1,
+    patch_line: "4.10",
+    groups: [
+      group({
+        kind: "route",
+        buy_terminal: "Port Tressler",
+        sell_terminal: "Area18 TDD",
+        n,
+        net_n: n,
+        fee_n: n,
+        confidence: "low",
+        net_confidence: "low",
+      }),
+    ] as never,
+  });
+
+  it("Given two runs of the route and the balance shown, Then the tile keeps the card's own figure, like the route cards (3 runs minimum)", async () => {
+    const w = await page({ plan: true, section: runsSection(2) });
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(3 * SECOND);
+    expect(text(w)).not.toContain("net typique de tes");
+    expect(text(w)).not.toContain("137 160");
+    expect(text(w)).toMatch(/Si tu refais ce trajet\s*estimé\s*≈ \+136 432/);
+  });
+
+  it("Given three runs of the route and the balance shown, Then the tile is calibrated; hidden, Then it is not, whatever the server sent", async () => {
+    const shownPage = await page({ plan: true, section: runsSection(3) });
+    findButton(shownPage.root, "Afficher le solde").click();
+    await shownPage.advance(3 * SECOND);
+    expect(text(shownPage)).toMatch(
+      /Si tu refais ce trajet\s*estimé · 3 trajets · confiance faible\s*≈ \+137 160 aUEC/,
+    );
+    expect(text(shownPage)).toContain(
+      "prévu × 76 % (net typique de tes 3 trajets sur cette route)",
+    );
+    for (const n of [2, 3]) {
+      const hidden = await page({ plan: true, always: true, section: runsSection(n) });
+      const t = text(hidden);
+      expect(t).not.toContain("net typique de tes");
+      expect(t).not.toContain("137 160");
+      expect(t).not.toMatch(/estimé · \d trajets/);
+    }
   });
 });
