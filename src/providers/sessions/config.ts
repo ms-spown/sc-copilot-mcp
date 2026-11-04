@@ -34,13 +34,16 @@ export function gapHours(raw: string | undefined): number {
   return n;
 }
 
+/** SC_SESSIONS=off (or 0, false, no). */
+export const sessionsSwitchedOff = (env: NodeJS.ProcessEnv = process.env): boolean =>
+  /^(off|0|false|no)$/i.test(env.SC_SESSIONS?.trim() ?? "");
+
 export function sessionsConfig(
   env: NodeJS.ProcessEnv = process.env,
   telemetryOn: boolean,
 ): SessionsConfig {
-  const off = /^(off|0|false|no)$/i.test(env.SC_SESSIONS?.trim() ?? "");
   return {
-    enabled: telemetryOn && !off,
+    enabled: telemetryOn && !sessionsSwitchedOff(env),
     file: sessionsFilePath(env),
     gapMs: Math.round(gapHours(env.SC_SESSION_GAP_HOURS) * 3_600_000),
   };

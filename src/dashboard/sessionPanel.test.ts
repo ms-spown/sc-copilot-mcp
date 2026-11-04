@@ -11,6 +11,7 @@ import {
   sessionStatsNormalize,
   sessionSummaryNormalize,
   sessionWhen,
+  SESSION_VIEW_FUNCTIONS,
 } from "./sessionPanel.js";
 import { sessionBar, sessionToolAnswer } from "./testing/sessionScenario.js";
 import { dashboardHtml, viewScript } from "./page.js";
@@ -388,11 +389,13 @@ describe("Feature: the bar in the page", () => {
     expect(w.host.log.tools.filter((t) => t.name === "sc_session_end")).toHaveLength(1);
   });
 
-  it("Given the page, Then the markup rules hold: text only through textContent, nothing written to the browser's storage", () => {
+  it("Given the page, Then the markup rules hold: text only through textContent, no session data in the browser's storage", () => {
     const script = viewScript();
-    expect(script).not.toMatch(
-      /innerHTML|insertAdjacentHTML|localStorage|sessionStorage|indexedDB/,
-    );
+    // The only thing the page remembers is the health strip's "legend read" flag (see viewPage.test.ts); sessions never.
+    expect(script).not.toMatch(/innerHTML|insertAdjacentHTML|sessionStorage|indexedDB/);
+    // The session code does not touch any storage, and is given no way to: its api has no get / set.
+    for (const f of SESSION_VIEW_FUNCTIONS)
+      expect(f.toString(), f.name).not.toMatch(/localStorage|Storage|api\.(get|set)\b/);
     expect(dashboardHtml()).toContain("Session");
   });
 });
