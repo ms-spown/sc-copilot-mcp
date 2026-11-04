@@ -9,7 +9,7 @@ import { dashboardHtml, viewScript } from "./page.js";
 // COARSE GUARD ONLY, the same bound as `npm run check:page-size` (see scripts/check-page-size.mjs for how it was set). This
 // measures the page as vitest transforms the sources; the built page differs by a few hundred bytes. The real budget is
 // `npm run check:page-size`, which measures `dashboardHtml()` from the built dist and runs in CI after the build.
-const BUDGET_BYTES = 392_000;
+const BUDGET_BYTES = 403_000;
 
 describe("Feature: the generated page stays within its size budget", () => {
   it("Given the assembled page, When its size is measured, Then it is under the budget", () => {

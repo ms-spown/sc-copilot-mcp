@@ -322,6 +322,8 @@ export interface WorldOptions {
   /** What the fake host answers to sc_trade_suggest (see fakeHost.ts). */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   suggest?: (args: any) => unknown | Promise<unknown>;
+  /** The hold sizes the fake host lists for {action:"holds"} (see fakeHost.ts). */
+  holds?: unknown[] | (() => unknown[] | Promise<unknown[]>);
   /**
    * The browser's storage: omitted = the window has none (like a sandbox that hides it), "throws" = reaching it throws
    * (an opaque origin), a Map = a working one that the test can read back.
@@ -532,6 +534,7 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     balanceServer: options.balanceServer ?? { hidden: options.balanceHidden !== false },
     balanceToken: token,
     ...(options.suggest ? { suggest: options.suggest } : {}),
+    ...(options.holds ? { holds: options.holds } : {}),
     deliver: (message) => fireMessage(message, parent),
   });
 

@@ -185,10 +185,14 @@ describe("Feature: a click on an objective asks the server and shows the routes"
     expect(first).toContain("Everus Harbor → Seraphim Station");
   });
 
-  it("Given the hold is typed by the player, Then it wins over the ship sheet", async () => {
+  it("Given the hold is typed by the player under 'Autre taille', Then it wins over the ship sheet", async () => {
     const w = await bar();
     await fullscreen(w);
-    await typeInto(w, "Soute (SCU)", "696");
+    const select: any = fieldInput(w, "Soute (SCU)");
+    select.value = "other";
+    for (const fn of select.listeners["change"] ?? []) fn({ target: select });
+    await w.advance(0);
+    await typeInto(w, "Autre taille (SCU)", "696");
     findButton(w.root, "Plus rentable").click();
     await w.advance(100);
     expect(w.host.log.suggests[0]!.cargo_scu).toBe(696);
@@ -203,7 +207,7 @@ describe("Feature: a click on an objective asks the server and shows the routes"
     await fullscreen(w);
     findButton(w.root, "Plus sûre").click();
     await w.advance(100);
-    expect(text(w)).toContain("Indique la taille de ta soute");
+    expect(text(w)).toContain("Je ne connais pas ta soute");
   });
 
   it("Given a loading search, Then a skeleton shows and the result replaces it", async () => {
@@ -556,11 +560,13 @@ describe("Feature: a plan built from the balance does not outlive the balance be
   });
 });
 
-describe("Feature: the hold is sent only when the player typed it", () => {
-  it("Given the ship sheet fills the field, Then it is a prefill: the server names the ship's hold itself", async () => {
+describe("Feature: the flown ship's hold is not sent: the server names it itself", () => {
+  it("Given the ship sheet is the default, Then the list says so and the server names the ship's hold itself", async () => {
     const w = await bar();
     await fullscreen(w);
-    expect(NBSP_FREE(text(w))).toContain("Prérempli depuis la fiche du vaisseau");
+    expect(NBSP_FREE(text(w))).toContain(
+      "Soute du vaisseau en vol (Cutter), d’après sa fiche du wiki",
+    );
     findButton(w.root, "Plus rentable").click();
     await w.advance(100);
     expect(w.host.log.suggests[0]!.cargo_scu).toBeUndefined();

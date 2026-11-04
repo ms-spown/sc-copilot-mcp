@@ -841,10 +841,37 @@ listé seulement quand la télémétrie est activée et que le client affiche de
 Sous « Affiner » (replié) : *Éviter Pyro*, *Zones d'armistice seulement* (l'indicateur d'armistice d'UEX ; inconnu compte
 pour non), *Relevés de joueurs exigés* (`min_reports` 1 : ne garde que les options avec un relevé de joueur à chaque
 bout), *Aller-retour seulement* (masque les chaînes ouvertes A>B>C ; ce n'est pas `max_legs`, qui exige un départ et ne
-rend que des routes aller simple), un budget (un nombre : `250000`, `2,5M`), la soute en SCU (préremplie depuis la fiche
-du vaisseau, avec sa source), un départ (un terminal, une planète ou un système, résolu par le serveur) et *Proposer la
-suite à la fin d'un trajet*. Quand une recherche existe, changer une option la relance seule après un court temps de
-calme ; avant le premier clic, rien n'est demandé.
+rend que des routes aller simple), un budget (un nombre : `250000`, `2,5M`), la soute (une liste, voir ci-dessous), un
+départ (un terminal, une planète ou un système, résolu par le serveur) et *Proposer la suite à la fin d'un trajet*.
+Quand une recherche existe, changer une option la relance seule après un court temps de calme ; avant le premier clic,
+rien n'est demandé.
+
+- **La soute (« Soute (SCU) »).** Une vraie liste, pas un champ vide, avec une valeur déjà choisie : un clic sur un bouton
+  lance donc la recherche tout de suite, sans ouvrir « Affiner ». La valeur par défaut vient de ce que le serveur sait
+  déjà, dans cet ordre, et sa source est toujours écrite sous la liste :
+  1. la **soute du vaisseau piloté** (sa fiche wiki ; elle n'est pas envoyée, le serveur prend celle du vaisseau et le dit) ;
+  2. le **dernier trajet** : le trajet le plus récent du journal de commerce lu (ou des sessions enregistrées), quand il
+     s'est terminé il y a moins de 3 jours (« D'après ton dernier trajet : 696 SCU transportés ») ;
+  3. sinon la taille **la plus utilisée par les trajets de commerce enregistrés** (la plus récente en cas d'égalité),
+     présentée comme une habitude ;
+  4. sinon **la seule soute du fichier de flotte** (`sc_fleet_add`), signalée comme faible (rien ne dit qu'elle sert) ;
+  5. sinon rien : la liste ne contient que « Choisis ta soute… » et « Autre taille… », et l'état le demande.
+
+  La liste propose chaque taille connue une fois : le vaisseau piloté, les trajets récents (« 696 SCU · dernier trajet il y
+  a 2 j », « 120 SCU · 3 trajets, le dernier il y a 5 j ») et les vaisseaux de la flotte (« Nom · 3 200 SCU · dans ta
+  flotte »), puis **Autre taille…**, qui montre un champ numérique avec son étiquette. Ce que le joueur choisit ou saisit
+  l'emporte sur le vaisseau piloté et sur la valeur par défaut, et la note sous les résultats dit d'où vient la soute
+  (« choisie dans ta liste », « d'après ton dernier trajet », « saisie »). Deux choses ne sont PAS affirmées. Les **SCU
+  d'un trajet sont la quantité transportée, pas la capacité** : au mieux elle égale la soute, d'où le mot
+  « transportés » et la mention que la soute peut être plus grande. Et **le journal du jeu ne nomme pas le vaisseau d'un
+  trajet** (la ligne du kiosque ne porte qu'un identifiant d'entité, que ce projet ne garde jamais) : un trajet ne reçoit
+  donc jamais de nom de vaisseau depuis l'historique. Un nom à côté d'une taille a trois sens possibles, et l'étiquette
+  dit lequel : le vaisseau piloté ; un vaisseau du fichier de flotte ; ou « taille du X » quand X est le seul vaisseau
+  auquel UEX donne exactement cette soute (une constatation sur la taille, pas la preuve que X a servi). Il n'y a pas de
+  liste de cargos « typiques » : si rien n'est connu, le joueur choisit « Autre taille… ». Les tailles viennent de
+  l'action `holds` de `sc_trade_suggest`, réservée à la page (trajets de commerce enregistrés, fichier de flotte, liste
+  de vaisseaux d'UEX déjà en cache pour les soutes de la flotte et les noms à taille unique ; aucun calcul de route, aucun
+  créneau du limiteur, aucun montant) ; le choix lui-même reste dans la mémoire de la page.
 
 - **Mesuré, estimé, heuristique.** Les prix sont ceux d'UEX, issus de la communauté ; aujourd'hui presque toutes les
   options portent *estimation UEX · aucun relevé de joueur* (UEX ne compte aucun relevé de joueur pour un prix) : la

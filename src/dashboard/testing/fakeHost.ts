@@ -26,6 +26,11 @@ export interface HostOptions {
    * answers when it settles (to test a slow planner). Default: the invented answer of testing/suggestFixtures.ts.
    */
   suggest?: (args: any) => unknown | Promise<unknown>;
+  /**
+   * The hold sizes `sc_trade_suggest` {action:"holds"} lists (the `holds` array of its answer). Default: none known. Those
+   * calls are logged apart (`holdsCalls`), so `suggests` stays the list of searches, applies and checks.
+   */
+  holds?: unknown[] | (() => unknown[] | Promise<unknown[]>);
   /** The server's balance choice; give the same object to several hosts to play two dashboards of one process. */
   balanceServer?: { hidden: boolean; source?: "click" | "config" };
   /** The token the page was built with: lifting the mask and the one-off need it, as on the server. */
@@ -51,6 +56,8 @@ export interface HostLog {
   marks: string[];
   /** The arguments of every sc_trade_suggest call, in order. */
   suggests: any[];
+  /** How many times the View asked for the known hold sizes (action holds). */
+  holdsCalls: number;
   /** Calls of tools other than the poll and the marker (the session tools), in order. */
   tools: { name: string; args: any }[];
 }
@@ -91,6 +98,7 @@ export function createFakeHost(options: HostOptions) {
     modeRequests: [],
     marks: [],
     suggests: [],
+    holdsCalls: 0,
     tools: [],
   };
   /** The server's runtime balance choice (shared by the Views of one process). Starts shown. */
@@ -219,6 +227,15 @@ export function createFakeHost(options: HostOptions) {
               content: [{ type: "text", text: String(structuredContent["message"]) }],
               structuredContent,
             });
+          } else if (params.name === "sc_trade_suggest" && params.arguments?.action === "holds") {
+            log.holdsCalls++;
+            const known = options.holds ?? [];
+            void Promise.resolve(typeof known === "function" ? known() : known).then((list) =>
+              respond(id, {
+                content: [{ type: "text", text: "trade suggestion: holds" }],
+                structuredContent: { v: 1, state: "holds", holds: list },
+              }),
+            );
           } else if (params.name === "sc_trade_suggest") {
             log.suggests.push(params.arguments ?? {});
             const make = options.suggest ?? ((a: any) => suggestAnswer(a));

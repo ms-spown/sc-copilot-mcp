@@ -24,6 +24,8 @@
 //                 route Port Tressler > Area18 TDD (4 runs), Gold (2 runs, wide spread) and Agricium (8 runs); needs balance=1)
 //                 click=<button label>  (presses it once the page is up, e.g. click=Plus rentable; click=A|B presses A then B, 1.5 s apart)
 //                 refine=1 (opens "Affiner")  card=1 (opens the details of the first card)
+//                 holds=story  (the hold sizes the server would list: a size from saved runs and a fleet ship; use with specs=none
+//                 and trade=story to see the hold default of a player whose game is closed)
 //                 fw=<px>  (width of the frame in full screen, to see a narrow host at 360 px in a window that cannot be that narrow)
 //                 conn=disconnected|menu|closed|online  (the connection read from Game.log)
 //                 sessions=story|empty|off|stale|ended|waiting|readonly|gross|losses|manylosses|none  (the saved play session bar; story
@@ -128,6 +130,15 @@ host = createFakeHost({
   balanceServer: { hidden: q.get("hidden") === "1" }, balanceToken: "previewtoken0123456789abcdef012345",
   theme: $("theme").value,
   deliver,
+  // holds=story: the hold sizes the server would list for a player with a few runs and a fleet ship (invented, no sessions file).
+  ...(q.get("holds") === "story"
+    ? {
+        holds: [
+          { scu: 120, trips: 3, last_at: new Date(Date.now() - 5 * 86400000).toISOString(), ship: null, basis: null },
+          { scu: 3200, trips: 0, last_at: null, ship: "Testco Eps Barge", basis: "flotte" },
+        ],
+      }
+    : {}),
   suggest: (args) => {
     const answer = suggestAnswer(args, { variant: suggestVariant === "slow" ? "ok" : suggestVariant, preflight: preflightVariant });
     return suggestVariant === "slow" ? new Promise((resolve) => setTimeout(() => resolve(answer), 4000)) : answer;

@@ -497,6 +497,24 @@ export class SessionManager {
     };
   }
 
+  /**
+   * The quantity (SCU) and end time of the saved TRADE trips, newest sessions first, for the hold list of the commerce form
+   * (dashboard/holds.ts). Nothing else leaves: no amount, no place, no goods. Empty when sessions are off.
+   */
+  async tradeTripSizes(limit: number): Promise<{ scu: number | null; ended_at: string }[]> {
+    if (!this.enabled) return [];
+    const state = await this.deps.store.read();
+    const out: { scu: number | null; ended_at: string }[] = [];
+    for (const s of [...state.sessions].reverse()) {
+      for (const t of [...s.trips].reverse()) {
+        if (t.kind !== "trade") continue;
+        out.push({ scu: t.scu, ended_at: t.ended_at });
+        if (out.length >= limit) return out;
+      }
+    }
+    return out;
+  }
+
   async stats(last: number | undefined, includeBalance: boolean) {
     this.poke();
     const state = await this.deps.store.read();

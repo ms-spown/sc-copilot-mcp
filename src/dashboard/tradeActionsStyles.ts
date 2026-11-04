@@ -48,6 +48,9 @@ export const TRADE_ACTIONS_CSS = `
 .ta-input { font: inherit; color: var(--sc-text); background: var(--sc-bg); border: 1px solid var(--sc-border); border-radius: var(--r-s); padding: 6px 9px; min-height: 36px; min-width: 0; width: 100%; }
 .ta-input:focus-visible { outline: 2px solid var(--sc-ring); outline-offset: 1px; }
 .ta-input:disabled { opacity: 0.55; }
+.ta-select { text-overflow: ellipsis; cursor: pointer; }
+/* the hold list has a row of its own: its labels (ship, size, source, age) are long */
+.ta-field-other { max-width: 240px; }
 
 /* ---------- status, waiting ---------- */
 .ta-status { margin: 0; font-size: var(--fs-s); color: var(--sc-text2); overflow-wrap: anywhere; }
