@@ -258,6 +258,13 @@ What to know before you switch it on:
   dashboards share one stream of calls: only the most recent visible one polls. Claude Code does not render it and never
   lists its tools. The balance stays hidden in the page until you click. The speed dial is drawn against the ship's own limits (SCM and maximum speed from its Star Citizen Wiki page, found in the background, one search per ship, only when exactly one sheet fits) and says so when it keeps a scale deduced from the speeds seen; the hydrogen tank capacity is not known, so the hydrogen endurance stays an estimate. See
   [TELEMETRY.md](TELEMETRY.md#live-dashboard).
+- **Context shortcuts in that dashboard.** A "Raccourcis" zone reminds you of the actions that fit the moment, from
+  states already in the stream (landing gear out and not landed, on foot, EVA, ground vehicle, powerplant off, quantum
+  mode, hostile lock, shields cut): three in the compact view, six in full screen, the rest behind one button. Only a
+  handful of default keys are shown, labelled "défaut", from public sources and never checked in the game on 4.10; the other
+  actions have no key. It never says the lights are off or that it is dark (the stream cannot tell), and shows nothing
+  without a live stream. A display only: nothing is sent to the game. See
+  [TELEMETRY.md](TELEMETRY.md#context-shortcuts).
 - **A transport ledger in that dashboard.** With the game log enabled (`SC_INSTALL_DIR` or `SC_GAME_LOG_PATH`), a
   panel lists the contracts of the current game session (title, accepted and ended times and, when the log carries them, pickup and drop-off steps
   with place and goods: those lines exist in logs up to spring 2025 and are absent from the build 4.10 logs of the

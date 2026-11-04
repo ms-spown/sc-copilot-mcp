@@ -152,6 +152,16 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
    Markdown et le CSV complets depuis la barre de session du tableau de bord.
 ```
 
+## La zone « Raccourcis » du tableau de bord : ce que Claude doit et ne doit pas dire des touches
+
+Le tableau de bord en direct a une zone « Raccourcis » (voir [TELEMETRY.fr.md](TELEMETRY.fr.md#raccourcis-selon-le-contexte))
+qui rappelle au joueur les actions qui conviennent au moment (train sorti, à pied, verrouillage hostile...). C'est un
+affichage, construit dans la page : Claude n'appelle rien pour elle. Si le joueur interroge Claude sur une touche,
+traitez celles qu'elle montre comme des valeurs par défaut tirées de sources publiques et jamais vérifiées en jeu sur la
+4.10 : dites « la touche par défaut est R, vérifiez dans vos Keybindings », jamais « appuyez sur R ». La page ne sait pas
+si le joueur a changé une touche, s'il fait sombre, ni si les phares sont allumés (le flux ne distingue pas éteint de non
+rapporté) : Claude ne doit pas non plus l'affirmer à partir d'elle.
+
 ## Test canari : les instructions du serveur sont-elles respectées ?
 
 À faire une fois après l'installation et après chaque mise à jour. Ouvrez une NOUVELLE conversation sans projet ni

@@ -6,6 +6,24 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (dashboard)
+- A "Raccourcis" zone under the ship banner: reminders of the actions that fit the moment, chosen from states the stream
+  and Game.log already carry (landing gear out and not landed, on foot, EVA, ground vehicle, powerplant off, quantum mode,
+  hostile lock, shields cut). Three in the compact view (nothing at all when the context is unknown), six in full screen
+  (where an unknown context is said), the rest, the sentence on keys and the "Il fait sombre" button behind one
+  `aria-expanded` button. Nothing contextual without a live stream, with Game.log saying menu, disconnected or closed, or
+  with stale frames. Auto land only with the gear deployed and the ship not landed, worded "si la demande est accordée".
+  It never says the lights are off (`lights_on` cannot tell off from not reported), never reads the HUD preferences as the
+  flight mode, never guesses darkness (the suit light is a low priority "si besoin" on foot and in EVA; the button is
+  kept in the page's memory only), reads no figure and no balance, adds no live region and no storage.
+- Default keys are data (`shortcutsTable()` in `src/dashboard/shortcutsPanel.ts`: version, date, game version, source and
+  a `verified` flag per entry). Only R, B, C, Alt+C, X, H, J and T are shown, labelled "défaut" with a tip to check them in
+  the game's settings; they come from public sources and none was checked in the game on 4.10. Every action whose sources
+  disagree or that no source gives is shown without a key. About 8 kB added to the page (budget unchanged).
+- Tests: the table, one made-up poll per context and the invariants (`shortcuts.test.ts`), the assembled page against the
+  fake host (`shortcuts.page.test.ts`), and a test that no `node:` import reaches the code the browser runs
+  (`browserGraph.test.ts`).
+
 ### Fixed (accessibility of the dashboard)
 - Short readings that were hover-only native tooltips are now reachable without a mouse: in the compact view the age of the
   data ("Données de 0,8 s") and the legend under the speed dial (its scale and source); in both views the clock time of a
