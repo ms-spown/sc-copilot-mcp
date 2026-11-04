@@ -15,6 +15,7 @@ import { startFakeGame } from "../providers/telemetry/testing/fakeServer.js";
 import { createMcpServer } from "../server.js";
 import { allTools, createRegistry, type ToolClients } from "./registry.js";
 import { MAX_RESPONSE_CHARS } from "./telemetry.js";
+import { waitFor } from "../testing/waitFor.js";
 
 /** The size of what sc_live_state and sc_live_events hand to the model (it goes into the conversation). */
 
@@ -162,11 +163,10 @@ describe("Feature: the original attack, end to end", () => {
     });
     cleanup.push(() => telemetry.stop());
     const call = await connect(telemetry);
-    const end = Date.now() + 3000;
-    while ((await call("sc_live_status")).json.data.state !== "connected") {
-      if (Date.now() > end) throw new Error("not connected");
-      await new Promise((r) => setTimeout(r, 10));
-    }
+    await waitFor(
+      async () => (await call("sc_live_status")).json.data.state === "connected",
+      "connected",
+    );
     const entry = Buffer.from([0x22, 0x00]);
     const body = Buffer.alloc(2 * 500_000);
     for (let i = 0; i < 500_000; i++) entry.copy(body, i * 2);
@@ -176,11 +176,10 @@ describe("Feature: the original attack, end to end", () => {
     });
     game.send(lf(4, body), lf(4, ...named));
     let answer = await call("sc_live_state", { sections: ["weapons"] });
-    while (answer.json.data.weapons === undefined) {
-      if (Date.now() > end) throw new Error("no weapons");
-      await new Promise((r) => setTimeout(r, 10));
+    await waitFor(async () => {
       answer = await call("sc_live_state", { sections: ["weapons"] });
-    }
+      return answer.json.data.weapons !== undefined;
+    }, "weapons");
     expect(answer.json.data.weapons.weapons).toHaveLength(64);
     expect(answer.text.length).toBeLessThan(20_000);
   });

@@ -297,15 +297,17 @@ describe("Feature: the lock is robust", () => {
   it("Given a live holder slower than the stale delay, Then it is not robbed: the other change waits and both are saved", async () => {
     let slow = true;
     const a = new SessionStore(file, {
-      lockStaleMs: 300,
+      // The holder touches its lock every quarter of the stale delay. A margin of a few hundred ms is eaten by a
+      // starved event loop, so the delay is long (the test costs the holder's slowness, 2x the delay, in real time).
+      lockStaleMs: 2000,
       beforeRename: async () => {
         if (slow) {
           slow = false;
-          await new Promise((r) => setTimeout(r, 900)); // three times the stale delay
+          await new Promise((r) => setTimeout(r, 4000)); // twice the stale delay
         }
       },
     });
-    const b = new SessionStore(file, { lockStaleMs: 300, lockWaitMs: 5000 });
+    const b = new SessionStore(file, { lockStaleMs: 2000, lockWaitMs: 20_000 });
     const first = a.transact(addTrip(1, "slow"));
     await new Promise((r) => setTimeout(r, 100));
     const second = b.transact(addTrip(1, "waiting"));
@@ -317,7 +319,7 @@ describe("Feature: the lock is robust", () => {
         .sessions[0].trips.map((t) => t.label)
         .sort(),
     ).toEqual(["slow", "waiting"]);
-  }, 15_000);
+  });
 
   it("Given a lock owned by someone else, Then this process never removes it", async () => {
     fs.writeFileSync(`${file}.lock`, "someone-else-token");
@@ -331,10 +333,10 @@ describe("Feature: the lock is robust", () => {
     const old = new Date(Date.now() - 2000);
     fs.utimesSync(`${file}.lock`, old, old);
     const store = new SessionStore(file, { lockStaleMs: 600, lockWaitMs: 5000 });
-    const t0 = Date.now();
     const r = await store.transact(addTrip(1, "x"));
     expect(r.written).toBe(true);
-    expect(Date.now() - t0).toBeLessThan(2000);
+    // Not "it was quick": it took the dead lock over instead of waiting for the 5 s limit and failing.
+    expect(store.lockTakeovers).toBe(1);
   });
 
   it("Given the default delays, Then the wait is longer than the stale delay (a crash never fails a change)", () => {

@@ -3,6 +3,7 @@ import { createTelemetry } from "./index.js";
 import { MAX_BALANCE_POINTS, TelemetryService } from "./service.js";
 import { actorField, frame, vehicleField } from "./testing/encode.js";
 import { startFakeGame, type FakeGame } from "./testing/fakeServer.js";
+import { waitFor } from "../../testing/waitFor.js";
 
 /**
  * The balance history that the transport ledger reads: one point per change, the last confirmation moved by frames
@@ -26,16 +27,7 @@ async function setup() {
   });
   cleanup.push(() => service.stop());
   service.ensureStarted();
-  const waitFor = async (check: () => boolean, what: string) => {
-    const end = Date.now() + 3000;
-    while (Date.now() < end) {
-      if (check()) return;
-      await new Promise((r) => setTimeout(r, 5));
-    }
-    throw new Error(`timed out: ${what}`);
-  };
   await waitFor(() => game.connections() > 0, "connection");
-  await new Promise((r) => setTimeout(r, 50));
   const send = async (uec: number | bigint, at: number) => {
     clock.now = at;
     const before = service.snapshot()?.received_at;

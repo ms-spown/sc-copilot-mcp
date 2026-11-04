@@ -12,6 +12,7 @@ import { startFakeGame } from "../telemetry/testing/fakeServer.js";
 import { createGameRunning, SessionManager } from "./manager.js";
 import { SessionStore } from "./store.js";
 import type { TripInput } from "./types.js";
+import { waitFor } from "../../testing/waitFor.js";
 
 /**
  * Feature (audit): nothing connects or is written when it should not; the last trip is not lost; a write that fails is
@@ -86,6 +87,8 @@ describe("Feature: with telemetry on, the server connects only when the game is 
   it("Given the game runs with the registration line (control), Then the reader connects", async () => {
     const { game, tickFor } = await rig(async () => ({ running: true, telemetryRegistered: true }));
     await tickFor(4);
+    // The connection is made by the reader on its own timers and a real socket: wait for it, do not guess how long.
+    await waitFor(() => game.connections() > 0, "the reader connects");
     expect(game.connections()).toBeGreaterThan(0);
   });
 });

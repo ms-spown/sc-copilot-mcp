@@ -9,6 +9,7 @@ import { TelemetryService } from "./service.js";
 import { actorField, cat, frame, grpcMessage, lf, vehicleField, vf } from "./testing/encode.js";
 import { startFakeGame, type FakeGame } from "./testing/fakeServer.js";
 import { WireError } from "./wire.js";
+import { waitFor } from "../../testing/waitFor.js";
 
 /**
  * Bounds against a local program that pretends to be the game on 127.0.0.1:2942. Everything here is built with the
@@ -16,15 +17,6 @@ import { WireError } from "./wire.js";
  */
 
 const FAST = { retryMs: [20, 20, 40], connectTimeoutMs: 500 };
-
-async function waitFor(check: () => boolean | Promise<boolean>, what: string, ms = 5000) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    if (await check()) return;
-    await new Promise((r) => setTimeout(r, 5));
-  }
-  throw new Error(`timed out waiting for: ${what}`);
-}
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -51,15 +43,17 @@ const weaponEntry = (name: string) =>
 const speedFrame = (speed: number) => frame(vehicleField({ speed, altitude: 1000 }));
 
 describe("Feature: repeated fields are capped", () => {
-  it("Given 500 000 empty weapons in a 1 MiB frame (under the message limit), Then it is refused fast with a WireError", () => {
+  it("Given 500 000 empty weapons in a 1 MiB frame (under the message limit), Then it is refused at the field budget with a WireError", () => {
     const entry = Buffer.from([0x22, 0x00]); // WeaponsFrame.weapons (4), empty
     const body = Buffer.alloc(entry.length * 500_000);
     for (let i = 0; i < 500_000; i++) entry.copy(body, i * 2);
     const message = lf(4, body);
     expect(message.length).toBeLessThanOrEqual(MAX_MESSAGE_BYTES);
-    const started = Date.now();
+    // "Fast" is a property of the code, not of the clock: the decoder reads fields lazily and stops at the budget
+    // (5000), it does not walk the 500 000 entries first. The message names the budget, so a decoder that read
+    // them all and failed for another reason would not pass.
     expect(() => decodeFrame(message)).toThrow(WireError);
-    expect(Date.now() - started).toBeLessThan(500);
+    expect(() => decodeFrame(message)).toThrow(/more than 5000 fields/);
   });
 
   it("Given 200 weapons, 40 countermeasures and 100 game events in one frame, Then 64, 16 and 32 are kept and the surplus is noted", () => {
@@ -151,17 +145,33 @@ describe("Feature: the message size limit stays", () => {
   });
 });
 
+/**
+ * Counts the bytes Buffer.concat produces from now on (restored by afterEach through vi.restoreAllMocks). This is the
+ * deterministic form of "the framer is not quadratic": a number of bytes copied, which a loaded CPU cannot change.
+ */
+function copiedBytes(): () => number {
+  let total = 0;
+  const real = Buffer.concat.bind(Buffer);
+  vi.spyOn(Buffer, "concat").mockImplementation(((...args: Parameters<typeof Buffer.concat>) => {
+    const out = real(...args);
+    total += out.length;
+    return out;
+  }) as typeof Buffer.concat);
+  return () => total;
+}
+
 describe("Feature: the framer does not copy everything buffered for each chunk", () => {
-  it("Given one 100 000-byte message arriving one byte at a time, Then it comes out intact in under a second", () => {
+  it("Given one 100 000-byte message arriving one byte at a time, Then it comes out intact, each byte copied a bounded number of times", () => {
     const body = Buffer.alloc(99_995);
     for (let i = 0; i < body.length; i++) body[i] = i % 251;
     const wire = grpcMessage(body);
     expect(wire.length).toBe(100_000);
     const framer = new MessageFramer();
-    const started = Date.now();
+    const copied = copiedBytes();
     const out: Buffer[] = [];
     for (let i = 0; i < wire.length; i++) out.push(...framer.push(wire.subarray(i, i + 1)));
-    expect(Date.now() - started).toBeLessThan(1000);
+    // No clock: "cheap" means every byte is copied a bounded number of times, not once per later chunk.
+    expect(copied()).toBeLessThanOrEqual(2 * wire.length);
     expect(out).toHaveLength(1);
     expect(out[0]!.equals(body)).toBe(true);
   });
@@ -170,12 +180,13 @@ describe("Feature: the framer does not copy everything buffered for each chunk",
     const header = Buffer.alloc(5);
     header.writeUInt32BE(900_000, 1); // allowed, never completed
     const framer = new MessageFramer();
-    const started = Date.now();
+    const copied = copiedBytes();
     expect(framer.push(header)).toEqual([]);
     let emitted = 0;
     for (let i = 0; i < 300_000; i++) emitted += framer.push(Buffer.from([7])).length;
     expect(emitted).toBe(0);
-    expect(Date.now() - started).toBeLessThan(1000);
+    // Quadratic copying would move billions of bytes here (every chunk re-copying what is buffered).
+    expect(copied()).toBeLessThanOrEqual(2 * 300_005);
   });
 
   it("Given 60 messages of random sizes cut into random chunks, Then the same messages come out in order", () => {

@@ -72,7 +72,9 @@ describe("Feature: a line the game repeats does not pile up in memory", () => {
     const state = service.state();
     expect(state.contracts).toHaveLength(1);
     expect(state.contracts[0]).toMatchObject({ title: "Long Job", stepsTotal: 2 });
-  });
+    // 400 rounds of real file appends and reads: about half a second on an idle machine, and real I/O is the point,
+    // so on a loaded one it is given room (a hang detector, not a speed claim).
+  }, 120_000);
 });
 
 describe("Feature: a jump of the file is not read in one go", () => {

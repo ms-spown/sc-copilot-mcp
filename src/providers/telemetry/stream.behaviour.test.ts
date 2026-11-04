@@ -3,7 +3,7 @@ import net from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTelemetry } from "./index.js";
 import { GrpcStreamReader, MessageFramer, type ReaderState } from "./reader.js";
-import { TelemetryService } from "./service.js";
+import { FIRST_OUTCOME_WAIT_MS, TelemetryService } from "./service.js";
 import {
   actorField,
   frame,
@@ -14,24 +14,39 @@ import {
   vf,
   weaponsField,
 } from "./testing/encode.js";
-import { startFakeGame, type FakeGame, type FakeMode } from "./testing/fakeServer.js";
+import { startFakeGame, UNUSED_PORT, type FakeGame, type FakeMode } from "./testing/fakeServer.js";
+import { waitFor } from "../../testing/waitFor.js";
 
 const FAST = { retryMs: [20, 20, 40], connectTimeoutMs: 500 };
 
-async function waitFor(check: () => boolean | Promise<boolean>, what: string, ms = 3000) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    if (await check()) return;
-    await new Promise((r) => setTimeout(r, 10));
-  }
-  throw new Error(`timed out waiting for: ${what}`);
+/** A clock the test moves by hand: the service reads it for frame ages, the live window and event timestamps. */
+function manualClock(start = 1_000_000) {
+  const clock = { t: start, now: () => clock.t };
+  return clock;
+}
+
+/** Resolves once the service has counted `n` more frames than it had: frames arrive on a real socket, so say when. */
+async function framesCounted(s: TelemetryService, n: number, send: () => void) {
+  const before = (await s.status(false)).frames_received;
+  send();
+  await waitFor(async () => (await s.status(false)).frames_received >= before + n, `${n} frames`);
 }
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
+  vi.useRealTimers();
   while (cleanup.length) await cleanup.pop()!();
   vi.restoreAllMocks();
 });
+
+/**
+ * Freezes the timers (setTimeout and friends) and nothing else: the sockets are real and keep running. A test that
+ * must prove "this call does not wait for a timer" uses it: if the code under test needed a timer to expire, the test
+ * would never finish. Replaces assertions of the form "it took less than X ms", which a loaded machine breaks.
+ */
+function freezeTimers() {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+}
 
 async function game(mode: FakeMode = "stream", port = 0): Promise<FakeGame> {
   const g = await startFakeGame(mode, port);
@@ -94,7 +109,8 @@ describe("Feature: reading the stream from the game", () => {
   describe("Scenario: the game is running with telemetry", () => {
     it("Given frames from the game, Then the state goes connected -> live and the values arrive", async () => {
       const g = await game();
-      const s = service(g);
+      const clock = manualClock();
+      const s = service(g, { now: clock.now });
       expect((await s.status()).state).not.toBe("live");
       await waitFor(() => g.requestBodies.length === 1 || g.connections() > 0, "connection");
       await waitFor(async () => (await s.status()).state === "connected", "connected");
@@ -103,7 +119,9 @@ describe("Feature: reading the stream from the game", () => {
       const snap = s.snapshot()!;
       expect(snap.state.ship?.instruments?.speed_ms).toBeCloseTo(250);
       expect(snap.state.pilot?.uec_balance).toBe(5000);
-      expect(snap.frame_age_ms).toBeLessThan(2000);
+      expect(snap.frame_age_ms).toBe(0); // the clock has not moved since the frame arrived
+      clock.t += 1500;
+      expect(s.snapshot()!.frame_age_ms).toBe(1500); // the age is the clock's distance from the frame
     });
 
     it("Given the request the reader sent, Then it was the empty message and nothing more", async () => {
@@ -130,32 +148,34 @@ describe("Feature: reading the stream from the game", () => {
 
     it("Given the stream silent for longer than the live window, Then the state is 'connected' again and the age grows", async () => {
       const g = await game();
-      const s = service(g, { liveWindowMs: 60 });
+      const clock = manualClock();
+      const s = service(g, { liveWindowMs: 60, now: clock.now });
       s.ensureStarted();
       await waitFor(async () => (await s.status()).state === "connected", "connected");
       g.send(aFrame());
       await waitFor(async () => (await s.status()).state === "live", "live");
-      await new Promise((r) => setTimeout(r, 120));
+      clock.t += 120; // more than the 60 ms window, on the manual clock: no real waiting, no race with a slow machine
       const status = await s.status();
       expect(status.state).toBe("connected");
-      expect(status.last_frame_age_ms).toBeGreaterThanOrEqual(60);
+      expect(status.last_frame_age_ms).toBe(120);
     });
 
     it("Given many frames, Then events accumulate in memory and can be read from a cursor", async () => {
       const g = await game();
-      const s = service(g);
+      const clock = manualClock();
+      const s = service(g, { now: clock.now });
       s.ensureStarted();
       await waitFor(async () => (await s.status()).state === "connected", "connected");
-      g.send(frame(vehicleField({ landed: true, altitude: 5 })));
-      await new Promise((r) => setTimeout(r, 30));
-      g.send(frame(vehicleField({ landed: true, altitude: 5 })));
+      const landed = frame(vehicleField({ landed: true, altitude: 5 }));
+      await framesCounted(s, 1, () => g.send(landed));
+      clock.t += 30;
+      await framesCounted(s, 1, () => g.send(landed));
       await waitFor(() => s.snapshot() !== null, "first frames");
-      // took off: landed flag dropped for more than the 1 s hold
-      const t0 = Date.now();
-      g.send(frame(vehicleField({ altitude: 5 })));
-      await waitFor(() => Date.now() - t0 > 1100, "hold time", 2000).catch(() => undefined);
-      await new Promise((r) => setTimeout(r, 1100));
-      g.send(frame(vehicleField({ altitude: 5 })));
+      // took off: landed flag dropped for more than the 1 s hold (on the manual clock, no real sleep)
+      const airborne = frame(vehicleField({ altitude: 5 }));
+      await framesCounted(s, 1, () => g.send(airborne));
+      clock.t += 1100;
+      await framesCounted(s, 1, () => g.send(airborne));
       await waitFor(() => s.recentEvents().events.some((e) => e.type === "took_off"), "took_off");
       const first = s.recentEvents();
       expect(s.recentEvents(first.last_seq).events).toEqual([]);
@@ -185,9 +205,7 @@ describe("Feature: reading the stream from the game", () => {
 
   describe("Scenario: nobody is listening", () => {
     it("Given nothing on the port, Then the state is 'waiting' and the process is not kept alive by it", async () => {
-      const g = await game();
-      const port = g.port;
-      await g.close();
+      const port = UNUSED_PORT;
       const s = new TelemetryService({
         endpointForTests: { host: "127.0.0.1", port },
         reader: FAST,
@@ -200,9 +218,7 @@ describe("Feature: reading the stream from the game", () => {
     });
 
     it("Given a game that runs without the telemetry line in its log, Then the state is 'game_without_telemetry'", async () => {
-      const g = await game();
-      const port = g.port;
-      await g.close();
+      const port = UNUSED_PORT;
       const s = new TelemetryService({
         endpointForTests: { host: "127.0.0.1", port },
         reader: FAST,
@@ -213,9 +229,7 @@ describe("Feature: reading the stream from the game", () => {
     });
 
     it("Given a running game whose log has the telemetry line but no port answers yet, Then it is simply 'waiting'", async () => {
-      const g = await game();
-      const port = g.port;
-      await g.close();
+      const port = UNUSED_PORT;
       const s = new TelemetryService({
         endpointForTests: { host: "127.0.0.1", port },
         reader: FAST,
@@ -244,10 +258,13 @@ describe("Feature: reading the stream from the game", () => {
 
     it("Given UNAVAILABLE (14), Then it is just 'waiting', not incompatible", async () => {
       const g = await game("unavailable");
-      const s = service(g);
-      s.ensureStarted();
-      await new Promise((r) => setTimeout(r, 100));
-      expect((await s.status()).state).toBe("waiting");
+      // A long retry delay: after the refusal the reader sleeps, so the state stays put once it is "waiting" (with a
+      // short delay it flaps connected/waiting at every attempt and a sample proves nothing).
+      const s = service(g, { reader: { ...FAST, retryMs: [60_000] } });
+      await s.status(true); // the first outcome: connected or already refused
+      await waitFor(async () => (await s.status(false)).state === "waiting", "waiting");
+      expect(g.connections()).toBe(1);
+      expect((await s.status(false)).state).toBe("waiting"); // and not "incompatible", whatever the next sample
     });
 
     it("Given frames whose known fields arrive in the wrong wire type five times in a row, Then the state is 'incompatible'", async () => {
@@ -333,15 +350,15 @@ describe("Feature: reading the stream from the game", () => {
       const s = service(g, { idleMs: 80 });
       s.ensureStarted();
       await waitFor(() => g.connections() === 1, "first connection");
-      await new Promise((r) => setTimeout(r, 300));
-      const before = g.connections();
+      // The idle timer stops the reader, which closes its connection: wait for that, however late the timer fires.
+      await waitFor(() => g.closedConnections() === 1, "the reader stopped on its own");
       await new Promise((r) => setTimeout(r, 120));
-      expect(g.connections()).toBe(before); // stopped: no more attempts
+      expect(g.connections()).toBe(1); // stopped: no more attempts
       s.ensureStarted();
-      await waitFor(() => g.connections() > before, "restart");
+      await waitFor(() => g.connections() > 1, "restart");
     });
 
-    it("Given stop() while connected and silent (menus), Then it returns promptly", async () => {
+    it("Given stop() while connected and silent (menus), Then it returns without waiting for any timer", async () => {
       const g = await game();
       const reader = new GrpcStreamReader(
         { onMessage: () => undefined, onState: () => undefined },
@@ -350,9 +367,9 @@ describe("Feature: reading the stream from the game", () => {
       );
       reader.start();
       await waitFor(() => g.requestBodies.length === 1, "request");
-      const started = Date.now();
+      // Frozen timers: stop() has to end the open call by itself, not by waiting for a timer to expire.
+      freezeTimers();
       await reader.stop();
-      expect(Date.now() - started).toBeLessThan(1000);
       expect(reader.running).toBe(false);
     });
 
@@ -405,18 +422,16 @@ describe("Feature: an honest first answer", () => {
     });
 
     it("Given nothing on the port, When the first status(true) is asked, Then it waits for the failed attempt and only then says waiting, with a cause that does not claim the game is off", async () => {
-      const g = await game();
-      const port = g.port;
-      await g.close();
+      const port = UNUSED_PORT;
       const s = new TelemetryService({
         endpointForTests: { host: "127.0.0.1", port },
         reader: FAST,
       });
       cleanup.push(() => s.stop());
-      const started = Date.now();
+      // Frozen timers: the answer has to come from the refused connection, not from the 1.5 s first-outcome timeout.
+      freezeTimers();
       const first = await s.status(true);
       expect(first.state).toBe("waiting");
-      expect(Date.now() - started).toBeLessThan(1600);
       expect(first.cause).toMatch(/cannot tell whether the game is running/);
       expect(first.cause).not.toMatch(/not running|nothing answers/i);
     });
@@ -424,10 +439,10 @@ describe("Feature: an honest first answer", () => {
     it("Given a peek (status(false)), Then it neither starts the reader nor waits", async () => {
       const g = await game();
       const s = service(g);
-      const started = Date.now();
+      freezeTimers(); // a peek that waited for anything would never come back
       const peek = await s.status(false);
-      expect(Date.now() - started).toBeLessThan(50);
       expect(peek.state).toBe("waiting");
+      vi.useRealTimers();
       await new Promise((r) => setTimeout(r, 50));
       expect(g.connections()).toBe(0);
     });
@@ -452,16 +467,17 @@ describe("Feature: an honest first answer", () => {
         reader: { retryMs: [20], connectTimeoutMs: 5000 },
       });
       cleanup.push(() => s.stop());
-      const started = Date.now();
-      const first = await s.status(true);
-      expect(Date.now() - started).toBeLessThan(2500);
+      // The server never answers and the connect timeout is 5 s. The first status must still come back after the
+      // first-outcome wait (1.5 s) and no later: move a frozen clock by exactly that.
+      freezeTimers();
+      const pending = s.status(true);
+      await vi.advanceTimersByTimeAsync(FIRST_OUTCOME_WAIT_MS);
+      const first = await pending;
       expect(first.state).toBe("waiting");
     });
 
     it("Given the game log says the game runs with the telemetry line but no port answers, Then the cause says so and stays waiting", async () => {
-      const g = await game();
-      const port = g.port;
-      await g.close();
+      const port = UNUSED_PORT;
       const s = new TelemetryService({
         endpointForTests: { host: "127.0.0.1", port },
         reader: FAST,
@@ -540,10 +556,13 @@ describe("Feature: an honest first answer", () => {
       });
       cleanup.push(() => s.stop());
       await s.status(true);
-      await new Promise((r) => setTimeout(r, 300));
-      expect((await s.status(false)).state).toBe("waiting");
-      // 30 ms first, then 400 ms: at most 3 attempts in 300 ms. A reset to the short delay would give about 10.
-      expect(g.connections()).toBeLessThanOrEqual(3);
+      await waitFor(() => g.connections() >= 3, "third attempt");
+      // 30 ms before the second attempt, then 400 ms before the third. A timer never fires early, so a lower bound
+      // on the gap holds on a loaded machine; a reset to the short delay would give 30 ms again.
+      const [first, second, third] = g.connectionTimes as [number, number, number];
+      expect(third - second).toBeGreaterThanOrEqual(250);
+      expect(third - second).toBeGreaterThan(second - first);
+      expect((await s.status(false)).state).not.toBe("incompatible");
     });
   });
 });
@@ -662,9 +681,10 @@ describe("Feature: robustness of the connection", () => {
       { retryMs: [80, 5000], connectTimeoutMs: 500 },
     );
     reader.start();
-    await waitFor(() => attempts.length >= 2, "second attempt", 2500);
+    // The second delay is 5 s: an attempt inside 4.5 s came after the FIRST delay (80 ms), however slow the machine.
+    await waitFor(() => attempts.length >= 2, "second attempt", 4500);
     await reader.stop();
-    expect(attempts[1]! - attempts[0]!).toBeLessThan(2000);
+    expect(attempts[1]! - attempts[0]!).toBeLessThan(4500);
   });
 
   it("Given a restart right after stop(), Then the old reader's late 'stopped' does not overwrite the new state", async () => {
