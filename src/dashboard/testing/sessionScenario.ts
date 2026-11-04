@@ -7,7 +7,8 @@
  * Money follows the dashboard's rule: a fixture built with `includeBalance` false carries `money: "withheld"`.
  */
 
-export type SessionVariant = "story" | "empty" | "off" | "stale" | "ended" | "readonly" | "gross";
+export type SessionVariant =
+  "story" | "empty" | "off" | "stale" | "ended" | "readonly" | "gross" | "losses" | "manylosses";
 
 const HOUR = 3_600_000;
 const MIN = 60_000;
@@ -25,7 +26,12 @@ interface Fixture {
   interruptions?: number;
   gross?: number | null;
   quality?: string;
+  /** Ships destroyed with the player aboard during the session (invented: a model, a cause, the SCU presumed lost). */
+  shipLosses?: number;
 }
+
+/** What the server paid, in the story, for the cargo lost with a ship (invented). */
+export const LOST_CARGO_PAID = 137_911;
 
 const BASE: Fixture[] = [
   {
@@ -89,6 +95,7 @@ function money(f: Fixture, gross = false) {
       f.trips > 3
         ? { planned_auec: 100_000, measured_auec: 84_000, efficiency: 0.84, trips: 1 }
         : null,
+    lost_cargo_paid_auec: f.shipLosses ? LOST_CARGO_PAID : null,
   };
 }
 
@@ -119,6 +126,15 @@ export function sessionSummary(f: Fixture, now: number, includeBalance: boolean,
     last_location: "Port Tressler",
     last_commodity: "Waste",
     note: "",
+    ship_losses: Array.from({ length: f.shipLosses ?? 0 }, (_, i) => ({
+      at: new Date(now - (i + 1) * 5 * MIN).toISOString(),
+      ship_class: "MISC_Freelancer",
+      cause: "collision",
+      causer: "unknown",
+      zone: "OOC_Stanton_3a_Lyria",
+      cargo_scu: 100 * (i + 1),
+    })).reverse(),
+    ship_losses_count: f.shipLosses ?? 0,
     money: includeBalance ? money(f, gross) : "withheld",
   };
 }
@@ -192,6 +208,24 @@ export function sessionBar(
         true,
       ),
       stale: false,
+    };
+  if (variant === "losses" || variant === "manylosses")
+    // A resumed session (1 interruption) whose start balance is not the game's, a store notice, and ships lost: every note at once.
+    return {
+      ...base,
+      status: "degraded",
+      notice: "Sessions could not be saved: the folder is read-only.",
+      current: sessionSummary(
+        {
+          ...CURRENT,
+          interruptions: 1,
+          quality: "late",
+          shipLosses: variant === "losses" ? 3 : 5,
+        },
+        nowMs,
+        includeBalance,
+      ),
+      stale: true,
     };
   return {
     ...base,

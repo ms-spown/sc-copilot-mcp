@@ -114,6 +114,8 @@ export interface SessionSummary {
    * presumed lost: no amount (the aUEC paid is `money.lost_cargo_paid_auec`) and no identifier of any kind.
    */
   ship_losses: ShipLossSummary[];
+  /** How many ships were lost in all (a View lists only the newest few). */
+  ship_losses_count: number;
   note: string;
   money: SessionMoney;
 }
@@ -232,6 +234,7 @@ export function summarizeSession(s: Session): SessionSummary {
       zone: l.zone,
       cargo_scu: l.cargo_scu,
     })),
+    ship_losses_count: (s.ship_losses ?? []).length,
     note: s.note,
     money: {
       lost_cargo_paid_auec: (() => {

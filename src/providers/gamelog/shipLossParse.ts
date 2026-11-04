@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { ShipCause, ShipCauser, ShipRecord } from "./shipLoss.js";
 
 /**
@@ -20,14 +19,41 @@ import type { ShipCause, ShipCauser, ShipRecord } from "./shipLoss.js";
  * Cheap on purpose: every pattern is behind a plain substring test, the dashboard re-reads the log every few seconds.
  */
 
-/** A short, stable pseudonym of an entity id (12 hex). Not a secret: the id is a game-internal number, not an account. */
-export function entityRef(id: string): string {
-  return createHash("sha256").update(`sc-copilot|ship|${id}`).digest("hex").slice(0, 12);
+/** 32-bit FNV-1a over the UTF-16 code units of `text`, from `seed`. Pure JS: this module is loaded by the browser preview too. */
+function fnv1a(text: string, seed: number): number {
+  let h = seed >>> 0;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
 }
 
-const CLASS = /^[A-Za-z][A-Za-z0-9_]{1,59}$/;
-/** A place token: letters, digits, underscore, dot, dash; never a run of 5+ digits (that would be an entity id). */
-const PLACE = /^(?!.*\d{5})[A-Za-z][A-Za-z0-9]*(?:[_-][A-Za-z0-9]+){0,9}$/;
+const hex8 = (n: number) => n.toString(16).padStart(8, "0");
+
+/**
+ * A short, stable pseudonym of an entity id (12 hex, two FNV-1a hashes with different seeds). It only has to tell one ship
+ * from another in memory; it is not a secret (the id is a game-internal number, not an account) and it is never stored.
+ */
+export function entityRef(id: string): string {
+  const text = `sc-copilot|ship|${id}`;
+  return (hex8(fnv1a(text, 0x811c9dc5)) + hex8(fnv1a(text, 0x9747b28c))).slice(0, 12);
+}
+
+/**
+ * A ship model: the maker's code of a vehicle the game ships ("DRAK_Dragonfly", "CRUS_Starlifter_C2", "RSI_Zeus_CL"), then up to
+ * four name segments. A class that starts with anything else (a player's name, a custom entity) is not kept: the model is
+ * then unknown. A list of PREFIXES, not of models: a new ship of a known maker is accepted.
+ */
+const CLASS =
+  /^(?:AEGS|ANVL|AOPOA|ARGO|BANU|BEHR|CNOU|CRUS|CULL|DRAK|ESPR|GAMA|GRIN|GREY|KLWE|KRIG|MIRA|MISC|MRAI|ORIG|RSI|SHIN|TMBL|TALN|VNCL|XIAN|XNAA)(?:_[A-Za-z0-9]{1,24}){1,4}$/;
+/**
+ * A place token: the game's own families of place names seen in its logs (an "OOC_" body, a jump point, a star system or a
+ * body, a station or a mission segment), then the usual segments. NOT a list of places: a token that begins otherwise
+ * ("Hangar_<a name>", "Apartment_<a name>_Home") is dropped, because a place named after a player must not be kept.
+ */
+const PLACE =
+  /^(?!.*\d{5})(?:OOC|jumppoint|stanton\d*|pyro\d*|nyx\d*|terra\d*|levski|keeger|rs|pu|P\d|ARC|CRU|HUR|MIC|lagrange|aberdeen|arial|daymar|yela|cellin|calliope|clio|euterpe|lyria|wala|magda|ita|microtech|hurston|crusader|orison|lorville|area18|newbabbage|ruin)(?:[_-][A-Za-z0-9]+){0,9}$/i;
 /** The game's own lines are short (a few hundred characters); a longer one is not read at all (bounded work per line). */
 export const SHIP_LINE_MAX_CHARS = 4096;
 const SUFFIX = /^(.*?)_(\d{6,20})$/;

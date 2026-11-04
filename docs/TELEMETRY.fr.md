@@ -883,9 +883,13 @@ donnée comme cause que si un `FatalCollision ... PlayerPilot: 1` du même vaiss
 perdue, l'assurance et le responsable ne sont pas dans le journal et s'affichent « non journalisés » ; et la chaîne
 achat, vaisseau, destruction n'est vérifiée que sur des journaux de 2025 (aucune session 4.10 n'a un achat suivi d'une
 perte). Les enregistrements contiennent une heure, un modèle de vaisseau, un code de cause, un type de
-responsable, un lieu : ni nom, ni pseudo, ni GUID, ni identifiant brut. Une courte empreinte de l'identifiant du vaisseau
+responsable, un lieu : ni nom, ni pseudo, ni GUID, ni identifiant brut. Le modèle n'est gardé que s'il commence par un code
+de constructeur connu (AEGS, DRAK, MISC, RSI ...), et le lieu que s'il commence par une famille connue de noms de lieux du
+jeu (un corps « OOC_ », un point de saut, un système stellaire ou un corps ...) : ce sont des filtres sur la FORME du texte,
+pas une liste de lieux ; tout le reste (« Hangar_ » suivi d'un nom, une entité personnalisée) s'affiche « modèle inconnu » ou
+est omis. Une courte empreinte de l'identifiant du vaisseau
 relie un achat à son vaisseau, en mémoire seulement : elle n'est jamais écrite, envoyée à une View ni exportée. Les SCU
-partent avec ou sans le solde (`trade.ship_losses`, les 3 plus récents, aussi sur le canal entre Views) ; les aUEC payés
+partent avec ou sans le solde (`trade.ship_losses` : le serveur envoie les 5 plus récents, la View garde les 3 plus récents ; aussi sur le canal entre Views) ; les aUEC payés
 viennent du solde et sont retenus sans lui. La session garde `ship_losses` (additif, optionnel, le fichier reste en
 version 2) : seulement l'heure, le modèle, la cause, le type de responsable, le lieu et le cargo présumé perdu ; le bilan les liste.
 

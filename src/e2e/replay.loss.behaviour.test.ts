@@ -28,9 +28,9 @@ const character = (ms: number) =>
 const kiosk = (ms: number) =>
   `${stamp(ms)} [Notice] <CEntityComponentCommodityUIProvider::LoadSelectedShipBindings> Sending VehicleCargoDataRequest for vehicleEntityId[${SHIP}] [Team_CoreGameplayFeatures][Shops][UI]`;
 const crash = (ms: number) =>
-  `${stamp(ms)} [Notice] <FatalCollision> Fatal Collision occured for vehicle TEST_Hauler_${SHIP} [Part: Nose, Pos: x: 1.5, y: 2.5, z: 3.5, Zone: test_zone_001, PlayerPilot: 1] after hitting entity: Rock_${HANDLE}`;
+  `${stamp(ms)} [Notice] <FatalCollision> Fatal Collision occured for vehicle MISC_Freelancer_${SHIP} [Part: Nose, Pos: x: 1.5, y: 2.5, z: 3.5, Zone: OOC_Stanton_3a_Lyria, PlayerPilot: 1] after hitting entity: Rock_${HANDLE}`;
 const dead = (ms: number) =>
-  `${stamp(ms)} [Notice] <[ActorState] Dead> [ACTOR STATE][CSCActorControlStateDead::PrePhysicsUpdate] Actor '${HANDLE}' [${ME}] ejected from zone 'TEST_Hauler_${SHIP}' [${SHIP}] to zone 'test_zone_001' [820000000002] due to previous zone being in a destroyed vehicle with detached interior. [Team_ActorFeatures][Actor]`;
+  `${stamp(ms)} [Notice] <[ActorState] Dead> [ACTOR STATE][CSCActorControlStateDead::PrePhysicsUpdate] Actor '${HANDLE}' [${ME}] ejected from zone 'MISC_Freelancer_${SHIP}' [${SHIP}] to zone 'OOC_Stanton_3a_Lyria' [820000000002] due to previous zone being in a destroyed vehicle with detached interior. [Team_ActorFeatures][Actor]`;
 
 describe("Feature: a ship destroyed with cargo bought for it", () => {
   it("Scenario: the loss shows on the card and the session, once, and its price never leaves without the balance", async () => {
@@ -47,10 +47,10 @@ describe("Feature: a ship destroyed with cargo bought for it", () => {
     const withB = await w.poll(true);
     const loss = withB.ledger.trade.ship_losses[0];
     expect(loss).toMatchObject({
-      ship_class: "TEST_Hauler",
+      ship_class: "MISC_Freelancer",
       cause: "collision",
       causer: "unknown",
-      zone: "test_zone_001",
+      zone: "OOC_Stanton_3a_Lyria",
       cargo_scu: 100,
       paid_auec: PAID,
     });
@@ -70,7 +70,7 @@ describe("Feature: a ship destroyed with cargo bought for it", () => {
       cargo_scu: 100,
       cargo_paid_auec: PAID,
       cause: "collision",
-      ship_class: "TEST_Hauler",
+      ship_class: "MISC_Freelancer",
     });
     // only what the file may keep: no key derived from the ship's identifier, no count of purchases
     expect(Object.keys(file.sessions[0]!.ship_losses[0]!).sort()).toEqual(

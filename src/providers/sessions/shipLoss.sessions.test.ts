@@ -18,6 +18,7 @@ import { buildDebrief } from "./debrief.js";
 import { session } from "./fixtures.testing.js";
 import { latest, observe, type Observation, type ReduceConfig } from "./reducer.js";
 import { summarizeSession, withoutMoney } from "./stats.js";
+import { parseState } from "./store.js";
 import { emptyState, SessionSchema, MAX_SHIP_LOSSES, type ShipLossInput } from "./types.js";
 import { TradeRunTripSource } from "./trips.js";
 
@@ -46,10 +47,10 @@ const obs = (over: Partial<Observation> & { now: number }): Observation => ({
 });
 const loss = (over: Partial<ShipLossInput> = {}): ShipLossInput => ({
   at: new Date(T0 + 5 * MIN).toISOString(),
-  ship_class: "TEST_Hauler",
+  ship_class: "MISC_Freelancer",
   cause: "collision",
   causer: "self",
-  zone: "test_zone_001",
+  zone: "OOC_Stanton_3a_Lyria",
   cargo_scu: 640,
   cargo_paid_auec: PAID,
   ...over,
@@ -68,7 +69,10 @@ describe("Feature: the session keeps each destroyed ship once", () => {
     for (let i = 1; i <= 3; i++)
       observe(s, obs({ now: T0 + (5 + i) * MIN, shipLosses: [loss()] }), cfg);
     expect(latest(s)!.ship_losses).toHaveLength(1);
-    expect(latest(s)!.ship_losses[0]).toMatchObject({ ship_class: "TEST_Hauler", cargo_scu: 640 });
+    expect(latest(s)!.ship_losses[0]).toMatchObject({
+      ship_class: "MISC_Freelancer",
+      cargo_scu: 640,
+    });
   });
 
   it("Given a loss read while the journal was unreadable, Then a later look completes its cargo; a known cargo is never replaced", () => {
@@ -110,6 +114,96 @@ describe("Feature: the session keeps each destroyed ship once", () => {
   });
 });
 
+describe("Feature: a loss that does not read never costs the session", () => {
+  const stored = (losses: unknown) =>
+    parseState(JSON.stringify({ version: 2, sessions: [{ ...session(1), ship_losses: losses }] }));
+
+  it("Given invalid entries among good ones, Then only the invalid ones are set aside and the session stays", () => {
+    const good = loss();
+    const r: any = stored([
+      good,
+      { ...good, cause: "bogus" },
+      { ...good, cargo_scu: -5 },
+      "not an object",
+      { ...good, at: "yesterday" },
+    ]);
+    expect(r.kind).toBe("ok");
+    expect(r.dropped).toBe(0);
+    expect(r.state.sessions).toHaveLength(1);
+    expect(r.state.sessions[0].ship_losses).toHaveLength(1);
+    expect(r.state.sessions[0].ship_losses[0]).toMatchObject({ cargo_scu: 640 });
+  });
+
+  it("Given more entries than the bound, Then the newest are kept and the session stays", () => {
+    const many = Array.from({ length: MAX_SHIP_LOSSES + 7 }, (_, i) =>
+      loss({ at: new Date(T0 + i * 1000).toISOString() }),
+    );
+    const r: any = stored(many);
+    expect(r.state.sessions).toHaveLength(1);
+    const kept = r.state.sessions[0].ship_losses;
+    expect(kept).toHaveLength(MAX_SHIP_LOSSES);
+    expect(kept[kept.length - 1].at).toBe(many[many.length - 1]!.at);
+  });
+
+  it("Given a field that is not a list, Then it reads as empty and the session stays", () => {
+    const r: any = stored("oops");
+    expect(r.state.sessions).toHaveLength(1);
+    expect(r.state.sessions[0].ship_losses).toEqual([]);
+  });
+});
+
+describe("Feature: a loss is the same loss whatever the look knew of its model and place", () => {
+  it("Given a loss first stored without model or place, Then a later look fills them in, once", () => {
+    const s = emptyState();
+    observe(s, obs({ now: T0 }), cfg);
+    observe(
+      s,
+      obs({ now: T0 + 6 * MIN, shipLosses: [loss({ ship_class: null, zone: null })] }),
+      cfg,
+    );
+    observe(s, obs({ now: T0 + 7 * MIN, shipLosses: [loss()] }), cfg);
+    observe(s, obs({ now: T0 + 8 * MIN, shipLosses: [loss()] }), cfg);
+    const kept = latest(s)!.ship_losses;
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toMatchObject({ ship_class: "MISC_Freelancer", zone: "OOC_Stanton_3a_Lyria" });
+  });
+
+  it("Given a known model, Then another model never replaces it", () => {
+    const s = emptyState();
+    observe(s, obs({ now: T0 }), cfg);
+    observe(s, obs({ now: T0 + 6 * MIN, shipLosses: [loss()] }), cfg);
+    observe(s, obs({ now: T0 + 7 * MIN, shipLosses: [loss({ ship_class: "DRAK_Cutter" })] }), cfg);
+    expect(latest(s)!.ship_losses[0]!.ship_class).toBe("MISC_Freelancer");
+  });
+
+  it("Given a later look that found MORE cargo, Then it replaces the smaller figure; a smaller or unknown one never does", () => {
+    const s = emptyState();
+    observe(s, obs({ now: T0 }), cfg);
+    observe(
+      s,
+      obs({ now: T0 + 6 * MIN, shipLosses: [loss({ cargo_scu: 100, cargo_paid_auec: 1000 })] }),
+      cfg,
+    );
+    observe(
+      s,
+      obs({ now: T0 + 7 * MIN, shipLosses: [loss({ cargo_scu: 640, cargo_paid_auec: 6400 })] }),
+      cfg,
+    );
+    expect(latest(s)!.ship_losses[0]).toMatchObject({ cargo_scu: 640, cargo_paid_auec: 6400 });
+    observe(
+      s,
+      obs({ now: T0 + 8 * MIN, shipLosses: [loss({ cargo_scu: 50, cargo_paid_auec: 500 })] }),
+      cfg,
+    );
+    observe(
+      s,
+      obs({ now: T0 + 9 * MIN, shipLosses: [loss({ cargo_scu: null, cargo_paid_auec: null })] }),
+      cfg,
+    );
+    expect(latest(s)!.ship_losses[0]).toMatchObject({ cargo_scu: 640, cargo_paid_auec: 6400 });
+  });
+});
+
 describe("Feature: the aUEC paid for the cargo presumed lost follows the balance", () => {
   it("Given the summary, Then the SCU are always given and the paid amount sits under money only", () => {
     const s = withLoss();
@@ -141,8 +235,8 @@ describe("Feature: the aUEC paid for the cargo presumed lost follows the balance
         "<2026-11-04T18:00:00.000Z> [Notice] <AccountLoginCharacterStatus_Character> Character: createdAt 1 - updatedAt 2 - geid 700000000001 - accountId 5 - name ZedName - state STATE_CURRENT [A][B]",
         "<2026-11-04T18:00:10.000Z> [Notice] <CEntityComponentCommodityUIProvider::LoadSelectedShipBindings> Sending VehicleCargoDataRequest for vehicleEntityId[700000000555] [A][B]",
         `<2026-11-04T18:00:25.000Z> [Notice] <CEntityComponentCommodityUIProvider::SendCommodityBuyRequest> Sending SShopCommodityBuyRequest - playerId[1111111111] shopId[2222222] shopName[SCShop_Cargo_Test] kioskId[3333333] price[${PAID}.000000] shopPricePerCentiSCU[1.889409] resourceGUID[5c2e9a41-1111-4222-8333-444444444444] autoLoading[1] quantity[64000.000000 cSCU] Cargo Box Data: boxSize[32.000000] | unitAmount[20] [A][B]`,
-        "<2026-11-04T18:15:00.000Z> [Notice] <FatalCollision> Fatal Collision occured for vehicle TEST_Hauler_700000000555 [Part: Nose, Pos: x: 1.5, y: 2.5, z: 3.5, Zone: test_zone_001, PlayerPilot: 1] after hitting entity: Rock",
-        "<2026-11-04T18:15:00.200Z> [Notice] <[ActorState] Dead> [ACTOR STATE][CSCActorControlStateDead::PrePhysicsUpdate] Actor 'ZedName' [700000000001] ejected from zone 'TEST_Hauler_700000000555' [700000000555] to zone 'test_zone_001' [800000000002] due to previous zone being in a destroyed vehicle with detached interior. [A][B]",
+        "<2026-11-04T18:15:00.000Z> [Notice] <FatalCollision> Fatal Collision occured for vehicle MISC_Freelancer_700000000555 [Part: Nose, Pos: x: 1.5, y: 2.5, z: 3.5, Zone: OOC_Stanton_3a_Lyria, PlayerPilot: 1] after hitting entity: Rock",
+        "<2026-11-04T18:15:00.200Z> [Notice] <[ActorState] Dead> [ACTOR STATE][CSCActorControlStateDead::PrePhysicsUpdate] Actor 'ZedName' [700000000001] ejected from zone 'MISC_Freelancer_700000000555' [700000000555] to zone 'OOC_Stanton_3a_Lyria' [800000000002] due to previous zone being in a destroyed vehicle with detached interior. [A][B]",
       ].join("\n"),
     );
     const tx = buildTradeJournal(parsed.commerce, "2026-11-04T19:00:00.000Z").transactions;
@@ -196,7 +290,7 @@ describe("Feature: the aUEC paid for the cargo presumed lost follows the balance
         "<2026-11-04T18:00:00.000Z> [Notice] <AccountLoginCharacterStatus_Character> Character: createdAt 1 - updatedAt 2 - geid 700000000001 - accountId 5 - name ZedName - state STATE_CURRENT [A][B]",
         "<2026-11-04T18:00:10.000Z> [Notice] <CEntityComponentCommodityUIProvider::LoadSelectedShipBindings> Sending VehicleCargoDataRequest for vehicleEntityId[700000000555] [A][B]",
         `<2026-11-04T18:00:25.000Z> [Notice] <CEntityComponentCommodityUIProvider::SendCommodityBuyRequest> Sending SShopCommodityBuyRequest - playerId[1111111111] shopId[2222222] shopName[SCShop_Cargo_Test] kioskId[3333333] price[${PAID}.000000] shopPricePerCentiSCU[1.889409] resourceGUID[5c2e9a41-1111-4222-8333-444444444444] autoLoading[1] quantity[64000.000000 cSCU] Cargo Box Data: boxSize[32.000000] | unitAmount[20] [A][B]`,
-        "<2026-11-04T18:15:00.200Z> [Notice] <[ActorState] Dead> [ACTOR STATE][CSCActorControlStateDead::PrePhysicsUpdate] Actor 'ZedName' [700000000001] ejected from zone 'TEST_Hauler_700000000555' [700000000555] to zone 'test_zone_001' [800000000002] due to previous zone being in a destroyed vehicle with detached interior. [A][B]",
+        "<2026-11-04T18:15:00.200Z> [Notice] <[ActorState] Dead> [ACTOR STATE][CSCActorControlStateDead::PrePhysicsUpdate] Actor 'ZedName' [700000000001] ejected from zone 'MISC_Freelancer_700000000555' [700000000555] to zone 'OOC_Stanton_3a_Lyria' [800000000002] due to previous zone being in a destroyed vehicle with detached interior. [A][B]",
       ].join("\n"),
     );
     const tx = buildTradeJournal(parsed.commerce, "2026-11-04T19:00:00.000Z").transactions;
@@ -229,7 +323,7 @@ describe("Feature: the page shows the loss in the alert slot", () => {
     ship_losses: [
       {
         at: "2026-11-04T18:15:00.000Z",
-        ship_class: "TEST_Hauler",
+        ship_class: "MISC_Freelancer",
         cause: "collision",
         causer: "self",
         zone: "z",
@@ -256,7 +350,7 @@ describe("Feature: the page shows the loss in the alert slot", () => {
     const a = tradeAlertInfo(L, { ...section(), price_refusals: [] }, NOW, true);
     expect(a.loss).toBe(true);
     expect(a.label).toBe("Vaisseau détruit");
-    expect(a.text).toBe("Vaisseau détruit, joueur à bord (TEST Hauler)\xa0: collision.");
+    expect(a.text).toBe("Vaisseau détruit, joueur à bord (MISC Freelancer)\xa0: collision.");
     expect(a.advice).toMatch(
       /^Cargo présumé perdu\xa0: 640\xa0SCU, 947\D{1,3}857\xa0aUEC payés \(prix d’achat, pas la valeur\) \(non confirmé\)\.$/,
     );
@@ -285,7 +379,9 @@ describe("Feature: the page shows the loss in the alert slot", () => {
     const npc = tradeLossInfo(L, section({ cause: "combat", causer: "npc" }), NOW, true);
     expect(npc.text).toContain("combat par une IA (d’après le nom)");
     const other = tradeLossInfo(L, section({ cause: "combat", causer: "other" }), NOW, true);
-    expect(other.text).toContain("combat par un autre joueur (d’après le nom)");
+    expect(other.text).toContain(
+      "combat par un autre joueur ou une entité inconnue (d’après le nom)",
+    );
     const s = withLoss();
     s.ship_losses[0] = { ...s.ship_losses[0]!, cause: "combat", causer: "other" };
     const info = sessionBarInfo(
@@ -302,7 +398,9 @@ describe("Feature: the page shows the loss in the alert slot", () => {
       ),
       { showBalance: false, now: NOW },
     );
-    expect(info.notes.join("\n")).toContain("combat par un autre joueur (d’après le nom)");
+    expect(info.notes.join("\n")).toContain(
+      "combat par un autre joueur ou une entité inconnue (d’après le nom)",
+    );
     expect(info.notes.join("\n")).toContain("Propriété du vaisseau non vérifiée");
   });
 
@@ -425,7 +523,7 @@ describe("Feature: the page shows the loss in the alert slot", () => {
     });
     expect(shut.notes.join("\n")).toContain("Vaisseau détruit");
     expect(shut.notes.join("\n")).toContain("640");
-    expect(shut.line).toContain("1 vaisseau détruit");
+    expect(shut.line).toContain("1\u00a0vaisseau\u00a0détruit");
     expect(hasPaid(shut)).toBe(false);
     const open = sessionBarInfo(L, sessionBarNormalize(bar(true), true), {
       showBalance: true,

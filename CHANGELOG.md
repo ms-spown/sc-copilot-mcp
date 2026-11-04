@@ -44,6 +44,10 @@ versions follow [Semantic Versioning](https://semver.org/).
   the poll, the channel between Views and the debrief unless the balance is allowed. The reviewed privacy sentence
   (README, SECURITY, CAPABILITIES, TELEMETRY, ARCHITECTURE and the block for Claude, English and French) adds "ship
   losses: time, model, cause, place, presumed cargo".
+- Known limit of the additive field: the session file stays at format version 2, so a server of an older release that
+  rewrites the file drops `ship_losses` (as it drops `price_refusals`). Update every running server together.
+- The saved-session card holds up to 12 notes (it dropped any beyond 4 in silence); the compact line counts every loss and
+  uses no-break spaces; an invalid loss in the file is set aside alone, not the whole session.
 - A loss with cargo ends the run in the commerce model and in the journal's cargo runs, so a later sale of the same goods
   is not paired with the lost cargo.
 

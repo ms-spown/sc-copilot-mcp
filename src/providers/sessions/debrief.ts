@@ -807,7 +807,7 @@ const LOSS_CAUSE: Record<string, string> = {
 };
 const LOSS_CAUSER: Record<string, string> = {
   self: "le joueur, d’après le journal",
-  other: "autre joueur, d’après le nom",
+  other: "autre joueur ou entité inconnue, d’après le nom",
   npc: "IA, d’après le nom",
 };
 
@@ -823,7 +823,7 @@ function shipLossLines(s: Session, money: boolean): string[] {
   for (const l of list.slice(-DEBRIEF_LIMITS.breaks)) {
     const parts = [utc(l.at)];
     const model = markdownText((l.ship_class ?? "").replace(/_/g, " "), 60);
-    if (model) parts.push(model);
+    parts.push(model || "modèle inconnu");
     parts.push(
       `cause : ${LOSS_CAUSE[l.cause] ?? "non journalisée"}${LOSS_CAUSER[l.causer] ? ` (${LOSS_CAUSER[l.causer]})` : ""}`,
     );

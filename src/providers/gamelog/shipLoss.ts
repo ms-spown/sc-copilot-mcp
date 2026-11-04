@@ -109,6 +109,45 @@ const EPS = 1e-6;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const ms = (t: string) => Date.parse(t);
 
+/**
+ * The records of ONE parse, bounded while it runs (not only after the sort): a log with hundreds of thousands of kiosk lines
+ * holds at most about twice the bound of each kind at any time. A kiosk line that names the ship the previous one named less
+ * than 5 minutes earlier adds nothing (the binding is the same), so it is not kept.
+ */
+export class ShipRecordBuffer {
+  readonly records: ShipRecord[] = [];
+  private readonly counts = new Map<ShipRecord["kind"], number>();
+  private lastKiosk: { ship: string; at: number } | null = null;
+
+  add(r: ShipRecord): void {
+    if (r.kind === "kiosk_ship") {
+      const at = ms(r.time);
+      const last = this.lastKiosk;
+      if (last && last.ship === r.ship && at - last.at >= 0 && at - last.at < 5 * 60_000) return;
+      this.lastKiosk = { ship: r.ship, at };
+    }
+    this.records.push(r);
+    const n = (this.counts.get(r.kind) ?? 0) + 1;
+    this.counts.set(r.kind, n);
+    const cap = SHIP_RECORDS_MAX[r.kind];
+    if (n >= cap * 2) {
+      // Keep the newest `cap` of this kind, in place.
+      let keep = cap;
+      let w = this.records.length;
+      for (let i = this.records.length - 1; i >= 0; i--) {
+        const x = this.records[i]!;
+        if (x.kind === r.kind) {
+          if (keep === 0) continue;
+          keep -= 1;
+        }
+        this.records[--w] = x;
+      }
+      this.records.splice(0, w);
+      this.counts.set(r.kind, cap);
+    }
+  }
+}
+
 /** What makes two records the same one (the log repeats a collision once per hull part, and a read re-parses a look-behind). */
 export const shipRecordKey = (r: ShipRecord): string => JSON.stringify(r);
 

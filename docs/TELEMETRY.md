@@ -836,9 +836,12 @@ a presumption: the successful purchases bound to the ship by the cargo kiosk (`V
 at the price PAID (failed purchases ignored, unconfirmed ones counted apart); the value lost, the insurance and the killer
 are not in the log and are shown as "non journalisés"; and the purchase-to-ship-to-destruction chain is verified on 2025
 logs only (no 4.10 session has a purchase followed by a loss). The records hold a time, a ship model, a cause
-code, a kind of causer, a place token: no name, handle, GUID or raw identifier. A short hash of the ship's identifier
+code, a kind of causer, a place token: no name, handle, GUID or raw identifier. The model is kept only when it starts with
+a known maker's code (AEGS, DRAK, MISC, RSI ...), and the place only when it begins with a known family of the game's own
+place names (an "OOC_" body, a jump point, a star system or a body ...): these are filters on the SHAPE of the text, not a
+list of places, so anything else ("Hangar_" followed by a name, a custom entity) is shown as "modèle inconnu" or left out. A short hash of the ship's identifier
 links a purchase to its ship, in memory only: it is never written, sent to a View or exported. The SCU go with or without
-the balance (`trade.ship_losses`, the newest 3, also on the channel between Views); the aUEC paid is a balance figure and
+the balance (`trade.ship_losses`: the server sends the newest 5, the View keeps the newest 3; also on the channel between Views); the aUEC paid is a balance figure and
 is withheld without it. The session keeps `ship_losses` (additive, optional, the file stays version 2): only the time, the
 model, the cause, the kind of causer, the place and the cargo presumed lost; the debrief lists them.
 

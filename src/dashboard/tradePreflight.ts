@@ -138,7 +138,7 @@ export function tradeLossCause(loss: any): string {
     loss && loss.causer === "npc"
       ? " par une IA (d’après le nom)"
       : loss && loss.causer === "other"
-        ? " par un autre joueur (d’après le nom)"
+        ? " par un autre joueur ou une entité inconnue (d’après le nom)"
         : "";
   return cause + by;
 }
@@ -164,7 +164,9 @@ export function tradeLossInfo(L: any, trade: any, now: number, showBalance: bool
       label: "Vaisseau détruit",
       text:
         "Vaisseau détruit, joueur à bord" +
-        (l.ship_class ? " (" + l.ship_class.replace(/_/g, " ") + ")" : "") +
+        " (" +
+        (l.ship_class ? l.ship_class.replace(/_/g, " ") : "modèle inconnu") +
+        ")" +
         "\u00a0: " +
         tradeLossCause(l) +
         ".",

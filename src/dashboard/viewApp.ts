@@ -1602,6 +1602,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       fullscreen: displayMode === "fullscreen",
       balance: showBalance && view.poll ? view.poll.balance : null,
       baseline: L.baselineLabel(view.poll),
+      now,
       actionsEnabled: actionsOn,
       decomposition: moved.decomposition,
       movements: R.movements,

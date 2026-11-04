@@ -135,6 +135,11 @@ export function sessionSummaryNormalize(raw: any, allowMoney: boolean): any {
         causer: ["self", "other", "npc"].indexOf(x.causer) >= 0 ? x.causer : "unknown",
         cargo_scu: sessionNum(x.cargo_scu),
       })),
+    // How many were lost in all (the list above keeps the 3 newest): a count, no amount.
+    ship_losses_count: Math.max(
+      sessionCount(raw.ship_losses_count, 999),
+      Math.min(3, Array.isArray(raw.ship_losses) ? raw.ship_losses.length : 0),
+    ),
     money: sessionMoney(raw.money, allowMoney),
   };
 }
@@ -343,13 +348,23 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
     notes.push(
       "Vaisseau détruit à " +
         L.formatClock(l.at) +
-        (l.ship_class ? " (" + l.ship_class.replace(/_/g, " ") + ")" : "") +
+        " (" +
+        (l.ship_class ? l.ship_class.replace(/_/g, " ") : "modèle inconnu") +
+        ")" +
         ", joueur à bord : " +
         L.tradeLossCause(l) +
         ". " +
         L.tradeLossCargo(L, l, false),
     );
   }
+  if (cur.ship_losses_count > cur.ship_losses.length)
+    notes.push(
+      "Les " +
+        cur.ship_losses.length +
+        " derniers vaisseaux détruits sur " +
+        cur.ship_losses_count +
+        " sont listés.",
+    );
   if (cur.ship_losses.length > 0)
     notes.push(
       "Propriété du vaisseau non vérifiée ; valeur perdue, assurance et responsable non journalisés.",
@@ -367,10 +382,12 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
   if (cur.active_ms > 0) line.push(L.formatDuration(cur.active_ms));
   if (rate !== null) line.push(L.fmtAuec(rate, true) + "\u00a0aUEC/h");
   if (cur.status === "ended" || bar.stale) line.push(sessionStateLabel(cur, bar.stale));
-  if (cur.ship_losses.length > 0)
+  if (cur.ship_losses_count > 0)
     line.push(
-      cur.ship_losses.length +
-        (cur.ship_losses.length > 1 ? " vaisseaux détruits" : " vaisseau détruit"),
+      cur.ship_losses_count +
+        (cur.ship_losses_count > 1
+          ? "\u00a0vaisseaux\u00a0détruits"
+          : "\u00a0vaisseau\u00a0détruit"),
     );
   // A warning note (a read-only or degraded store, a start balance that is not the game's) must not be hidden by the fold.
   if (
@@ -604,7 +621,9 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   add(bar, id, kpiBox, actions);
   const notes = el("div", "ses-notes");
   const noteEls: any[] = [];
-  for (let i = 0; i < 4; i++) {
+  // Room for every note the card can hold at once (stale, resumed, start balance, store notice, 3 losses and their count, the
+  // ownership warning, the amount paid): none is dropped in silence.
+  for (let i = 0; i < 12; i++) {
     const p = el("p", "ses-note", "");
     noteEls.push(p);
     add(notes, p);

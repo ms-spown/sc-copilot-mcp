@@ -17,7 +17,7 @@
  * (Stanton <-> Pyro) ARE logged, by the jump drive's state machine, and are reported.
  */
 
-import type { ShipRecord } from "./shipLoss.js";
+import { ShipRecordBuffer, type ShipRecord } from "./shipLoss.js";
 import { mayBeShipLine, parseShipLine, type ShipParseState } from "./shipLossParse.js";
 import { parseCommerceLine, type TradeRecord } from "./trade.js";
 
@@ -150,7 +150,7 @@ export function parseLog(text: string, seed?: { playerRef?: string | null }): Pa
   const lines = text.split(/\r?\n/);
   const events: LogEvent[] = [];
   const commerce: TradeRecord[] = [];
-  const ships: ShipRecord[] = [];
+  const shipBuffer = new ShipRecordBuffer();
   const shipState: ShipParseState = { playerRef: seed?.playerRef ?? null };
   const session: SessionInfo = {
     started_local: null,
@@ -222,7 +222,7 @@ export function parseLog(text: string, seed?: { playerRef?: string | null }): Pa
     if (mayBeShipLine(body)) {
       const ship = parseShipLine(body, ts, shipState);
       if (ship) {
-        ships.push(ship);
+        shipBuffer.add(ship);
         recognized += 1;
         continue;
       }
@@ -346,7 +346,7 @@ export function parseLog(text: string, seed?: { playerRef?: string | null }): Pa
     stats: { lines: counted, recognized, ignored: counted - recognized },
     span: { first: firstTime, last: lastTime },
     commerce,
-    ships,
+    ships: shipBuffer.records,
     player_ref: shipState.playerRef,
   };
 }

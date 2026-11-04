@@ -290,11 +290,12 @@ function countRefusals(cur: Session, list: readonly { at: string }[] | undefined
 }
 
 /**
- * What makes two stored losses the same one: the time to the second, the model and the place. No identifier of any ship is
- * stored, so none can be used (two real losses of the same model in the same place in the same second do not happen).
+ * What makes two stored losses the same one: the time of the destruction line, to the second. No identifier of any ship is
+ * stored, so none can be used; the model and the place are NOT in the key because they can arrive later (a model the line did
+ * not give cleanly, a place token the first look dropped): they complete the loss instead of making a second one. One player
+ * does not lose two ships in the same second.
  */
-const lossKey = (l: { at: string; ship_class: string | null; zone: string | null }): string =>
-  `${Math.round(ms(l.at) / 1000)}|${l.ship_class ?? ""}|${l.zone ?? ""}`;
+const lossKey = (l: { at: string }): string => String(Math.round(ms(l.at) / 1000));
 
 /**
  * Adds the ships destroyed with the player aboard that this session does not hold yet (one per loss, by `lossKey`), inside the
@@ -318,13 +319,21 @@ function recordLosses(cur: Session, list: readonly ShipLossInput[] | undefined):
     if (i >= 0) {
       // A later look may know more (the cargo once the journal is readable; the cause and the causer once the 2025
       // `Vehicle Destruction` line, up to 3 s after the death, has been read). A known value is replaced only by a more
-      // precise one, never by "unknown", and never by another known value.
+      // precise one, never by "unknown", and never by another known value. The model and the place fill in when missing. The
+      // cargo is replaced when it was unknown, or when a later look found MORE of it (a purchase the first read of a large
+      // log did not reach): never by a smaller quantity or by "unknown".
       const old = held[i]!;
       const next = { ...old };
-      if (old.cargo_scu === null && parsed.data.cargo_scu !== null) {
+      if (
+        parsed.data.cargo_scu !== null &&
+        (old.cargo_scu === null || parsed.data.cargo_scu > old.cargo_scu)
+      ) {
         next.cargo_scu = parsed.data.cargo_scu;
         next.cargo_paid_auec = parsed.data.cargo_paid_auec;
       }
+      if (old.ship_class === null && parsed.data.ship_class !== null)
+        next.ship_class = parsed.data.ship_class;
+      if (old.zone === null && parsed.data.zone !== null) next.zone = parsed.data.zone;
       if (old.cause === "unknown" && parsed.data.cause !== "unknown")
         next.cause = parsed.data.cause;
       if (old.causer === "unknown" && parsed.data.causer !== "unknown")

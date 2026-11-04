@@ -4,6 +4,7 @@ import {
   buildShipLosses,
   lossCuts,
   SHIP_RECORDS_MAX,
+  ShipRecordBuffer,
   tidyShipRecords,
   type ShipLoss,
 } from "./shipLoss.js";
@@ -37,22 +38,28 @@ const sell = (s: number, scu = 100, amount = 1200000, guid = GUID) =>
 const error = (s: number, result = "TransactionCostMismatch", type = "Buying") =>
   `${at(s)} [Error] <CEntityComponentCommodityUIProvider::RmToken_CommodityTransactionResponse> Commodity Transaction Response Error - playerId[1111111111] result[${result}] type[${type}] [Team_NAPU][Shops]`;
 const crash = (s: number, ship = SHIP, pilot = 1) =>
-  `${at(s)} [Notice] <FatalCollision> Fatal Collision occured for vehicle TEST_Hauler_${ship} [Part: Nose, Pos: x: 1.5, y: -2.5, z: 3.5, Zone: test_zone_001, PlayerPilot: ${pilot}] after hitting entity: SomeRock_${NAME}`;
+  `${at(s)} [Notice] <FatalCollision> Fatal Collision occured for vehicle MISC_Freelancer_${ship} [Part: Nose, Pos: x: 1.5, y: -2.5, z: 3.5, Zone: OOC_Stanton_3a_Lyria, PlayerPilot: ${pilot}] after hitting entity: SomeRock_${NAME}`;
 const dead = (s: number, ship = SHIP, actor = ME) =>
-  `${at(s)} [Notice] <[ActorState] Dead> [ACTOR STATE][CSCActorControlStateDead::PrePhysicsUpdate] Actor '${NAME}' [${actor}] ejected from zone 'TEST_Hauler_${ship}' [${ship}] to zone 'test_zone_001' [800000000002] due to previous zone being in a destroyed vehicle with detached interior. [Team_ActorFeatures][Actor]`;
+  `${at(s)} [Notice] <[ActorState] Dead> [ACTOR STATE][CSCActorControlStateDead::PrePhysicsUpdate] Actor '${NAME}' [${actor}] ejected from zone 'MISC_Freelancer_${ship}' [${ship}] to zone 'OOC_Stanton_3a_Lyria' [800000000002] due to previous zone being in a destroyed vehicle with detached interior. [Team_ActorFeatures][Actor]`;
 // 2025 builds
-const death = (s: number, type: string, ship = SHIP, victim = ME, zone = `TEST_Hauler_${SHIP}`) =>
-  `${at(s)} [Notice] <Actor Death> CActor::Kill: '${NAME}' [${victim}] in zone '${ship === SHIP ? zone : `TEST_Hauler_${ship}`}' killed by '${NAME}' [${victim}] using 'unknown' [Class unknown] with damage type '${type}' from direction x: 0.000000, y: 0.000000, z: 0.000000 [Team_ActorTech][Actor]`;
+const death = (
+  s: number,
+  type: string,
+  ship = SHIP,
+  victim = ME,
+  zone = `MISC_Freelancer_${SHIP}`,
+) =>
+  `${at(s)} [Notice] <Actor Death> CActor::Kill: '${NAME}' [${victim}] in zone '${ship === SHIP ? zone : `MISC_Freelancer_${ship}`}' killed by '${NAME}' [${victim}] using 'unknown' [Class unknown] with damage type '${type}' from direction x: 0.000000, y: 0.000000, z: 0.000000 [Team_ActorTech][Actor]`;
 const destroyed = (
   s: number,
   cause: string,
   by: string,
   byId: string,
   ship = SHIP,
-  cls = "TEST_Hauler",
+  cls = "MISC_Freelancer",
   level = 2,
 ) =>
-  `${at(s)} [Notice] <Vehicle Destruction> CVehicle::OnAdvanceDestroyLevel: Vehicle '${cls}_${ship}' [${ship}] in zone 'test_zone_001' [pos x: 1.0, y: 2.0, z: 3.0 vel x: 0.0, y: 0.0, z: 0.0] driven by 'unknown' [0] advanced from destroy level ${level - 1} to ${level} caused by '${by}' [${byId}] with '${cause}' [Team_VehicleFeatures][Vehicle]`;
+  `${at(s)} [Notice] <Vehicle Destruction> CVehicle::OnAdvanceDestroyLevel: Vehicle '${cls}_${ship}' [${ship}] in zone 'OOC_Stanton_3a_Lyria' [pos x: 1.0, y: 2.0, z: 3.0 vel x: 0.0, y: 0.0, z: 0.0] driven by 'unknown' [0] advanced from destroy level ${level - 1} to ${level} caused by '${by}' [${byId}] with '${cause}' [Team_VehicleFeatures][Vehicle]`;
 const claim = (s: number) =>
   `${at(s)} [Notice] <CWallet::ProcessClaimToNextStep> New Insurance Claim Request - entitlementURN: urn:sc:global:entitlement:uuid:${GUID}, requestId : 7 [Team_X][Y]`;
 
@@ -68,10 +75,10 @@ describe("Feature: the player's ship destroyed with him aboard (build 4.10)", ()
     expect(rest).toEqual([]);
     expect(loss).toMatchObject({
       at: new Date(BASE + 900_300).toISOString(),
-      ship_class: "TEST_Hauler",
+      ship_class: "MISC_Freelancer",
       cause: "collision",
       causer: "unknown",
-      zone: "test_zone_001",
+      zone: "OOC_Stanton_3a_Lyria",
       via: "actor_state_dead",
     });
     expect(loss!.ship_ref).toBe(entityRef(SHIP));
@@ -264,14 +271,14 @@ describe("Feature: the 2025 log era", () => {
       character(),
       kiosk(10),
       buy(25),
-      destroyed(899, "Combat", "SomeoneElse", "700000000444", SHIP, "TEST_Hauler", 2),
+      destroyed(899, "Combat", "SomeoneElse", "700000000444", SHIP, "MISC_Freelancer", 2),
       death(900, "Collision"),
     ]);
     expect(loss).toMatchObject({
       via: "actor_death",
       cause: "combat",
       causer: "other",
-      ship_class: "TEST_Hauler",
+      ship_class: "MISC_Freelancer",
     });
     expect(loss!.cargo!.scu).toBe(100);
     // the killer's name is read to be classified, never kept
@@ -356,7 +363,7 @@ describe("Feature: the parser stays cheap and safe", () => {
     for (const line of bad) parseLog(line, { playerRef: known.player_ref });
     expect(Date.now() - started).toBeLessThan(500);
     // 20 000 characters of one line: refused before any pattern runs
-    const huge = `${at(5)} [Notice] <[ActorState] Dead> Actor '${"x".repeat(20_000)}' [${ME}] ejected from zone 'TEST_Hauler_${SHIP}' [${SHIP}] due to previous zone being in a destroyed vehicle`;
+    const huge = `${at(5)} [Notice] <[ActorState] Dead> Actor '${"x".repeat(20_000)}' [${ME}] ejected from zone 'MISC_Freelancer_${SHIP}' [${SHIP}] due to previous zone being in a destroyed vehicle`;
     const t0 = Date.now();
     expect(parseLog(huge, { playerRef: known.player_ref }).ships).toEqual([]);
     expect(Date.now() - t0).toBeLessThan(100);
@@ -364,7 +371,7 @@ describe("Feature: the parser stays cheap and safe", () => {
 
   it("Given a place token of an unknown form (spaces, dots, a GUID, braces), Then the zone is dropped", () => {
     for (const odd of ["a b", "x.y", GUID, "{zone}", "-lead", "a--".padEnd(70, "b")]) {
-      const line = dead(900).replace("test_zone_001", odd);
+      const line = dead(900).replace("OOC_Stanton_3a_Lyria", odd);
       expect(parseLog([character(), line].join("\n")).ships[0], odd).toMatchObject({ zone: null });
     }
   });
@@ -379,7 +386,7 @@ describe("Feature: the parser stays cheap and safe", () => {
   });
 
   it("Given a place token that holds a long number or odd characters, Then the zone is dropped", () => {
-    const line = dead(900).replace("test_zone_001", "OOC_123456789_x");
+    const line = dead(900).replace("OOC_Stanton_3a_Lyria", "OOC_123456789_x");
     expect(parseLog([character(), line].join("\n")).ships[0]).toMatchObject({ zone: null });
   });
 
@@ -391,6 +398,100 @@ describe("Feature: the parser stays cheap and safe", () => {
     const started = Date.now();
     parseLog([character(), ...filler, dead(900)].join("\n"));
     expect(Date.now() - started).toBeLessThan(5000);
+  });
+});
+
+describe("Feature: only known forms of place and model are kept", () => {
+  const one = (line: string) =>
+    parseLog([character(), line].join("\n")).ships[0] as unknown as Record<string, unknown>;
+
+  it("Given a place named after a player or a home, Then it is dropped", () => {
+    for (const odd of [
+      `Hangar_${NAME}`,
+      `Apartment_${NAME}_Home`,
+      `${NAME}_Residence`,
+      "Hangar_Generic_01",
+    ]) {
+      expect(one(dead(900).replace("OOC_Stanton_3a_Lyria", odd)), odd).toMatchObject({
+        zone: null,
+      });
+    }
+  });
+
+  it("Given the families of place names seen in the logs, Then they are kept", () => {
+    for (const ok of [
+      "OOC_Stanton_3a_Lyria",
+      "levski_all-001",
+      "keeger_segment_mission_genrl_001_015",
+      "rs_comm_arc-l001",
+      "jumppoint_pyro_stanton",
+      "pyro3",
+      "P2_L4",
+    ]) {
+      expect(one(dead(900).replace("OOC_Stanton_3a_Lyria", ok)), ok).toMatchObject({ zone: ok });
+    }
+  });
+
+  it("Given a ship class that starts with a player's name or any other word, Then the model is unknown", () => {
+    const line = dead(900).replace(/MISC_Freelancer_/g, `${NAME}_`);
+    expect(one(line)).toMatchObject({ kind: "dead", cls: null });
+    expect(one(dead(900).replace(/MISC_Freelancer_/g, "DRAK_Dragonfly_Yellow_"))).toMatchObject({
+      cls: "DRAK_Dragonfly_Yellow",
+    });
+    expect(one(dead(900))).toMatchObject({ cls: "MISC_Freelancer" });
+  });
+});
+
+describe("Feature: the records are bounded while the log is parsed", () => {
+  it("Given 50 000 kiosk lines of alternating ships, Then the buffer never holds more than twice the bound", () => {
+    const buffer = new ShipRecordBuffer();
+    let most = 0;
+    for (let i = 0; i < 50_000; i++) {
+      buffer.add({
+        kind: "kiosk_ship",
+        time: new Date(BASE + i * 1000).toISOString(),
+        ship: i % 2 ? "aaaaaaaaaaaa" : "bbbbbbbbbbbb",
+      });
+      most = Math.max(most, buffer.records.length);
+    }
+    expect(most).toBeLessThanOrEqual(SHIP_RECORDS_MAX.kiosk_ship * 2);
+    // the newest are the ones kept
+    expect(buffer.records[buffer.records.length - 1]!.time).toBe(
+      new Date(BASE + 49_999 * 1000).toISOString(),
+    );
+  });
+
+  it("Given the same ship named again within 5 minutes, Then the kiosk line adds nothing; a destruction is never dropped by kiosk lines", () => {
+    const buffer = new ShipRecordBuffer();
+    for (let i = 0; i < 100; i++)
+      buffer.add({
+        kind: "kiosk_ship",
+        time: new Date(BASE + i * 1000).toISOString(),
+        ship: "aaaaaaaaaaaa",
+      });
+    expect(buffer.records).toHaveLength(1);
+    buffer.add({
+      kind: "dead",
+      time: new Date(BASE + 200_000).toISOString(),
+      ship: "aaaaaaaaaaaa",
+      cls: null,
+      zone: null,
+    });
+    for (let i = 0; i < 5000; i++)
+      buffer.add({
+        kind: "kiosk_ship",
+        time: new Date(BASE + 300_000 + i * 1000).toISOString(),
+        ship: i % 2 ? "aaaaaaaaaaaa" : "bbbbbbbbbbbb",
+      });
+    expect(buffer.records.filter((r) => r.kind === "dead")).toHaveLength(1);
+  });
+});
+
+describe("Feature: the ship reference is pure JavaScript", () => {
+  it("Given an id, Then the reference is 12 hex characters, stable, and different for another id", () => {
+    expect(entityRef("700000000555")).toMatch(/^[0-9a-f]{12}$/);
+    expect(entityRef("700000000555")).toBe(entityRef("700000000555"));
+    expect(entityRef("700000000555")).not.toBe(entityRef("700000000556"));
   });
 });
 
