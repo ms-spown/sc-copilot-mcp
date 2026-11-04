@@ -721,7 +721,9 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           true,
           m.planned_net
             ? "bénéfice prévu − frais au taux " +
-                (m.fees.rate_from === "trajet_precedent" ? "du trajet précédent" : "observé") +
+                (m.planned_net.rate_from === "trajet_precedent"
+                  ? "du trajet précédent"
+                  : "observé") +
                 " (" +
                 tradePct(L, m.planned_net.fee_rate) +
                 ")"

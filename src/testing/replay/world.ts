@@ -312,11 +312,16 @@ export class ReplayWorld {
 
   private writeLog(lines: string[], mtimeMs: number): void {
     const text = lines.join("\n") + "\n";
-    if (fs.existsSync(this.logFile)) fs.appendFileSync(this.logFile, text);
-    else fs.writeFileSync(this.logFile, text);
     // Distinct, increasing dates: the ledger reads the file again only when its date changed.
     this.lastMtime = Math.max(mtimeMs, this.lastMtime + 1);
-    fs.utimesSync(this.logFile, this.lastMtime / 1000, this.lastMtime / 1000);
+    // One handle for the whole step (create if missing, append, set the date): no check of the file before its use.
+    const fd = fs.openSync(this.logFile, "a");
+    try {
+      fs.writeSync(fd, text);
+      fs.futimesSync(fd, this.lastMtime / 1000, this.lastMtime / 1000);
+    } finally {
+      fs.closeSync(fd);
+    }
   }
 
   /** Writes lines to the log at once (outside the timeline: for a scenario that needs a line NOW). */
@@ -498,7 +503,12 @@ export class ReplayWorld {
   // ---------------------------------------------------------------------------------------------------------
 
   sessionsBytes(): string {
-    return fs.existsSync(this.sessionsFile) ? fs.readFileSync(this.sessionsFile, "utf8") : "";
+    try {
+      return fs.readFileSync(this.sessionsFile, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
+      throw error;
+    }
   }
 
   sessionsJson(): StoreState {

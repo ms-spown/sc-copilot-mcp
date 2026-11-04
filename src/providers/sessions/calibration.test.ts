@@ -84,6 +84,14 @@ describe("Feature: fees deduced from the balance are not a fee rate (found by th
     expect(commodity(two)!.fee_n).toBe(2);
     expect(commodity(two)!.fee_rate).toBe(0.014);
   });
+
+  it("Given a run whose fees were measured before a restart and that grew since, Then its fees are not in the fee rate", () => {
+    // fees of the first part divided by the revenue of the grown run would understate the rate
+    const grown = { figures_from_before: true, revenue_auec: 900_000 };
+    const r = calibrate([sessionWith(1, [run(grown), run(), run()])]);
+    expect(commodity(r)!.fee_n).toBe(2);
+    expect(commodity(r)!.fee_rate).toBe(0.014);
+  });
 });
 
 describe("Feature: honest small samples", () => {

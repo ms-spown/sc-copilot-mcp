@@ -144,6 +144,33 @@ describe("Feature: what a run really earned", () => {
     expect(two.planned_net).toBeNull();
   });
 
+  it("Given a measured first run and a second whose fees are deduced, Then the planned net says its rate comes from the earlier run", () => {
+    const t = tradeTransactions(BASE);
+    const mk = (s: number, side: "buy" | "sell", total: number): Transaction => ({
+      ...t[0]!,
+      time: new Date(BASE + s * 1000).toISOString(),
+      side,
+      total_auec: total,
+      quantity: 300,
+      commodity_id: AGRICIUM_ID,
+    });
+    // run 2: 60 000 bought (+5 000 of fee), the stream is cut over the sale (71 000, 2 000 of fee), back at 336 s
+    const history: BalancePoint[] = [
+      ...tradeHistory(BASE, BASE + 250_000),
+      { at: BASE + 290_000, uec: F.end, until: BASE + 299_000 },
+      { at: BASE + 300_500, uec: F.end - 65_000, until: BASE + 327_000 },
+      { at: BASE + 336_000, uec: F.end - 65_000 + 69_000, until: NOW },
+    ];
+    const m = run({
+      transactions: [...t, mk(300, "buy", 60_000), mk(330, "sell", 71_000)],
+      history,
+    }).runs[0]!.money!;
+    expect(m.fees).toMatchObject({ method: "estime", total: 7_000 });
+    expect(m.fees.rate_from).toBe("ce_trajet"); // the rate shown for this run is its own deduction...
+    expect(m.planned_net).toMatchObject({ rate_from: "trajet_precedent" }); // ...the plan is netted with the earlier one
+    expect(m.planned_net!.fee_rate).toBeCloseTo(43_568 / 318_072, 6);
+  });
+
   it("Given the dashboard opened after the purchases, Then the net is unknown and says why; the fees of the sales are not claimed alone", () => {
     const history = tradeHistory(BASE, NOW).filter((p) => p.at > BASE + 30_000);
     const m = latest({ history }).money!;

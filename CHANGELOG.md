@@ -12,11 +12,12 @@ versions follow [Semantic Versioning](https://semver.org/).
   synthetic timeline: a Game.log that grows (commerce lines, errors, contracts, connection lines), telemetry frames
   carrying a balance that changes at precise times (through the fake game and the frame encoder), a plan applied by the
   action bar's tool, the session manager writing a temp file, a crash and restart, and every tool called through an
-  in-memory MCP client, on one injected clock. Eight scenarios (`src/e2e/replay.*.behaviour.test.ts`) assert the exact
+  in-memory MCP client, on one injected clock. Sixteen scenarios (`src/e2e/replay.*.behaviour.test.ts`) assert the exact
   figures and the privacy guarantees at every step: the player's run (gross margin 186 568, fees 19 468 / 24 100, net
   +143 000, price deviation +6 568, nothing unexplained), a second and a third run (calibration, a foreign spending kept
   out), a late sale of stock from before, rejected cargo lines, a disconnection and a restart, a quiet telemetry around a
-  sale, a reward paid near a sale, and hostile text in the log. How to add a scenario: CONTRIBUTING.
+  sale, a reward paid near a sale, hostile text in the log and in a note, and a stack switched off. Seven bugs it found
+  are fixed below. How to add a scenario: CONTRIBUTING.
 - `createSessionStack` (`src/providers/sessions/stack.ts`): the server's wiring of the ledger reader, the session file and
   the session manager, shared by `index.ts` and the replay harness so that they cannot drift apart. No change of behaviour.
 
@@ -40,7 +41,9 @@ versions follow [Semantic Versioning](https://semver.org/).
 - **Fees deduced from the balance (`estime`) no longer feed anything else.** Gross margin minus net may hold a reward or a
   purchase made elsewhere (first run with a stream gap: nothing to compare with). They are no longer carried to the next run
   as its reference rate, no longer net the plan, and no longer enter the fee rate of the route reliability. The card says
-  "estimé, flux interrompu ou fenêtre illisible" and that the figure may hold another spending.
+  "estimé, flux interrompu ou fenêtre illisible" and that the figure may hold another spending; the "next run" tile names
+  the origin of the rate it nets the plan with (`planned_net.rate_from`: the earlier run's, never the deduced one). Fees
+  measured before a restart on a run that grew are not in the fee rate either.
 - **The session's efficiency against the plan no longer counts a net the commerce model flagged doubtful.** A reward paid
   during the run, or fuel bought elsewhere, is in the balance variation; the calibration already left such a net out, but
   `money.plan` of `sc_session_current`, `sc_session_list` and `sc_session_stats` (and the session bar) still compared it with

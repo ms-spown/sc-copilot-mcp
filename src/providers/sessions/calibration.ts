@@ -336,6 +336,8 @@ function samplesOf(
         fee:
           t.fees_auec !== null &&
           t.fees_method !== "estime" &&
+          // fees measured before a restart, over the revenue of a run that grew since, would understate the rate
+          t.figures_from_before !== true &&
           t.revenue_auec !== null &&
           t.revenue_auec > 0
             ? { num: t.fees_auec, den: t.revenue_auec, measured: t.fees_method === "mesure" }

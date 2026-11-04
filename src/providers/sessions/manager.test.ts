@@ -443,6 +443,38 @@ describe("Feature: trips are recorded once with their result", () => {
     });
   });
 
+  it("Given a run that grew and whose net is measured again, Then the new figures stand as they are: nothing from before is mixed in or tagged", async () => {
+    const r = rig();
+    r.log.running = true;
+    const base = {
+      ...trip(1, T0 + 2 * MIN, 50_000),
+      kind: "trade" as const,
+      source: "trade_journal" as const,
+      revenue_auec: 150_000,
+      cost_auec: 100_000,
+      gross_margin_auec: 50_000,
+      fees_auec: 9_000,
+      fees_method: "mesure" as const,
+    };
+    r.trips.list = [base];
+    await playMinutes(r, 2, () => 100);
+    r.trips.list = [
+      {
+        ...base,
+        ended_at: new Date(T0 + 3 * MIN).toISOString(),
+        revenue_auec: 170_000,
+        net_auec: 61_000,
+        fees_auec: null,
+        fees_method: null,
+      },
+    ];
+    await playMinutes(r, 2, () => 100);
+    const [s] = await stored(r);
+    expect(s.trips[0]).toMatchObject({ net_auec: 61_000, fees_auec: null, fees_method: null });
+    expect(s.trips[0].figures_from_before).toBeFalsy();
+    expect(s.trips[0].net_doubtful).not.toBe(true);
+  });
+
   it("Given a run stored while its result was still settling, Then the result replaces the unknown one when it is known", async () => {
     const r = rig();
     r.log.running = true;

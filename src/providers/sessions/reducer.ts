@@ -193,6 +193,8 @@ const CARRIED = [
  * calibration and the efficiency against the plan leave it out, the session total keeps it (a raw measure of the balance).
  */
 function carryMeasured(stored: Trip, offered: Trip): Trip {
+  // A net measured again covers the whole run: nothing from before is mixed into it (old fees would not match it).
+  if (offered.net_auec !== null) return offered;
   const lost = CARRIED.filter((k) => stored[k] !== null && offered[k] === null);
   if (lost.length === 0) return offered;
   const kept: Partial<Trip> = {};

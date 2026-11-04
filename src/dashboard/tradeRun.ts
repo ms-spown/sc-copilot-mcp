@@ -169,6 +169,8 @@ export interface PlannedNet {
   /** Which turnover the observed fee rate was applied to. */
   basis: "prix_du_plan" | "chiffre_affaires_observe";
   fee_rate: number;
+  /** Where the rate comes from: this run's own measure, or an earlier run's (always the case for deduced fees). */
+  rate_from: "ce_trajet" | "trajet_precedent";
   fee: number;
 }
 
@@ -812,6 +814,7 @@ function moneyOf(
         auec: planned - fee,
         basis: planTurnover !== null ? "prix_du_plan" : "chiffre_affaires_observe",
         fee_rate: planRate,
+        rate_from: fees.method === "estime" ? "trajet_precedent" : (fees.rate_from ?? "ce_trajet"),
         fee,
       };
     }
