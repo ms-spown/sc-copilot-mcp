@@ -56,6 +56,9 @@ jobs:
       - run: npm run check:page-size
       # The dashboard tests again, against the page as the host receives it (compiled, indentation dropped).
       - run: npm run test:built
+      # The opt-in guarantee on the BUILT server: no connection to the game's telemetry port without SC_TELEMETRY=on,
+      # and at least one with it (loopback only; it listens on 127.0.0.1:2942 itself).
+      - run: npm run check:telemetry-silence
 
   audit:
     name: Dependency audit

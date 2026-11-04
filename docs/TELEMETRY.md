@@ -837,7 +837,8 @@ it again from any conversation, after a game crash, and after a reboot of the PC
   and the session tools and the bar disappear.
 - **To wipe it.** Stop Claude Desktop (or set `SC_SESSIONS=off`), then delete `sessions.json`. Files next to it
   (`sessions.json.v1.bak`, `sessions.json.corrupt-...`, `.bak-...`) are copies of older or unreadable files and hold the
-  same balances: delete all of them to wipe the data.
+  same balances: delete all of them to wipe the data, or run `npm run sessions -- wipe` (a dry run that lists them by
+  name; `--apply` deletes them, in that folder only, and honours `SCMCP_SESSIONS_FILE`).
   The file is plain JSON: you can read it.
 - **A deliberate change of behaviour.** The starting balance cannot be recovered from Game.log, so to capture it the
   server must be watching when the game starts. With sessions on, a small manager keeps the telemetry reader alive
