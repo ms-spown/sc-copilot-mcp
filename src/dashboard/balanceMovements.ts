@@ -438,6 +438,33 @@ export function explainMovements(input: ExplainInput): Explanation {
     for (const w of list) movesOfEvent.set(w.key, [...(movesOfEvent.get(w.key) ?? []), m]);
   }
   for (const [m, list] of weakOf) {
+    // One cause per variation. A cargo line the reconciliation refused (a reward in its window spoils the fee) has a claim
+    // on the changes of its side inside its window: the variation could be the sale or the reward, and neither is chosen
+    // (otherwise the sale's own money would be counted as a probable reward).
+    const sign = Math.sign(m.delta);
+    const claimedBy = pending.find(
+      (p) =>
+        !matched.has(p) &&
+        sign === (p.side === "buy" ? -1 : 1) &&
+        near(m.at, p.t, TRADE_MATCH_BEFORE_MS, TRADE_MATCH_AFTER_MS),
+    );
+    if (claimedBy) {
+      const e: Movement = {
+        at: m.at,
+        amount: m.delta,
+        category: "unexplained",
+        confidence: "ambiguous",
+        reason: "ambiguous",
+        candidates: [
+          claimedBy.category,
+          m.delta > 0 ? "probable_contract_reward" : "probable_insurance_or_hangar_cost",
+        ],
+      };
+      taken.add(m);
+      entries.push(e);
+      entryOf.set(m, e);
+      continue;
+    }
     const several = list.length > 1 || list.some((w) => (movesOfEvent.get(w.key) ?? []).length > 1);
     const causes = new Set(list.map((w) => w.cause).filter(Boolean));
     const cause: MovementCause | undefined =

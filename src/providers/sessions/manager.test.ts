@@ -433,7 +433,14 @@ describe("Feature: trips are recorded once with their result", () => {
     await playMinutes(r, 2, () => 100);
     [s] = await stored(r);
     expect(s.trips).toHaveLength(1);
-    expect(s.trips[0]).toMatchObject({ revenue_auec: 170_000, net_auec: null });
+    // The run grew and the server cannot measure it again: what was measured is kept, tagged, its net flagged doubtful.
+    expect(s.trips[0]).toMatchObject({
+      revenue_auec: 170_000,
+      net_auec: 50_000,
+      fees_auec: 9_000,
+      net_doubtful: true,
+      figures_from_before: true,
+    });
   });
 
   it("Given a run stored while its result was still settling, Then the result replaces the unknown one when it is known", async () => {

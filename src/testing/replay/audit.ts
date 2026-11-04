@@ -86,6 +86,7 @@ export const BALANCE_LABELS = new RegExp(
     '"fees_method"\\s*:\\s*"(?:mesure|estime)"',
     '"net_doubtful"\\s*:\\s*(?:true|false)',
     '"net_kind"\\s*:\\s*"',
+    '"figures_from_before"\\s*:\\s*true',
     '"unexplained_auec"\\s*:\\s*-?\\d',
     "solde_autre_raison|lignes_non_confirmees|stock_anterieur|solde_avant_inconnu|solde_apres_inconnu",
     '"(?:plan_compare|movements|decomposition|calibration|gain|uec_session)"',

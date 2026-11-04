@@ -97,6 +97,13 @@ export const TripSchema = z.object({
   net_doubtful: z.boolean().nullable().default(null),
   /** How `fees_auec` was obtained: measured against the balance on both sides, or deduced (gross margin minus net). */
   fees_method: z.enum(["mesure", "estime"]).nullable().default(null),
+  /**
+   * True when the net, the fees and what the balance holds beyond the run are those MEASURED on an earlier version of the
+   * run: it grew (a later line) after a restart had lost the balance history, so they do not cover its last lines. The net
+   * is then also flagged doubtful. Additive and optional (absent or null: not the case, or a trip from before this field); it comes
+   * from the balance, so it is withheld like `net_doubtful`. Unknown to a build that predates it, which drops it harmlessly.
+   */
+  figures_from_before: z.boolean().nullable().optional(),
 });
 export type Trip = z.infer<typeof TripSchema>;
 

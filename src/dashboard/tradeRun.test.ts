@@ -115,6 +115,35 @@ describe("Feature: what a run really earned", () => {
     expect(m.fees).toMatchObject({ total: 43_568, method: "estime", buy: null, sell: null });
   });
 
+  it("Given fees deduced across a stream cut, Then they promise no planned net and are not carried to the next run (found by the end-to-end replay)", () => {
+    const history: BalancePoint[] = [
+      { at: BASE + 6_000, uec: F.start, until: BASE + 19_000 },
+      { at: BASE + 209_000, uec: F.end, until: NOW },
+    ];
+    // the rate is shown (labelled estimated) but the plan is not netted with it: it may hold a foreign spending
+    const m = latest({ history }).money!;
+    expect(m.fees.method).toBe("estime");
+    expect(m.fees.rate).toBeCloseTo(43_568 / 318_072, 6);
+    expect(m.planned_net).toBeNull();
+    // a second run whose own fees are unknown borrows no rate from it either
+    const t = tradeTransactions(BASE);
+    const mk = (s: number, side: "buy" | "sell", total: number): Transaction => ({
+      ...t[0]!,
+      time: new Date(BASE + s * 1000).toISOString(),
+      side,
+      total_auec: total,
+      quantity: 300,
+      commodity_id: AGRICIUM_ID,
+    });
+    const two = run({
+      transactions: [...t, mk(300, "buy", 60_000), mk(330, "sell", 71_000)],
+      history: [...history, { at: BASE + 215_000, uec: F.end, until: BASE + 215_000 }],
+    }).runs[0]!.money!;
+    expect(two.fees.rate_from).toBeUndefined();
+    expect(two.fees.rate).toBeNull();
+    expect(two.planned_net).toBeNull();
+  });
+
   it("Given the dashboard opened after the purchases, Then the net is unknown and says why; the fees of the sales are not claimed alone", () => {
     const history = tradeHistory(BASE, NOW).filter((p) => p.at > BASE + 30_000);
     const m = latest({ history }).money!;

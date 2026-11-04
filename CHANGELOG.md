@@ -27,6 +27,20 @@ versions follow [Semantic Versioning](https://semver.org/).
   `null` fees. The session total silently fell back to the run's gross margin (186 568 instead of 143 000 in the replay),
   and the run left the net ratio of the route calibration. A trade trip is now replaced only when the run grew (a later
   sale) or when the new version loses nothing the stored one measured.
+- **A run that grows after a restart keeps what was measured.** Same cause as above, for a run that also got a later sale
+  while the server was down: its measured net and fees were replaced by unknown ones. A known figure is never replaced by an
+  unknown one: they are kept, the trip carries the new optional tag `figures_from_before` (they do not cover the last
+  lines, withheld without the balance like `net_doubtful`) and its net is flagged doubtful, so the calibration and the
+  efficiency against the plan leave it out. The session file stays version 2 (an additive optional key; an older build
+  drops it harmlessly).
+- **A reward paid inside the window of a cargo sale is no longer added to the "probable rewards" by the sale's own changes.**
+  When the fee of a sale could not be measured because of the reward, the sale's changes were read as probable rewards (the
+  total exceeded the reward by the sale's revenue). A variation on the side of such a line, inside its window, is now
+  `unexplained` and `ambiguous` with both causes named; the sum invariant holds.
+- **Fees deduced from the balance (`estime`) no longer feed anything else.** Gross margin minus net may hold a reward or a
+  purchase made elsewhere (first run with a stream gap: nothing to compare with). They are no longer carried to the next run
+  as its reference rate, no longer net the plan, and no longer enter the fee rate of the route reliability. The card says
+  "estimé, flux interrompu ou fenêtre illisible" and that the figure may hold another spending.
 - **The session's efficiency against the plan no longer counts a net the commerce model flagged doubtful.** A reward paid
   during the run, or fuel bought elsewhere, is in the balance variation; the calibration already left such a net out, but
   `money.plan` of `sc_session_current`, `sc_session_list` and `sc_session_stats` (and the session bar) still compared it with

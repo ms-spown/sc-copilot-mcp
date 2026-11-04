@@ -658,7 +658,12 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
   | `unexplained` | tout le reste ; raisons `no_cause`, `ambiguous` (deux sortes de cause conviennent : aucune n'est choisie) ou `stream_gap` (la variation chevauche une coupure du flux : ni son heure ni son contenu ne sont connus) | `none` / `ambiguous` |
 
   Une variation va à une cause au plus (une preuve forte, un montant qui correspond, passe avant la proximité dans le
-  temps). **Carburant, réparations, amendes, virements entre joueurs et récompenses sans événement à côté ne laissent
+  temps). Une variation du côté d'une ligne de cargaison dont les frais n'ont pas pu être mesurés, dans la fenêtre de cette
+  ligne (une récompense versée juste après une vente fausse le rapprochement), peut être la vente ou la récompense : elle
+  est `unexplained` et `ambiguous`, avec les deux causes nommées, jamais comptée comme récompense probable. Les frais
+  déduits du solde (`estime` : marge brute moins net, quand le flux était coupé ou la fenêtre illisible) peuvent contenir
+  une récompense ou un achat fait ailleurs : la carte le dit, et ils ne servent ni au net prévu, ni au taux reporté au
+  trajet suivant, ni au taux de frais de la fiabilité des trajets. **Carburant, réparations, amendes, virements entre joueurs et récompenses sans événement à côté ne laissent
   aucune ligne dans le journal : ils ne peuvent être que « non expliqués »**, et le bloc dit ce que ce pourrait être sans
   en choisir un. Un contrat échoué ou abandonné juste avant une baisse n'ajoute qu'un indice, jamais l'affirmation d'une
   pénalité. Invariant, testé : les montants de toutes les entrées s'additionnent, à l'aUEC près, à la variation du solde
@@ -916,7 +921,8 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   solde contient en plus de la cargaison (`unexplained_auec`, `net_doubtful` : tous viennent du solde et sont retenus comme
   l'argent, et un trajet dont le net est `net_doubtful` n'est pas comparé à son plan dans l'efficacité de la session). Un
   serveur redémarré ne remplace jamais un trajet de commerce enregistré par une version qui a perdu un chiffre que
-  l'enregistré avait mesuré. Jamais de trames, de lignes brutes, de pseudo ni d'identifiants. Un fichier de version 1 est lu tel quel (les nouveaux
+  l'enregistré avait mesuré ; quand le trajet a aussi grandi (une vente tardive), le net et les frais mesurés sont gardés,
+  `figures_from_before` vaut vrai et le net est `net_doubtful` (il ne couvre plus tout le trajet). Jamais de trames, de lignes brutes, de pseudo ni d'identifiants. Un fichier de version 1 est lu tel quel (les nouveaux
   champs sont inconnus : ces trajets comptent par marchandise, sans mise à l'échelle et sans net) ; le numéro de format a
   bougé pour qu'un ancien build laisse un fichier de version 2 tranquille : il l'ouvre en lecture seule, en mémoire, avec un
   avis, et les données ne sont pas perdues. Avant la première écriture dans le nouveau format, le serveur copie une fois le

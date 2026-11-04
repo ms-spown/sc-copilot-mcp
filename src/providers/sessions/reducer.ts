@@ -177,6 +177,34 @@ const supersedes = (stored: Trip, offered: Trip) =>
   grew(stored, offered) &&
   (ms(offered.ended_at) > ms(stored.ended_at) || !lostFigure(stored, offered));
 
+const CARRIED = [
+  "net_auec",
+  "net_kind",
+  "fees_auec",
+  "fees_method",
+  "unexplained_auec",
+  "net_doubtful",
+] as const;
+
+/**
+ * The offered version of a run that GREW, with the figures the stored one measured and the offered one cannot (a restart
+ * lost the balance history): a known figure is never replaced by an unknown one. Those figures describe the run as it was
+ * measured, not its last lines, so the trip says so (`figures_from_before`) and its net is flagged doubtful: the
+ * calibration and the efficiency against the plan leave it out, the session total keeps it (a raw measure of the balance).
+ */
+function carryMeasured(stored: Trip, offered: Trip): Trip {
+  const lost = CARRIED.filter((k) => stored[k] !== null && offered[k] === null);
+  if (lost.length === 0) return offered;
+  const kept: Partial<Trip> = {};
+  for (const k of lost) (kept as Record<string, unknown>)[k] = stored[k];
+  return {
+    ...offered,
+    ...kept,
+    ...(offered.net_auec === null && stored.net_auec !== null ? { net_doubtful: true } : {}),
+    figures_from_before: true,
+  };
+}
+
 function mergeTrips(state: StoreState, cur: Session, inputs: readonly TripInput[]): boolean {
   if (inputs.length === 0) return false;
   const known = new Set<string>();
@@ -197,7 +225,7 @@ function mergeTrips(state: StoreState, cur: Session, inputs: readonly TripInput[
         supersedes(cur.trips[at], parsed.data)
       ) {
         cur.trips[at] = {
-          ...parsed.data,
+          ...carryMeasured(cur.trips[at], parsed.data),
           planned_profit_auec: parsed.data.planned_profit_auec ?? cur.trips[at].planned_profit_auec,
           // What the plan said is kept too when the grown run no longer carries it.
           plan_link: parsed.data.plan_link ?? cur.trips[at].plan_link,

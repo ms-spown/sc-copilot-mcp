@@ -797,18 +797,21 @@ function moneyOf(
 
   // ---- the plan, net of the observed fees
   let plannedNet: PlannedNet | null = null;
-  if (planned !== null && fees.rate !== null) {
+  // The rate that nets the plan is a measured one: this run's own when it was measured, else the one seen on an earlier
+  // run. Fees deduced from the balance (`estime`) are shown, but not used to promise a net.
+  const planRate = fees.method === "estime" ? ctx.fallbackRate : fees.rate;
+  if (planned !== null && planRate !== null) {
     const planTurnover =
       plan && finitePositive(plan.sell_unit_price) && finitePositive(plan.scu)
         ? plan.sell_unit_price * plan.scu
         : null;
     const base = planTurnover ?? turnover;
     if (base !== null && base > 0) {
-      const fee = Math.round(fees.rate * base);
+      const fee = Math.round(planRate * base);
       plannedNet = {
         auec: planned - fee,
         basis: planTurnover !== null ? "prix_du_plan" : "chiffre_affaires_observe",
-        fee_rate: fees.rate,
+        fee_rate: planRate,
         fee,
       };
     }
@@ -948,13 +951,14 @@ export function buildTradeSection(input: TradeInput): TradeSection {
       });
       moneys.push(money);
       if (money.net.method === "mesure") measured += 1;
-      // A rate that came from a doubtful deduction (the balance moved for other reasons) is never carried forward.
-      const cap = (money.turnover ?? 0) * TRADE_UNEXPLAINED_SHARE;
-      const doubtful =
-        money.fees.method === "estime" &&
-        money.fees.unexplained !== null &&
-        Math.abs(money.fees.unexplained) > cap;
-      if (money.fees.rate_from === "ce_trajet" && money.fees.rate !== null && !doubtful)
+      // Only a rate MEASURED against the balance is carried forward. A deduced one (gross margin minus net, when the stream
+      // was cut or the window unreadable) may hold a reward or a purchase made elsewhere: it is the next run's yardstick
+      // only if it is nothing but fees, which nothing can tell.
+      if (
+        money.fees.rate_from === "ce_trajet" &&
+        money.fees.rate !== null &&
+        money.fees.method === "mesure"
+      )
         carried = money.fees.rate;
     });
   }

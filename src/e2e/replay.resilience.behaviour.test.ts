@@ -258,4 +258,39 @@ describe("Feature: the telemetry goes quiet around a sale", () => {
       fees_method: "estime",
     });
   });
+
+  it("Scenario: fees deduced across a stream gap feed neither the next run's reference rate, nor the planned net, nor the calibration", async () => {
+    // Two runs, each with its sales lost in a gap, the second with 20 000 of fuel hidden in it. The deduced "fees" of the
+    // first may hold anything: they must not become the yardstick that the second is judged by.
+    const w = await rig.start();
+    const [t1, t2] = [20, 1800];
+    scheduleRun(w, t1);
+    scheduleRun(w, t2);
+    for (const t0 of [t1, t2]) {
+      w.at(t0 + 69).cut();
+      w.at(t0 + 89).resume();
+    }
+    w.at(t2 + 85).change(-20_000);
+    await w.playTo(10);
+    await w.applyPlan();
+    await w.playTo(t2 - 10, { dt: 30 });
+    await w.playTo(t2 - 5);
+    await w.applyPlan();
+    await w.playTo(t2 + 96);
+    const p = await w.poll(true);
+    const m = newestRun(p).money;
+    expect(m.fees).toMatchObject({ method: "estime", total: F.fees + 20_000 });
+    // No reference rate: the first run's was deduced. Unknown, not computed against it.
+    expect(m.fees.unexplained).toBeNull();
+    expect(m.planned_net).toBeNull(); // the planned net needs a rate that was measured
+    const trips = w.sessionsJson().sessions[0]!.trips;
+    expect(trips.map((t) => t.fees_method)).toEqual(["estime", "estime"]);
+    // The calibration has the two runs but no fee rate from them, and no net ratio (the nets cannot be told clean).
+    for (const g of p.ledger.calibration.groups) {
+      expect(g).toMatchObject({ n: 2, fee_n: 0, fee_rate: null, net_n: 0, net_ratio: null });
+    }
+    // The card names what the figure is.
+    const stats = (await w.call("sc_session_stats", { include_balance: true })).data;
+    expect(stats.route_reliability.groups[0]).toMatchObject({ fee_measured: 0, fee_n: 0 });
+  });
 });
