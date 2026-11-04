@@ -392,6 +392,69 @@ describe("Feature: what goes to the model is rare, compact and never the balance
     );
     expect(L.actionMessage("unknown", {})).toBeNull();
   });
+
+  it("Given the contextual Ask Claude kinds, Then each message is fixed, names its tools, and carries no number, no ship and no balance", () => {
+    const tools: Record<string, string[]> = {
+      loss: ["sc_session_current", "sc_trade_journal", "sc_log_context"],
+      refusal: ["sc_trade_journal", "uex_get_price_history", "uex_get_market_status"],
+      debrief: ["sc_trade_journal", "sc_session_current", "uex_get_price_history"],
+    };
+    for (const kind of Object.keys(tools)) {
+      // whatever the context holds (a balance, a ship, markup), the text is the same
+      const plain = L.actionMessage(kind, {})!;
+      const rich = L.actionMessage(kind, { balance: 424242, vehicle: "MISC_Hull_C" })!;
+      expect(rich).toBe(plain);
+      for (const t of tools[kind]!) expect(plain).toContain(t);
+      expect(plain).not.toMatch(/\d/);
+      expect(plain).not.toMatch(/MISC|Hull|<|>/);
+      expect(NB(plain)).toContain("include_balance false");
+      expect(plain).not.toMatch(/include_balance (true|vrai)/);
+      expect(NB(plain)).toContain("N’inclus pas mon solde");
+      // the dashboard's own tools stay out of the model's hands (the server's manual says so)
+      expect(plain).not.toMatch(/sc_live_poll|sc_live_mark|sc_trade_suggest/);
+      // and it says what to do when a tool is not offered, instead of inventing
+      expect(plain).toMatch(/manque, dis-le/);
+    }
+    expect(L.actionMessage("loss", {})).toContain(
+      "valeur perdue, suite donnée à l’assurance, coût de remplacement, responsable",
+    );
+  });
+});
+
+describe("Feature: the verdict puts a ship loss above everything", () => {
+  const live = poll({ ship: { name: "MISC_Hull_C", class_name: "MISC_Hull_C" }, pilot: {} });
+  const loss = {
+    loss: true,
+    tone: "fatal",
+    label: "Vaisseau détruit",
+    ago: "il y a 31 s",
+    at: "à 12:12:00",
+  };
+  const refusal = { label: "Prix changé : achat refusé", ago: "il y a 5 s", at: "à 12:12:00" };
+
+  it("Given a loss and a red condition, Then the loss wins with the top tone, and the red one is only counted", () => {
+    const v = L.summaryInfo(live, [{ tone: "bad", label: "Boucliers tombés" }], loss);
+    expect(v).toMatchObject({
+      id: "loss",
+      tone: "fatal",
+      label: "Vaisseau détruit · il y a 31 s (+1)",
+    });
+    expect(v.title).toBe("à 12:12:00");
+  });
+
+  it("Given the scale, Then a refusal stays amber and a red condition stays red", () => {
+    expect(L.summaryInfo(live, [], refusal)).toMatchObject({ id: "watch", tone: "warn" });
+    expect(
+      L.summaryInfo(live, [{ tone: "bad", label: "Boucliers tombés" }], refusal),
+    ).toMatchObject({
+      id: "alert",
+      tone: "bad",
+    });
+  });
+
+  it("Given a loss and no ship in the stream, Then the loss is still said", () => {
+    expect(L.summaryInfo(poll(), [], loss)).toMatchObject({ id: "loss", tone: "fatal" });
+  });
 });
 
 describe("Feature: estimates are labelled estimates", () => {

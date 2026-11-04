@@ -54,6 +54,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   let lastPollAt = 0;
   let gate = L.initialContextGate();
   let lastStreamId = "";
+  // What the "Ask Claude" buttons do right now (tradeAskInfo): read at CLICK time, written by render().
+  let ask: any = { kind: "analyse", label: "Analyser" };
   let lastSize = "";
   const pins: Record<string, boolean> = {};
   // Several Views of one conversation: only the leader polls (see viewLogic.electLeader).
@@ -355,7 +357,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.verdict = el("span", "verdict", "");
     R.topActions = el("div", "top-actions");
     R.age = el("span", "age", "");
-    R.btnAnalyse = button("Analyser", () => sendAction("analyse"), "small");
+    R.btnAnalyse = button("Analyser", () => sendAction(ask.kind), "small");
     R.btnAnalyse.setAttribute(
       "title",
       "Analyser ma situation : demande à Claude d’analyser la télémétrie",
@@ -847,7 +849,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     );
     // Ask Claude, with its confirmation next to the buttons
     const cAct = card("Demander à Claude");
-    R.btnAnalyse2 = button("Analyser ma situation", () => sendAction("analyse"));
+    R.btnAnalyse2 = button("Analyser ma situation", () => sendAction(ask.kind));
     R.btnRoute = button("Route avec mon solde et ce vaisseau", () => sendAction("route"));
     R.btnBilan = button("Bilan de session", () => sendAction("bilan"));
     R.actionCol = el("div", "btn-col");
@@ -940,6 +942,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.supersede,
       R.notice,
       R.preflight.line,
+      R.preflight.lossLine,
       R.alerts,
       R.pinbar,
       R.inline,
@@ -1158,7 +1161,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   }
 
   /** `current` is false when the values are greyed: an empty list then means "unknown", never "no alert". */
-  function renderAlerts(now: number, conds: any[], current: boolean) {
+  function renderAlerts(now: number, conds: any[], current: boolean, grave?: boolean) {
     for (let i = 0; i < R.condList.length; i++) {
       const slot = R.condList[i];
       const c = conds[i];
@@ -1190,6 +1193,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       if (a) {
         setAttr(slot, "data-tone", a.tone);
         setAttr(slot, "data-verified", a.verified ? "1" : "0");
+        // While a ship loss is on screen, the history of events older than a minute is kept but made small and quiet (the
+        // label stays in the page for a screen reader; the live conditions above are never reduced).
+        setAttr(slot, "data-reduced", grave && a.ageMs > 60000 ? "1" : "0");
         setText(slot.label, a.label);
         setText(slot.meta, (a.verified ? "" : "non vérifié · ") + "il y a " + L.formatAge(a.ageMs));
       }
@@ -1600,11 +1606,23 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const refusal = actionsOn
       ? L.tradeAlertInfo(L, tradeLedger ? tradeLedger.trade : null, now, showBalance)
       : null;
+    // The "Ask Claude" buttons: their words and the message they send follow the situation (a loss, a refused price, a run
+    // that just ended, else the plain analysis). The full-screen card keeps its longer default words.
+    ask = L.tradeAskInfo(L, tradeLedger ? tradeLedger.trade : null, now, actionsOn);
+    setText(R.btnAnalyse, ask.label);
+    setText(R.btnAnalyse2, ask.kind === "analyse" ? "Analyser ma situation" : ask.label);
+    setAttr(R.btnAnalyse, "data-ask", ask.kind);
+    setAttr(
+      R.btnAnalyse,
+      "title",
+      (ask.kind === "analyse" ? "Analyser ma situation" : ask.label) +
+        " : demande à Claude de lire les outils concernés",
+    );
     const info = renderStatus(now, conds, refusal);
     streamLive = !info.grey;
     renderContext(now);
     R.shortcuts.render(view.poll, { grey: info.grey, fullscreen: displayMode === "fullscreen" });
-    renderAlerts(now, conds, !info.grey);
+    renderAlerts(now, conds, !info.grey, !!refusal && refusal.loss === true);
     R.sessions.render(view.poll && view.poll.sessions, { showBalance, now });
     R.ledger.render(view.poll && view.poll.ledger, {
       showBalance,
@@ -1718,6 +1736,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       plan: view.plan,
       trade,
       showBalance,
+      // The loss box's own "Ask Claude" button: same words and same fixed message as the buttons of the page.
+      askInfo: ask,
+      ask: () => sendAction(ask.kind),
       call: async (name: string, args: any, timeoutMs: number) =>
         request("tools/call", { name, arguments: args }, timeoutMs),
       say: (text: string) =>

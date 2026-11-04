@@ -8,6 +8,9 @@
  *
  * Levels mean the same thing everywhere: nominal = discreet green, info = blue, warning = amber, critical = red.
  * Red is kept for critical conditions: an absent or switched-off thing is grey, never red.
+ * One level sits above them, "fatal": a SOLID red fill (the page background as the text colour on it), used for nothing but
+ * a ship lost with the player aboard. The scale of gravity is therefore: amber (worth a look: a hit, a refused price) < red
+ * tint (danger now: shields down, hostile lock) < red fill (the ship is gone). No other hue is added.
  */
 export const VIEW_CSS = `
 :root {
@@ -74,6 +77,8 @@ h2, h3 { margin: 0; }
 .verdict[data-tone="ok"] { color: var(--sc-ok); background: var(--tint-ok); border-color: transparent; }
 .verdict[data-tone="warn"] { color: var(--sc-warn); background: var(--tint-warn); border-color: transparent; }
 .verdict[data-tone="bad"] { color: var(--sc-bad); background: var(--tint-bad); border-color: transparent; }
+.verdict[data-tone="fatal"] { color: var(--sc-bg); background: var(--sc-bad); border-color: transparent; font-weight: 700; }
+.verdict[data-tone="fatal"]::before { content: "\\2715"; margin-right: 6px; }
 .top-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-left: auto; }
 .age { color: var(--sc-text3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 
@@ -115,6 +120,8 @@ h2, h3 { margin: 0; }
 .alert[data-tone="info"] { color: var(--sc-info); background: var(--tint-info); border-color: transparent; }
 .alert:not(.condition) { background: transparent; border: 1px solid currentColor; opacity: 0.85; }
 .alert[data-verified="0"] { border-style: dashed; border-color: currentColor; }
+.alert[data-reduced="1"] { padding: 1px 8px; font-size: var(--fs-xs); opacity: 0.55; background: transparent; border: 1px solid var(--sc-line); color: var(--sc-text3); }
+.alert[data-reduced="1"] .alert-meta { display: none; }
 .alert-label { font-weight: 600; }
 .alert-meta { color: var(--sc-text2); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 

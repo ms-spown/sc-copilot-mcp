@@ -390,8 +390,10 @@ describe("Feature: the block in the card's details", () => {
     await w.advance(120 * SECOND);
     await fullscreen(w);
     for (const c of w.host.log.contexts) expect(NBSP_FREE(c)).not.toMatch(MOVED);
-    findButton(w.root, "Analyser ma situation").click();
+    // This story holds a fresh ship loss: the "Ask Claude" button says so, and sends the fixed message of the loss.
+    findButton(w.root, "Analyser la perte").click();
     await w.advance(100);
+    expect(w.host.log.messages.length).toBeGreaterThan(0);
     for (const m of w.host.log.messages) expect(NBSP_FREE(m)).not.toMatch(MOVED);
   });
 });

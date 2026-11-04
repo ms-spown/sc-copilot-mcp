@@ -1194,6 +1194,18 @@ export function actionMessage(kind: string, ctx: any): string | null {
   if (kind === "bilan") {
     return "Fais le bilan de ma session à partir de la télémétrie en direct : appelle sc_live_events et sc_live_state, tous deux avec include_balance false, résume décollages, atterrissages, sauts, alertes et combats en distinguant les événements confirmed et unverified. N\u2019inclus pas mon solde.";
   }
+  // The contextual "Ask Claude" button (tradePreflight.ts tradeAskInfo picks the kind). FIXED words and tool names only: no
+  // number, no ship, nothing read from the log or the game, no name, never the balance (every tool call says include_balance
+  // false, as "analyse" and "bilan" do), and no tool of the dashboard itself. A tool that is not offered: Claude says so.
+  if (kind === "loss") {
+    return "Analyse la perte de mon vaisseau : appelle sc_session_current puis sc_trade_journal, tous deux avec include_balance false, et dis ce qu’ils établissent (vaisseau détruit avec moi à bord, cargo acheté et non vendu, seulement présumé perdu) et ce qu’ils ne disent pas (valeur perdue, suite donnée à l’assurance, coût de remplacement, responsable). Regarde aussi sc_log_context : il ne donne que le nombre de demandes d’assurance de la session, sans lien établi avec cette perte, dis-le tel quel. N’invente rien. Si un de ces outils manque, dis-le. N’inclus pas mon solde.";
+  }
+  if (kind === "refusal") {
+    return "Que faire maintenant ? Un prix a changé au kiosque pendant ma transaction. Appelle sc_trade_journal avec include_balance false pour voir ce qui a été refusé et où j’en suis du trajet, puis relis les prix avec uex_get_price_history et uex_get_market_status pour cette marchandise en disant leur âge (prix collaboratifs). Propose un seul prochain pas concret, sans inventer de chiffre. Si un outil manque, dis-le. N’inclus pas mon solde.";
+  }
+  if (kind === "debrief") {
+    return "Fais le debrief de mon dernier trajet : appelle sc_trade_journal puis sc_session_current, tous deux avec include_balance false, regarde le prix de vente actuel avec uex_get_price_history, et dis ce qui a bien marché, ce que je changerais et la prochaine route. Distingue ce qui est mesuré de ce qui est estimé. Si un outil manque, dis-le. N’inclus pas mon solde.";
+  }
   if (kind === "route") {
     if (!ctx || ctx.balance === undefined || ctx.balance === null) return null;
     const bal = fmtAuec(ctx.balance);
@@ -1771,6 +1783,15 @@ export function summaryInfo(poll: any, items: any[], refusal?: any): any {
     return { id: "off", tone: "neutral", label: "Vaisseau éteint", count: 0 };
   }
   const more = total - 1 > 0 ? " (+" + (total - 1) + ")" : "";
+  // A ship lost with the player aboard is above every red condition: the one tone nothing else uses ("fatal").
+  if (refusal && refusal.loss === true)
+    return {
+      id: "loss",
+      tone: "fatal",
+      label: refusal.label + " · " + refusal.ago + more,
+      title: refusal.at,
+      count: total,
+    };
   if (bad.length > 0)
     return { id: "alert", tone: "bad", label: "Alerte : " + bad[0].label + more, count: total };
   if (refusal)

@@ -455,7 +455,13 @@ that this server provides and that the client renders next to the chat.
   opens by itself only when something needs setting up (closing it is then kept in memory for the session). The page stores nothing but this flag; what the server saves is described in [Saved sessions](#saved-sessions).
 - **What the buttons do.** "Analyser ma situation", "Route avec mon solde et ce vaisseau" and "Bilan de session" post
   a short fixed message in the conversation, as if you had typed it, asking Claude to use `sc_live_state` and
-  `sc_live_events`; a confirmation appears next to the buttons and clears itself. Session markers live in this
+  `sc_live_events`; a confirmation appears next to the buttons and clears itself. The first button follows the
+  situation (it is "Analyser" in the compact header): "Analyser la perte" after a ship loss (asks for `sc_session_current` and
+  `sc_trade_journal`), "Que faire maintenant ?" after a refused price (`sc_trade_journal`, `uex_get_price_history`,
+  `uex_get_market_status`), "Debrief du trajet" for half an hour after a run ended (`sc_trade_journal`,
+  `sc_session_current`, `uex_get_price_history`), else the plain analysis. Each message is fixed text: no number, no ship,
+  nothing read from the log or the game, never a balance (every tool call in it says `include_balance false`, as for the
+  two older buttons), and the model is told to say so if a tool is missing. Session markers live in this
   server's memory. Nothing in the page sends anything to the game.
 - **Several dashboards: the facts.** Each dashboard is a separate iframe with its own calls to `sc_live_poll`, once
   a second while it is visible. Claude Desktop never unmounts the older ones. Server side nothing multiplies: one
@@ -863,8 +869,17 @@ journal (failed, confirmed). Too few cases to give a rate. Not verified: the beh
 does with the price shown after a refusal.
 
 **The ship that was destroyed.** The same alert slot shows a ship destroyed with the player aboard, for 15 minutes unless a newer refused price takes the slot (the ownership of the ship is not verified; with
-the cause named only when the log states it) ("Vaisseau détruit, joueur à bord (…) : collision. Cargo présumé perdu : 640 SCU, 947 857 aUEC payés (prix
-d'achat, pas la valeur) (non confirmé)."; the saved session keeps it for good). It is read from build 4.10's
+the cause named only when the log states it) ("Vaisseau détruit à 12:12:00, joueur à bord (…) : collision." then "Cargo présumé perdu : 640 SCU, 947 857 aUEC payés (prix
+d'achat, pas la valeur) (non confirmé)."; the saved session keeps it for good). It is the gravest event of the page: its chip in the header and its box
+use the top tone of a scale (amber: worth a look, a hit or a refused price; red tint: danger now, shields down or a hostile lock; solid red: the ship is gone), the chips of
+events older than a minute are made small and quiet while it stands, the box holds two lines (what happened; the cargo presumed lost, the aUEC paid only
+with the amounts shown), the doubts are folded under "Pourquoi ce n'est pas certain ?" (a native details element, reachable with the keyboard: the ownership of
+the ship not verified, the value lost, what became of an insurance claim, the replacement cost and the one responsible not logged, the attribution checked on 2025 logs only, the kind of causer
+deduced from the shape of a name, the purchases and sales the journal could not confirm), and "Et maintenant" says facts only: the run in progress is cut when the journal
+had cargo bought for that ship, and a new session or a new run can begin. **No insurance claim is shown, not even "none seen":** the log parser reads the line
+of a claim request (`insurance_claim_requested`), but the dashboard receives it only inside the balance movement explainer (built, and kept, only with the
+balance shown, and never as a standalone fact), so "no claim seen" would be false whenever the amounts are hidden. Showing it would take a new field in the
+commerce section; it is not done. It is read from build 4.10's
 `[ActorState] Dead ... destroyed vehicle` line (the actor must be the player, compared with a hash of his id from the login
 line) and, as a legacy path no 4.10 log exercises, from the 2025 `Actor Death` and `Vehicle Destruction` lines
 (`providers/gamelog/shipLossParse.ts`, `shipLoss.ts`). A collision is named as the cause only when a

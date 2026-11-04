@@ -150,7 +150,9 @@ describe("Feature: the commerce card after a ship was destroyed", () => {
     expect(t).not.toContain("n’est pas terminé");
     // two places in full screen: the stage chip and the alert box (the card's own message stays silent)
     expect(count(t, "Cargo présumé perdu")).toBe(1);
-    expect(t).toContain("Vaisseau détruit, joueur à bord");
+    expect(t).toMatch(
+      /Vaisseau détruit à \d{2}:\d{2}:\d{2}, joueur à bord \(MISC Freelancer\) : collision\./,
+    );
   });
 
   it("Given a loss and then a price refused at the kiosk (the alert shows the refusal), Then the card still carries the cargo sentence, once", async () => {
@@ -172,7 +174,7 @@ describe("Feature: the commerce card after a ship was destroyed", () => {
   it("Given no alert at all (the server's answers are off), Then the sentence does not disappear from the card", async () => {
     const w = await tradePage(60 * SECOND, { pollOff: true });
     const t = text(w);
-    expect(t).not.toContain("Vaisseau détruit, joueur à bord");
+    expect(t).not.toContain("joueur à bord");
     // the card is there, interrupted, and carries the sentence itself (there is no alert box to carry it)
     expect(t).toContain("Trajet interrompu");
     expect(count(t, "Cargo présumé perdu")).toBe(1);

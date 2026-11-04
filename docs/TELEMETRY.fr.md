@@ -472,7 +472,13 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   page fonctionne pareil, et la légende ne s'ouvre d'elle-même que lorsque quelque chose est à régler (sa fermeture est alors gardée en mémoire pour la session). La page ne stocke rien d'autre que ce drapeau ; ce que le serveur enregistre est décrit dans [Sessions enregistrées](#sessions-enregistrées).
 - **Ce que font les boutons.** « Analyser ma situation », « Route avec mon solde et ce vaisseau » et « Bilan de
   session » publient un court message fixe dans la conversation, comme si vous l'aviez tapé, demandant à Claude
-  d'utiliser `sc_live_state` et `sc_live_events` ; une confirmation apparaît à côté des boutons et s'efface seule.
+  d'utiliser `sc_live_state` et `sc_live_events` ; une confirmation apparaît à côté des boutons et s'efface seule. Le premier bouton suit la
+  situation (il s'appelle « Analyser » dans l'en-tête compact) : « Analyser la perte » après la perte d'un vaisseau (demande `sc_session_current` et
+  `sc_trade_journal`), « Que faire maintenant ? » après un prix refusé (`sc_trade_journal`, `uex_get_price_history`,
+  `uex_get_market_status`), « Debrief du trajet » pendant une demi-heure après la fin d'un trajet (`sc_trade_journal`,
+  `sc_session_current`, `uex_get_price_history`), sinon l'analyse simple. Chaque message est un texte fixe : aucun nombre, aucun vaisseau,
+  rien venu du journal ni du jeu, jamais un solde (chaque appel d'outil y dit `include_balance false`, comme pour les deux
+  anciens boutons), et le modèle doit le dire si un outil manque.
   Les repères de session vivent dans la mémoire de ce serveur. Rien dans la page n'envoie quoi que ce soit au jeu.
 - **Plusieurs tableaux de bord : les faits.** Chaque tableau de bord est une iframe distincte qui fait ses propres
   appels à `sc_live_poll`, une fois par seconde tant qu'elle est visible. Claude Desktop ne démonte jamais les plus
@@ -914,8 +920,16 @@ tous deux rattachés à leur requête par le journal (échoué, confirmé). Trop
 le comportement en session réelle, et ce que fait le jeu du prix affiché après un refus.
 
 **Le vaisseau détruit.** Le même emplacement d'alerte montre un vaisseau détruit avec le joueur à bord, pendant 15 minutes sauf si un prix refusé plus récent prend la place (la propriété du vaisseau n'est pas vérifiée ;
-la cause n'est nommée que si le journal la dit) (« Vaisseau détruit, joueur à bord (…) : collision. Cargo présumé perdu : 640 SCU, 947 857 aUEC payés (prix d'achat,
-pas la valeur) (non confirmé). » ; la session enregistrée le garde définitivement). Il est lu dans la
+la cause n'est nommée que si le journal la dit) (« Vaisseau détruit à 12:12:00, joueur à bord (…) : collision. » puis « Cargo présumé perdu : 640 SCU, 947 857 aUEC payés (prix d'achat,
+pas la valeur) (non confirmé). » ; la session enregistrée le garde définitivement). C'est l'événement le plus grave de la page : sa pastille d'en-tête et son encadré
+prennent le ton le plus haut d'une échelle (orange : à regarder, un coup ou un prix refusé ; rouge teinté : danger immédiat, boucliers tombés ou verrouillage hostile ; rouge plein : le vaisseau est perdu),
+les pastilles d'événements de plus d'une minute deviennent petites et discrètes tant qu'il est là, l'encadré tient en deux lignes (ce qui s'est passé ; le cargo présumé perdu, les aUEC payés
+seulement montants affichés), les doutes sont repliés sous « Pourquoi ce n'est pas certain ? » (un élément details natif, accessible au clavier : propriété du vaisseau non vérifiée,
+valeur perdue, suite donnée à l’assurance, coût de remplacement et responsable non journalisés, attribution vérifiée sur des journaux de 2025 seulement, type de responsable déduit de la forme d'un nom, achats et ventes
+que le journal n'a pas pu confirmer), et « Et maintenant » ne dit que des faits : le trajet en cours est interrompu quand le journal avait du cargo acheté pour ce vaisseau, et une nouvelle
+session ou un nouveau trajet peut commencer. **Aucune réclamation d'assurance n'est affichée, pas même « aucune vue » :** le parseur lit la ligne d'une demande de réclamation
+(`insurance_claim_requested`), mais le tableau de bord ne la reçoit que dans l'explicateur de mouvements du solde (construit, et gardé, seulement montants affichés, et jamais comme fait isolé) : « aucune réclamation vue »
+serait faux dès que les montants sont masqués. L'afficher demanderait un nouveau champ dans la section commerce ; ce n'est pas fait. Il est lu dans la
 ligne `[ActorState] Dead ... destroyed vehicle` de la build 4.10 (l'acteur doit être le joueur, comparé à une empreinte de
 son identifiant tirée de la ligne de connexion) et, comme voie héritée qu'aucun journal 4.10 n'exerce, dans les lignes
 `Actor Death` et `Vehicle Destruction` de 2025 (`providers/gamelog/shipLossParse.ts`, `shipLoss.ts`). Une collision n'est

@@ -70,6 +70,7 @@ export function tradeRefusalInfo(L: any, trade: any, now: number): any {
       (sell ? "vente" : "achat") + (item ? " d’un objet" : "") + (sell ? " refusée" : " refusé");
     best = {
       atMs: at,
+      tone: "warn",
       item,
       label: "Prix changé : " + (ambiguous ? "transaction refusée" : what),
       text:
@@ -94,17 +95,10 @@ export function tradeRefusalInfo(L: any, trade: any, now: number): any {
  * whether the boxes survived. SCU is a quantity and always shown; the aUEC paid is a balance figure and appears only while
  * the balance is shown AND the section carried it.
  */
-export function tradeLossCargo(L: any, loss: any, showBalance: boolean): string {
+export function tradeLossCargo(L: any, loss: any, showBalance: boolean, short?: boolean): string {
   const scu = loss && typeof loss.cargo_scu === "number" ? loss.cargo_scu : null;
-  const unconfirmed =
-    (loss && loss.unconfirmed_buys > 0
-      ? " " + loss.unconfirmed_buys + " achat(s) non confirmé(s) ne sont pas comptés."
-      : "") +
-    (loss && loss.unconfirmed_sells > 0
-      ? " " +
-        loss.unconfirmed_sells +
-        " vente(s) non confirmée(s) ne sont pas déduites : le cargo perdu peut être surestimé."
-      : "");
+  // The alert box says it once, in its fold: `short` leaves it out of the sentence.
+  const unconfirmed = short ? "" : tradeLossUnconfirmed(loss);
   if (scu === null) return "Cargo : le journal d’achats n’était pas lisible.";
   if (!(scu > 0)) return "Aucun achat de cargo présumé à bord." + unconfirmed;
   const paid =
@@ -121,11 +115,25 @@ export function tradeLossCargo(L: any, loss: any, showBalance: boolean): string 
   );
 }
 
+/** What the journal could not confirm about the cargo of a loss (counts only; empty when it confirmed everything). */
+export function tradeLossUnconfirmed(loss: any): string {
+  return (
+    (loss && loss.unconfirmed_buys > 0
+      ? " " + loss.unconfirmed_buys + " achat(s) non confirmé(s) ne sont pas comptés."
+      : "") +
+    (loss && loss.unconfirmed_sells > 0
+      ? " " +
+        loss.unconfirmed_sells +
+        " vente(s) non confirmée(s) ne sont pas déduites : le cargo perdu peut être surestimé."
+      : "")
+  );
+}
+
 /**
  * What the log says about the cause of a loss, as words: a collision, a combat, a self-destruction, or "not logged". The kind
  * of causer comes from the SHAPE of a name (a human-looking name, an AI-shaped name) and is said to be so.
  */
-export function tradeLossCause(loss: any): string {
+export function tradeLossCause(loss: any, bare?: boolean): string {
   const cause =
     loss && loss.cause === "collision"
       ? "collision"
@@ -134,8 +142,10 @@ export function tradeLossCause(loss: any): string {
         : loss && loss.cause === "self_destruct"
           ? "autodestruction"
           : "cause non journalisée";
-  const by =
-    loss && loss.causer === "npc"
+  // `bare`: the cause alone (the alert box puts who in its fold, where the doubt belongs).
+  const by = bare
+    ? ""
+    : loss && loss.causer === "npc"
       ? " par une IA (d’après le nom)"
       : loss && loss.causer === "other"
         ? " par un autre joueur ou une entité inconnue (d’après le nom)"
@@ -146,8 +156,10 @@ export function tradeLossCause(loss: any): string {
 /**
  * The newest ship loss that is still fresh, or null (trade: the normalised commerce section): a ship was
  * destroyed with him aboard (certain). Same shape as a price refusal so the header, the compact line and the alert box take
- * either: `label` (the header's words), `text` (what happened), `advice` (the cargo presumed lost), `note` (what the log does
- * not say), `ago`, `at`, `atMs`, `loss: true`. No name of anyone: a model, a cause and a kind of causer.
+ * either: `label` (the header's words), `text` (what happened), `advice` (the cargo presumed lost), `why` (what the log does
+ * not say, one doubt per line, for the fold), `run` (a run was interrupted), `tone` ("fatal"), `ago`, `at`, `atMs`,
+ * `loss: true`. No name of anyone: a model, a cause and a kind of causer. NOTHING about a value, a replacement cost, an
+ * insurance outcome or the one responsible is ever read or shown: the log does not have them.
  */
 export function tradeLossInfo(L: any, trade: any, now: number, showBalance: boolean): any {
   const list = trade && Array.isArray(trade.ship_losses) ? trade.ship_losses : [];
@@ -157,26 +169,51 @@ export function tradeLossInfo(L: any, trade: any, now: number, showBalance: bool
     if (!Number.isFinite(at) || now - at < -5000 || now - at > tradePreflightConfig().lossFreshMs)
       continue;
     if (best && at <= best.atMs) continue;
+    const clock = "à " + L.formatClock(new Date(at).toISOString());
+    // Who did it is told by the SHAPE of a name only: it goes in the fold, with the other doubts.
+    const who =
+      l.causer === "npc"
+        ? "une IA"
+        : l.causer === "other"
+          ? "un autre joueur ou une entité inconnue"
+          : "";
+    const unc = tradeLossUnconfirmed(l).trim();
     best = {
       atMs: at,
       loss: true,
+      // The top of the scale (warn < bad < fatal): a ship lost is the gravest thing the page knows.
+      tone: "fatal",
       item: false,
+      // The run the loss interrupted (the cargo bought for it), if any: a fact of the journal.
+      run: !!l.run_id,
       label: "Vaisseau détruit",
       text:
-        "Vaisseau détruit, joueur à bord" +
+        "Vaisseau détruit " +
+        clock +
+        ", joueur à bord" +
         " (" +
         (l.ship_class ? l.ship_class.replace(/_/g, " ") : "modèle inconnu") +
         ")" +
         "\u00a0: " +
-        tradeLossCause(l) +
+        tradeLossCause(l, true) +
         ".",
-      advice: tradeLossCargo(L, l, showBalance),
-      note: "Valeur perdue, assurance et responsable\u00a0: non journalisés. Propriété du vaisseau non vérifiée. Attribution du cargo vérifiée sur des journaux de builds 2025 seulement.",
-      at: "à " + L.formatClock(new Date(at).toISOString()),
+      // Short: what the journal could not confirm goes in the fold.
+      advice: tradeLossCargo(L, l, showBalance, true),
+      // The fold ("Pourquoi ce n’est pas certain ?"): every doubt, one per line.
+      why:
+        (who ? "Responsable d’après la forme du nom : " + who + ".\n" : "") +
+        tradeLossDoubts() +
+        (unc ? "\n" + unc : ""),
+      at: clock,
       ago: "il y a " + L.formatAge(now - at),
     };
   }
   return best;
+}
+
+/** The doubts about a loss that never change, one per line (the log has no value, no insurance outcome, no replacement cost). */
+export function tradeLossDoubts(): string {
+  return "Propriété du vaisseau non vérifiée.\nValeur perdue, suite donnée à l’assurance, coût de remplacement et responsable : non journalisés.\nAttribution du cargo vérifiée sur des journaux de builds 2025 seulement.";
 }
 
 /**
@@ -188,6 +225,26 @@ export function tradeAlertInfo(L: any, trade: any, now: number, showBalance: boo
   const refusal = tradeRefusalInfo(L, trade, now);
   if (loss && refusal) return refusal.atMs > loss.atMs ? refusal : loss;
   return loss || refusal;
+}
+
+/**
+ * What the "Ask Claude" button is for right now: {kind, label}. The kind picks one of the FIXED messages of viewLogic.ts
+ * (actionMessage), the label is what the button says. Same priority as the alert box (a loss, or a refused price, whichever
+ * is shown), then a run that just ended (`runs[0]`, newest first, complete less than half an hour ago), else the plain
+ * analysis. `on`: the server answers (the alert box exists only then).
+ */
+export function tradeAskInfo(L: any, trade: any, now: number, on: boolean): any {
+  const alert = on ? tradeAlertInfo(L, trade, now, false) : null;
+  if (alert) {
+    return alert.loss
+      ? { kind: "loss", label: "Analyser la perte" }
+      : { kind: "refusal", label: "Que faire maintenant ?" };
+  }
+  const run = trade && trade.source === "journal" && trade.runs ? trade.runs[0] : null;
+  const end = run && run.stage === "complete" ? Date.parse(run.ended_at) : NaN;
+  if (Number.isFinite(end) && now - end >= -5000 && now - end <= 30 * 60 * 1000)
+    return { kind: "debrief", label: "Debrief du trajet" };
+  return { kind: "analyse", label: "Analyser" };
 }
 
 function tradePfText(value: any, max: number): string {
@@ -326,7 +383,29 @@ export function tradePreflightPanel(doc: any, L: any): any {
   const alertText = el("p", "pf-alert-text");
   alertText.setAttribute("role", "status");
   const alertWhen = el("p", "pf-alert-when");
-  add(alertBox, alertText, alertWhen);
+  // A ship lost: its doubts in a fold (a native <details>: Tab reaches it, Enter and Space open it) and the next facts, under
+  // the status line. Nothing here is a live region: the status line alone says it (alertText, `line`).
+  const lossBox = (withAsk: boolean) => {
+    const box = el("div", "pf-loss");
+    box.setAttribute("data-hidden", "1");
+    const fold = el("details", "pf-why");
+    const why = el("p", "pf-why-text");
+    add(fold, el("summary", "pf-why-sum", "Pourquoi ce n’est pas certain ?"), why);
+    const next = el("p", "pf-next-text");
+    const ask = withAsk ? el("button", "btn pf-ask", "Analyser la perte") : null;
+    if (ask) {
+      ask.setAttribute("type", "button");
+      ask.addEventListener("click", () => {
+        if (H.ask) H.ask();
+      });
+    }
+    add(box, fold, el("p", "pf-next-title", "Et maintenant"), next);
+    if (ask) add(box, ask);
+    return { box, why, next, ask };
+  };
+  const lossFull = lossBox(true);
+  const lossCompact = lossBox(false);
+  add(alertBox, alertText, alertWhen, lossFull.box);
   const head = el("div", "pf-head");
   const chip = el("span", "pf-chip");
   add(head, el("h3", "pf-title", "Avant de partir"), chip);
@@ -412,15 +491,38 @@ export function tradePreflightPanel(doc: any, L: any): any {
     // The alert slot holds the more serious of the two: a ship destroyed with the player aboard, else a refused price.
     const alert = H.enabled ? tradeAlertInfo(L, H.trade, now, !!H.showBalance) : null;
     const planOk = tradePreflightPlanOk(H.plan);
+    // A loss is two lines (what happened, the cargo presumed lost); a refusal is one sentence.
+    const said = alert ? (alert.text + (alert.loss ? "\n" : " ") + alert.advice).trim() : "";
+    // What comes next, facts only: the run that was cut, and that a new session or run may begin. The insurance claim is not
+    // said at all: the dashboard does not receive it without the balance (so "none seen" would be false), see CHANGELOG.
+    const nextText =
+      alert && alert.loss
+        ? (alert.run ? "Le trajet en cours est interrompu : il ne sera pas terminé.\n" : "") +
+          "Une nouvelle session ou un nouveau trajet peut commencer quand tu veux."
+        : "";
     // The compact line: the alert alone.
-    setText(line, alert ? (alert.text + " " + alert.advice).trim() : "");
+    setText(line, said);
+    setAttr(line, "data-tone", alert ? alert.tone : "");
     show(line, !full && !!alert);
+    const compactLoss = !full && !!H.enabled && !!alert && alert.loss === true;
+    show(lossCompact.box, compactLoss);
+    if (compactLoss) {
+      setText(lossCompact.why, alert.why);
+      setText(lossCompact.next, nextText);
+    }
     show(root, !!H.enabled && full && (planOk || !!alert));
     if (!H.enabled || !full) return;
 
     show(alertBox, !!alert);
+    setAttr(alertBox, "data-tone", alert ? alert.tone : "");
+    show(lossFull.box, !!alert && alert.loss === true);
+    if (alert && alert.loss) {
+      setText(lossFull.why, alert.why);
+      setText(lossFull.next, nextText);
+      if (lossFull.ask && H.askInfo) setText(lossFull.ask, H.askInfo.label);
+    }
     if (alert) {
-      setText(alertText, (alert.text + " " + alert.advice).trim());
+      setText(alertText, said);
       setText(
         alertWhen,
         alert.ago +
@@ -428,7 +530,7 @@ export function tradePreflightPanel(doc: any, L: any): any {
           alert.at +
           ")" +
           (alert.loss
-            ? " · " + alert.note
+            ? ""
             : alert.item
               ? ""
               : planOk
@@ -529,7 +631,7 @@ export function tradePreflightPanel(doc: any, L: any): any {
     paint();
   }
 
-  return { root, line, render, dispose, state: () => S };
+  return { root, line, lossLine: lossCompact.box, render, dispose, state: () => S };
 }
 
 /** The functions of this file, in the order they are serialised (page.ts). */
@@ -538,9 +640,12 @@ export const TRADE_PREFLIGHT_VIEW_FUNCTIONS = [
   tradeVerdictInfo,
   tradeRefusalInfo,
   tradeLossCargo,
+  tradeLossUnconfirmed,
   tradeLossCause,
   tradeLossInfo,
+  tradeLossDoubts,
   tradeAlertInfo,
+  tradeAskInfo,
   tradePfText,
   tradePfNum,
   tradePreflightClean,
