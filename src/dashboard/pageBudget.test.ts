@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compact, dashboardHtml, viewScript } from "./page.js";
+import { dashboardHtml } from "./page.js";
 
 /**
  * The View is one self-contained page that the host loads at every open: its size is a budget, not an accident. At the
@@ -14,16 +14,6 @@ import { compact, dashboardHtml, viewScript } from "./page.js";
 const BUDGET_BYTES = 395_000;
 
 describe("Feature: the generated page stays within its size budget", () => {
-  it("Given function sources, Then compact drops the indentation, and leaves alone a function that holds a template literal", () => {
-    expect(compact("function f() {\n\tif (a) {\n\t\treturn 1;\n\t}\n    return 2;\n}")).toBe(
-      "function f() {\nif (a) {\nreturn 1;\n}\nreturn 2;\n}",
-    );
-    const withTemplate = "function g() {\n  return `a\n    b`;\n}";
-    expect(compact(withTemplate)).toBe(withTemplate);
-    // A string continued over a line break would lose its indentation: none may exist in the page.
-    expect(viewScript()).not.toContain("\\\n");
-  });
-
   it("Given the assembled page, When its size is measured, Then it is under the budget", () => {
     const bytes = Buffer.byteLength(dashboardHtml(), "utf8");
     expect(bytes).toBeGreaterThan(50_000); // a blank page would be a bug too

@@ -68,13 +68,13 @@ describe("Feature: the page itself is safe and self-contained", () => {
     const script = viewScript();
     expect(script.match(/localStorage/g)).toHaveLength(2);
     expect(script).toMatch(/win\.localStorage\.getItem\(key\)/);
-    expect(script).toMatch(/win\.localStorage\.setItem\(key, value\)/);
+    expect(script).toMatch(/win\.localStorage\.setItem\(key,\s*value\)/);
     // ... and it writes ONE key. A second `storageSet("x", ...)` or `api.set("x", ...)` anywhere must fail here.
     expect(script.match(/storageSet\(/g)).toHaveLength(1); // the definition: nothing calls it by name
-    expect(script.match(/\bset: storageSet\b/g)).toHaveLength(1);
+    expect(script.match(/\bset:\s*storageSet\b/g)).toHaveLength(1);
     expect(script.match(/api\.set\(/g)).toHaveLength(1);
-    expect(script).toMatch(/const KEY = "sc-copilot-help-seen"/);
-    expect(script).toMatch(/api\.set\(KEY, "1"\)/);
+    expect(script).toMatch(/const KEY\s*=\s*"sc-copilot-help-seen"/);
+    expect(script).toMatch(/api\.set\(KEY,\s*"1"\)/);
   });
 
   it("Given the script, Then no text can become markup: only textContent, no eval", () => {
