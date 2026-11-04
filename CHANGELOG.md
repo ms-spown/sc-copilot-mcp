@@ -118,6 +118,7 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [2.1.0] - 2026-11-03
 
 ### Added
+- **Correction on the transport ledger steps.** The pickup and drop-off step lines (`CreateHaulingObjectiveHandler`) exist in game logs up to spring 2025 and are absent from the 12 build 4.10 logs of the reference install, so on current builds the ledger shows contracts, times and the measured gain but no steps (cause not verified); the documentation said otherwise and is corrected.
 - **Transport ledger in the live dashboard** ("Carnet de transport"). Links the game log (contracts, pickup and
   drop-off steps with place and goods) to the balance change the telemetry measured. A full-screen panel and, while a
   contract runs, one line in the small view. It shows what the log gives (title, times, steps, duration) and never a

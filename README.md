@@ -212,7 +212,7 @@ health, hunger, thirst.
   sheet fits the ship (labelled "wiki"), and says so when it keeps its own scale. Claude Code does not display it. See
   [docs/TELEMETRY.md](docs/TELEMETRY.md#live-dashboard).
 - **A transport ledger (optional, needs the game log).** In that dashboard, the contracts of the session with their
-  pickup and drop-off steps and, once you show the balance, the raw balance change over each completed contract; the
+  pickup and drop-off steps (when the log carries them: absent from the build 4.10 logs of the reference install) and, once you show the balance, the raw balance change over each completed contract; the
   game log has no quantity and no reward. See [docs/TELEMETRY.md](docs/TELEMETRY.md#transport-ledger).
 - **Read the risks first.** It is an undocumented game feature. As far as we know CIG has neither allowed nor
   forbidden using it, the RSI terms apply to you, and the risk is yours. Everything is in
