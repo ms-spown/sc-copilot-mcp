@@ -550,6 +550,44 @@ puis ouvrez l'adresse locale qu'il affiche (boucle locale, port 4173 par défaut
 quantique complet compris, face à un hôte factice ; ni jeu ni Claude n'interviennent. La liste qui suit n'est pas complète (`scripts/dashboard-preview.mjs` lit aussi `conn`, `preflight`, `transport`, `sessions`, `health`, `seen`, `help`, `calib`, `specs`, `balance`, `card`, `menu` et `open`) : lisez ce script pour la liste à jour. Paramètres : `t`, `theme`,
 `w`, `mode`, `scroll`, `forced`, `cut`, `plan`, `trade` (la carte Commerce avec un journal de commerce inventé : `story`, `estimated`, `unknown`, `partial`, `second`, `none`), `fw` (largeur du cadre en plein écran), `suggest` (ce que répond l'outil de la barre d'actions de commerce, avec des routes inventées et sans UEX : `ok`, `wait`, `error`, `empty`, `nospeed`, `reported`, `slow`), `click` (le libellé d'un bouton à presser) et `refine=1` (ouvre « Affiner »).
 
+### Raccourcis selon le contexte
+
+Une zone « Raccourcis », sous le bandeau du vaisseau, rappelle les actions qui ont du sens à cet instant (train sorti, à
+pied, dans un véhicule terrestre...). Elle ne lit que des états que le flux et `Game.log` portent déjà, jamais un
+chiffre ni le solde, et elle n'appuie sur rien : c'est un affichage.
+
+- **Quand elle s'affiche.** Seulement quand le flux est vivant, que `Game.log` ne dit pas menu, déconnecté ou fermé, et
+  que les valeurs ne sont pas grisées (pas de trames périmées). Sinon elle est masquée. Pour un contexte qu'elle ne sait
+  pas nommer, elle n'affiche rien dans la vue compacte et, en plein écran, « Contexte inconnu : aucun rappel pour
+  l'instant. »
+- **Ce qui déclenche quoi.** Train sorti (`ship.gear` vaut « deployed ») et vaisseau pas posé (`ship.landed` est faux) :
+  « Atterrissage automatique », formulé « si la demande est accordée » parce qu'un pad accordé n'est pas dans le flux,
+  puis la demande d'atterrissage. Posé : la demande de décollage. Centrale éteinte : Flight Ready. Mode quantique :
+  engager le saut. Verrouillage hostile : leurres et brouillage (une contre-mesure que le flux dit épuisée est omise).
+  Boucliers tombés ou coupés (pas en mode quantique, où ils sont coupés exprès) : alimenter les boucliers. À pied ou en
+  EVA : la lampe de combinaison, en priorité basse (« si besoin »). Véhicule terrestre (reconnu environ 12 s après
+  l'assise) : les phares. Assis sans trame de vaisseau pour l'instant : Flight Ready, « si c'est un vaisseau ».
+- **Combien.** Vue compacte : trois au plus, sur une ligne qui passe à la ligne. Plein écran : six au plus. Le reste, la
+  phrase sur les touches et le bouton « Il fait sombre » sont derrière UN bouton (`aria-expanded`), le seul arrêt de
+  tabulation de la zone tant qu'elle est repliée. Aucune zone « live », rien n'est enregistré.
+- **Les touches.** Une touche par défaut n'est écrite que pour R (Flight Ready), B (mode quantique ; maintenue pour
+  engager), C (cruise), Alt+C (mode découplé), X (frein), H (leurres, maintenue), J (brouillage) et T (lampe de
+  combinaison), toujours à côté du mot « défaut », avec une info-bulle qui dit de vérifier dans vos propres réglages.
+  Elles viennent de sources publiques (le wiki Star Citizen Tools, et pour R aussi des guides de joueurs) et **aucune n'a
+  été vérifiée en jeu sur la 4.10**. Toute action dont les sources se contredisent ou qu'aucune source ne donne (train,
+  atterrissage automatique, demande d'atterrissage, phares, puissance des boucliers, quitter le siège, décollage) est
+  affichée SANS touche. La table est une donnée, `shortcutsTable()` dans `src/dashboard/shortcutsPanel.ts`, avec une
+  version, une date, la version du jeu et, pour chaque entrée, son `src` et un drapeau `verified` qui reste faux tant que
+  personne ne l'a vérifié en jeu. Les touches par défaut du jeu suivent l'emplacement du clavier QWERTY : sur un clavier
+  AZERTY, R, B, C, X, H, J et T sont les mêmes lettres ; cela n'a pas non plus été vérifié en jeu.
+- **Ce qu'elle ne dit jamais.** Que les phares sont éteints : `ship.lights_on` ne distingue pas « éteint » de « non
+  rapporté », donc le rappel des phares ne porte aucun état (« état non lu »). Le mode de vol courant :
+  `advanced_hud_enabled_scm` et `advanced_hud_enabled_nav` sont des préférences d'affichage et ne sont pas lus. Qu'il
+  fait sombre : rien dans le flux ni dans le journal ne le dit. La lampe de combinaison est listée à pied et en EVA, et
+  « Il fait sombre » est un bouton que vous pressez : il met les lumières en tête, et ne vit que dans la mémoire de la
+  page (rien n'est enregistré, c'est perdu au rechargement).
+- **Pas encore construit.** Vos propres touches (`actionmaps.xml`) et l'état du casque ; voir [ROADMAP.md](ROADMAP.md).
+
 ### Carnet de transport
 
 Un panneau du tableau de bord en plein écran (« Carnet de transport ») qui relie le journal de jeu à la variation du

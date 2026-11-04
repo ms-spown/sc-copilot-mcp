@@ -383,6 +383,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.ctxLights = widget("headlights", chip("unverified-chip"));
     add(R.ctxChips, R.ctxState, R.ctxGear, R.ctxLights);
     add(R.ctx, R.ctxMain, R.ctxChips);
+    // Context shortcuts (shortcutsPanel.ts): reminders of what can be pressed now, under the ship banner.
+    R.shortcuts = L.shortcutsPanel(doc, L);
 
     // Conditions first (what is true now), then the recent events
     R.alerts = el("div", "alerts");
@@ -922,6 +924,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.pinbar,
       R.inline,
       R.ctx,
+      R.shortcuts.root,
       R.sessions.root,
       R.iBalance,
       R.health.root,
@@ -1576,6 +1579,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const info = renderStatus(now, conds, refusal);
     streamLive = !info.grey;
     renderContext(now);
+    R.shortcuts.render(view.poll, { grey: info.grey, fullscreen: displayMode === "fullscreen" });
     renderAlerts(now, conds, !info.grey);
     R.sessions.render(view.poll && view.poll.sessions, { showBalance, now });
     R.ledger.render(view.poll && view.poll.ledger, {

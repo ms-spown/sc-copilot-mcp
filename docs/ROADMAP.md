@@ -36,14 +36,33 @@ promise, and every item says what is verified and what is not. The history of wh
    do: confirm the attribution on a 4.10 session that has a purchase followed by a loss (none exists yet), find the 4.10
    line of a ship shot down (no sample), and the insurance claim cost if the game ever logs it.
 2. **Price watchlists.** Follow a commodity or a route and say when its price moves.
-3. **On foot.** Vitals forecast, helmet state (in the log, not in the stream), kill and death counters, an interface
-   that adapts to ship, foot and EVA.
+3. **On foot.** Vitals forecast, kill and death counters, an interface that adapts to ship, foot and EVA (the
+   context shortcuts zone already adapts its reminders: see [TELEMETRY.md](TELEMETRY.md#context-shortcuts)).
+4. **Your own key bindings in the shortcuts zone (future, not started).** Today only a handful of default keys are
+   shown, labelled "défaut", none checked in the game. Reading the player's `actionmaps.xml` would show their real keys
+   in place of the defaults. Reserves, all measured or stated by the research behind it: the file holds only what the
+   player CHANGED (on the reference install it has no binding at all), so it gives no default key and an action that is
+   not bound must read "no key", never fall back to the default; its `options` element carries the name of a device
+   and must never be read or sent; it would be opt-in (an environment variable, like the other readers), read-only,
+   size-capped, parsed against a whitelist of actions, from a path derived from `SC_INSTALL_DIR`; how an unbound
+   action is written, and how keyboard, joystick and mouse tokens translate on an AZERTY keyboard, are not verified
+   (a joystick binding would be shown as "joystick (personnalisé)", never a guessed button name); the hand-made test
+   fixtures only, never the real file. Not planned: an export of the full profile from the game, until its content is
+   seen.
+5. **Helmet state and manual contexts (future, not started).** `Game.log` writes an attachment line when the helmet
+   goes on or onto its hook, which would allow "wipe the visor" and a "no helmet in a vacuum" alert. Reserves: seen
+   in one session only (taken off to the hook, put back); never seen for taking it off into the inventory, for a
+   respawn or for entering a ship; the line carries the player's handle, so a parser must keep only the port and the
+   class name of the object, never the handle (a test with an invented handle must prove it); the signal has to be
+   measured before anything relies on it. Also manual contexts for mining, salvage and scanning in the folded part
+   of the shortcuts zone, since the stream has no signal for them.
 
 ## Verified, and not verified
 
 - **Verified:** the parser on real logs of 95 files; the planned versus real arithmetic on a real run; the sessions
   file under concurrent processes and a killed process (simulated); the privacy guarantees by tests and probes.
-- **Not verified:** the live dashboard itself inside Claude Desktop (only a throwaway test page was displayed there,
+- **Not verified:** the default keys of the shortcuts zone (public sources only, never tried in the game on 4.10);
+  the live dashboard itself inside Claude Desktop (only a throwaway test page was displayed there,
   see [MCP_APP_SPIKE.md](MCP_APP_SPIKE.md), a historical note); a complete run with telemetry, log and dashboard open together (the windows that match a log
   transaction with a balance change are assumptions: 2 s before to 8 s after for fees, 3 s before to 20 s after for
   rewards); the voluntary quit to the menu; the behaviour inside Claude Desktop (whether it honours server

@@ -527,6 +527,41 @@ the local address it prints (loopback, port 4173 by default). It plays a made-up
 jump, against a fake host; no game and no Claude is involved. The list that follows is not complete (`scripts/dashboard-preview.mjs` also reads `conn`, `preflight`, `transport`, `sessions`, `health`, `seen`, `help`, `calib`, `specs`, `balance`, `card`, `menu` and `open`): read that script for the current ones. Parameters: `t`, `theme`, `w`, `mode`, `scroll`,
 `forced`, `cut`, `plan`, `trade` (the commerce card with an invented trade journal: `story`, `estimated`, `unknown`, `partial`, `second`, `none`), `fw` (frame width in full screen), `suggest` (what the commerce action bar's tool answers, with invented routes and no UEX: `ok`, `wait`, `error`, `empty`, `nospeed`, `reported`, `slow`), `click` (a button label to press) and `refine=1` (opens "Affiner").
 
+### Context shortcuts
+
+A zone "Raccourcis" under the ship banner reminds you of the actions that make sense at that moment (landing gear
+out, on foot, in a ground vehicle...). It reads states the stream and `Game.log` already carry, never a figure and never
+the balance, and it presses nothing: it is a display.
+
+- **When it shows.** Only while the stream is live, `Game.log` does not say menu, disconnected or closed, and the values
+  are not grey (no stale frames). Otherwise it is hidden. For a context it cannot name it shows nothing in the compact
+  view and, in full screen, "Contexte inconnu : aucun rappel pour l'instant." (unknown context, no reminder yet).
+- **What triggers what.** Gear out (`ship.gear` is "deployed") and not landed (`ship.landed` is false): "Atterrissage
+  automatique", worded "si la demande est accordée" because a pad being granted is not in the stream, then the landing
+  request. Landed: the take-off request. Powerplant off: Flight Ready. Quantum mode: engage the jump. Hostile lock:
+  decoys and noise (a countermeasure the stream reports as spent is left out). Shields down or cut (not in quantum
+  mode, where they are cut on purpose): power the shields. On foot or in EVA: the suit light, at the lowest priority
+  ("si besoin"). A ground vehicle (recognised about 12 s after sitting down): the lights. Seated with no ship frame yet:
+  Flight Ready, "si c'est un vaisseau".
+- **How much.** Compact view: at most three, in a wrapping line. Full screen: at most six. The rest, the sentence on keys
+  and the "Il fait sombre" button sit behind ONE button (`aria-expanded`), the zone's only tab stop while folded. No live
+  region, nothing stored.
+- **Keys.** A default key is printed only for R (Flight Ready), B (quantum mode; held to engage), C (cruise), Alt+C
+  (decoupled mode), X (brake), H (decoys, held), J (noise) and T (suit light), always next to the word "défaut", with a
+  tip that says to check it in your own settings. They come from public sources (the Star Citizen Tools wiki, and for R
+  also player guides) and **none has been checked in the game on 4.10**. Every action whose sources disagree or that no
+  source gives (landing gear, auto land, landing request, lights, shields power, exit seat, take-off) is shown WITHOUT a
+  key. The table is data, `shortcutsTable()` in `src/dashboard/shortcutsPanel.ts`, with a version, a date, the game
+  version and, for every entry, its `src` and a `verified` flag that stays false until someone checks it in the game. The
+  game's default keys follow the position of the QWERTY keyboard, so on an AZERTY keyboard R, B, C, X, H, J and T are the
+  same letters; that has not been checked in the game either.
+- **What it never says.** That the lights are off: `ship.lights_on` cannot tell "off" from "not reported", so the lights
+  reminder carries no state ("état non lu"). The current flight mode: `advanced_hud_enabled_scm` and
+  `advanced_hud_enabled_nav` are display preferences and are not read. That it is dark: nothing in the stream or the log
+  says so. The suit light is listed on foot and in EVA, and "Il fait sombre" is a button you press: it puts the lights
+  first, and lives only in the memory of the page (nothing is saved, it is gone when the page reloads).
+- **Not built yet.** Your own key bindings (`actionmaps.xml`) and the helmet state; see [ROADMAP.md](ROADMAP.md).
+
 ### Transport ledger
 
 A panel of the full-screen dashboard ("Carnet de transport") that links the game log to the balance change the

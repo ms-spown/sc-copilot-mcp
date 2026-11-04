@@ -5,6 +5,8 @@ import { HEALTH_CSS } from "./healthStyles.js";
 import { LEDGER_VIEW_FUNCTIONS } from "./ledgerPanel.js";
 import { LEDGER_CSS } from "./ledgerStyles.js";
 import { SESSION_VIEW_FUNCTIONS } from "./sessionPanel.js";
+import { SHORTCUTS_VIEW_FUNCTIONS } from "./shortcutsPanel.js";
+import { SHORTCUTS_CSS } from "./shortcutsStyles.js";
 import { SESSION_CSS } from "./sessionStyles.js";
 import { dashboardMain } from "./viewApp.js";
 import { minifyScript } from "./scriptMinify.js";
@@ -87,7 +89,7 @@ export function compactCss(css: string): string {
 
 /** The style sheet as written, every module's rules in one string (the page ships `compactCss` of it). */
 export const pageCss = (): string =>
-  `${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}${TRADE_CSS}${TRADE_ACTIONS_CSS}${TRADE_PREFLIGHT_CSS}${SESSION_CSS}${MOVEMENTS_CSS}${HEALTH_CSS}${CALIBRATION_CSS}`;
+  `${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}${TRADE_CSS}${TRADE_ACTIONS_CSS}${TRADE_PREFLIGHT_CSS}${SESSION_CSS}${MOVEMENTS_CSS}${HEALTH_CSS}${CALIBRATION_CSS}${SHORTCUTS_CSS}`;
 
 /** The script as assembled, before `minifyScript`: each function as `toString` gives it. */
 export function rawViewScript(): string {
@@ -104,6 +106,7 @@ export function rawViewScript(): string {
     ...MOVEMENTS_VIEW_FUNCTIONS,
     ...CALIBRATION_VIEW_FUNCTIONS,
     ...HEALTH_VIEW_FUNCTIONS,
+    ...SHORTCUTS_VIEW_FUNCTIONS,
   ];
   const functions = all.map((f) => f.toString()).join("\n");
   const names = all.map((f) => f.name).join(", ");
