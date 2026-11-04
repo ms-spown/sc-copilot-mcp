@@ -270,7 +270,7 @@ describe("Feature: the dial of instrumentInfo is completed with the sheet", () =
     expect(out.marks.max).toBe(1);
     expect(out.peak).toBeNull();
     expect(out.fraction).toBeCloseTo(183 / 1100, 5);
-    expect(plain(out.subShort)).toBe("87 % de la vitesse SCM · fiche (wiki)");
+    expect(plain(out.subShort)).toBe("87 % SCM");
     expect(plain(out.sub)).toBe(
       "87 % de la vitesse SCM · marques SCM 210 · max 1 100 m/s, d’après la fiche (wiki)",
     );
@@ -402,7 +402,17 @@ describe("Feature: the speed dial of the cockpit shows the ship's limits", () =>
     expect(dials.length).toBeGreaterThan(0);
     for (const d of dials) expect(d.attrs["data-sheet"]).toBe("1");
     const text = plain(visibleText(w.root));
-    expect(text).toMatch(/\d+ % de la vitesse SCM · fiche \(wiki\)/);
+    // The small dial keeps to one short line; the source of the scale is the tooltip of that line.
+    expect(text).toMatch(/\d+ % SCM/);
+    expect(text).not.toMatch(/fiche \(wiki\)/);
+    const sub = findAll(
+      w.root,
+      (n) => n.className === "dial-sub" && (n.attrs["title"] ?? "") !== "",
+    );
+    expect(sub.length).toBeGreaterThan(0);
+    expect(plain(sub[0]!.attrs["title"]!)).toMatch(
+      /\d+ % de la vitesse SCM · marques SCM .* d’après la fiche \(wiki\)/,
+    );
     expect(text).not.toMatch(/déduite des vitesses vues/);
     const scm = marks(w.root).find((m) => m.attrs["data-kind"] === "scm")!;
     const max = marks(w.root).find((m) => m.attrs["data-kind"] === "max")!;
@@ -454,7 +464,7 @@ describe("Feature: the speed dial of the cockpit shows the ship's limits", () =>
     expect(withSheet.length).toBeGreaterThan(5);
     await w.advance(5 * SECOND);
     const text = plain(visibleText(w.root));
-    expect(text).toMatch(/de la vitesse SCM/);
+    expect(text).toMatch(/\d+ % SCM/);
     // Asked with the hash, answered without the section: the poll is lighter than the first one that carried it.
     const sheetBytes = JSON.stringify(specsSamples(NOW).ready).length;
     const last = w.host.log.polls[w.host.log.polls.length - 1]!;

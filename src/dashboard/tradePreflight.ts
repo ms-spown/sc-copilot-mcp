@@ -36,9 +36,11 @@ export function tradeVerdictInfo(verdict: string): any {
 }
 
 /**
- * The newest price refusal that is still fresh, or null (trade: the normalised commerce section). Its sentence and its
- * time: "Le prix a changé pendant l'achat : transaction refusée, le prix affiché n'est plus valable." / "à 14:32:07 · il y
- * a 2 min 04". A refusal is a time, a side and a kind: there is no amount to hide.
+ * The newest price refusal that is still fresh, or null (trade: the normalised commerce section). `text` is the sentence
+ * ("Achat refusé : le prix a changé au kiosque."), `advice` what to do, `label` the header's words ("Prix changé : achat
+ * refusé"), `ago` the age ("il y a 40 s") and `at` the clock time. A refusal is a time, a side and a kind: there is no
+ * amount to hide. The text and the advice never change while the alert stands (they sit in live regions: a screen reader
+ * must not re-announce them every second); the age does and only appears outside them.
  */
 export function tradeRefusalInfo(L: any, trade: any, now: number): any {
   const list = trade && Array.isArray(trade.price_refusals) ? trade.price_refusals : [];
@@ -56,21 +58,24 @@ export function tradeRefusalInfo(L: any, trade: any, now: number): any {
     if (best && at <= best.atMs) continue;
     const sell = r.side === "sell";
     const item = r.kind === "item";
-    const during = sell ? "la vente" : "l’achat";
+    const ambiguous = r.confidence === "ambiguous";
+    const what =
+      (sell ? "vente" : "achat") + (item ? " d’un objet" : "") + (sell ? " refusée" : " refusé");
     best = {
       atMs: at,
       item,
+      label: "Prix changé : " + (ambiguous ? "transaction refusée" : what),
       text:
-        (r.confidence === "ambiguous"
-          ? "Une des transactions envoyées à ce moment a été refusée : le prix a changé pendant "
-          : "Le prix a changé pendant ") +
-        during +
-        (item ? " d’un objet de boutique" : "") +
-        " : transaction refusée, le prix affiché n’est plus valable.",
-      // The absolute time never changes while the alert stands (a screen reader must not re-announce it every second);
-      // the age does, and sits outside the live text.
+        (ambiguous
+          ? "Une des transactions envoyées à ce moment a été refusée"
+          : what.charAt(0).toUpperCase() + what.slice(1)) + " : le prix a changé au kiosque.",
+      advice: item
+        ? ""
+        : sell
+          ? "Relis le prix avant de revendre."
+          : "Relis le prix avant de racheter.",
       at: "à " + L.formatClock(new Date(at).toISOString()),
-      when: "à " + L.formatClock(new Date(at).toISOString()) + " · il y a " + L.formatAge(now - at),
+      ago: "il y a " + L.formatAge(now - at),
     };
   }
   return best;
@@ -225,8 +230,14 @@ export function tradePreflightPanel(doc: any, L: any): any {
   ask.addEventListener("click", () => {
     void askAgent();
   });
+  // The verdict "the plan no longer holds" offers the search again as a real button (the same objective as before).
+  const rerun = el("button", "btn pf-ask", "Relancer la recherche");
+  rerun.setAttribute("type", "button");
+  rerun.addEventListener("click", () => {
+    if (H.rerun) H.rerun();
+  });
   const actions = el("div", "pf-actions");
-  add(actions, run, ask);
+  add(actions, run, ask, rerun);
   const status = el("p", "pf-status");
   const result = el("div", "pf-result");
   const headline = el("p", "pf-headline");
@@ -290,22 +301,25 @@ export function tradePreflightPanel(doc: any, L: any): any {
     const refusal = H.enabled ? tradeRefusalInfo(L, H.trade, now) : null;
     const planOk = tradePreflightPlanOk(H.plan);
     // The compact line: the alert alone.
-    setText(line, refusal ? refusal.text + " " + refusal.at : "");
+    setText(line, refusal ? (refusal.text + " " + refusal.advice).trim() : "");
     show(line, !full && !!refusal);
     show(root, !!H.enabled && full && (planOk || !!refusal));
     if (!H.enabled || !full) return;
 
     show(alertBox, !!refusal);
     if (refusal) {
-      setText(alertText, refusal.text);
+      setText(alertText, (refusal.text + " " + refusal.advice).trim());
       setText(
         alertWhen,
-        refusal.when +
+        refusal.ago +
+          " (" +
+          refusal.at +
+          ")" +
           (refusal.item
             ? ""
             : planOk
-              ? " · vérifie ton plan à nouveau : UEX a peut-être des prix plus récents."
-              : " · cherche une route à jour avant de racheter."),
+              ? " · Revérifie le plan : UEX a peut-être un prix plus récent."
+              : " · Cherche une route à jour avant de racheter."),
       );
     }
     show(head, planOk);
@@ -344,6 +358,7 @@ export function tradePreflightPanel(doc: any, L: any): any {
     show(status, text !== "" && planOk);
     show(result, !!r && planOk);
     show(ask, !!r && planOk);
+    show(rerun, !!r && planOk && r.verdict === "drifted" && !!H.rerun);
     show(chip, !!r && planOk);
     if (!r) return;
 

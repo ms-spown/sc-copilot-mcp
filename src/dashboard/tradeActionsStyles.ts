@@ -22,10 +22,9 @@ export const TRADE_ACTIONS_CSS = `
 /* ---------- the objective buttons ---------- */
 .ta-buttons { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: var(--sp-2); }
 .ta-obj { min-height: 54px; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-m); border: 1px solid var(--sc-border); background: transparent; font-weight: 650; font-size: var(--fs-m); cursor: pointer; text-align: center; }
-.ta-obj[data-primary="1"] { background: var(--sc-inv-bg); color: var(--sc-inv-text); border-color: transparent; }
 .ta-obj:hover { filter: brightness(1.12); }
 .ta-obj:focus-visible, .ta-apply:focus-visible, .ta-ask:focus-visible, .ta-open:focus-visible { outline: 2px solid var(--sc-ring); outline-offset: 2px; }
-.ta-obj[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--sc-bg2), 0 0 0 4px var(--sc-info); }
+.ta-obj[aria-pressed="true"] { background: var(--sc-inv-bg); color: var(--sc-inv-text); border-color: transparent; }
 .ta-obj[aria-pressed="true"]::before { content: "\\2713\\00a0"; }
 .ta-obj[data-busy="1"] { cursor: progress; }
 .ta-obj-hint { margin: 0; font-size: var(--fs-xs); color: var(--sc-text3); }
@@ -33,7 +32,7 @@ export const TRADE_ACTIONS_CSS = `
 /* ---------- options, folded ---------- */
 .ta-refine { border-top: 1px solid var(--sc-line); padding-top: var(--sp-2); }
 .ta-refine-sum { cursor: pointer; color: var(--sc-text2); font-size: var(--fs-s); }
-.ta-refine-sum:focus-visible, .ta-more-sum:focus-visible { outline: 2px solid var(--sc-ring); outline-offset: 2px; }
+.ta-refine-sum:focus-visible, .ta-more-sum:focus-visible, .ta-calib-sum:focus-visible { outline: 2px solid var(--sc-ring); outline-offset: 2px; }
 .ta-refine-body { display: flex; flex-direction: column; gap: var(--sp-3); margin-top: var(--sp-3); }
 .ta-options { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); }
 .ta-check { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-height: 32px; font-size: var(--fs-s); cursor: pointer; }

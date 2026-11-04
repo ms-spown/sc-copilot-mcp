@@ -224,7 +224,7 @@ export function specsAgeMs(poll: any, receivedAt: any, now: any): any {
  * from 0 to the sheet's top speed, marks at the SCM and top speeds, the value as a share of the SCM speed, what is
  * beyond the frame said (`over`), and the scale line reads « d'après la fiche (wiki) ». Anything else: the dial is
  * returned as it was, with the scale line saying why the sheet is not used.
- * Adds: marks { scm, max } (0..1 or null), over, sub (long) and subShort (for the small dial).
+ * Adds: marks { scm, max } (0..1 or null), over, sub (long) and subShort (one short line for the small dial).
  */
 export function speedWithSheet(speed: any, specs: any, speedMs: any, quantum: any): any {
   if (!speed || speed.known !== true) return speed;
@@ -245,7 +245,8 @@ export function speedWithSheet(speed: any, specs: any, speedMs: any, quantum: an
   out.marks = { scm: g.scmMark, max: g.maxMark };
   out.over = g.over;
   out.level = g.over === "none" ? "ok" : "info";
-  out.subShort = g.sub + (g.sub ? " · " : "") + "fiche (wiki)";
+  // One line under the small dial; the full line (scale, source) is its tooltip.
+  out.subShort = g.sub.replace(" de la vitesse SCM", " SCM");
   out.sub = (g.sub ? g.sub + " · " : "") + g.scale;
   return out;
 }

@@ -5,6 +5,7 @@
  */
 export const HEALTH_CSS = `
 .hl { margin: var(--sp-2) 0 0; padding: var(--sp-3) var(--sp-4); background: var(--sc-bg2); border-radius: var(--r-l); border-left: 3px solid var(--sc-border); }
+.hl[data-fold="1"] { padding-block: var(--sp-1); }
 .hl-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .hl-title { font-size: var(--fs-m); font-weight: 650; margin-right: auto; }
 .hl-list { list-style: none; margin: var(--sp-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }

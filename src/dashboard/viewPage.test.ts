@@ -557,7 +557,10 @@ describe("Feature: nothing is invented, and what the stream lacks is said", () =
 
   it("Given each data, Then its age is shown", async () => {
     const w = await live();
-    expect(visibleText(w.root)).toMatch(/Données de \d+(,\d)? s/);
+    // The compact header keeps to one line: the age alone, "Données de ..." is its tooltip.
+    const age = findAll(w.root, (n) => n.className === "age")[0]!;
+    expect(age.textContent).toMatch(/^\d+(,\d)? s$/);
+    expect(age.attrs["title"]).toMatch(/^Données de \d+(,\d)? s$/);
   });
 
   it("Given a game started without telemetry, Then the View says to quit the launcher completely", async () => {
@@ -644,7 +647,7 @@ describe("Feature: session, pace and the route plan", () => {
     expect(text).toContain("Laranite");
     expect(text).toContain("Port Tressler \u2192 Area18");
     expect(text).toMatch(/\+125 000 aUEC/);
-    expect(text).toContain("désactivé ou illisible");
+    expect(text).toContain("Journal du jeu non lisible");
     expect(text).not.toContain("dropped");
     // The old block compared a profit with a balance change: "Réalisé" does not exist any more.
     expect(text).not.toContain("Réalisé");
@@ -653,7 +656,7 @@ describe("Feature: session, pace and the route plan", () => {
     findButton(w.root, "Afficher le solde").click();
     await w.advance(62 * SECOND);
     text = NBSP_FREE(visibleText(w.root));
-    expect(text).toMatch(/Bénéfice prévu\n\+125 000 aUEC/);
+    expect(text).toMatch(/Bénéfice prévu\nplan\n\+125 000 aUEC/);
     expect(text).toMatch(/Variation du solde\n\+184 500 aUEC/);
     expect(text).toContain("pas un bénéfice");
     expect(text).not.toMatch(/Bénéfice net\n\+/);

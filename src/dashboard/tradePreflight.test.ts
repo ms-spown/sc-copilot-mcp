@@ -166,23 +166,29 @@ describe("Feature: the alert of a refusal at the kiosk", () => {
 
   it("Given a purchase refused two minutes ago, Then the sentence names the purchase, the time and how long ago", () => {
     const info = tradeRefusalInfo(L, trade(at(125_000)), NOW);
-    expect(info.text).toBe(
-      "Le prix a changé pendant l’achat : transaction refusée, le prix affiché n’est plus valable.",
-    );
-    expect(info.when).toMatch(/^à \d{2}:\d{2}:\d{2} · il y a 2 min 05$/);
+    expect(info.text).toBe("Achat refusé : le prix a changé au kiosque.");
+    expect(info.advice).toBe("Relis le prix avant de racheter.");
+    // the header's words: the relative time first, the clock time apart (it becomes a tooltip)
+    expect(info.label).toBe("Prix changé : achat refusé");
+    expect(info.ago).toBe("il y a 2 min 05");
+    expect(info.at).toMatch(/^à \d{2}:\d{2}:\d{2}$/);
     expect(info.item).toBe(false);
   });
 
   it("Given a refused sale, an item or an ambiguous one, Then the sentence follows", () => {
-    expect(tradeRefusalInfo(L, trade(at(1000, { side: "sell" })), NOW).text).toContain(
-      "pendant la vente",
-    );
+    expect(tradeRefusalInfo(L, trade(at(1000, { side: "sell" })), NOW)).toMatchObject({
+      text: "Vente refusée : le prix a changé au kiosque.",
+      label: "Prix changé : vente refusée",
+      advice: "Relis le prix avant de revendre.",
+    });
     expect(tradeRefusalInfo(L, trade(at(1000, { kind: "item" })), NOW)).toMatchObject({
       item: true,
+      label: "Prix changé : achat d’un objet refusé",
+      advice: "",
     });
-    expect(tradeRefusalInfo(L, trade(at(1000, { confidence: "ambiguous" })), NOW).text).toContain(
-      "Une des transactions",
-    );
+    const ambiguous = tradeRefusalInfo(L, trade(at(1000, { confidence: "ambiguous" })), NOW);
+    expect(ambiguous.text).toContain("Une des transactions");
+    expect(ambiguous.label).toBe("Prix changé : transaction refusée");
   });
 
   it("Given an old refusal, a future one, or none, Then there is no alert", () => {
@@ -202,7 +208,7 @@ describe("Feature: the alert of a refusal at the kiosk", () => {
 
   it("Given several, Then the newest fresh one is shown", () => {
     const info = tradeRefusalInfo(L, trade(at(300_000, { side: "sell" }), at(30_000)), NOW);
-    expect(info.text).toContain("pendant l’achat");
+    expect(info.text).toContain("Achat refusé");
   });
 
   it("Given junk entries, Then they are skipped without a throw", () => {

@@ -19,7 +19,7 @@ export const VIEW_CSS = `
   --sc-bg2: var(--color-background-secondary, light-dark(#f5f4ed, #2a2927));
   --sc-bg3: var(--color-background-tertiary, light-dark(#ebe9df, #353432));
   --sc-line: var(--color-border-tertiary, light-dark(#dedcd1, #3d3c39));
-  --sc-border: var(--color-border-secondary, light-dark(#c9c7ba, #55534f));
+  --sc-border: var(--color-border-secondary, light-dark(#8f8d80, #7d7b74));
   --sc-ok: var(--color-text-success, light-dark(#2d6a3e, #7fd69a));
   --sc-warn: var(--color-text-warning, light-dark(#8a5a00, #f0b84a));
   --sc-bad: var(--color-text-danger, light-dark(#a3281f, #ff8a80));
@@ -83,7 +83,7 @@ h2, h3 { margin: 0; }
 .btn.primary { background: var(--sc-inv-bg); color: var(--sc-inv-text); border-color: var(--sc-inv-bg); font-weight: 600; }
 .btn.primary:hover { opacity: 0.88; }
 .btn.small { font-size: var(--fs-s); padding: 4px 9px; }
-.btn.mini { font-size: var(--fs-xs); padding: 2px 8px; }
+.btn.mini { font-size: var(--fs-xs); padding: 5px 8px; }
 .btn[aria-pressed="true"] { background: var(--sc-bg3); border-color: var(--sc-info); }
 
 .notice { background: var(--sc-bg2); border-radius: var(--r-m); padding: var(--sp-3); margin: var(--sp-2) 0 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
@@ -126,7 +126,7 @@ h2, h3 { margin: 0; }
 .dial.xl { max-width: 300px; }
 .dial.m { max-width: 210px; }
 .dial.s { max-width: 150px; }
-.dial.small { max-width: 170px; }
+.dial.small { max-width: 150px; }
 .dial-svg { display: block; width: 100%; height: auto; aspect-ratio: 1 / 0.92; overflow: visible; }
 .arc-track, .arc-fill, .arc-peak, .arc-zone, .arc-ticks { fill: none; }
 .arc-track { stroke: var(--sc-line); stroke-width: 7; stroke-linecap: round; }
@@ -204,6 +204,19 @@ h2, h3 { margin: 0; }
 /* ---------- cockpit layout ---------- */
 .inline { margin-top: var(--sp-2); }
 [data-mode="fullscreen"] .inline { display: none; }
+/* compact view: one wrapping row layout, small cards beside each other when there is room, a small ship banner */
+[data-mode=inline] { display: flex; flex-wrap: wrap; gap: 3px 6px; }
+[data-mode=inline] > * { flex: 1 1 100%; }
+[data-mode=inline] > :not(#_) { margin: 0; }
+[data-mode=inline] :is(.ses, .balance-row, .lg-line) { flex: 1 1 240px; }
+[data-mode=inline] .ta-open { flex: 1 1 140px; }
+[data-mode=inline] .ses[data-fold="0"] { flex-basis: 100%; }
+[data-mode=inline] :is(.ctx, .balance-row) { padding: 3px var(--sp-3); }
+[data-mode=inline] :is(.dials, .alerts) { margin: 0; min-height: 0; }
+[data-mode=inline] .dial-sub { min-height: 0; }
+[data-mode=inline] .ctx-chips .chip:not(.state) { display: none; }
+[data-mode=inline] .ctx-title { font-size: var(--fs-m); }
+[data-mode=fullscreen] .balance-row { display: none; }
 .full { display: none; }
 [data-mode="fullscreen"] .full { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); margin-top: var(--sp-3); align-items: start; }
 .col, .wide { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }

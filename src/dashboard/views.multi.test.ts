@@ -5,6 +5,7 @@ import { fullAnswers } from "./testing/fullPoll.js";
 import {
   FakeBus,
   VirtualClock,
+  findAll,
   findButton,
   isShown,
   startPage,
@@ -341,7 +342,9 @@ describe("Feature: several dashboards call the server as one", () => {
     const text = visibleText(a.root);
     expect(text).toContain("En direct");
     expect(text).toContain("Cutter");
-    expect(text).toMatch(/Données de \d/);
+    expect(findAll(a.root, (n) => n.className === "age")[0]!.attrs["title"]).toMatch(
+      /^Données de \d/,
+    );
     const seen = a.root.textContent;
     await clock.advance(5 * SECOND);
     expect(a.root.textContent).not.toBe(seen); // it keeps moving

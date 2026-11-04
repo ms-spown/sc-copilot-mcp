@@ -124,6 +124,50 @@ describe("Feature: the ship banner and the verdict at a glance", () => {
       ),
     ).toMatchObject({ id: "off", label: "Vaisseau éteint" });
   });
+
+  describe("a price refused at the kiosk (the player is parked, the powerplant is often off)", () => {
+    const refusal = { label: "Prix changé : achat refusé", ago: "il y a 40 s", at: "à 07:11:28" };
+    const offPoll = () =>
+      live({ ship: ship(), conditions: [{ id: "powerplant_off", level: "critical" }] });
+    const off = { id: "powerplant_off", tone: "bad", label: "Centrale hors service" };
+
+    it("Given the ship is off, Then the refusal takes the verdict line, amber, with the clock time as its title", () => {
+      expect(L.summaryInfo(offPoll(), [off], refusal)).toMatchObject({
+        id: "watch",
+        tone: "warn",
+        label: "Prix changé : achat refusé · il y a 40 s",
+        title: "à 07:11:28",
+      });
+    });
+
+    it("Given the ship is off and nothing else, Then it is still the neutral 'Vaisseau éteint'", () => {
+      expect(L.summaryInfo(offPoll(), [off])).toMatchObject({
+        id: "off",
+        tone: "neutral",
+        label: "Vaisseau éteint",
+      });
+    });
+
+    it("Given the ship is on, Then the refusal is amber; a real red alert still wins and counts it", () => {
+      const on = live({ ship: ship() });
+      expect(L.summaryInfo(on, [], refusal)).toMatchObject({ id: "watch", tone: "warn" });
+      expect(
+        L.summaryInfo(
+          on,
+          [{ id: "hostile_lock", tone: "bad", label: "Verrouillage hostile" }],
+          refusal,
+        ),
+      ).toMatchObject({ id: "alert", tone: "bad", label: "Alerte : Verrouillage hostile (+1)" });
+      // ... even with the ship off
+      expect(
+        L.summaryInfo(
+          offPoll(),
+          [off, { id: "hostile_lock", tone: "bad", label: "Verrouillage hostile" }],
+          refusal,
+        ),
+      ).toMatchObject({ id: "alert", label: "Alerte : Verrouillage hostile (+1)" });
+    });
+  });
 });
 
 describe("Feature: the dials say only what the stream says", () => {

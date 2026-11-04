@@ -745,10 +745,13 @@ export function tradeActionsPanel(doc: any, L: any): any {
       add(badges, b);
     }
     // The quiet line about the player's own saved runs of this goods (calibrationPanel.ts); hidden unless there are data.
-    c.calib = el("p", "ta-calib", "");
+    c.calib = el("div", "ta-calib");
     c.calibText = el("span", "ta-calib-text", "");
     c.calibTag = el("span", "tr-tag", "");
-    add(c.calib, c.calibText, c.calibTag);
+    c.calibMore = el("details", "ta-calib-more");
+    c.calibMoreText = el("p", "ta-calib-more-text", "");
+    add(c.calibMore, el("summary", "ta-calib-sum", "Comment lire ça"), c.calibMoreText);
+    add(c.calib, c.calibText, c.calibTag, c.calibMore);
     c.calib.setAttribute("data-hidden", "1");
     c.apply = el("button", "btn ta-apply", "Appliquer comme plan");
     c.apply.setAttribute("type", "button");
@@ -806,7 +809,6 @@ export function tradeActionsPanel(doc: any, L: any): any {
     const b = el("button", "btn ta-obj", o.label);
     b.setAttribute("type", "button");
     b.setAttribute("data-objective", o.id);
-    b.setAttribute("data-primary", i < 3 ? "1" : "0");
     b.setAttribute("aria-pressed", "false");
     b.addEventListener("click", () => {
       void startSearch(o.id, false);
@@ -1246,6 +1248,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
       setText(c.calibTag, cal.tag);
       setAttr(c.calibTag, "data-estimate", "1");
       setAttr(c.calibTag, "title", cal.hint);
+      setText(c.calibMoreText, cal.more);
     }
     const applied = S.appliedId === o.id;
     setText(c.apply, applied ? "Plan appliqué" : "Appliquer comme plan");
@@ -1475,7 +1478,11 @@ export function tradeActionsPanel(doc: any, L: any): any {
     paint();
   }
 
-  return { root, opener, render, dispose, state: () => S };
+  /** The pre-flight verdict "the plan no longer holds" asks for the same search again (the last objective, else the first). */
+  const rerun = () => {
+    void startSearch(S.objective || objectives[0].id, false);
+  };
+  return { root, opener, render, rerun, dispose, state: () => S };
 }
 
 /** The functions of this file, in the order they are serialised (page.ts). */

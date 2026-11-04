@@ -307,7 +307,8 @@ sending frames, and they are inferred, not reported by the game.
 ## Live dashboard
 
 An optional live view of the same stream, drawn inside the conversation. Compact: the ship, where it is, three dials
-(speed, hydrogen, health), the alerts and a one-line verdict ("all is well" or "watch this"). Full screen: a cockpit
+(speed, hydrogen, health), the alerts and a one-line verdict ("all is well", "watch this", or the price refused at the
+kiosk). Full screen: a cockpit
 with the instruments on the left, the ship in the middle and the pilot on the right. It is an MCP App: a small page
 that this server provides and that the client renders next to the chat.
 
@@ -323,6 +324,13 @@ that this server provides and that the client renders next to the chat.
   keep talking to Claude: it answers from `sc_live_state`, not from the page.
 - **Two modes.** Inline: a compact view. Full screen (button in the page): the cockpit. The button asks the host; if
   the host answers with another mode the page follows what it is told.
+- **The compact view, in the order of what a glance in flight needs.** The header with the verdict, then the price
+  refusal if there is one, the alerts (no row at all while there is none: the verdict says it), the three dials, the
+  ship on one small row, the session on ONE line ("Session 4 · 6 trajets · 1 h 28 min", plus the net per hour only
+  while the balance is shown; a real button with `aria-expanded` unfolds the whole card, which keeps **Nouvelle
+  session** as a secondary button), the balance row beside it, then the contract line and "Chercher une route". Measured
+  in real Chrome on the preview's made-up flight, at 560 px: 691 px high before, 326 px now; at 360 px with a price
+  refusal 915 px before, 510 px now. Not verified: how Claude Desktop sizes the inline frame.
 - **What the cockpit shows.** Instruments: a speed dial whose scale is deduced from the speeds seen and says so
   (quantum travel is shown as "quantum mode" instead of flattening the scale), a G dial against the maximum the game
   reports, altitude with the radar altitude, a vertical speed bar around zero, a compass only when the heading is
@@ -386,8 +394,9 @@ that this server provides and that the client renders next to the chat.
   silently shows less than it could: without the game log there is no connection state (a "kicked for inactivity"
   stays invisible), no trade journal, no ledger and weaker session figures; with telemetry off nothing at all; a game
   started without the game-side variable shows only "Jeu lancé sans télémétrie". The page now says so itself. It is
-  **invisible while nothing needs doing**; when something is missing, a compact block under the header names it, says
-  what is lost and gives the exact fix, in a box you can copy with a button (the clipboard may be refused in the host's
+  **invisible while nothing needs doing**; when something is missing, ONE line ("3 réglages à faire", with a "Voir"
+  button that has `aria-expanded`) says how many; unfolded, it names each point, says what is lost and gives the exact
+  fix, in a box you can copy with a button (the clipboard may be refused in the host's
   sandbox: the text is then selected and the page says to press Ctrl+C). The button "?" in the header opens the full
   list at any time, with "Tout est branché" (or "Rien à régler pour l'instant" when a line only waits for the game) and
   the legend below. The eight lines:
@@ -419,7 +428,7 @@ that this server provides and that the client renders next to the chat.
   whole of it when a `log`, `registration` or `sessions` code is unknown (an unknown setting name or label is dropped
   alone). `npm run doctor` stays the deep check (it reads the Claude config, the user
   variable and the port); the page does not duplicate it.
-- **How to read the dashboard (the legend).** Shown at the first open and behind the "?" afterwards: **Mesuré**
+- **How to read the dashboard (the legend).** Shown at the first open (in the compact view only when something needs setting up, so that the dials stay first) and behind the "?" afterwards: **Mesuré**
   (sent by the game just now), **Calculé** (a sum or difference of measured values), **Estimé** (a trend over the last
   minutes, with its window), **Probable** (deduced from clues, never confirmed by the game), **Inconnu** (not sent by the
   game: a dash, never an invented zero). Each term has a glyph, and every state is written as well as coloured. "Grisé"
@@ -562,6 +571,13 @@ same thing. Each figure now has one meaning:
 | Frais | What the loading service took on top of the prices. The log has no fee line | Measured per side against the balance when possible; else the total deduced (marge brute minus the balance variation) only if it is a plausible fee (0 to 50 % of the turnover), labelled "estimé"; otherwise unknown, with the reason ("le solde a bougé pour une autre raison") |
 | Bénéfice net | The variation of the balance over the run: balance after the last sale minus the balance just before the first purchase. It holds EVERY movement of that time (a reward, another purchase), not only the run; the card says how much of it the margin and the fees do not explain | Measured from the telemetry's balance history (tag "variation du solde"); unknown (never zero) when the dashboard did not see the balance before the purchase |
 
+- **Before a run, and the balance warning.** While nothing is measured (no run yet, the balance hidden, or no readable
+  journal) the card draws only what exists: the planned profit tile (tagged "plan"), one plain line saying why there is no
+  bilan ("Journal du jeu non lisible : pas de bilan réel pour ce trajet", pointing to the health strip), and none of the
+  empty "—" tiles. After a run, when the balance moved by more than the margin and the fees explain, the amber warning
+  sits UNDER the figures and is one sentence naming what else moved it ("Le solde a aussi bougé de +85 000 aUEC (récompense
+  probable), −9 000 aUEC (coût possible) … : ce n'est pas le bénéfice de ce trajet seul."), with a "Détail" button that
+  opens the "Mouvements du solde" block, where the full account is. No new data: the same decomposition, read differently.
 - **Where the transactions come from.** From the trade journal of the game log (`src/providers/gamelog/trade.ts`, the
   one behind `sc_trade_journal`): the dashboard parses nothing of its own. The ledger's reads (full, then only the
   bytes the game added) also keep the commerce lines, the journal pairs them, and the commerce model takes its
@@ -773,9 +789,11 @@ line that follows several same-side requests cannot be attributed to one of them
 event ("une des transactions envoyées à ce moment a été refusée"). Each event is a time, a side (buy or sell), a kind
 (cargo or shop item) and how sure the journal is: no amount, no shop, no item, no identifier, so it is sent with or without
 the balance (`trade.price_refusals`, the newest 3, also on the channel between Views, rebuilt field by field on reception).
-The dashboard shows, for 10 minutes, "Le prix a changé pendant l'achat (ou la vente) : transaction refusée, le prix
-affiché n'est plus valable", with the time and how long ago, on the commerce card, and as one line in the small view (only
-the stable sentence and the absolute time sit in the live region, the age does not); it is muted as soon as a later
+The dashboard shows, for 10 minutes, "Achat refusé : le prix a changé au kiosque. Relis le prix avant de racheter." (or
+"Vente refusée", or an item of a shop), on the commerce card with the age first and the clock time after it, as one line
+right under the header in the small view, and IN THE VERDICT of the header ("Prix changé : achat refusé · il y a 40 s",
+amber, the clock time as its tooltip) instead of a green "Tout va bien" (a red condition still comes first). Only the stable
+sentence sits in the live regions, the age does not; it is muted as soon as a later
 transaction of the same side and kind went through (`superseded`); for a
 cargo trade it suggests checking the plan again (the button is highlighted; nothing is asked by itself). The session
 counts them: `price_refusals` (additive, optional, the file stays version 2 and older files read as 0; a watermark makes
@@ -909,13 +927,13 @@ compares what the plan promised with what you really got (`src/providers/session
   bought quantity within a factor of 2.5 of the plan's (both must be known), and a realised unit margin that is positive and
   between half and twice the plan's. A run that fails any test is not tied, and the plan stays free for the right run. These
   thresholds are choices, not measurements. That is a resemblance, not a proof: the group says `goods_unverified`, the line
-  and the tile say "marchandise non vérifiée (lien par prix)" and "qui ressemblent au plan" instead of "de cette
-  marchandise", and the confidence is never `high`, with the reason in the tag's title. The session figures count such
+  says "similaires (marchandise non vérifiée)" instead of "de cette marchandise", the "lien par prix" explanation is in
+  the fold "Comment lire ça", and the confidence is never `high`, with the reason in the tag's title. The session figures count such
   trips too (`price_linked_trips` in `money.plan`, in the best goods and routes), and their label ends with "(lien par prix)".
   To have two runs of a route, apply its plan twice. **Selection bias:** because a run must have a unit margin between half and
   twice the plan's to be tied, a run that yields 30 % of the plan is never tied and never counted: the calibrated ratios are
   censored to about 50 % to 200 %, so the calibration cannot show that a route really yields 20 % of the plan (such runs are
-  simply absent). When the confidence is held at `medium` for that reason the line says so in its visible text.
+  simply absent). When the confidence is held at `medium` for that reason the card says so in the fold "Comment lire ça" under the line (written text, one click away), not in the tooltip alone.
 - **Confidence** (`none`, `low`, `medium`, `high`). `none` below 2 runs: no figure at all, only the count. `low` with 2
   or 3 runs, a spread above 0.6 (maximum minus minimum of the per-run ratios, in points of the plan) or a newest run older
   than 21 days. `medium` with 4 to 7 runs. `high` only with 8 runs, a spread of at most 0.3, fresh runs and goods tied by
@@ -925,8 +943,10 @@ compares what the plan promised with what you really got (`src/providers/session
   rate on the plan's turnover. An ESTIMATE, always with its number of runs and its confidence; it claims no cause (a ratio
   below 100 % can come from prices, quantity or a slow sale).
 - **Where it shows.** `sc_session_stats` (section `route_reliability`, only with `include_balance`); a quiet line under each
-  suggested route of the action bar ("Tes N derniers trajets ... réalisé (marge brute) ≈ X % du prévu, frais ≈ Y %", with its
-  confidence tag, only when data exist); the tile "Si tu refais ce trajet" of the commerce card, which prefers the calibrated
+  suggested route of the action bar ("D'après tes N trajets ... : tu réalises ≈ X % du prévu (frais ≈ Y %)", with the tag
+  "estimé · N trajets", only when data exist; a route with two legs says "Sur le 1er tronçon" in the line and, in the
+  fold "Comment lire ça", that it is not a round-trip figure; the confidence is in the tag's tooltip, and stays in the tag
+  when it is low); the tile "Si tu refais ce trajet" of the commerce card, which prefers the calibrated
   figure when the plan in force has a group of 2 runs or more; one sentence in the server instructions and in the prompt
   `trade_copilot` so that Claude quotes it with its number of runs.
 - **Privacy.** A ratio times the plan reveals the realised result, so the section exists only where the balance is shown:
@@ -951,7 +971,7 @@ compares what the plan promised with what you really got (`src/providers/session
 
 - **The bar** at the top of the dashboard shows the session (number, state, since when, active time), then the figures
   that matter first: with the balance shown, the result, the rate per hour, the trips and the time; with the balance
-  hidden, the trips and the time. It has **Nouvelle session** (two clicks, to avoid a slip), **Sessions** (past
+  hidden, the trips and the time. In the compact view the bar is one line (a button that unfolds it). It has **Nouvelle session** (two clicks, to avoid a slip; a secondary button), **Sessions** (past
   sessions with their key numbers, statistics across them, one session in detail, and **Terminer la session**). Two
   dashboards of two conversations show the same session, because it comes from the server.
 - **When it opens**, the dashboard attaches to the last session unless there was a break of more than the gap, in which

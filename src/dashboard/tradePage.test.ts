@@ -224,11 +224,14 @@ describe("Feature: honest when it does not know", () => {
     expect(t).toMatch(/Bénéfice net\s*variation du solde\s*\+543 000 aUEC/);
     // The warning now takes the balance apart (balanceMovements.ts): the 400 000 has no line in the log, so it is
     // named as not explained, and the old sentence about the profit stays.
+    // ... in ONE sentence under the figures; the whole account is in the movements block, in the card's details.
+    expect(t).toContain(
+      "Attention : Le solde a aussi bougé de +400 000 aUEC (non expliqué) : ce n’est pas le bénéfice de ce trajet seul.",
+    );
     expect(t).toMatch(
-      /Attention : Variation du solde \+543 000 aUEC = ventes moins achats rapprochés du journal \+186 568 \(égal à la marge brute à 0,1 % près\) ; frais −43 568 \(mesurés\) ; non expliqué \+400 000\./,
+      /Variation du solde \+543 000 aUEC = ventes moins achats rapprochés du journal \+186 568 \(égal à la marge brute à 0,1 % près\) ; frais −43 568 \(mesurés\) ; non expliqué \+400 000\./,
     );
     expect(t).toMatch(/Non expliqué : 1 mouvement\(s\) sans aucune ligne du journal à côté/);
-    expect(t).toContain("La variation du solde n’est pas le bénéfice de ce seul trajet");
     expect(t).toMatch(/Frais\s*mesuré\s*−43 568 aUEC/);
   });
 
@@ -266,8 +269,11 @@ describe("Feature: honest when it does not know", () => {
     await w.advance(3 * SECOND);
     const t = card(w);
     expect(t).toContain("Plan seul");
-    expect(t).toContain("désactivé ou illisible");
-    expect(t).toMatch(/Bénéfice prévu\s*\+180 000 aUEC/);
+    expect(t).toContain("Journal du jeu non lisible : pas de bilan réel pour ce trajet");
+    // Nothing measured yet: only what exists is drawn, no wall of dashes (net, fees and the next trip are hidden)
+    expect(t).toMatch(/Bénéfice prévu\s*plan\s*\+180 000 aUEC/);
+    expect(t).not.toContain("pas de bilan sans journal");
+    expect(t).not.toMatch(/Bénéfice net|Si tu refais ce trajet|Frais\s*—|Chiffre d’affaires/);
     expect(t).toMatch(/Variation du solde\s*[−+]/);
     expect(t).toContain("pas un bénéfice");
     expect(t).not.toMatch(/Bénéfice net\s*(mesuré|estimé|calculé)/);

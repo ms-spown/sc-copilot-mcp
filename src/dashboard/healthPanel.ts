@@ -125,20 +125,14 @@ export function healthRows(L: any, poll: any, h: any, ctx: any): any[] {
   } else if (h.log === "ok") {
     lg("ok", "Lu : " + where + " (réglé par " + via + ").");
   } else {
-    lg(
-      "todo",
-      "Configuré (" +
+    lg("todo", "Game.log introuvable. Lance le jeu une fois, ou corrige le dossier du jeu.", {
+      text:
+        "Configuré (" +
         where +
-        ", réglé par " +
+        ") mais illisible : le fichier n’existe qu’après un premier lancement du jeu, ou le dossier est incorrect. Vérifie que " +
         via +
-        ") mais illisible : le fichier n’existe qu’après un premier lancement du jeu, ou le dossier est incorrect.",
-      {
-        text:
-          "Vérifie que " +
-          via +
-          " désigne le dossier qui contient Game.log (par exemple …\\StarCitizen\\LIVE) dans l’entrée « sc-copilot » de la configuration de Claude Desktop, puis relance Claude Desktop. Diagnostic complet : npm run doctor.",
-      },
-    );
+        " désigne le dossier qui contient Game.log (par exemple …\\StarCitizen\\LIVE) dans l’entrée « sc-copilot » de la configuration de Claude Desktop, puis relance Claude Desktop. Diagnostic complet : npm run doctor.",
+    });
   }
   const needsLog = h.log !== "ok";
   const logWhy =
@@ -159,7 +153,7 @@ export function healthRows(L: any, poll: any, h: any, ctx: any): any[] {
   } else if (h.registration === "not_seen") {
     reg(
       "todo",
-      "Game.log n’a pas la ligne du service de télémétrie : le jeu a été lancé sans GRPC_CLIENT_SERVER_ENABLED.",
+      "Le jeu n’envoie pas la télémétrie (GRPC_CLIENT_SERVER_ENABLED manquait au lancement).",
       { cmd: CMD_STATUS, text: launcher },
       "launcher",
     );
@@ -270,14 +264,12 @@ export function healthRows(L: any, poll: any, h: any, ctx: any): any[] {
       },
     );
   } else {
-    se(
-      "todo",
-      "La dernière écriture a échoué : les sessions restent en mémoire et la prochaine modification retente. " +
-        saved,
-      {
-        text: "Vérifie l’espace disque et les droits du dossier de données (ou de SCMCP_SESSIONS_FILE).",
-      },
-    );
+    se("todo", "La dernière écriture a échoué : les sessions restent en mémoire.", {
+      text:
+        "La prochaine modification retente. " +
+        saved +
+        " Vérifie l’espace disque et les droits du dossier de données (ou de SCMCP_SESSIONS_FILE).",
+    });
   }
 
   // 7. balance (a fact about this screen, nothing to set up)
@@ -372,8 +364,17 @@ export function healthPanel(doc: any, L: any, api: any): any {
   const btnClose = button("Compris", () => closeHelp(), "mini");
   const btnLater = button("Plus tard", () => dismiss(), "mini");
   btnLater.setAttribute("aria-label", "Masquer ces rappels pour cette fois");
-  add(head, title, btnLater, btnClose);
+  // The things to do are one line until the player unfolds them (the fix and its copy button sit inside).
+  const btnFold = button("", () => unfold(), "mini");
+  const foldText = el("span", "", "Voir");
+  const foldCaret = el("span", "", " ▸");
+  foldCaret.setAttribute("aria-hidden", "true");
+  add(btnFold, foldText, foldCaret);
+  btnFold.setAttribute("aria-expanded", "false");
+  btnFold.setAttribute("aria-controls", "hl-list");
+  add(head, title, btnFold, btnLater, btnClose);
   const list = el("ul", "hl-list");
+  list.setAttribute("id", "hl-list");
   const items: any[] = [];
   for (let i = 0; i < MAX; i++) {
     const li = el("li", "hl-item");
@@ -422,7 +423,14 @@ export function healthPanel(doc: any, L: any, api: any): any {
   help.setAttribute("aria-label", "Branchement du tableau et comment le lire");
   help.setAttribute("aria-expanded", "false");
 
-  const st: any = { open: false, decided: false, dismissed: false, last: null, rows: [] };
+  const st: any = {
+    open: false,
+    exp: false,
+    decided: false,
+    dismissed: false,
+    last: null,
+    rows: [],
+  };
 
   function remember() {
     if (api.set) api.set(KEY, "1");
@@ -436,6 +444,12 @@ export function healthPanel(doc: any, L: any, api: any): any {
     remember();
     paint();
     refocus();
+  }
+  function unfold() {
+    st.exp = !st.exp;
+    paint();
+    btnFold.focus();
+    if (api.changed) api.changed();
   }
   function dismiss() {
     st.dismissed = true;
@@ -473,7 +487,14 @@ export function healthPanel(doc: any, L: any, api: any): any {
     }
     const todo = L.healthTodo(data.rows);
     const open = st.open;
+    const fold = !open && !st.exp;
     show(root, open || (todo.length > 0 && !st.dismissed));
+    setAttr(root, "data-fold", fold ? "1" : "0");
+    show(list, !fold);
+    show(btnFold, !open);
+    setText(foldText, st.exp ? "Masquer" : "Voir");
+    setText(foldCaret, st.exp ? " ▴" : " ▸");
+    setAttr(btnFold, "aria-expanded", st.exp ? "true" : "false");
     setAttr(help, "aria-expanded", open ? "true" : "false");
     setText(
       title,
@@ -486,8 +507,8 @@ export function healthPanel(doc: any, L: any, api: any): any {
             ? "1 point à régler"
             : todo.length + " points à régler"
         : todo.length === 1
-          ? "À régler pour tout voir"
-          : "À régler pour tout voir (" + todo.length + ")",
+          ? "1 réglage à faire"
+          : todo.length + " réglages à faire",
     );
     show(btnClose, open);
     show(btnLater, !open);
@@ -517,7 +538,11 @@ export function healthPanel(doc: any, L: any, api: any): any {
     /** Whether the block carries the fix of the telemetry line (the stream notice then leaves its own command out). */
     ownsTelemetryFix(): boolean {
       return (
-        !!st.last && st.last.rows.length > 0 && st.last.rows[0].kind === "todo" && !st.dismissed
+        !!st.last &&
+        st.last.rows.length > 0 &&
+        st.last.rows[0].kind === "todo" &&
+        !st.dismissed &&
+        (st.open || st.exp)
       );
     },
     render(poll: any, ctx: any) {
@@ -533,7 +558,14 @@ export function healthPanel(doc: any, L: any, api: any): any {
         // unavailable nothing can be remembered, so it opens only for something to set up; the choice then lives in memory.
         st.decided = true;
         const seen = api.get ? api.get(KEY) : undefined;
-        st.open = seen === undefined ? L.healthTodo(st.last.rows).length > 0 : seen !== "1";
+        const todo = L.healthTodo(st.last.rows).length > 0;
+        // In the compact view the legend does not push the dials down at the first launch: it opens for something to set up.
+        st.open =
+          api.inline && api.inline()
+            ? todo && seen !== "1"
+            : seen === undefined
+              ? todo
+              : seen !== "1";
       }
       paint();
     },

@@ -311,8 +311,8 @@ tandis que le jeu envoyait des trames, et ils sont déduits, non rapportés par 
 ## Tableau de bord en direct
 
 Une vue en direct optionnelle du même flux, dessinée dans la conversation. Compacte : le vaisseau, où il se trouve,
-trois cadrans (vitesse, hydrogène, santé), les alertes et un verdict en une ligne (« Tout va bien » ou « À surveiller
-»). En plein écran : un cockpit, avec les instruments à gauche, le vaisseau au centre et le pilote à droite. C'est
+trois cadrans (vitesse, hydrogène, santé), les alertes et un verdict en une ligne (« Tout va bien », « À surveiller »
+ou le prix refusé au kiosque). En plein écran : un cockpit, avec les instruments à gauche, le vaisseau au centre et le pilote à droite. C'est
 une MCP App : une petite page que ce serveur fournit et que le client affiche à côté du chat.
 
 - **Qui l'affiche.** Claude Desktop est l'hôte que nous avons testé (version Microsoft Store 4.4212.0, serveur
@@ -327,6 +327,13 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   direct. Claude appelle `sc_live_dashboard`, dont le résultat lui dit de ne pas en ouvrir un second tant qu'un est
   ouvert (`hint`). Tant qu'il est ouvert, vous pouvez continuer à parler à Claude : il répond à partir de
   `sc_live_state`, pas à partir de la page.
+- **La vue compacte, dans l'ordre de ce qu'un coup d'œil en vol demande.** L'en-tête avec le verdict, puis le refus de
+  prix s'il y en a un, les alertes (aucune ligne tant qu'il n'y en a pas : le verdict le dit), les trois cadrans, le
+  vaisseau sur une petite ligne, la session sur UNE ligne (« Session 4 · 6 trajets · 1 h 28 min », plus le net par heure
+  seulement solde affiché ; un vrai bouton avec `aria-expanded` déplie la carte entière, qui garde **Nouvelle session**
+  en bouton secondaire), la ligne du solde à côté, puis la ligne du contrat et « Chercher une route ». Mesuré dans Chrome
+  réel sur le vol inventé de l'aperçu, à 560 px : 691 px de haut avant, 326 px maintenant ; à 360 px avec un refus de
+  prix 915 px avant, 510 px maintenant. Non vérifié : comment Claude Desktop dimensionne le cadre en ligne.
 - **Deux modes.** En ligne : une vue compacte. En plein écran (bouton dans la page) : le cockpit. Le bouton interroge
   l'hôte ; si l'hôte répond avec un autre mode, la page suit ce qu'on lui dit.
 - **Ce que montre le cockpit.** Instruments : un cadran de vitesse dont l'échelle est déduite des vitesses vues et le
@@ -399,7 +406,8 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   « renvoyé pour inactivité » reste invisible), pas de journal de commerce, pas de grand livre et des chiffres de session
   plus fragiles ; télémétrie désactivée, rien du tout ; un jeu lancé sans la variable côté jeu n'affiche que « Jeu lancé
   sans télémétrie ». La page le dit maintenant elle-même. Elle est **invisible tant que rien n'est à faire** ; quand
-  quelque chose manque, un bloc compact sous l'en-tête le nomme, dit ce qu'on perd et donne le remède exact, dans une
+  quelque chose manque, UNE ligne (« 3 réglages à faire », avec un bouton « Voir » qui porte `aria-expanded`) dit combien ;
+  dépliée, elle nomme chaque point, dit ce qu'on perd et donne le remède exact, dans une
   boîte que l'on copie avec un bouton (le presse-papiers peut être refusé dans le bac à sable de l'hôte : le texte est
   alors sélectionné et la page dit d'appuyer sur Ctrl+C). Le bouton « ? » de l'en-tête ouvre à tout moment la liste
   complète, avec « Tout est branché » (ou « Rien à régler pour l'instant » quand une ligne attend seulement le jeu) et
@@ -434,7 +442,7 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   la page ; la page reconstruit l'objet champ par champ et le rejette en entier si un code `log`, `registration` ou `sessions` est inconnu (un nom de réglage ou une étiquette inconnus est écarté seul). `npm run doctor`
   reste le contrôle approfondi (il lit la config de Claude, la variable utilisateur et le port) ; la page ne le
   duplique pas.
-- **Comment lire le tableau de bord (la légende).** Montrée à la première ouverture et derrière le « ? » ensuite :
+- **Comment lire le tableau de bord (la légende).** Montrée à la première ouverture (dans la vue compacte seulement quand quelque chose est à régler, pour que les cadrans restent en premier) et derrière le « ? » ensuite :
   **Mesuré** (envoyé par le jeu à l'instant), **Calculé** (somme ou différence de valeurs mesurées), **Estimé** (une
   tendance sur les dernières minutes, avec sa fenêtre), **Probable** (déduit d'indices, jamais confirmé par le jeu),
   **Inconnu** (non envoyé par le jeu : un tiret, jamais un zéro inventé). Chaque terme a un glyphe, et chaque état est
@@ -589,6 +597,14 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
 | Frais | Ce que le service de chargement a pris en plus des prix. Le journal n'a pas de ligne de frais | Mesuré côté par côté contre le solde quand c'est possible ; sinon le total déduit (marge brute moins la variation du solde) seulement si c'est un frais plausible (0 à 50 % du chiffre d'affaires), marqué « estimé » ; sinon inconnu, avec la raison (« le solde a bougé pour une autre raison ») |
 | Bénéfice net | La variation du solde sur le trajet : solde après la dernière vente moins solde juste avant le premier achat. Elle contient TOUS les mouvements de ce temps (une récompense, un autre achat), pas seulement le trajet ; la carte dit ce que la marge et les frais n'expliquent pas | Mesuré dans l'historique du solde de la télémétrie (étiquette « variation du solde ») ; inconnu (jamais zéro) si le tableau de bord n'a pas vu le solde avant l'achat |
 
+- **Avant un trajet, et l'avertissement sur le solde.** Tant que rien n'est mesuré (pas encore de trajet, solde masqué, ou
+  pas de journal lisible) la carte ne dessine que ce qui existe : la tuile du bénéfice prévu (étiquette « plan »), une
+  ligne simple qui dit pourquoi il n'y a pas de bilan (« Journal du jeu non lisible : pas de bilan réel pour ce trajet »,
+  qui renvoie à la bande de branchement), et aucune des tuiles vides « — ». Après un trajet, quand le solde a bougé de plus
+  que la marge et les frais ne l'expliquent, l'avertissement ambre est SOUS les chiffres et tient en une phrase qui nomme
+  ce qui a aussi bougé (« Le solde a aussi bougé de +85 000 aUEC (récompense probable), −9 000 aUEC (coût possible) … :
+  ce n'est pas le bénéfice de ce trajet seul. »), avec un bouton « Détail » qui ouvre le bloc « Mouvements du solde », où
+  se trouve le compte complet. Aucune donnée nouvelle : la même décomposition, lue autrement.
 - **D'où viennent les transactions.** Du journal de commerce du journal de jeu (`src/providers/gamelog/trade.ts`, celui
   de `sc_trade_journal`) : le tableau de bord n'analyse rien lui-même. Les lectures du carnet (complète, puis seulement
   les octets ajoutés par le jeu) gardent aussi les lignes de commerce, le journal les apparie, et le modèle de commerce
@@ -818,9 +834,11 @@ comptée UNE fois, comme un événement ambigu (« une des transactions envoyée
 événement est une heure, un côté (achat ou vente), un genre (cargaison ou objet de boutique) et le degré de certitude du
 journal : aucun montant, aucune boutique, aucun objet, aucun identifiant ; il part donc avec ou sans le solde
 (`trade.price_refusals`, les 3 plus récents, aussi sur le canal entre Views, reconstruits champ par champ à la
-réception). Le tableau de bord affiche, pendant 10 minutes, « Le prix a changé pendant l'achat (ou la vente) :
-transaction refusée, le prix affiché n'est plus valable », avec l'heure et le temps écoulé, sur la carte de commerce et en
-une ligne dans la petite vue (seules la phrase stable et l'heure absolue sont dans la région vivante, pas le temps écoulé) ; elle est coupée dès qu'une transaction ultérieure du même côté et du même genre a abouti (`superseded`) ; pour une cargaison il suggère de revérifier le plan (le bouton est mis en avant ; rien n'est
+réception). Le tableau de bord affiche, pendant 10 minutes, « Achat refusé : le prix a changé au kiosque. Relis le prix avant de
+racheter. » (ou « Vente refusée », ou un objet de boutique), sur la carte de commerce avec le temps écoulé d'abord et l'heure
+ensuite, en une ligne juste sous l'en-tête dans la petite vue, ET DANS LE VERDICT de l'en-tête (« Prix changé : achat refusé
+· il y a 40 s », ambre, l'heure en infobulle) à la place d'un « Tout va bien » vert (une condition rouge passe toujours
+avant). Seule la phrase stable est dans les régions vivantes, pas le temps écoulé ; elle est coupée dès qu'une transaction ultérieure du même côté et du même genre a abouti (`superseded`) ; pour une cargaison il suggère de revérifier le plan (le bouton est mis en avant ; rien n'est
 demandé tout seul). La session les compte : `price_refusals` (additif, optionnel, le fichier reste en version 2 et les
 anciens fichiers se lisent à 0 ; un repère d'horodatage rend le comptage idempotent) dans le résumé de session,
 `sc_session_current`, `sc_session_list` et `sc_session_stats` (un total et par session ; c'est un nombre, donc non retenu
@@ -965,15 +983,15 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   facteur 2,5 de celle du plan (les deux doivent être connues), et une marge unitaire réalisée positive et comprise entre la
   moitié et le double de celle du plan. Une cargaison qui échoue à un test n'est pas rattachée, et le plan reste libre pour
   la bonne cargaison. Ces seuils sont des choix, pas des mesures. C'est une ressemblance, pas une preuve : le groupe porte
-  `goods_unverified`, la ligne et la tuile disent « marchandise non vérifiée (lien par prix) » et « qui ressemblent au plan »
-  au lieu de « de cette marchandise », et la confiance n'est jamais `high`, avec la raison dans le titre de l'étiquette. Les
+  `goods_unverified`, la ligne dit « similaires (marchandise non vérifiée) » au lieu de « de cette marchandise », l'explication
+  « lien par prix » est dans le repli « Comment lire ça », et la confiance n'est jamais `high`, avec la raison dans le titre de l'étiquette. Les
   chiffres de session comptent aussi ces trajets (`price_linked_trips` dans `money.plan`, dans les meilleures marchandises et
   routes), et leur libellé se termine par « (lien par prix) ». Pour avoir deux cargaisons d'une route, appliquez son plan
   deux fois. **Biais de sélection :** comme une cargaison doit avoir une marge unitaire entre la moitié et le double de celle
   du plan pour être rattachée, une cargaison qui rend 30 % du plan n'est jamais rattachée ni comptée : les ratios calibrés
   sont censurés à environ 50 % à 200 %, donc la calibration ne peut pas montrer qu'une route rend vraiment 20 % du plan (de
-  telles cargaisons sont simplement absentes). Quand la confiance est tenue à `medium` pour cette raison, la ligne le dit
-  dans son texte visible.
+  telles cargaisons sont simplement absentes). Quand la confiance est tenue à `medium` pour cette raison, la carte le dit
+  dans le repli « Comment lire ça » sous la ligne (du texte écrit, à un clic), pas seulement dans l'infobulle.
 - **Confiance** (`none`, `low`, `medium`, `high`). `none` sous 2 cargaisons : aucun chiffre, seulement le nombre. `low` avec
   2 ou 3 cargaisons, un écart supérieur à 0,6 (maximum moins minimum des ratios par cargaison, en points du plan) ou une
   dernière cargaison de plus de 21 jours. `medium` avec 4 à 7 cargaisons. `high` seulement avec 8 cargaisons, un écart d'au
@@ -984,8 +1002,10 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   chiffre d'affaires du plan. Une ESTIMATION, toujours avec son nombre de cargaisons et sa confiance ; elle n'affirme
   aucune cause (un ratio sous 100 % peut venir des prix, de la quantité ou d'une vente lente).
 - **Où cela s'affiche.** `sc_session_stats` (section `route_reliability`, seulement avec `include_balance`) ; une ligne
-  discrète sous chaque route suggérée de la barre d'actions (« Tes N derniers trajets ... réalisé (marge brute) ≈ X % du
-  prévu, frais ≈ Y % », avec son étiquette de confiance, seulement quand il y a des données) ; la tuile « Si tu refais ce
+  discrète sous chaque route suggérée de la barre d'actions (« D'après tes N trajets ... : tu réalises ≈ X % du prévu
+  (frais ≈ Y %) », avec l'étiquette « estimé · N trajets », seulement quand il y a des données ; une route à deux
+  tronçons dit « Sur le 1er tronçon » dans la ligne et, dans le repli « Comment lire ça », que ce n'est pas un chiffre
+  d'aller-retour ; la confiance est dans l'infobulle de l'étiquette, et reste dans l'étiquette quand elle est faible) ; la tuile « Si tu refais ce
   trajet » de la carte de commerce, qui préfère le chiffre calibré quand le plan en cours a un groupe de 2 cargaisons ou
   plus ; une phrase dans les instructions du serveur et dans le prompt `trade_copilot` pour que Claude la cite avec son
   nombre de cargaisons.
@@ -1011,7 +1031,7 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
 
 - **La barre** en haut du tableau de bord montre la session (numéro, état, depuis quand, temps actif), puis les chiffres
   qui comptent d'abord : solde affiché, le résultat, le rythme par heure, les trajets et le temps ; solde masqué, les
-  trajets et le temps. Elle a **Nouvelle session** (deux clics, pour éviter un faux geste), **Sessions** (les sessions
+  trajets et le temps. Dans la vue compacte elle tient sur une ligne (un bouton la déplie). Elle a **Nouvelle session** (deux clics, pour éviter un faux geste ; un bouton secondaire), **Sessions** (les sessions
   passées avec leurs chiffres clés, les statistiques entre sessions, une session en détail, et **Terminer la session**).
   Deux tableaux de bord de deux conversations montrent la même session, car elle vient du serveur.
 - **À l'ouverture**, le tableau de bord se rattache à la dernière session, sauf coupure de plus que le délai : une

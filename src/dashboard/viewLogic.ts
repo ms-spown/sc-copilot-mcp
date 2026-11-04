@@ -1718,33 +1718,41 @@ export function shipContext(poll: any): any {
   return out;
 }
 
-/** The first-glance verdict: "all is well", "watch this" or "alert", from the conditions, or null without data. */
-export function summaryInfo(poll: any, items: any[]): any {
+/**
+ * The first-glance verdict: "all is well", "watch this" or "alert", from the conditions, or null without data. `refusal`
+ * (tradeRefusalInfo, optional) is a price refused at the kiosk: it is the most urgent thing and goes in even when the ship
+ * is off (the player is at a terminal); it never turns the verdict red, and a real red condition (hostile lock, hull) still comes first.
+ */
+export function summaryInfo(poll: any, items: any[], refusal?: any): any {
   if (!poll || poll.state !== "live") return null;
   if (!poll.ship && !poll.pilot) return null;
-  if (shipIsOff(poll)) {
+  // With the ship off, "powerplant off" is the situation, not an alert: it must not hide a refusal at the kiosk.
+  const off = shipIsOff(poll);
+  const list = off ? items.filter((i: any) => i.id !== "powerplant_off") : items;
+  const bad = list.filter((i: any) => i.tone === "bad");
+  const warn = list.filter((i: any) => i.tone === "warn");
+  const total = bad.length + warn.length + (refusal ? 1 : 0);
+  if (off && !refusal) {
     return { id: "off", tone: "neutral", label: "Vaisseau éteint", count: 0 };
   }
-  const bad = items.filter((i: any) => i.tone === "bad");
-  const warn = items.filter((i: any) => i.tone === "warn");
-  if (bad.length > 0) {
-    const more = bad.length + warn.length - 1;
-    return {
-      id: "alert",
-      tone: "bad",
-      label: "Alerte : " + bad[0].label + (more > 0 ? " (+" + more + ")" : ""),
-      count: bad.length + warn.length,
-    };
-  }
-  if (warn.length > 0) {
-    const more = warn.length - 1;
+  const more = total - 1 > 0 ? " (+" + (total - 1) + ")" : "";
+  if (bad.length > 0)
+    return { id: "alert", tone: "bad", label: "Alerte : " + bad[0].label + more, count: total };
+  if (refusal)
     return {
       id: "watch",
       tone: "warn",
-      label: "À surveiller : " + warn[0].label + (more > 0 ? " (+" + more + ")" : ""),
-      count: warn.length,
+      label: refusal.label + " · " + refusal.ago + more,
+      title: refusal.at,
+      count: total,
     };
-  }
+  if (warn.length > 0)
+    return {
+      id: "watch",
+      tone: "warn",
+      label: "À surveiller : " + warn[0].label + more,
+      count: total,
+    };
   return { id: "ok", tone: "ok", label: "Tout va bien", count: 0 };
 }
 

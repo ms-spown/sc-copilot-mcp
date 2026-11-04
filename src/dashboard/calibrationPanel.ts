@@ -230,43 +230,61 @@ export function calibrationLine(
   const g = hit.group;
   const unverified = g.goods_unverified === true;
   // The game log never names goods: when the plan was tied to the runs by their prices, the line says they only
-  // RESEMBLE the plan, never that they are "of this goods".
-  const where = unverified
-    ? hit.scope === "route"
-      ? "qui ressemblent au plan sur cette route (marchandise non vérifiée, lien par prix)"
-      : "qui ressemblent au plan (marchandise non vérifiée, lien par prix)"
+  // RESEMBLE the plan, never that they are "of this goods". The line speaks of the first leg only when there are two.
+  const multi = typeof legs === "number" && legs > 1;
+  const who = unverified
+    ? "similaires (marchandise non vérifiée)"
     : hit.scope === "route"
       ? "sur cette route"
       : "de cette marchandise";
-  let text = "Tes " + g.n + " derniers trajets " + where;
+  let text =
+    (multi ? "Sur le 1er tronçon, d’après" : "D’après") + " tes " + g.n + " trajets " + who;
   text += calibrationHuge(g.gross_ratio)
-    ? " : écart très élevé entre le réalisé (marge brute) et le prévu"
-    : " : réalisé (marge brute) ≈ " + calibrationPct(g.gross_ratio) + " du prévu";
-  if (typeof g.fee_rate === "number")
-    text += ", frais ≈ " + calibrationPct(g.fee_rate) + " du chiffre d’affaires";
+    ? " : écart très élevé entre le réalisé et le prévu"
+    : " : tu réalises ≈ " + calibrationPct(g.gross_ratio) + " du prévu";
+  if (typeof g.fee_rate === "number") text += " (frais ≈ " + calibrationPct(g.fee_rate) + ")";
   text += ".";
   const caution = calibrationCaution(g);
   if (caution !== "") text += " " + caution[0]!.toUpperCase() + caution.slice(1) + ".";
-  // The ceiling, said in the visible text (not only in the tag's title): the cap and what the link leaves out.
+  // The details behind the line, folded: what the figures are, how the plan is tied to the runs, the ceiling, the scope.
+  let more =
+    "Réalisé : la marge brute (ventes moins achats), comparée au prévu. Frais : en part du chiffre d’affaires.";
+  if (unverified)
+    more +=
+      " Le journal du jeu ne nomme pas les marchandises : ton plan est rattaché à tes trajets par la ressemblance des prix (lien par prix), une ressemblance et non une preuve.";
   if (g.confidence_capped === true)
-    text +=
-      " Confiance plafonnée à « moyenne » : plan rattaché par les prix, et les trajets qui rendent moins de la moitié du prévu ne sont pas rattachés, donc absents de ce chiffre.";
-  if (typeof legs === "number" && legs > 1)
-    text += " Ligne calculée pour le premier tronçon seulement.";
+    more +=
+      " Confiance plafonnée à « moyenne » : les trajets qui rendent moins de la moitié du prévu ne sont pas rattachés, donc absents de ce chiffre.";
+  if (multi)
+    more +=
+      " Calculé pour le premier tronçon seulement : ce n’est pas un chiffre pour l’aller-retour.";
   return {
     text,
-    tag: "estimé · confiance " + calibrationWord(g.confidence),
-    hint: calibrationHint(g),
+    more,
+    tag: calibrationTag(g.confidence, g.n),
+    hint: calibrationHint(g, g.confidence),
     scope: hit.scope,
     confidence: g.confidence,
     goods_unverified: unverified,
   };
 }
 
-/** The explanation behind the confidence tag (its title): why it is capped when the goods were not verified. */
-export function calibrationHint(group: any): string {
-  if (!group || group.goods_unverified !== true) return "";
-  return "Confiance plafonnée à « moyenne » : le journal du jeu ne nomme pas les marchandises, le plan est rattaché aux trajets par la ressemblance des prix (une ressemblance, pas une preuve).";
+/** "estimé · 4 trajets · confiance moyenne": the number of runs, and the confidence in words (never colour alone). */
+export function calibrationTag(confidence: string, n: number): string {
+  return "estimé · " + n + " trajets · confiance " + calibrationWord(confidence);
+}
+
+/** The explanation behind the tag (its title): the confidence word, and why it is capped when the goods were not verified. */
+export function calibrationHint(group: any, confidence: string): string {
+  if (!group) return "";
+  return (
+    "Confiance " +
+    calibrationWord(confidence) +
+    "." +
+    (group.goods_unverified === true
+      ? " Confiance plafonnée à « moyenne » : le journal du jeu ne nomme pas les marchandises, le plan est rattaché aux trajets par la ressemblance des prix (une ressemblance, pas une preuve)."
+      : "")
+  );
 }
 
 /**
@@ -314,9 +332,9 @@ export function calibrationNextTile(calib: any, plan: any, money: any): any {
         " du chiffre d’affaires du plan)";
   return {
     auec: e.auec,
-    tag: "estimé · confiance " + calibrationWord(e.confidence),
+    tag: calibrationTag(e.confidence, e.n),
     sub: sub + (caution !== "" ? " · " + caution : ""),
-    hint: calibrationHint(hit.group),
+    hint: calibrationHint(hit.group, e.confidence),
     confidence: e.confidence,
     basis: e.basis,
   };
@@ -337,6 +355,7 @@ export const CALIBRATION_VIEW_FUNCTIONS = [
   calibrationExpected,
   calibrationCaution,
   calibrationLine,
+  calibrationTag,
   calibrationHint,
   calibrationNextTile,
 ];

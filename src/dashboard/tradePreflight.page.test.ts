@@ -159,6 +159,24 @@ describe("Feature: the verdict is a chip with words, and the numbers behind it",
     expect(t).toContain("Le plan ne tient plus tel quel.");
     expect(t).toContain("plus de demande");
     expect(t).toContain("Relance la recherche.");
+    // ... and searching again is a real, secondary button that runs the search (not the check again)
+    const again = findButton(block(w)!, "Relancer la recherche");
+    expect(again.tag).toBe("button");
+    expect(isShown(again)).toBe(true);
+    expect(again.className).toBe("btn pf-ask");
+    const before = w.host.log.suggests.length;
+    again.click();
+    await w.advance(300);
+    const sent = w.host.log.suggests.slice(before);
+    expect(sent.length).toBeGreaterThan(0);
+    expect(sent[0]!.action).not.toBe("preflight");
+  });
+
+  it("Given a plan that still holds, Then there is no 'Relancer la recherche'", async () => {
+    const w = await world({ verdict: "valid" });
+    await fullscreen(w);
+    await check(w);
+    expect(isShown(findButton(block(w)!, "Relancer la recherche"))).toBe(false);
   });
 
   it("Given UEX could not be read, Then it is 'impossible de vérifier' with the reason, never green", async () => {
@@ -353,10 +371,11 @@ describe("Feature: the alert when the game refuses a transaction because the pri
     await fullscreen(w);
     const t = blockText(w);
     expect(t).toContain(
-      "Le prix a changé pendant l’achat : transaction refusée, le prix affiché n’est plus valable.",
+      "Achat refusé : le prix a changé au kiosque. Relis le prix avant de racheter.",
     );
-    expect(t).toMatch(/à \d{2}:\d{2}:\d{2} · il y a \d+ s/);
-    expect(t).toContain("vérifie ton plan à nouveau");
+    // the age first, the clock time after it
+    expect(t).toMatch(/il y a \d+ s \(à \d{2}:\d{2}:\d{2}\)/);
+    expect(t).toContain("Revérifie le plan");
     expect(findButton(block(w)!, "Vérifier avant de partir").attrs["data-attention"]).toBe("1");
     // no amount of the refused purchase (50 000 aUEC) nor of the run is shown
     expect(NBSP_FREE(text(w))).not.toMatch(/(?<!\d)50\D?000(?!\d)/);
@@ -365,13 +384,35 @@ describe("Feature: the alert when the game refuses a transaction because the pri
     expect(live.length).toBeLessThanOrEqual(3);
   });
 
-  it("Given the compact view, Then one line carries the alert", async () => {
+  it("Given the compact view, Then one line carries the alert, right under the header", async () => {
     const w = await world({ trade: "refusal" });
     await w.advance(410 * SECOND);
     const lines = findAll(w.root, (n) => n.className === "lg-line pf-line" && isShown(n));
     expect(lines).toHaveLength(1);
-    expect(NBSP_FREE(lines[0]!.textContent)).toContain("Le prix a changé pendant l’achat");
+    expect(NBSP_FREE(lines[0]!.textContent)).toContain(
+      "Achat refusé : le prix a changé au kiosque",
+    );
     expect(isShown(block(w)!)).toBe(false);
+    // ... before the alerts, the dials and the session line
+    const order = w.root.children.map((n) => n.className.split(" ")[0]);
+    expect(order.indexOf("lg-line")).toBeGreaterThan(order.indexOf("top"));
+    expect(order.indexOf("lg-line")).toBeLessThan(order.indexOf("alerts"));
+    expect(order.indexOf("lg-line")).toBeLessThan(order.indexOf("inline"));
+    expect(order.indexOf("lg-line")).toBeLessThan(order.indexOf("ses"));
+  });
+
+  it("Given a refusal, Then the verdict of the header says it with the age first and the clock time apart, instead of 'Tout va bien'", async () => {
+    const w = await world({ trade: "refusal" });
+    await w.advance(410 * SECOND);
+    const verdict = () => findAll(w.root, (n) => n.className === "verdict")[0]!;
+    expect(NBSP_FREE(verdict().textContent)).toMatch(/^Prix changé : achat refusé · il y a \d+ s/);
+    expect(verdict().attrs["data-tone"]).toBe("warn");
+    expect(verdict().attrs["title"]).toMatch(/^à \d{2}:\d{2}:\d{2}$/);
+    expect(text(w)).not.toContain("Tout va bien");
+    // the header is not a live region: the age may tick (the status regions are checked below)
+    const before = verdict().textContent;
+    await w.advance(5 * SECOND);
+    expect(verdict().textContent).not.toBe(before);
   });
 
   it("Given no refusal, Then there is no alert, in the compact view or the full screen", async () => {
@@ -379,8 +420,9 @@ describe("Feature: the alert when the game refuses a transaction because the pri
     await w.advance(215 * SECOND);
     expect(findAll(w.root, (n) => n.className === "lg-line pf-line" && isShown(n))).toHaveLength(0);
     await fullscreen(w);
-    expect(blockText(w)).not.toContain("transaction refusée");
+    expect(blockText(w)).not.toContain("Achat refusé");
     expect(findButton(block(w)!, "Vérifier avant de partir").attrs["data-attention"]).toBe("0");
+    expect(text(w)).toContain("Tout va bien");
   });
 
   it("Given a check made before the refusal, Then the kiosk's price prevails over a green verdict", async () => {
@@ -391,7 +433,7 @@ describe("Feature: the alert when the game refuses a transaction because the pri
     expect(chip(w)!.textContent).toBe("✓ Toujours valable");
     await w.advance(30 * SECOND); // the refusal comes at 400 s
     const t = blockText(w);
-    expect(t).toContain("transaction refusée");
+    expect(t).toContain("Achat refusé");
     expect(t).toContain(
       "Un achat vient d’être refusé au terminal : vérifie le prix sur place avant de partir.",
     );
@@ -411,19 +453,20 @@ describe("Feature: the alert does not announce itself every second", () => {
     const statuses = () =>
       findAll(w.root, (n) => n.attrs["role"] === "status" && isShown(n)).map((n) => n.textContent);
     const before = statuses();
-    expect(before.join(" ")).toContain("transaction refusée");
+    expect(before.join(" ")).toContain("Achat refusé");
     await w.advance(5 * SECOND);
     expect(statuses()).toEqual(before);
     // the age is still shown, outside the live text
     expect(blockText(w)).toMatch(/il y a \d+ s/);
   });
 
-  it("Given the compact line, Then it carries the absolute time only (no age that changes every second)", async () => {
+  it("Given the compact line, Then it carries no age and no clock (it is a live region: the header carries the age)", async () => {
     const w = await world({ trade: "refusal" });
     await w.advance(410 * SECOND);
     const line = () => findAll(w.root, (n) => n.className === "lg-line pf-line" && isShown(n))[0]!;
     const before = line().textContent;
-    expect(NBSP_FREE(before)).toMatch(/à \d{2}:\d{2}:\d{2}$/);
+    expect(line().attrs["role"]).toBe("status");
+    expect(NBSP_FREE(before)).not.toMatch(/\d{2}:\d{2}|il y a|\d+ s\b/);
     await w.advance(5 * SECOND);
     expect(line().textContent).toBe(before);
   });
@@ -479,7 +522,7 @@ describe("Feature: refusals that arrive on the channel from another window (a ho
     });
     await clock.advance(2 * SECOND);
     const t = NBSP_FREE(visibleText(w.root));
-    expect(t).toContain("Le prix a changé pendant l’achat : transaction refusée");
+    expect(t).toContain("Achat refusé : le prix a changé au kiosque");
     for (const leak of [
       "98765",
       "98 765",

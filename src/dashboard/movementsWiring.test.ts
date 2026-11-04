@@ -256,15 +256,54 @@ describe("Feature: the block in the card's details", () => {
     await fullscreen(w);
     findButton(w.root, "Afficher le solde").click();
     await w.advance(3 * SECOND);
-    const warn = card(w);
-    expect(warn).toMatch(
-      /Attention : Variation du solde \+210 300 aUEC = ventes moins achats rapprochés du journal \+186 568/,
+    // The warning is ONE sentence, placed under the figures; it names what else moved the balance ...
+    const box = findAll(w.root, (n) => n.className === "tr-warn")[0]!;
+    const warn = NBSP_FREE(visibleText(box));
+    expect(warn).toContain(
+      "Attention : Le solde a aussi bougé de +85 000 aUEC (récompense probable), −9 000 aUEC (coût possible), −2 400 aUEC (objets achetés), −6 300 aUEC (non expliqué) : ce n’est pas le bénéfice de ce trajet seul.",
     );
-    expect(warn).toContain("frais −43 568 (mesurés)");
-    expect(warn).toContain("objets achetés −2 400");
-    expect(warn).toContain("récompenses probables de contrat +85 000");
-    expect(warn).toContain("coûts possibles (hangar ou assurance, sans preuve du coût) −9 000");
-    expect(warn).toContain("non expliqué −6 300");
+    expect(warn).not.toContain("ventes moins achats rapprochés");
+    // ... and the whole account stays in the movements block, one control away.
+    const all = card(w);
+    expect(all).toMatch(
+      /Variation du solde \+210 300 aUEC = ventes moins achats rapprochés du journal \+186 568/,
+    );
+    expect(all).toContain("frais −43 568 (mesurés)");
+    expect(all).toContain("coûts possibles (hangar ou assurance, sans preuve du coût) −9 000");
+    // the warning sits after the figures (tiles), not before them
+    const order = findAll(w.root, (n) => n.className === "card trade")[0]!.children.map(
+      (n) => n.className.split(" ")[0],
+    );
+    expect(order.indexOf("tr-warn")).toBeGreaterThan(order.indexOf("tr-hero"));
+  });
+
+  it("Given 'Détail' on the warning, Then it opens AND closes the movements block, with a truthful arrow and aria-expanded", async () => {
+    const { w } = await page();
+    await w.advance(215 * SECOND);
+    await fullscreen(w);
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(3 * SECOND);
+    const details = findAll(w.root, (n) => n.tag === "details");
+    const mv = details.find((n) => n.className === "mv")!;
+    const more = details.find((n) => n.className === "tr-more")!;
+    expect((mv as any).open).not.toBe(true);
+    const detail = findButton(w.root, "Détail ▸");
+    expect(isShown(detail)).toBe(true);
+    expect(detail.attrs["aria-expanded"]).toBe("false");
+    expect(detail.attrs["aria-controls"]).toBe(mv.attrs["id"]);
+    detail.click();
+    expect((more as any).open).toBe(true);
+    expect((mv as any).open).toBe(true);
+    expect(detail.textContent).toBe("Détail ▴");
+    expect(detail.attrs["aria-expanded"]).toBe("true");
+    detail.click();
+    expect((mv as any).open).toBe(false);
+    expect(detail.textContent).toBe("Détail ▸");
+    expect(detail.attrs["aria-expanded"]).toBe("false");
+    // opened by the summary of the block itself: the label follows at the next render
+    (mv as any).open = true;
+    await w.advance(2 * SECOND);
+    expect(detail.textContent).toBe("Détail ▴");
   });
 
   it("Given a filter, Then only the matching movements stay, and the run toggle narrows to the run", async () => {

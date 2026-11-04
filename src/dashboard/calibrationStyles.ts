@@ -7,4 +7,6 @@
 export const CALIBRATION_CSS = `
 .ta-calib { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--sp-2); font-size: var(--fs-xs); color: var(--sc-text3); min-width: 0; }
 .ta-calib-text { overflow-wrap: anywhere; min-width: 0; }
+.ta-calib-more { flex-basis: 100%; }
+
 `;
