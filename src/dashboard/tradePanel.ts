@@ -745,7 +745,9 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       let fn = "";
       if (fm.total === null) {
         fn =
-          "Le journal n’a pas de ligne de frais. Ils sont mesurés quand le solde a bougé à côté d’une transaction, ou déduits de l’écart entre la marge et le bénéfice net ; ici aucun des deux n’est possible.";
+          run && run.uncertain > 0
+            ? "Des lignes non confirmées du journal empêchent de mesurer ou de déduire les frais : elles ont peut-être bougé le solde."
+            : "Le journal n’a pas de ligne de frais. Ils sont mesurés quand le solde a bougé à côté d’une transaction, ou déduits de l’écart entre la marge et le bénéfice net ; ici aucun des deux n’est possible.";
       } else if (fm.rate_from === "trajet_precedent") {
         fn =
           "Taux de frais repris du trajet précédent : " +

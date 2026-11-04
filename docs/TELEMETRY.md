@@ -528,7 +528,7 @@ same thing. Each figure now has one meaning:
   seen in a window around them (2 s before to 8 s after the group, an assumption not yet measured with the real game)
   are added up. Buying: fee = (balance fall) minus price. Selling: fee = price minus (balance rise). The fee may be a
   change of its own a moment later, hence the sum. A group is refused, never guessed, if the window holds a
-  transaction of the other side, a gap in the stream, more than two balance changes per transaction, or gives an
+  transaction of the other side, a line the journal could not confirm (it may have moved the balance too, and then the deduced total is withheld as well), a gap in the stream, more than two balance changes per transaction, or gives an
   implausible fee (negative, or more than half of the price). "mesuré" means one transaction was matched; "mesuré
   (groupé)" means several were settled together. If a side cannot be matched, the total is deduced from the margin and
   the net and labelled "estimé"; if the net is unknown too, the fees are unknown.

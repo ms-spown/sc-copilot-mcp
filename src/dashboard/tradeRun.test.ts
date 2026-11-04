@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BalancePoint } from "../providers/telemetry/service.js";
+import { buildTradeJournal, parseCommerceText } from "../providers/gamelog/trade.js";
 import { buildTradeSection, prepareTransactions, reconcileFees, splitRuns } from "./tradeRun.js";
 import type { Transaction } from "../providers/gamelog/trade.js";
 import {
@@ -7,6 +8,7 @@ import {
   LARANITE_ID,
   TRADE_FIGURES as F,
   tradeHistory,
+  tradeLines,
   tradeTransactions,
 } from "./testing/tradeScenario.js";
 
@@ -149,6 +151,56 @@ describe("Feature: what a run really earned", () => {
     const noisy = [...history.slice(0, 5), ...extra, ...history.slice(5)];
     const prep = prepareTransactions(tradeTransactions(BASE)).counted;
     expect(reconcileFees(prep, prep, noisy).sell).toBeNull();
+  });
+});
+
+describe("Feature: a line the journal could not confirm is never taken for a fee", () => {
+  it("Given an unconfirmed buy that moved the balance inside the purchase window, Then the buy side is not measured and the fees are not deduced", () => {
+    const base = tradeTransactions(BASE);
+    // an extra, unconfirmed purchase of 30 000 between the two lots: the journal could not say whether it went through
+    const ghost: Transaction = {
+      ...base[0]!,
+      time: new Date(BASE + 21_000).toISOString(),
+      total_auec: 30_000,
+      quantity: 10,
+      status: "unconfirmed",
+      confidence: "ambiguous",
+      basis: "error_line_ambiguous",
+    };
+    const txs = [...base, ghost];
+    // the balance did fall by 30 000 at 21.1 s: with the two lots and the fee that is 4 changes (< 2 per transaction)
+    const history = tradeHistory(BASE, NOW).map((p) =>
+      p.at > BASE + 21_000 && p.at < BASE + 150_000 ? { ...p, uec: p.uec - 30_000 } : p,
+    );
+    history.splice(2, 0, {
+      at: BASE + 21_100,
+      uec: F.start - F.buys[0] - 30_000,
+      until: BASE + 22_000,
+    });
+    history.sort((a, b) => a.at - b.at);
+    const prep = prepareTransactions(txs);
+    expect(prep.unconfirmed).toHaveLength(1);
+    expect(reconcileFees(prep.counted, prep.counted, history, prep.unconfirmed).buy).toBeNull();
+    // Without the refusal that window would have been accepted as a measured fee of 49 468
+    expect(reconcileFees(prep.counted, prep.counted, history).buy).not.toBeNull();
+    const m = latest({ transactions: txs, history }).money!;
+    expect(m.fees.buy).toBeNull();
+    expect(m.fees.method).not.toBe("mesure");
+    expect(m.fees.total).toBeNull(); // not even deduced from margin - net: it would absorb the unconfirmed line
+    expect(latest({ transactions: txs, history }).uncertain).toBe(1);
+  });
+});
+
+describe("Feature: the model agrees with the journal's own pairing", () => {
+  it("Given the player's run, Then the gross margin is the journal's gross margin (first-in first-out)", () => {
+    const base = tradeTransactions(BASE);
+    const journal = buildTradeJournal(
+      parseCommerceText(tradeLines(BASE).join(String.fromCharCode(10))),
+      new Date(BASE + 3_600_000).toISOString(),
+    );
+    expect(journal.cargo_runs).toHaveLength(1);
+    expect(latest().money!.gross_margin).toBe(journal.cargo_runs[0]!.gross_margin_auec);
+    expect(base).toHaveLength(4);
   });
 });
 

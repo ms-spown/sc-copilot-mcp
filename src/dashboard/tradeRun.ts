@@ -376,12 +376,14 @@ type ClusterResult =
  * The fee may be charged as a change of its own a moment later (it then comes with the opposite sign for a sale):
  * that is why the changes are summed and not filtered by sign. The match is refused, never guessed, when the window
  * holds a transaction of the other side, a gap in the stream, more than two changes per transaction (something else
- * moved the balance), or when the result is not a plausible fee (negative, or more than half of the price).
+ * moved the balance), a line the journal could not confirm (it may have gone through and moved the balance too), or
+ * when the result is not a plausible fee (negative, or more than half of the price).
  */
 function clusterFee(
   cluster: readonly Tx[],
   side: "buy" | "sell",
   everyTx: readonly Tx[],
+  unconfirmed: readonly Tx[],
   moves: readonly Move[],
 ): ClusterResult {
   const from = cluster[0]!.t - TRADE_MATCH_BEFORE_MS;
@@ -389,6 +391,7 @@ function clusterFee(
   if (everyTx.some((x) => x.side !== side && x.t >= from && x.t <= to)) {
     return { ok: false, why: "mixed" };
   }
+  if (unconfirmed.some((x) => x.t >= from && x.t <= to)) return { ok: false, why: "mixed" };
   const inside = moves.filter((m) => m.at >= from && m.at <= to && m.delta !== 0);
   if (inside.some((m) => m.gap)) return { ok: false, why: "gap" };
   if (inside.length === 0) return { ok: false, why: "none" };
@@ -414,12 +417,14 @@ function clustersOf(txs: readonly Tx[]): Tx[][] {
 /**
  * The fee of each side of a run, measured against the balance history. A side is reported only when EVERY cluster of
  * it could be matched; otherwise it is null and the caller falls back to the total (gross margin - net).
- * `everyTx` is every counted transaction of the session (another run may sit in the window).
+ * `everyTx` is every counted transaction of the session (another run may sit in the window); `unconfirmed` the lines
+ * the journal could not confirm (a window that holds one is refused).
  */
 export function reconcileFees(
   run: readonly Tx[],
   everyTx: readonly Tx[],
   history: readonly BalancePoint[],
+  unconfirmed: readonly Tx[] = [],
 ): { buy: SideFee | null; sell: SideFee | null } {
   const moves = movesOf(history);
   const side = (which: "buy" | "sell"): SideFee | null => {
@@ -428,7 +433,7 @@ export function reconcileFees(
     let total = 0;
     let exact = true;
     for (const c of clustersOf(txs)) {
-      const r = clusterFee(c, which, everyTx, moves);
+      const r = clusterFee(c, which, everyTx, unconfirmed, moves);
       if (!r.ok) return null;
       total += r.fee;
       exact = exact && r.exact;
@@ -510,6 +515,7 @@ function moneyOf(
   f: RunFacts,
   ctx: {
     everyTx: readonly Tx[];
+    unconfirmed: readonly Tx[];
     history: readonly BalancePoint[];
     plan: TradePlan | undefined;
     isLatest: boolean;
@@ -550,7 +556,11 @@ function moneyOf(
   const firstBuy = f.buys.length > 0 ? f.buys[0]!.t : null;
 
   // ---- fees against the balance
-  const sides = reconcileFees(f.txs, ctx.everyTx, history);
+  const sides = reconcileFees(f.txs, ctx.everyTx, history, ctx.unconfirmed);
+  // A line the journal could not confirm may have moved the balance: the margin and so the deduced fees would absorb it.
+  const lo = f.txs[0]!.t - TRADE_MATCH_AFTER_MS;
+  const hi = f.txs[f.txs.length - 1]!.t + TRADE_MATCH_AFTER_MS;
+  const unsure = ctx.unconfirmed.some((x) => x.t >= lo && x.t <= hi);
   const bothSides = sides.buy !== null && (f.sells.length === 0 || sides.sell !== null);
 
   // ---- net: the balance after minus the balance just before the first purchase
@@ -605,7 +615,7 @@ function moneyOf(
     fees.method = "mesure";
     if (net.method === "mesure" && gross !== null)
       fees.unexplained = gross - net.auec! - fees.total;
-  } else if (net.method === "mesure" && gross !== null && f.stage === "complete") {
+  } else if (net.method === "mesure" && gross !== null && f.stage === "complete" && !unsure) {
     fees.total = gross - (net.auec as number);
     fees.method = "estime";
     // One side measured: the other one is what is left (still an estimate).
@@ -742,6 +752,7 @@ export function buildTradeSection(input: TradeInput): TradeSection {
     runs.forEach((f, i) => {
       const money = moneyOf(f, {
         everyTx: prep.counted,
+        unconfirmed: prep.unconfirmed,
         history: input.history,
         plan: input.plan,
         isLatest: i === runs.length - 1,

@@ -553,7 +553,7 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
   variations du solde vues dans une fenêtre autour d'elles (2 s avant à 8 s après le groupe, hypothèse non encore
   mesurée avec le vrai jeu) sont additionnées. À l'achat : frais = (baisse du solde) moins prix. À la vente : frais =
   prix moins (hausse du solde). Les frais peuvent être une variation à part un instant plus tard, d'où la somme. Un
-  groupe est refusé, jamais deviné, si la fenêtre contient une transaction de l'autre sens, un trou dans le flux, plus
+  groupe est refusé, jamais deviné, si la fenêtre contient une transaction de l'autre sens, une ligne que le journal n'a pas pu confirmer (elle a peut-être aussi bougé le solde, et le total déduit est alors retenu aussi), un trou dans le flux, plus
   de deux variations du solde par transaction, ou donne des frais invraisemblables (négatifs, ou plus de la moitié du
   prix). « mesuré » : une transaction a été rapprochée ; « mesuré (groupé) » : plusieurs réglées ensemble. Si un côté
   ne se rapproche pas, le total est déduit de la marge et du net et marqué « estimé » ; si le net est inconnu aussi,
