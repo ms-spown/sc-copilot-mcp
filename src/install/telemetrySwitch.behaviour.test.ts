@@ -140,6 +140,20 @@ describe("Feature: the telemetry status", () => {
       expect(code).toBe(0);
       expect(text).toMatch(/config file:\s+not found/);
     });
+    it("Given a config file, Then status names its place in the short form and never the full path", async () => {
+      const { text } = await run(["status"]);
+      expect(text).toMatch(
+        /config file:\s+found \(…\/[^/)]+\/claude\/claude_desktop_config\.json\)/,
+      );
+      expect(text).not.toContain(dir);
+      expect(text).not.toContain(path.dirname(dir));
+    });
+    it("Given no config file and enable asked, Then the message gives the short form too", async () => {
+      fs.rmSync(configPath);
+      const { text } = await run(["enable", "--apply"]);
+      expect(text).toMatch(/does not exist \(…\/[^/)]+\/claude\/claude_desktop_config\.json\)/);
+      expect(text).not.toContain(dir);
+    });
     it("Given invalid JSON, Then status says it cannot read it and shows no content", async () => {
       writeConfig(`{ nope ${SECRET_OWN}`);
       const { text } = await run(["status"]);

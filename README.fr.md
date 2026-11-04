@@ -84,12 +84,11 @@ npm run build
    `--apply` sauvegarde d'abord `claude_desktop_config.json` vers un fichier horodaté `.bak-…`, puis ajoute ou met à
    jour uniquement `mcpServers["sc-copilot"]`. Vos autres serveurs ne sont ni affichés ni modifiés, et aucun secret n'y
    est inscrit. Omettez `--install-dir` pour laisser la lecture du journal de jeu désactivée. Redémarrez Claude Desktop
-   ensuite. **Relancer l'installateur remplace le `env` de cette entrée** : seuls `SCMCP_PROFILES`, le réglage du
-   journal que vous passez et `SC_TELEMETRY` survivent. Toute autre variable ajoutée à la main (`SC_SESSIONS=off`,
-   `SC_SESSION_GAP_HOURS`, `SCMCP_SESSIONS_FILE`, `SCMCP_FLEET_FILE`, `SCMCP_TOOLS`) est supprimée, donc
-   `SC_SESSIONS=off` redevient silencieusement inactif : remettez-les dans le `env` de l'entrée ensuite, ou modifiez
-   l'entrée à la main plutôt que de relancer l'installateur (la simulation montre la nouvelle entrée avant toute
-   écriture). Après un `git pull` et un `npm run build`, l'entrée existante continue de fonctionner : relancez
+   ensuite. **Relancer l'installateur garde le `env` de cette entrée** : chaque variable déjà présente (`SC_TELEMETRY`,
+   `SC_SESSIONS=off`, `SC_SESSION_GAP_HOURS`, `SCMCP_SESSIONS_FILE`, `SCMCP_TOOLS`, un jeton saisi à la main...) reste
+   telle quelle ; seuls les réglages que vous passez (`--profiles`, `--install-dir`, `--game-log`) changent, et
+   `SCMCP_PROFILES` ne reçoit sa valeur par défaut que pour une nouvelle entrée. La simulation liste les clés gardées
+   par leur nom, jamais leur valeur, et montre la nouvelle entrée avant toute écriture. Après un `git pull` et un `npm run build`, l'entrée existante continue de fonctionner : relancez
    l'installateur seulement pour changer l'entrée elle-même.
    Sur macOS ou Linux, passez `--config <path>`, ou ajoutez la même entrée manuellement :
 
@@ -177,7 +176,7 @@ données :
 | `SCMCP_PROFILES`, `SCMCP_TOOLS`                                  | Quels outils exposer (voir ci-dessus)                                                                                                                                                      |
 | `SC_INSTALL_DIR`                                                 | Dossier d'un canal tel que `…\StarCitizen\LIVE` : active `sc_log_*` sur son `Game.log`. Désactivé si non défini                                                                            |
 | `SC_SESSIONS`                                                    | `off` (aussi `0`, `false`, `no`) désactive les sessions de jeu enregistrées en gardant la télémétrie (aucun fichier créé ni lu). Elles n'existent qu'avec `SC_TELEMETRY=on` (voir plus bas) |
-| `SCMCP_SESSIONS_FILE`                                            | Fichier de sessions (par défaut `%LOCALAPPDATA%\sc-copilot-mcp\data\sessions.json`) |
+| `SCMCP_SESSIONS_FILE`                                            | Fichier de sessions (par défaut `%LOCALAPPDATA%\sc-copilot-mcp\data\sessions.json`) ; `npm run sessions -- wipe --apply` le supprime avec ses copies (simulation sans `--apply`) |
 | `SC_SESSION_GAP_HOURS`                                           | Silence après lequel la partie suivante est une nouvelle session (par défaut 3, de 0,25 à 48) |
 | `SC_TELEMETRY`                                                   | `on` (aussi `1`, `true`, `yes`) active la télémétrie en direct optionnelle, côté serveur. Désactivée si absente (voir plus bas)                                                            |
 | `SC_GAME_LOG_PATH`                                               | Un fichier `.log` précis à la place (seuls les fichiers `.log` sont acceptés)                                                                                                              |

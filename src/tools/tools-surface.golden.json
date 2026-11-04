@@ -755,6 +755,10 @@
         "resolve_names": {
           "type": "boolean",
           "description": "Look commodity names up in the wiki's public commodity list (default true). The list is the same for everyone: nothing from the log is sent. False keeps it fully local."
+        },
+        "include_balance": {
+          "type": "boolean",
+          "description": "Include the aUEC amounts (line totals, unit prices, cost, revenue, gross margin, spending). Default false. Ask the player first: the answer goes into the conversation."
         }
       }
     }

@@ -24,6 +24,10 @@ export interface MergePlan {
   text: string | null;
   /** How many other servers are kept untouched. Their names and settings are never shown. */
   otherServers: number;
+  /** Names (never values) of the env keys of the existing entry that are kept as they are. */
+  keptEnvKeys: string[];
+  /** Things worth knowing before writing (names only, never a value). */
+  warnings: string[];
 }
 
 export class ConfigError extends Error {}
@@ -62,13 +66,22 @@ function readServers(config: Record<string, unknown>): Record<string, unknown> {
   return (servers ?? {}) as Record<string, unknown>;
 }
 
-/** The opt-in telemetry switch lives in the entry's env: reinstalling must not silently switch it off. */
-const CARRIED_OVER = "SC_TELEMETRY";
-
-export function planMerge(rawConfig: string | null, name: string, entry: ServerEntry): MergePlan {
+/**
+ * Plan the entry for `name`. The installer owns the command and its arguments; the env belongs to the user:
+ * every key already in the existing entry's env is kept (telemetry on, sessions off, the game folder, the session gap,
+ * the profiles, a token typed by hand...), whatever the installer was not asked to set. Only the keys in `entry.env`
+ * (what the caller was explicitly asked for) overwrite; `defaults` fill in a key the entry does not have yet (the
+ * profiles of a first install), they never replace one.
+ */
+export function planMerge(
+  rawConfig: string | null,
+  name: string,
+  entry: ServerEntry,
+  defaults: Record<string, string> = {},
+): MergePlan {
   const config = parseConfig(rawConfig);
 
-  for (const key of Object.keys(entry.env)) {
+  for (const key of [...Object.keys(entry.env), ...Object.keys(defaults)]) {
     if (looksSecret.test(key))
       throw new ConfigError(
         `Refusing to write ${key} into the Claude config: keep secrets in .env.`,
@@ -78,11 +91,26 @@ export function planMerge(rawConfig: string | null, name: string, entry: ServerE
   const existing = readServers(config);
   const previous = (existing[name] as ServerEntry | undefined) ?? null;
 
-  const carried = previous?.env?.[CARRIED_OVER];
-  const finalEntry: ServerEntry =
-    typeof carried === "string" && !(CARRIED_OVER in entry.env)
-      ? { ...entry, env: { ...entry.env, [CARRIED_OVER]: carried } }
-      : entry;
+  const rawPreviousEnv = previous?.env;
+  const previousEnv: Record<string, string> =
+    rawPreviousEnv && typeof rawPreviousEnv === "object" && !Array.isArray(rawPreviousEnv)
+      ? rawPreviousEnv
+      : {};
+  const env: Record<string, string> = { ...previousEnv };
+  for (const [key, value] of Object.entries(defaults)) if (!(key in env)) env[key] = value;
+  for (const [key, value] of Object.entries(entry.env)) env[key] = value;
+  const keptEnvKeys = Object.keys(previousEnv).filter((k) => !(k in entry.env));
+  // The server reads SC_GAME_LOG_PATH (a file) before SC_INSTALL_DIR (a folder): a kept file setting hides a folder
+  // the caller has just passed.
+  const warnings =
+    "SC_INSTALL_DIR" in entry.env &&
+    !("SC_GAME_LOG_PATH" in entry.env) &&
+    keptEnvKeys.includes("SC_GAME_LOG_PATH")
+      ? [
+          "SC_GAME_LOG_PATH is kept from the existing entry and takes precedence over the SC_INSTALL_DIR you passed, so the log folder does not change. Pass --game-log too, or edit that key by hand.",
+        ]
+      : [];
+  const finalEntry: ServerEntry = { ...entry, env };
 
   const merged = { ...config, mcpServers: { ...existing, [name]: finalEntry } };
   const action =
@@ -98,6 +126,8 @@ export function planMerge(rawConfig: string | null, name: string, entry: ServerE
     merged,
     text: action === "unchanged" ? null : mergedText(rawConfig, name, finalEntry, merged),
     otherServers: Object.keys(existing).filter((k) => k !== name).length,
+    keptEnvKeys,
+    warnings,
   };
 }
 
@@ -257,12 +287,28 @@ function maskEnv(entry: unknown): unknown {
 
 /** What is shown before writing: only this server's entry and a count of the others. */
 export function describePlan(plan: MergePlan, name: string): string {
+  // The values the installer sets are shown; the values it keeps are the user's own (a path, a token typed by hand):
+  // only their names appear.
+  const kept = new Set(plan.keptEnvKeys);
+  const shownEntry = {
+    ...plan.entry,
+    env: Object.fromEntries(
+      Object.entries(plan.entry.env).map(([k, v]) => [
+        k,
+        kept.has(k) ? "(kept, value not shown)" : v,
+      ]),
+    ),
+  };
   const lines = [
     `Action: ${plan.action} the "${name}" server in mcpServers`,
     `Other servers left untouched: ${plan.otherServers}`,
+    ...(plan.keptEnvKeys.length
+      ? [`Env keys of the existing entry kept as they are: ${plan.keptEnvKeys.join(", ")}`]
+      : []),
+    ...plan.warnings.map((w) => `Warning: ${w}`),
     "",
     "Entry that would be written:",
-    ...JSON.stringify({ [name]: plan.entry }, null, 2)
+    ...JSON.stringify({ [name]: shownEntry }, null, 2)
       .split("\n")
       .map((l) => `  ${l}`),
   ];

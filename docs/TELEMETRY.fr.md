@@ -432,7 +432,7 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
      n'existe qu'après un premier lancement, ou le dossier est faux), ou lu. La page montre le NOM du réglage et une
      courte étiquette fixe (`LIVE/Game.log`, `Game.log`, `custom`), jamais un chemin et jamais une valeur : le serveur
      construit l'étiquette et la page n'accepte que cette liste. Le remède est la ligne à ajouter à la main dans le
-     bloc `env` de l'entrée `sc-copilot` (`npm run install:claude` remplacerait ce bloc, il n'est donc pas proposé).
+     bloc `env` de l'entrée `sc-copilot` (`npm run install:claude` garde ce bloc tel quel mais n'ajoute pas cette ligne, il n'est donc pas proposé).
   3. **La ligne d'enregistrement** du service de télémétrie dans `Game.log` : vue, non vue (le jeu a été lancé sans
      `GRPC_CLIENT_SERVER_ENABLED` : quittez complètement le RSI Launcher, icône de la zone de notification comprise),
      ou pas encore vérifiable.
@@ -883,7 +883,8 @@ plantage du jeu et après un redémarrage du PC.
   créé ni lu, et les outils de session et la barre disparaissent.
 - **Pour l'effacer.** Arrêtez Claude Desktop (ou mettez `SC_SESSIONS=off`), puis supprimez `sessions.json`. Les fichiers à
   côté (`sessions.json.v1.bak`, `sessions.json.corrupt-...`, `.bak-...`) sont des copies d'anciens fichiers ou de fichiers
-  illisibles et contiennent les mêmes soldes : supprimez-les tous pour effacer les données. Le fichier est du JSON simple : vous pouvez le lire.
+  illisibles et contiennent les mêmes soldes : supprimez-les tous pour effacer les données, ou lancez `npm run sessions -- wipe` (une simulation qui les liste par
+  nom ; `--apply` les supprime, dans ce dossier seulement, et respecte `SCMCP_SESSIONS_FILE`). Le fichier est du JSON simple : vous pouvez le lire.
 - **Un changement de comportement assumé.** Le solde de départ ne peut pas être retrouvé dans Game.log : pour le capter,
   le serveur doit surveiller dès le lancement du jeu. Avec les sessions actives, un petit gestionnaire garde le lecteur
   de télémétrie en vie **tant que le jeu est supposé tourner** (Game.log a été écrit dans les cinq dernières minutes et

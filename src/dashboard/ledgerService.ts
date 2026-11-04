@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { openLogFile } from "../providers/gamelog/openLog.js";
 import { decodeLog, parseLog, type LogEvent } from "../providers/gamelog/parser.js";
 import {
   buildTradeJournal,
@@ -87,7 +88,7 @@ export interface LedgerLogSource {
 }
 
 async function withFile<T>(gameLog: GameLog, use: (h: fs.FileHandle) => Promise<T>): Promise<T> {
-  const handle = await fs.open(gameLog.source().file, "r"); // read-only; no lock
+  const handle = await openLogFile(gameLog.source().file); // read-only; no lock; a link only to another .log
   try {
     return await use(handle);
   } finally {

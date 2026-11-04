@@ -15,6 +15,7 @@
 import axios from "axios";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { pruneOldest } from "../../core/cachePrune.js";
 import { ALLOWED_HOSTS, createGuardedClient } from "../../core/http.js";
 import { userCacheDir } from "../../core/paths.js";
 import { isRepoName } from "../../core/validate.js";
@@ -212,6 +213,26 @@ export function isSafeCollectionName(name: string): boolean {
   return /^[A-Za-z0-9_.-]+$/.test(name) && !name.includes("..");
 }
 
+/**
+ * How much of the dump cache is kept. A collection of a build never changes, so an old file is only a download saved:
+ * the oldest go first. Only names written by `cachePathFor` count (`<dataset>__<collection>__<10 hex>.json`), so a folder
+ * moved with SCMCP_BUILD_CACHE_DIR may hold other things.
+ */
+export const BUILD_CACHE_LIMITS = { maxFiles: 60, maxBytes: 400 * 1024 * 1024 };
+/** `<dataset>__<collection>__<10 hex of the build sha>.json`, the dataset one of ours, the collection a safe name. */
+const BUILD_CACHE_FILE = new RegExp(
+  `^(?:${Object.keys(DATASETS).join("|")})__[A-Za-z0-9_.-]+__[0-9a-f]{10}\\.json$`,
+);
+
+/** Prune the dump cache past its limits; `keep` is the file just written. Failures are ignored. */
+export function pruneBuildCache(dir: string = CACHE_DIR, keep?: string): Promise<string[]> {
+  return pruneOldest(dir, {
+    ...BUILD_CACHE_LIMITS,
+    accept: (name) => BUILD_CACHE_FILE.test(name),
+    keep: keep ? [keep] : [],
+  });
+}
+
 /** The cache file of one collection at one build. Throws when the name could leave the cache folder. */
 export function cachePathFor(dataset: string, wanted: string, sha: string): string {
   if (!isSafeCollectionName(wanted)) {
@@ -279,6 +300,7 @@ export async function fetchDataset(
 
   await fs.mkdir(CACHE_DIR, { recursive: true });
   await fs.writeFile(cachePath, JSON.stringify(entries));
+  await pruneBuildCache(CACHE_DIR, path.basename(cachePath));
   return entries;
 }
 

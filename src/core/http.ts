@@ -18,7 +18,7 @@
  * from the hard-coded list: the list is the trust decision, not the environment.
  */
 
-import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from "axios";
+import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from "axios";
 import { createRateLimiter, defaultSleep, isRetriableStatus, retryDelay } from "./resilience.js";
 
 /** Hosts each upstream is allowed to be reached on. Change these in code review, not at runtime. */
@@ -31,7 +31,15 @@ export const ALLOWED_HOSTS = {
   githubRaw: ["raw.githubusercontent.com"],
 } as const;
 
+/** Longest a request may stay silent. axios restarts this timer at every byte, so it is NOT a limit on the whole call. */
 export const DEFAULT_TIMEOUT_MS = 30_000;
+/**
+ * Longest a whole call may take, retries and rate-limit waits included, whatever arrives meanwhile (a server that
+ * drips one byte now and then never trips the idle timeout). One and a half times the idle timeout unless set:
+ * 45 s by default, 180 s for the clients that download big files (120 s idle). The planner's own limits (25 s for a
+ * plan, 20 s for a lookup) stop waiting earlier; this one releases the socket and the cache entry behind them.
+ */
+export const DEADLINE_FACTOR = 1.5;
 /** Largest response body accepted from an API; dump downloads raise it for themselves. */
 export const DEFAULT_MAX_BYTES = 25 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
@@ -90,6 +98,8 @@ export interface GuardedClientOptions extends HostPolicy {
   /** Sent as a bearer token on every request that passes the host check; omitted when unset or empty. */
   token?: string;
   timeoutMs?: number;
+  /** Total time one call may take, in ms (default: 1.5 times timeoutMs). The call fails as a timeout (ECONNABORTED). */
+  deadlineMs?: number;
   headers?: Record<string, string>;
   /** Extra tries after a failure that says "try again" (no answer, 429, 502-504). Default 2; 0 turns it off. */
   retries?: number;
@@ -102,7 +112,17 @@ export interface GuardedClientOptions extends HostPolicy {
   now?: () => number;
 }
 
-type RetryConfig = InternalAxiosRequestConfig & { __attempt?: number };
+type RetryConfig = InternalAxiosRequestConfig & {
+  __attempt?: number;
+  /** Set once per call, on the first attempt: retries share the same clock. */
+  __deadline?: AbortSignal;
+};
+
+/** The total deadline of a client built with these options. */
+export function totalDeadlineMs(options: { timeoutMs?: number; deadlineMs?: number }): number {
+  if (options.deadlineMs !== undefined) return options.deadlineMs;
+  return Math.round((options.timeoutMs ?? DEFAULT_TIMEOUT_MS) * DEADLINE_FACTOR);
+}
 
 /** Build an axios client that enforces the host policy on requests and redirects. */
 export function createGuardedClient(options: GuardedClientOptions): AxiosInstance {
@@ -135,8 +155,16 @@ export function createGuardedClient(options: GuardedClientOptions): AxiosInstanc
       })
     : null;
 
-  client.interceptors.request.use(async (config) => {
+  const deadlineMs = totalDeadlineMs(options);
+  client.interceptors.request.use(async (config: RetryConfig) => {
     assertAllowedUrl(new URL(client.getUri(config)), policy);
+    // The clock of the whole call starts here, once: a retry goes through this interceptor again and keeps it.
+    if (deadlineMs > 0 && !config.__deadline) {
+      config.__deadline = AbortSignal.timeout(deadlineMs);
+      config.signal = config.signal
+        ? AbortSignal.any([config.signal as AbortSignal, config.__deadline])
+        : config.__deadline;
+    }
     // After the host check, so a blocked request does not use up quota.
     if (takeSlot) await takeSlot();
     if (options.token) config.headers.set("Authorization", `Bearer ${options.token}`);
@@ -148,6 +176,16 @@ export function createGuardedClient(options: GuardedClientOptions): AxiosInstanc
   client.interceptors.response.use(undefined, async (error: unknown) => {
     if (!axios.isAxiosError(error) || !error.config) throw error;
     const config = error.config as RetryConfig;
+    // The deadline cut the call (axios reports an abort as "canceled", or a broken stream): say what happened, as a
+    // timeout without a response, which the cache treats as an outage and never retries.
+    if (config.__deadline?.aborted) {
+      throw new AxiosError(
+        `Request exceeded its ${Math.round(deadlineMs / 100) / 10} s total deadline`,
+        AxiosError.ECONNABORTED,
+        config,
+        error.request,
+      );
+    }
     const attempt = (config.__attempt ?? 0) + 1;
     const method = (config.method ?? "get").toLowerCase();
     if (method !== "get" || attempt > maxRetries || !isRetriableStatus(error.response?.status)) {

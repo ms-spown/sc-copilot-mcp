@@ -17,7 +17,8 @@ import type { ToolDefinition, ToolResult } from "./types.js";
 /**
  * The player's trade journal, from Game.log only (read-only, off unless the log is configured).
  * Commodity NAMES come from the wiki's public commodity list, matched locally on the GUID; the
- * player's log never goes over the network. No handle, id or balance is ever returned.
+ * player's log never goes over the network. No handle, id or balance is ever returned, and no aUEC amount at all unless
+ * the caller passes include_balance=true (after the player agreed), as for the session tools.
  */
 
 const MAX_FILES = 10;
@@ -33,6 +34,25 @@ const ok = (value: unknown): ToolResult => ({
 
 type Row = Omit<Transaction, "resource"> & { commodity_name?: string };
 
+/**
+ * Every aUEC amount of the journal, the same class of figures that the session tools and the debrief withhold without
+ * include_balance: line totals and unit prices, cost, revenue and gross margin of a run, spending by category.
+ * Counts, SCU, kinds, statuses, categories and the structure stay.
+ */
+const MONEY_KEYS_TRANSACTION = ["total_auec", "unit_price_auec", "shop_unit_price_scu"] as const;
+const MONEY_KEYS_RUN = [
+  "cost_auec",
+  "revenue_auec",
+  "gross_margin_auec",
+  "gross_margin_per_scu_auec",
+] as const;
+
+const without = <T extends object>(value: T, keys: readonly string[]): T =>
+  Object.fromEntries(Object.entries(value).filter(([k]) => !keys.includes(k))) as T;
+
+export const JOURNAL_AMOUNTS_WITHHELD_NOTE =
+  "aUEC amounts (line totals, unit prices, cost, revenue, gross margin, spending) are withheld, like the figures of the session tools: they are the player's money. Counts, SCU, kinds, statuses and categories are shown. Ask the player, then call again with include_balance=true.";
+
 export function tradeJournalTools({
   gameLog,
   scwClient,
@@ -44,7 +64,7 @@ export function tradeJournalTools({
     {
       name: "sc_trade_journal",
       description:
-        "The player's trade journal, from Game.log only, per play session (newest first): each shop or cargo-kiosk purchase and sale with time, side, shop, quantity and unit (SCU for cargo), the TOTAL of the line in aUEC, unit price, outcome and confidence; spending by category (inferred from the item class name); cargo runs pairing purchases and sales of one commodity first-in first-out, with paired SCU, cost, revenue and GROSS margin (estimated); totals. Use it for 'what did I buy', 'how did my last cargo run go'. Tell the player: the log has NO wallet balance and no autoload fee, so there is no net result; cargo success is only inferred from the absence of an error; failed lines are listed, not counted; location_hint is a possibly stale hint, never a terminal; a commodity the wiki does not name is 'unknown commodity'. Read-only; needs the game log enabled.",
+        "The player's trade journal, from Game.log only, per play session (newest first): each shop or cargo-kiosk purchase and sale (time, side, shop, quantity, unit, outcome, confidence); spending by category; cargo runs pairing purchases and sales of one commodity first-in first-out (paired SCU, estimated); totals. Without include_balance there is NO aUEC amount (counts, SCU, kinds, statuses, categories only); with it (ask the player first) it adds line totals, unit prices, spending, and per run cost, revenue and GROSS margin. Use it for 'what did I buy', 'how did my last cargo run go'. Tell the player: the log has NO wallet balance and no autoload fee, so no net result; cargo success is only inferred from the absence of an error; failed lines are listed, not counted; location_hint is a stale hint, not a terminal; an unnamed commodity is 'unknown commodity'. Read-only; needs the game log.",
       inputSchema: {
         type: "object",
         properties: {
@@ -63,6 +83,11 @@ export function tradeJournalTools({
             description:
               "Look commodity names up in the wiki's public commodity list (default true). The list is the same for everyone: nothing from the log is sent. False keeps it fully local.",
           },
+          include_balance: {
+            type: "boolean",
+            description:
+              "Include the aUEC amounts (line totals, unit prices, cost, revenue, gross margin, spending). Default false. Ask the player first: the answer goes into the conversation.",
+          },
         },
       },
       handler: async (args: unknown): Promise<ToolResult> => {
@@ -71,8 +96,10 @@ export function tradeJournalTools({
             sessions: z.number().optional(),
             max_transactions: z.number().optional(),
             resolve_names: z.boolean().optional(),
+            include_balance: z.boolean().optional(),
           })
           .parse(args || {});
+        const money = input.include_balance === true;
         const files = Math.min(Math.max(Math.floor(input.sessions ?? 2), 1), MAX_FILES);
         const perSession = Math.min(Math.max(Math.floor(input.max_transactions ?? 40), 1), 120);
         const list = await gameLog.sessions(files);
@@ -104,7 +131,7 @@ export function tradeJournalTools({
           return journals.map(({ s, current, j }) => {
             const take = Math.max(0, Math.min(rowsCap, budget));
             budget -= Math.min(take, j.transactions.length);
-            return view(s, current, j, take, runsCap, nameOf);
+            return view(s, current, j, take, runsCap, nameOf, money);
           });
         };
         // The answer must stay under the output limit (formatOutputRaw would otherwise cut the
@@ -143,6 +170,7 @@ export function tradeJournalTools({
           log_files_scanned: list.length,
           sessions_with_trades: sessions.length,
           ...(truncated ? { truncated } : {}),
+          ...(money ? {} : { money_note: JOURNAL_AMOUNTS_WITHHELD_NOTE }),
           sessions,
           commodity_names: {
             source: wantNames
@@ -174,15 +202,28 @@ function view(
   take: number,
   runsCap: number,
   nameOf: (resource: string) => string,
+  money: boolean,
 ) {
   const shown: Row[] = (take > 0 ? j.transactions.slice(-take) : []).map((t) => {
     const { resource, ...rest } = t;
-    return resource ? { ...rest, commodity_name: nameOf(resource) } : rest;
+    const row = resource ? { ...rest, commodity_name: nameOf(resource) } : rest;
+    return money ? row : without(row, MONEY_KEYS_TRANSACTION);
   });
   const runs = (runsCap > 0 ? j.cargo_runs.slice(-runsCap) : []).map((r: CargoRun) => {
     const { resource, ...rest } = r;
-    return { ...rest, commodity_name: nameOf(resource) };
+    const run = { ...rest, commodity_name: nameOf(resource) };
+    return money ? run : without(run, MONEY_KEYS_RUN);
   });
+  const totals = money
+    ? j.totals
+    : {
+        ...j.totals,
+        items: without(j.totals.items, ["bought_auec", "sold_auec"]),
+        cargo: without(j.totals.cargo, ["bought_auec", "sold_auec"]),
+      };
+  const spending = money
+    ? j.spending_by_category
+    : j.spending_by_category.map((c) => without(c, ["auec"]));
   const p = s.parsed;
   return {
     file: s.file.split(/[\\/]/).pop(),
@@ -195,8 +236,8 @@ function view(
     ...(s.truncated
       ? { note: "Large log: only the end of the file was read, earlier trades may be missing." }
       : {}),
-    totals: j.totals,
-    spending_by_category: j.spending_by_category,
+    totals,
+    spending_by_category: spending,
     cargo_runs: runs,
     cargo_runs_shown: runs.length,
     cargo_runs_total: j.cargo_runs.length,

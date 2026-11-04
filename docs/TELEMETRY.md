@@ -418,7 +418,7 @@ that this server provides and that the client renders next to the chat.
      exists after a first launch, or the folder is wrong), or read. The page shows the NAME of the setting and a fixed
      short label (`LIVE/Game.log`, `Game.log`, `custom`), never a path and never a value: the server builds the label
      and the page accepts only that list. The fix is the line to add by hand to the `env` block of the `sc-copilot`
-     entry (`npm run install:claude` would replace that block, so it is not suggested).
+     entry (`npm run install:claude` keeps that block as it is but does not add this line, so it is not suggested).
   3. **The registration line** of the telemetry service in `Game.log`: seen, not seen (the game was started without
      `GRPC_CLIENT_SERVER_ENABLED`: quit the RSI Launcher completely, tray icon included), or not checkable yet.
   4. **Connection state** and 5. **trade journal and ledger**: they need the log; they point to line 2 instead of
@@ -837,7 +837,8 @@ it again from any conversation, after a game crash, and after a reboot of the PC
   and the session tools and the bar disappear.
 - **To wipe it.** Stop Claude Desktop (or set `SC_SESSIONS=off`), then delete `sessions.json`. Files next to it
   (`sessions.json.v1.bak`, `sessions.json.corrupt-...`, `.bak-...`) are copies of older or unreadable files and hold the
-  same balances: delete all of them to wipe the data.
+  same balances: delete all of them to wipe the data, or run `npm run sessions -- wipe` (a dry run that lists them by
+  name; `--apply` deletes them, in that folder only, and honours `SCMCP_SESSIONS_FILE`).
   The file is plain JSON: you can read it.
 - **A deliberate change of behaviour.** The starting balance cannot be recovered from Game.log, so to capture it the
   server must be watching when the game starts. With sessions on, a small manager keeps the telemetry reader alive

@@ -1,7 +1,9 @@
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fetchWithCache, isOutage } from "../../core/cache.js";
+import { pruneGroups } from "../../core/cachePrune.js";
 import type { HttpClient } from "../../core/http.js";
 import { recordFetch, setChannel, setDataDates, setGameVersion } from "../../core/provenance.js";
 import { isRepoName } from "../../core/validate.js";
@@ -80,18 +82,78 @@ export interface ScmdbDeps {
   repo: string;
   cacheDir: () => string;
   now?: () => number;
+  /** Tests only: smaller bounds than SCMDB_LIMITS. */
+  limits?: Partial<typeof SCMDB_LIMITS>;
 }
 
 const REF_TTL_MS = 10 * 60 * 1000;
-const SAFE_NAME = /^[A-Za-z0-9._-]+$/;
+/** A file name from the manifest becomes part of a cache file name: plain characters, and neither "." nor "..". */
+const SAFE_NAME = /^(?!\.{1,2}$)[A-Za-z0-9._-]+$/;
+
+/**
+ * What the store keeps. Every commit of the mirror brings new files (up to 60 MB each): parsed copies stay in memory
+ * only for the most recently used ones, within a budget counted in characters of JSON text (a parsed object takes a few
+ * times that), and the cache folder keeps the files of the newest commits only. A file bigger than the whole budget is
+ * still served; it is then the only parsed copy kept.
+ */
+export const SCMDB_LIMITS = {
+  /** Parsed files kept in memory (one commit holds about a dozen: six kinds for each of the two channels). */
+  maxParsedEntries: 16,
+  /** Characters of JSON text behind the parsed files kept in memory. */
+  maxParsedBytes: 160 * 1024 * 1024,
+  /** Commits whose files stay in the cache folder (older copies are the fallback when the download fails). */
+  keepCommits: 3,
+};
+
+/**
+ * The commit part of a cache file name, for the EXACT names `load` writes and no other:
+ * `<12 hex | main-stamp>__<kind>-<live|ptu|all>-<12 hex>.json`.
+ */
+const SLOT = `(?:${Object.keys(SHAPES).join("|")})-(?:live|ptu|all)-[0-9a-f]{12}\\.json`;
+const CACHE_NAME = new RegExp(`^((?:[0-9a-f]{12}|main-[0-9x]+))__${SLOT}$`);
+const commitOf = (fileName: string): string | null => CACHE_NAME.exec(fileName)?.[1] ?? null;
 
 export class Scmdb {
-  private parsed = new Map<string, unknown>();
+  private parsed = new Map<string, { loaded: Loaded; bytes: number }>();
+  private parsedTotal = 0;
   private ref: { value: string; at: number } | null = null;
+  private limits: typeof SCMDB_LIMITS;
 
   constructor(private deps: ScmdbDeps) {
     if (!isRepoName(deps.repo)) {
       throw new Error(`SCMCP_SCMDB_REPO must look like "owner/name", got "${deps.repo}".`);
+    }
+    this.limits = { ...SCMDB_LIMITS, ...deps.limits };
+  }
+
+  /** How many parsed files are held in memory (tests and diagnostics). */
+  get parsedEntries(): number {
+    return this.parsed.size;
+  }
+
+  /** Characters of JSON text behind them. */
+  get parsedBytes(): number {
+    return this.parsedTotal;
+  }
+
+  /** Keep a parsed file as the most recently used; drop the least recently used ones past the limits. */
+  private remember(key: string, loaded: Loaded, bytes: number): void {
+    const old = this.parsed.get(key);
+    if (old) this.parsedTotal -= old.bytes;
+    this.parsed.delete(key);
+    this.parsed.set(key, { loaded, bytes });
+    this.parsedTotal += bytes;
+    while (
+      this.parsed.size > 1 &&
+      (this.parsed.size > this.limits.maxParsedEntries ||
+        this.parsedTotal > this.limits.maxParsedBytes)
+    ) {
+      const [oldest, entry] = this.parsed.entries().next().value as [
+        string,
+        { loaded: Loaded; bytes: number },
+      ];
+      this.parsed.delete(oldest);
+      this.parsedTotal -= entry.bytes;
     }
   }
 
@@ -187,20 +249,21 @@ export class Scmdb {
     const ref = sha ?? "main";
     const key = sha ? sha.slice(0, 12) : `main-${generatedAt.replace(/\D/g, "") || "x"}`;
     const memoryKey = `${key}|${name}`;
-    const file = path.join(this.deps.cacheDir(), "scmdb", `${key}__${name}`);
+    // The cache file name is built from what WE decide: the commit (12 hex digits, or the manifest's date as digits), the
+    // kind and channel (fixed lists) and a hash of the file name the manifest gave (hex). Nothing the server said is a
+    // path component.
+    const slot = `${kind}-${channel ?? "all"}-${createHash("sha256").update(name).digest("hex").slice(0, 12)}.json`;
+    const file = path.join(this.deps.cacheDir(), "scmdb", `${key}__${slot}`);
 
-    const memo = this.parsed.get(memoryKey) as Loaded | undefined;
+    const memo = this.parsed.get(memoryKey);
     if (memo) {
-      recordFetch({ fetchedAt: memo.fetchedAt, cache: "memory" });
-      return memo;
+      this.remember(memoryKey, memo.loaded, memo.bytes); // most recently used
+      recordFetch({ fetchedAt: memo.loaded.fetchedAt, cache: "memory" });
+      return memo.loaded;
     }
 
-    const finish = (
-      data: unknown,
-      fetchedAt: number,
-      cache: "network" | "memory",
-      stale?: string,
-    ) => {
+    /** The value as the shape for this kind parsed it (nothing else is served or written), or an error. */
+    const validate = (data: unknown): unknown => {
       const checked = SHAPES[kind].safeParse(data);
       if (!checked.success) {
         const where = checked.error.issues[0]?.path.join(".") || "(root)";
@@ -208,8 +271,17 @@ export class Scmdb {
           `SCMDB file ${name} has an unexpected shape at "${where}"; the format may have changed.`,
         );
       }
+      return checked.data;
+    };
+    const finish = (
+      data: unknown,
+      bytes: number,
+      fetchedAt: number,
+      cache: "network" | "memory",
+      stale?: string,
+    ) => {
       const loaded: Loaded = { data, fetchedAt, version, ...(stale ? { stale } : {}) };
-      if (!stale) this.parsed.set(memoryKey, loaded);
+      if (!stale) this.remember(memoryKey, loaded, bytes);
       recordFetch({
         fetchedAt,
         cache: stale ? "stale-disk" : cache,
@@ -223,7 +295,8 @@ export class Scmdb {
       const handle = await fs.open(file, "r");
       try {
         const stat = await handle.stat();
-        return finish(JSON.parse(await handle.readFile("utf8")), stat.mtimeMs, "memory");
+        const text = await handle.readFile("utf8");
+        return finish(validate(JSON.parse(text)), text.length, stat.mtimeMs, "memory");
       } finally {
         await handle.close();
       }
@@ -238,22 +311,29 @@ export class Scmdb {
         timeout: 120_000,
         maxContentLength: 60 * 1024 * 1024,
       } as never);
-      const result = finish(response.data, this.now(), "network");
+      // Only the value the shape accepted, re-encoded here, goes to the cache: not the bytes the server sent.
+      const validated = validate(response.data);
+      const body = JSON.stringify(validated);
+      const result = finish(validated, body.length, this.now(), "network");
       try {
         await fs.mkdir(path.dirname(file), { recursive: true });
         const tmp = `${file}.${process.pid}.tmp`;
-        await fs.writeFile(tmp, JSON.stringify(response.data));
+        await fs.writeFile(tmp, body);
         await fs.rename(tmp, file);
+        // The cache folder keeps the newest commits only (the one just written always stays).
+        await pruneGroups(path.dirname(file), commitOf, this.limits.keepCommits, key);
       } catch {
         // A read-only cache folder only costs a re-download next time.
       }
       return result;
     } catch (error) {
       if (!isOutage(error)) throw error;
-      const older = await this.newestCopy(name);
+      const older = await this.newestCopy(slot);
       if (!older) throw error;
+      const olderText = await fs.readFile(older.file, "utf8");
       return finish(
-        JSON.parse(await fs.readFile(older.file, "utf8")),
+        validate(JSON.parse(olderText)),
+        olderText.length,
         older.mtime,
         "memory",
         "the live download failed; serving the last copy kept on disk",
@@ -261,10 +341,12 @@ export class Scmdb {
     }
   }
 
-  private async newestCopy(name: string): Promise<{ file: string; mtime: number } | null> {
+  private async newestCopy(slot: string): Promise<{ file: string; mtime: number } | null> {
     const dir = path.join(this.deps.cacheDir(), "scmdb");
     try {
-      const matches = (await fs.readdir(dir)).filter((n) => n.endsWith(`__${name}`));
+      const matches = (await fs.readdir(dir)).filter(
+        (n) => commitOf(n) !== null && n.endsWith(`__${slot}`),
+      );
       const stats = await Promise.all(
         matches.map(async (n) => ({
           file: path.join(dir, n),

@@ -11,6 +11,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { shortPath } from "../core/paths.js";
 import {
   GAME_SWITCH,
   LAUNCHER_REMINDER,
@@ -229,7 +230,9 @@ export async function statusCommand(deps: SwitchDeps): Promise<SwitchResult> {
   }
 
   lines.push(`Switch 1, server side: ${SERVER_SWITCH} in the Claude Desktop config`);
-  lines.push(`  config file:        ${config.exists ? "found" : "not found"} (${deps.configPath})`);
+  lines.push(
+    `  config file:        ${config.exists ? "found" : "not found"} (${shortPath(deps.configPath)})`,
+  );
   if (!server.valid)
     lines.push("  config content:     not valid JSON, so nothing can be read from it");
   lines.push(`  "${deps.serverName}" entry:   ${server.entryPresent ? "present" : "absent"}`);
@@ -341,7 +344,7 @@ export async function enableCommand(deps: SwitchDeps, opts: EnableOptions): Prom
   }
   if (configPlan.action === "no_entry") {
     return fail(
-      `${config.exists ? `The "${deps.serverName}" server is not in the Claude Desktop config` : `The Claude Desktop config does not exist (${deps.configPath})`}: no entry is invented. Run: npm run install:claude (then --apply), then try again. Nothing was written.`,
+      `${config.exists ? `The "${deps.serverName}" server is not in the Claude Desktop config` : `The Claude Desktop config does not exist (${shortPath(deps.configPath)})`}: no entry is invented. Run: npm run install:claude (then --apply), then try again. Nothing was written.`,
     );
   }
 

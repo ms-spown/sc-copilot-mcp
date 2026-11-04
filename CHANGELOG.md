@@ -19,7 +19,8 @@ versions follow [Semantic Versioning](https://semver.org/).
   is off; "the three dashboard tools" is "the dashboard tools"; the roadmap is for 2.4.0 and its "Next" list no longer
   holds what shipped in 2.3.0 and 2.4.0; the server manual is "about 3,500 characters (limit 3,500)".
 - Commands and paths: re-running `npm run install:claude` replaces the entry's `env` (only `SCMCP_PROFILES`, the log
-  setting and `SC_TELEMETRY` survive) and the README says so; TROUBLESHOOTING no longer tells users to delete the whole
+  setting and `SC_TELEMETRY` survive) and the README says so (superseded in this release: the installer now keeps every `env`
+  key, see "Fixed (security audit)"); TROUBLESHOOTING no longer tells users to delete the whole
   `%LOCALAPPDATA%\sc-copilot-mcp` folder (`cache\` can go, `data\` holds `sessions.json`); `check:sources` is described as
   checking the main UEX endpoints, not every path the tools use; the full verification chain of CONTRIBUTING.md is the one
   named in the README and CLAUDE.md; the configuration tables list `SCMCP_SNAPSHOT_DIR` and `SCMCP_BUILD_CACHE_DIR`.
@@ -59,6 +60,49 @@ versions follow [Semantic Versioning](https://semver.org/).
   prévu (frais ≈ Y %)", "Sur le 1er tronçon" for a two-leg route), the caveats are in a fold "Comment lire ça", the tag is
   "estimé · N trajets". Small copy fixes: "Session reprise après 1 arrêt du jeu", "Solde masqué", shorter health sentences.
   No data, tool or network change; the balance rules are unchanged. The page grows by about 4.6 kB (the features, on top of the slim page).
+
+### Security
+- **Names from UEX, the game log and the user's dataset files are fenced (audit F1).** `uex_get_terminal_inventory`,
+  `scw_search_ships_by_vendor` and `uex_get_trade_routes` returned UEX's terminal, vendor, location, system, faction and
+  commodity names as they came (a right-to-left override, Unicode tag characters, a zero-width space and a forged
+  `<<<END_UNTRUSTED_TEXT>>>` passed with no fence and no notice) while declared `structured`. They are `untrusted_text` now,
+  and so are `sc_log_status` and `sc_log_sessions` (header and jurisdiction lines of the log) and the three local dataset
+  tools (a third party's records). The guard test plants the payload in the NAME fields of every UEX and wiki row, in a
+  hostile Game.log and in a hostile planner market. Still `structured`: the telemetry tools (game identifiers, matched
+  against `^[A-Za-z0-9_.-]{1,64}$`), `sc_data_status`, `uex_get_game_versions`, `uex_get_price_history`,
+  `uex_get_market_status`, `uex_plan_trade` (names go through `cleanLabel`: cleaned, fence markers defused, 30 to 80
+  characters), `scw_snapshot_list` (`cleanLabel`) and the two fleet writers (they echo what the player typed).
+- **`sc_trade_journal` withholds every aUEC amount unless `include_balance` is true (audit F2).** Line totals, unit prices,
+  spending, run cost, revenue and gross margin were returned freely while the session tools, the debrief and the poll
+  withhold the same class of figures. Counts, SCU, kinds, statuses, categories and the structure stay; the answer carries a
+  `money_note` when amounts are withheld. Here the flag means "amounts".
+- **A total deadline on every outbound request (audit F3).** axios' timeout restarts at every byte, so a server that drips
+  bytes kept a call, and every identical question joined to it in the cache, alive without limit. Each call now has one
+  `AbortSignal.timeout` (1.5 times the idle timeout: 45 s by default, 180 s for the big downloads; `deadlineMs` to change),
+  shared by its retries; it fails as a timeout and a good disk copy may answer.
+- **Growth is bounded (audit F4).** Parsed SCMDB files: 16 at most and 160 MB of JSON text, least recently used first. Memory
+  cache: 96 MB of JSON text besides the 300 entries. SCMDB cache folder: the files of the newest 3 commits. Dump cache
+  folder: 60 files and 400 MB. The HTTP disk cache is checked every 50 writes, not only at the first one of a run. Only
+  files named like the server's own exact names are pruned (a `keepme.json` in the HTTP cache folder is left alone). The
+  SCMDB cache now stores only the value its shape accepted, re-encoded, under a name built from the commit, the kind, the
+  channel and a hash (nothing the server said is a path component); the files of the previous naming are no longer used
+  and can be deleted from the `scmdb` folder (one re-download).
+- A symbolic link or junction named `Game.log` is followed only to a file that is itself called `*.log` (audit F7).
+  `SAFE_NAME` of SCMDB no longer accepts `.` and `..` as a file name (audit F13).
+
+### Fixed (security audit)
+- **`npm run install:claude --apply` keeps every `env` key of the existing entry (audit F5).** It carried over `SC_TELEMETRY`
+  only, so a re-run silently dropped `SC_SESSIONS=off` (turning saved sessions back on), `SC_INSTALL_DIR`,
+  `SC_SESSION_GAP_HOURS`, custom profiles and a token typed by hand. Only the keys the command line asks for overwrite
+  (`--profiles`, `--install-dir`, `--game-log`); the default profiles apply to a new entry only. The dry run lists the kept
+  keys by name, never their values. Dry run by default and the timestamped backup are unchanged.
+- `npm run telemetry -- status` shows the Claude config path in the short form used elsewhere (audit F12).
+
+### Added (security audit)
+- `npm run sessions -- wipe` (dry run; `--apply` deletes): the sessions file and its copies (`.v<N>.bak`, `.bak-<time>`,
+  `.corrupt-<time>`, `.lock`, `.tmp`) in the sessions folder only, by name; refuses a path that does not look like the
+  sessions file or a fresh lock; honours `SCMCP_SESSIONS_FILE` (audit F8).
+- CI runs `npm run check:telemetry-silence` after the build (audit F9).
 
 ## [2.4.0] - 2026-11-04
 

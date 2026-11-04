@@ -21,13 +21,13 @@
 | [`uex_get_commodity_prices`](#uex_get_commodity_prices) | core, trade | uex | crowdsourced | untrusted_text | Where one commodity is bought and sold: per-terminal buy/sell prices, stock and demand from UEX (crowdsourced). |
 | [`uex_get_commodity_averages`](#uex_get_commodity_averages) | trade | uex | crowdsourced | untrusted_text | Average buy and sell price of one commodity across terminals, with price history, from UEX. |
 | [`uex_get_terminals`](#uex_get_terminals) | trade | uex | crowdsourced | untrusted_text | List UEX terminals (shops, trading posts, refineries) with their place (system, planet, station), faction and what they offer (ship shop, FPS shop, refuel, repair). |
-| [`uex_get_trade_routes`](#uex_get_trade_routes) | core, trade | uex | crowdsourced | structured | Best trade routes (buy here, sell there) from UEX, sorted by profit. |
+| [`uex_get_trade_routes`](#uex_get_trade_routes) | core, trade | uex | crowdsourced | untrusted_text | Best trade routes (buy here, sell there) from UEX, sorted by profit. |
 | [`uex_get_commodity_ranking`](#uex_get_commodity_ranking) | trade | uex | crowdsourced | untrusted_text | Commodities ranked by profitability according to UEX. |
 | [`uex_search_marketplace`](#uex_search_marketplace) | trade | uex | crowdsourced | untrusted_text | Search the UEX player marketplace: ads where players buy, sell or offer services and contracts (not shop prices). |
 | [`uex_get_game_versions`](#uex_get_game_versions) | core, trade | uex | crowdsourced | structured | The LIVE and PTU build numbers UEX is currently on. |
 | [`uex_get_ship_prices`](#uex_get_ship_prices) | core, trade | uex | crowdsourced | untrusted_text | Where a ship can be bought or rented in game, with price and terminal, from UEX. |
-| [`uex_get_terminal_inventory`](#uex_get_terminal_inventory) | trade | uex | crowdsourced | structured | What kinds of goods a UEX terminal sells (ships, weapons, armor, components), read from its capability flags: it is NOT live stock and lists no individual items. |
-| [`scw_search_ships_by_vendor`](#scw_search_ships_by_vendor) | trade | uex | crowdsourced | structured | Find vendors (UEX terminals) whose name matches, such as 'Ruin Station' or 'Teasa', with their location and whether they have a ship shop. |
+| [`uex_get_terminal_inventory`](#uex_get_terminal_inventory) | trade | uex | crowdsourced | untrusted_text | What kinds of goods a UEX terminal sells (ships, weapons, armor, components), read from its capability flags: it is NOT live stock and lists no individual items. |
+| [`scw_search_ships_by_vendor`](#scw_search_ships_by_vendor) | trade | uex | crowdsourced | untrusted_text | Find vendors (UEX terminals) whose name matches, such as 'Ruin Station' or 'Teasa', with their location and whether they have a ship shop. |
 | [`uex_get_price_history`](#uex_get_price_history) | trade | uex | crowdsourced | structured | How the price of ONE commodity at ONE terminal has moved, from UEX report snapshots: the points, low, high, mean, volatility (std dev / mean), where the latest price sits in that range, and a plain verdict (high, low or normal for this terminal) with the number of points it rests on. |
 | [`uex_get_market_status`](#uex_get_market_status) | trade | uex | crowdsourced | structured | Saturation and shortage warnings for a commodity or a terminal, from UEX stock levels. |
 | [`uex_plan_trade`](#uex_plan_trade) | trade | uex | computed | structured | Rank trade options by estimated PROFIT PER HOUR (or profit, speed, or a safety heuristic) from UEX prices, the wiki ship sheet and UEX distances, sized to the hold (ship_name or cargo_scu) and budget. |
@@ -53,11 +53,11 @@
 | [`scmdb_search_mining`](#scmdb_search_mining) | data | scmdb | datamined | untrusted_text | Mining reference from datamined values (SCMDB): per ore, instability, resistance, optimal charge window, scan signatures and rarity, plus where it appears (for a specific ore); and mining lasers, modules and gadgets with their modifiers. |
 | [`scmdb_changes`](#scmdb_changes) | core, data | scmdb | datamined | untrusted_text | What changed in the last game data update according to SCMDB: counts and examples of missions, blueprints, items and resources added, removed or changed between the two newest builds, plus recent notes from the data maintainer. |
 | [`scmdb_rank_hauling`](#scmdb_rank_hauling) | trade | scmdb + uex + star-citizen.wiki | computed | untrusted_text | Rank hauling contracts for a ship from SCMDB's datamined list, or price concrete offers you read in the mobiGlas. |
-| [`sc_log_status`](#sc_log_status) | local | Game.log (local) | local_log | structured | Is the local Game.log readable, and what does it say about the running game: game version, build, LIVE or PTU, whether the game is running or quit cleanly, and how many lines were recognised. |
+| [`sc_log_status`](#sc_log_status) | local | Game.log (local) | local_log | untrusted_text | Is the local Game.log readable, and what does it say about the running game: game version, build, LIVE or PTU, whether the game is running or quit cleanly, and how many lines were recognised. |
 | [`sc_log_recent_events`](#sc_log_recent_events) | local | Game.log (local) | local_log | untrusted_text | Recent things the game wrote in Game.log, oldest first: session start and quit, login, jurisdiction and zone changes (armistice, monitored space, private property), contracts accepted or completed, new and completed objectives, shop purchases (shop, item, price), insurance claims, hangar requests. |
 | [`sc_log_context`](#sc_log_context) | local | Game.log (local) | local_log | untrusted_text | What the player is doing right now, as far as Game.log can tell: jurisdiction, whether they are in an armistice zone or monitored space, the ship they last boarded, last jump-point transit between systems, active and finished contracts (with the latest objective and hauling pickups and drops), blueprints received, purchases, insurance claims and hangar requests this session. |
-| [`sc_log_sessions`](#sc_log_sessions) | local | Game.log (local) | local_log | structured | A table of the player's recent play sessions from Game.log and its backups, newest first: start time, game version and build, LIVE or PTU, duration, clean quit or not, contracts accepted and completed, purchases, blueprints, jump-point transits and jurisdictions visited. |
-| [`sc_trade_journal`](#sc_trade_journal) | local | Game.log (local) + star-citizen.wiki (commodity names) | local_log | untrusted_text | The player's trade journal, from Game.log only, per play session (newest first): each shop or cargo-kiosk purchase and sale with time, side, shop, quantity and unit (SCU for cargo), the TOTAL of the line in aUEC, unit price, outcome and confidence; spending by category (inferred from the item class name); cargo runs pairing purchases and sales of one commodity first-in first-out, with paired SCU, cost, revenue and GROSS margin (estimated); totals. |
+| [`sc_log_sessions`](#sc_log_sessions) | local | Game.log (local) | local_log | untrusted_text | A table of the player's recent play sessions from Game.log and its backups, newest first: start time, game version and build, LIVE or PTU, duration, clean quit or not, contracts accepted and completed, purchases, blueprints, jump-point transits and jurisdictions visited. |
+| [`sc_trade_journal`](#sc_trade_journal) | local | Game.log (local) + star-citizen.wiki (commodity names) | local_log | untrusted_text | The player's trade journal, from Game.log only, per play session (newest first): each shop or cargo-kiosk purchase and sale (time, side, shop, quantity, unit, outcome, confidence); spending by category; cargo runs pairing purchases and sales of one commodity first-in first-out (paired SCU, estimated); totals. |
 | [`sc_live_status`](#sc_live_status) | local | game telemetry (local, 127.0.0.1) | local_telemetry | structured | State of the optional live telemetry: off, waiting, game_without_telemetry, connected, live or incompatible, the cause, the age of the last frame and, when not live, how to enable it. |
 | [`sc_live_state`](#sc_live_state) | local | game telemetry (local, 127.0.0.1) | local_telemetry | structured | Snapshot of the running game from its local telemetry, only when the user enabled it: ship (name, speed, altitude, heading, hydrogen, boost, g-force, gear, flight modes, power flags, warning lights), weapons per seat, countermeasures, and the pilot (locomotion, health, hunger, thirst, heart rate, atmosphere). |
 | [`sc_live_events`](#sc_live_events) | local | game telemetry (local, 127.0.0.1) | local_telemetry | structured | Recent events derived from the live telemetry (took off, landed, quantum jump, lock-on, hits taken, shields down, power lost, health low or 0, respawn, countermeasures, hunger), newest last, from an in-memory ring that starts when the reader starts. |
@@ -75,9 +75,9 @@
 | [`sc_fleet_get`](#sc_fleet_get) | core, local | fleet file (local) + uex + star-citizen.wiki | user | untrusted_text | The player's own ships, from a local file, each with its public stats (manufacturer, role, size, crew, cargo SCU, health, shields, speed) from UEX and the Star Citizen Wiki. |
 | [`sc_fleet_upsert`](#sc_fleet_upsert) | local | fleet file (local) | user | structured | Add a ship to the player's local fleet file, or change the note of one already there (same name and origin). |
 | [`sc_fleet_remove`](#sc_fleet_remove) | local | fleet file (local) | user | structured | Remove a ship from the player's local fleet file, by name. |
-| [`sc_local_datasets`](#sc_local_datasets) | local | local-files | datamined | structured | List the game-*.json datasets found in the folder the user configured (SCMCP_GAME_DATA_DIR), with their collections and the build they say they come from. |
-| [`sc_search_local`](#sc_search_local) | local | local-files | datamined | structured | Search the user's own game-*.json datasets for records matching a term (case-insensitive, in keys, names and contents). |
-| [`sc_read_local_collection`](#sc_read_local_collection) | local | local-files | datamined | structured | Read one collection from one of the user's own game-*.json datasets, with paging (max 200 per page). |
+| [`sc_local_datasets`](#sc_local_datasets) | local | local-files | datamined | untrusted_text | List the game-*.json datasets found in the folder the user configured (SCMCP_GAME_DATA_DIR), with their collections and the build they say they come from. |
+| [`sc_search_local`](#sc_search_local) | local | local-files | datamined | untrusted_text | Search the user's own game-*.json datasets for records matching a term (case-insensitive, in keys, names and contents). |
+| [`sc_read_local_collection`](#sc_read_local_collection) | local | local-files | datamined | untrusted_text | Read one collection from one of the user's own game-*.json datasets, with paging (max 200 per page). |
 | [`sc_get_vocabulary`](#sc_get_vocabulary) | data | uex + star-citizen.wiki + local-files | datamined | untrusted_text | Distinct in-game names for biasing a speech recognizer's initial prompt - commodities, manufacturers, FPS and ship weapons, weapon attachments, and (when SCMCP_GAME_DATA_DIR is set) locally extracted names like ore signatures, blueprints, and Wikelo trades no public API exposes. |
 | [`sc_list_builds`](#sc_list_builds) | data | sc-gamedata-dumps | datamined | untrusted_text | List the game builds that have a data dump in the patch repository, newest first, with their commit. |
 | [`sc_diff_versions`](#sc_diff_versions) | data | sc-gamedata-dumps | datamined | untrusted_text | Compare game data between two builds from the patch-dump repository: what was added, removed and changed. |
@@ -144,7 +144,7 @@ List UEX terminals (shops, trading posts, refineries) with their place (system, 
 
 Best trade routes (buy here, sell there) from UEX, sorted by profit. UEX requires an ORIGIN: give at least one of commodity_name, origin_terminal_name or origin_planet_name, otherwise the call fails. Size it to a ship with ship_name (e.g. from sc_fleet_get) or cargo_capacity in SCU, and to the budget with investment (aUEC). Profit is computed for the cargo that fits (profit_for_cargo), not UEX's figure for the route's maximum volume. Each route shows its player reports (reports_origin, reports_destination) and is_estimate: true when an end has 0 reports, i.e. a UEX estimate no player saw (estimated_sides says which). Reported routes come first, estimates after, each by profit; min_reports drops routes with fewer reports at either end (default 0). Crowdsourced: data_age is null when UEX dates no route; sanity-check a route before flying it.
 
-*Source:* uex · *Kind:* crowdsourced · *Trust:* structured · *Profiles:* core, trade
+*Source:* uex · *Kind:* crowdsourced · *Trust:* untrusted_text · *Profiles:* core, trade
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -204,7 +204,7 @@ Where a ship can be bought or rented in game, with price and terminal, from UEX.
 
 What kinds of goods a UEX terminal sells (ships, weapons, armor, components), read from its capability flags: it is NOT live stock and lists no individual items. To find where a specific ship is sold, use uex_get_ship_prices.
 
-*Source:* uex · *Kind:* crowdsourced · *Trust:* structured · *Profiles:* trade
+*Source:* uex · *Kind:* crowdsourced · *Trust:* untrusted_text · *Profiles:* trade
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -216,7 +216,7 @@ What kinds of goods a UEX terminal sells (ships, weapons, armor, components), re
 
 Find vendors (UEX terminals) whose name matches, such as 'Ruin Station' or 'Teasa', with their location and whether they have a ship shop. It does not list the ships on sale: for a given ship use uex_get_ship_prices.
 
-*Source:* uex · *Kind:* crowdsourced · *Trust:* structured · *Profiles:* trade
+*Source:* uex · *Kind:* crowdsourced · *Trust:* untrusted_text · *Profiles:* trade
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -570,7 +570,7 @@ Rank hauling contracts for a ship from SCMDB's datamined list, or price concrete
 
 Is the local Game.log readable, and what does it say about the running game: game version, build, LIVE or PTU, whether the game is running or quit cleanly, and how many lines were recognised. The log is OFF until the user sets SC_GAME_LOG_PATH or SC_INSTALL_DIR; when off this explains how and suggests default install folders. Read-only; nothing leaves the machine.
 
-*Source:* Game.log (local) · *Kind:* local_log · *Trust:* structured · *Profiles:* local
+*Source:* Game.log (local) · *Kind:* local_log · *Trust:* untrusted_text · *Profiles:* local
 
 No parameters.
 
@@ -601,7 +601,7 @@ What the player is doing right now, as far as Game.log can tell: jurisdiction, w
 
 A table of the player's recent play sessions from Game.log and its backups, newest first: start time, game version and build, LIVE or PTU, duration, clean quit or not, contracts accepted and completed, purchases, blueprints, jump-point transits and jurisdictions visited. Use it for 'how did my last sessions go' or to find the session where something happened. Read-only; very large logs are summarised from their end.
 
-*Source:* Game.log (local) · *Kind:* local_log · *Trust:* structured · *Profiles:* local
+*Source:* Game.log (local) · *Kind:* local_log · *Trust:* untrusted_text · *Profiles:* local
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -609,7 +609,7 @@ A table of the player's recent play sessions from Game.log and its backups, newe
 
 ### sc_trade_journal
 
-The player's trade journal, from Game.log only, per play session (newest first): each shop or cargo-kiosk purchase and sale with time, side, shop, quantity and unit (SCU for cargo), the TOTAL of the line in aUEC, unit price, outcome and confidence; spending by category (inferred from the item class name); cargo runs pairing purchases and sales of one commodity first-in first-out, with paired SCU, cost, revenue and GROSS margin (estimated); totals. Use it for 'what did I buy', 'how did my last cargo run go'. Tell the player: the log has NO wallet balance and no autoload fee, so there is no net result; cargo success is only inferred from the absence of an error; failed lines are listed, not counted; location_hint is a possibly stale hint, never a terminal; a commodity the wiki does not name is 'unknown commodity'. Read-only; needs the game log enabled.
+The player's trade journal, from Game.log only, per play session (newest first): each shop or cargo-kiosk purchase and sale (time, side, shop, quantity, unit, outcome, confidence); spending by category; cargo runs pairing purchases and sales of one commodity first-in first-out (paired SCU, estimated); totals. Without include_balance there is NO aUEC amount (counts, SCU, kinds, statuses, categories only); with it (ask the player first) it adds line totals, unit prices, spending, and per run cost, revenue and GROSS margin. Use it for 'what did I buy', 'how did my last cargo run go'. Tell the player: the log has NO wallet balance and no autoload fee, so no net result; cargo success is only inferred from the absence of an error; failed lines are listed, not counted; location_hint is a stale hint, not a terminal; an unnamed commodity is 'unknown commodity'. Read-only; needs the game log.
 
 *Source:* Game.log (local) + star-citizen.wiki (commodity names) · *Kind:* local_log · *Trust:* untrusted_text · *Profiles:* local
 
@@ -618,6 +618,7 @@ The player's trade journal, from Game.log only, per play session (newest first):
 | `sessions` | number | no | How many of the newest log files to scan (default 2, max 10). Files with no trade are left out. |
 | `max_transactions` | number | no | Most recent transactions listed per session (default 40, max 120; at most 120 in all). Totals and runs always cover the whole session. |
 | `resolve_names` | boolean | no | Look commodity names up in the wiki's public commodity list (default true). The list is the same for everyone: nothing from the log is sent. False keeps it fully local. |
+| `include_balance` | boolean | no | Include the aUEC amounts (line totals, unit prices, cost, revenue, gross margin, spending). Default false. Ask the player first: the answer goes into the conversation. |
 
 ### sc_live_status
 
@@ -827,7 +828,7 @@ Remove a ship from the player's local fleet file, by name. If the same name is l
 
 List the game-*.json datasets found in the folder the user configured (SCMCP_GAME_DATA_DIR), with their collections and the build they say they come from. Off unless that folder is set. For mining, crafting and missions, scmdb_* tools need no local files.
 
-*Source:* local-files · *Kind:* datamined · *Trust:* structured · *Profiles:* local
+*Source:* local-files · *Kind:* datamined · *Trust:* untrusted_text · *Profiles:* local
 
 No parameters.
 
@@ -835,7 +836,7 @@ No parameters.
 
 Search the user's own game-*.json datasets for records matching a term (case-insensitive, in keys, names and contents). Needs SCMCP_GAME_DATA_DIR; see sc_local_datasets for what is there. Prefer scmdb_search_* when the question is about missions, crafting or mining.
 
-*Source:* local-files · *Kind:* datamined · *Trust:* structured · *Profiles:* local
+*Source:* local-files · *Kind:* datamined · *Trust:* untrusted_text · *Profiles:* local
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -848,7 +849,7 @@ Search the user's own game-*.json datasets for records matching a term (case-ins
 
 Read one collection from one of the user's own game-*.json datasets, with paging (max 200 per page). Use after sc_local_datasets.
 
-*Source:* local-files · *Kind:* datamined · *Trust:* structured · *Profiles:* local
+*Source:* local-files · *Kind:* datamined · *Trust:* untrusted_text · *Profiles:* local
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |

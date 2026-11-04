@@ -23,6 +23,12 @@ const MAX_DISK_BYTES = 5 * 1024 * 1024;
 const MAX_DISK_FILES = 400;
 /** Entries kept in memory. Requests keyed on a user's numbers (a budget, a cargo size) would otherwise grow it without end. */
 const MAX_MEMORY_ENTRIES = 300;
+/**
+ * Characters of JSON text behind the answers kept in memory (a parsed answer takes a few times that). The count alone
+ * allowed 300 answers of 25 MB each. An answer bigger than the whole budget is served but not kept in memory (the disk
+ * copy, up to 5 MB, still stands in during an outage).
+ */
+const MAX_MEMORY_BYTES = 96 * 1024 * 1024;
 
 export interface Fetched {
   // Upstream JSON, indexed directly by the handlers.
@@ -34,7 +40,24 @@ export interface Fetched {
   staleReason?: string;
 }
 
-const memory = new Map<string, { data: unknown; fetchedAt: number }>();
+const memory = new Map<string, { data: unknown; fetchedAt: number; bytes: number }>();
+let memoryBytes = 0;
+let memoryLimits = { maxEntries: MAX_MEMORY_ENTRIES, maxBytes: MAX_MEMORY_BYTES };
+
+/** Tests only: other bounds for the memory cache; undefined restores the defaults. */
+export function configureMemoryCache(
+  limits: { maxEntries?: number; maxBytes?: number } | undefined,
+) {
+  memoryLimits = {
+    maxEntries: limits?.maxEntries ?? MAX_MEMORY_ENTRIES,
+    maxBytes: limits?.maxBytes ?? MAX_MEMORY_BYTES,
+  };
+}
+
+/** What the memory cache holds now and its bounds (tests and diagnostics). */
+export function cacheStats() {
+  return { entries: memory.size, bytes: memoryBytes, ...memoryLimits };
+}
 /** Requests on their way: a second identical question (two tools, two clicks) waits for the first instead of downloading again. */
 const inflight = new Map<string, Promise<{ data: unknown; fetchedAt: number }>>();
 let diskDir: string | null | undefined; // undefined = default location, null = disabled
@@ -44,6 +67,7 @@ let pruned = false;
 export function configureDiskCache(dir: string | null | undefined): void {
   diskDir = dir;
   pruned = false;
+  writesSincePrune = 0;
 }
 
 function diskPath(key: string): string | null {
@@ -52,11 +76,23 @@ function diskPath(key: string): string | null {
   return path.join(dir, `${createHash("sha256").update(key).digest("hex")}.json`);
 }
 
+/** `<sha-256 of the key, 64 lower-case hex digits>.json`: what `diskPath` writes. */
+const DISK_NAME = /^[0-9a-f]{64}\.json$/;
+
+/** The folder is checked at the first write of a run, then again every this many writes (a long-lived server keeps writing). */
+const PRUNE_EVERY_WRITES = 50;
+let writesSincePrune = 0;
+let pruning = false;
+
 async function pruneDisk(dir: string): Promise<void> {
-  if (pruned) return;
+  writesSincePrune += 1;
+  if (pruning || (pruned && writesSincePrune < PRUNE_EVERY_WRITES)) return;
   pruned = true;
+  pruning = true;
+  writesSincePrune = 0;
   try {
-    const names = (await fs.readdir(dir)).filter((n) => n.endsWith(".json"));
+    // Only the exact names diskPath writes: a user's keepme.json in that folder is never counted or removed.
+    const names = (await fs.readdir(dir)).filter((n) => DISK_NAME.test(n));
     if (names.length <= MAX_DISK_FILES) return;
     const stats = await Promise.all(
       names.map(async (n) => ({ n, t: (await fs.stat(path.join(dir, n))).mtimeMs })),
@@ -67,14 +103,21 @@ async function pruneDisk(dir: string): Promise<void> {
     }
   } catch {
     // Pruning is housekeeping; never let it break a request.
+  } finally {
+    pruning = false;
   }
 }
 
-async function writeDisk(key: string, entry: { data: unknown; fetchedAt: number }): Promise<void> {
+async function writeDisk(
+  key: string,
+  entry: { data: unknown; fetchedAt: number },
+  /** The entry as JSON text, when the caller already made it. */
+  text?: string,
+): Promise<void> {
   const file = diskPath(key);
   if (!file) return;
   try {
-    const body = JSON.stringify(entry);
+    const body = text ?? JSON.stringify(entry);
     if (body.length > MAX_DISK_BYTES) return;
     await fs.mkdir(path.dirname(file), { recursive: true });
     const tmp = `${file}.${process.pid}.tmp`;
@@ -158,15 +201,18 @@ export async function fetchWithCache(
     const request = (async () => {
       const response = await client.get(url, config);
       const entry = { data: response.data, fetchedAt: Date.now() };
-      remember(key, entry);
-      await writeDisk(key, entry);
+      // Made once: its length is what the memory budget counts, and it is what goes to disk.
+      const text = JSON.stringify(entry);
+      remember(key, entry, text.length);
+      await writeDisk(key, entry, text);
       return entry;
     })();
     inflight.set(key, request);
-    request.then(
-      () => inflight.delete(key),
-      () => inflight.delete(key),
-    );
+    // Settled either way (a deadline in http.ts guarantees it settles): drop this entry, never a newer one.
+    const release = () => {
+      if (inflight.get(key) === request) inflight.delete(key);
+    };
+    request.then(release, release);
     return finish({ ...(await request), cache: "network" });
   } catch (error) {
     if (!isOutage(error)) throw error;
@@ -188,19 +234,29 @@ export async function fetchWithCache(
   }
 }
 
-/** Keep an answer in memory, dropping the oldest entries past the bound. */
-function remember(key: string, entry: { data: unknown; fetchedAt: number }): void {
-  memory.delete(key);
-  memory.set(key, entry);
-  while (memory.size > MAX_MEMORY_ENTRIES) {
+/** Keep an answer in memory, dropping the oldest entries past the count and the size bound. */
+function remember(key: string, entry: { data: unknown; fetchedAt: number }, bytes: number): void {
+  forget(key);
+  if (bytes > memoryLimits.maxBytes) return; // served, but too big to keep
+  memory.set(key, { ...entry, bytes });
+  memoryBytes += bytes;
+  while (memory.size > memoryLimits.maxEntries || memoryBytes > memoryLimits.maxBytes) {
     const oldest = memory.keys().next();
     if (oldest.done) break;
-    memory.delete(oldest.value);
+    forget(oldest.value);
   }
+}
+
+function forget(key: string): void {
+  const old = memory.get(key);
+  if (!old) return;
+  memoryBytes -= old.bytes;
+  memory.delete(key);
 }
 
 /** Empty the memory cache. Used by tests; the server never needs it. */
 export function clearCache(): void {
   memory.clear();
+  memoryBytes = 0;
   inflight.clear();
 }

@@ -46,10 +46,13 @@ const scmdb = {
   trust: "untrusted_text",
   channel: "live",
 } as const;
+// The user's own game-*.json files: records and names written by whoever made the dump (a third party), so
+// untrusted_text like the other datamined sources.
 const local = {
   source: "local-files",
   kind: "datamined",
-  trust: "structured",
+  trust: "untrusted_text",
+  maxText: 300,
   channel: "unknown",
 } as const;
 
@@ -84,7 +87,13 @@ export const CATALOG: Record<string, CatalogEntry> = {
     maxText: 200,
     profiles: ["core", "trade"],
   },
-  uex_get_trade_routes: { ...uex, profiles: ["core", "trade"] },
+  // Route rows come back as UEX wrote them (commodity, terminal, planet and system names): text, so untrusted_text.
+  uex_get_trade_routes: {
+    ...uex,
+    trust: "untrusted_text",
+    maxText: 200,
+    profiles: ["core", "trade"],
+  },
   uex_get_ship_prices: {
     ...uex,
     trust: "untrusted_text",
@@ -102,8 +111,20 @@ export const CATALOG: Record<string, CatalogEntry> = {
   },
   uex_get_commodity_ranking: { ...uex, trust: "untrusted_text", maxText: 200, profiles: ["trade"] },
   uex_get_terminals: { ...uex, trust: "untrusted_text", maxText: 200, profiles: ["trade"] },
-  uex_get_terminal_inventory: { ...uex, profiles: ["trade"] },
-  scw_search_ships_by_vendor: { ...uex, profiles: ["trade"] },
+  // Terminal and vendor names, locations, systems and factions are UEX's own strings (not projected through
+  // cleanLabel): untrusted_text. The name-planting guard is untrusted.hardening.behaviour.test.ts.
+  uex_get_terminal_inventory: {
+    ...uex,
+    trust: "untrusted_text",
+    maxText: 200,
+    profiles: ["trade"],
+  },
+  scw_search_ships_by_vendor: {
+    ...uex,
+    trust: "untrusted_text",
+    maxText: 200,
+    profiles: ["trade"],
+  },
   // Player-written ads: the only UEX tool whose text is not ours to trust.
   uex_search_marketplace: { ...uex, trust: "untrusted_text", profiles: ["trade"] },
 
@@ -201,10 +222,12 @@ export const CATALOG: Record<string, CatalogEntry> = {
     profiles: ["local"],
   },
 
+  // The header lines of the log (start time, build date, version) are free text to the parser: untrusted_text.
   sc_log_status: {
     source: "Game.log (local)",
     kind: "local_log",
-    trust: "structured",
+    trust: "untrusted_text",
+    maxText: 200,
     channel: "unknown",
     profiles: ["local"],
   },
@@ -234,10 +257,12 @@ export const CATALOG: Record<string, CatalogEntry> = {
     channel: "unknown",
     profiles: ["local"],
   },
+  // The header fields (start time, build date) and the jurisdictions visited are lines of the log: text.
   sc_log_sessions: {
     source: "Game.log (local)",
     kind: "local_log",
-    trust: "structured",
+    trust: "untrusted_text",
+    maxText: 200,
     channel: "unknown",
     profiles: ["local"],
   },
