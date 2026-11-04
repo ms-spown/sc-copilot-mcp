@@ -13,13 +13,21 @@ import { resolveCommodityNames } from "../providers/wiki/commodities.js";
  *    `fetchWithCache`), identical for every player: nothing from the player's log is sent, the matching is local. The
  *    client is the wiki's guarded one (allowed host only).
  *  - A GUID is looked for at most once every five minutes, found or not (an outage or an unknown good is not hammered), at
- *    most 16 GUIDs at a time, and at most 64 names are kept.
+ *    most 16 GUIDs at a time, and at most 64 names are kept (the oldest is dropped for a new one, and asked for again only
+ *    when it is needed again and five minutes have passed).
+ *  - It runs only while the dashboard builds a live poll (telemetry on: `DashboardService.build` returns before the ledger
+ *    otherwise) and is switched off by `SC_COMMODITY_NAMES=off` (`commodityNamesSwitchedOff`, read where the dashboard
+ *    tools are made). Any other value leaves it on: nothing new is ever enabled by a value.
  *  - A name is third-party text: `resolveCommodityNames` cleans and caps it; it reaches the page as text only.
  */
 
 export const COMMODITY_RETRY_MS = 5 * 60 * 1000;
 export const COMMODITY_MAX_WANTED = 16;
 export const COMMODITY_MAX_NAMES = 64;
+
+/** SC_COMMODITY_NAMES=off (or 0, false, no): the dashboard never asks the wiki for the names of goods. */
+export const commodityNamesSwitchedOff = (env: NodeJS.ProcessEnv = process.env): boolean =>
+  /^(off|0|false|no)$/i.test(env.SC_COMMODITY_NAMES?.trim() ?? "");
 
 export class CommodityNameResolver {
   private readonly names = new Map<string, string>();
@@ -49,11 +57,11 @@ export class CommodityNameResolver {
     }
     if (wanted.length > 0 && this.job === null) {
       for (const key of wanted) this.tried.set(key, at);
-      if (this.tried.size > COMMODITY_MAX_NAMES * 2) {
-        const oldest = [...this.tried.entries()].sort((a, b) => a[1] - b[1]);
-        for (const [key] of oldest.slice(0, this.tried.size - COMMODITY_MAX_NAMES)) {
-          this.tried.delete(key);
-        }
+      // Bounded like the names: the oldest attempts are forgotten first (a forgotten GUID may be asked for again).
+      while (this.tried.size > COMMODITY_MAX_NAMES * 2) {
+        const oldest = this.tried.keys().next();
+        if (oldest.done) break;
+        this.tried.delete(oldest.value);
       }
       const job: Promise<void> = this.lookup(wanted).finally(() => {
         this.job = null;
@@ -71,7 +79,12 @@ export class CommodityNameResolver {
   private async lookup(guids: string[]): Promise<void> {
     const found = await resolveCommodityNames(this.client, guids);
     for (const [guid, name] of found.names) {
-      if (this.names.size >= COMMODITY_MAX_NAMES) break;
+      // A full table drops its oldest name: the newest goods are the ones on screen.
+      while (this.names.size >= COMMODITY_MAX_NAMES) {
+        const oldest = this.names.keys().next();
+        if (oldest.done) break;
+        this.names.delete(oldest.value);
+      }
       this.names.set(guid, name);
     }
   }

@@ -326,7 +326,8 @@ describe("Feature: what goes to the model is rare, compact and never the balance
     expect(words(49)).toContain("santé moyenne");
     expect(words(35)).toContain("santé moyenne");
     expect(words(31)).toContain("santé moyenne");
-    expect(words(30)).toContain("santé basse");
+    expect(words(30)).toContain("santé moyenne");
+    expect(words(29)).toContain("santé basse");
     expect(words(25)).toContain("santé basse");
   });
 
@@ -543,14 +544,15 @@ describe("Feature: alerts, lights, health", () => {
     expect(L.healthInfo(null).known).toBe(false);
     expect(L.healthInfo({ health: { current: 50, max: 0 } }).known).toBe(false);
     expect(L.healthInfo({ health: { current: 30, max: 100 } })).toMatchObject({
-      level: "bad",
+      level: "warn",
       fraction: 0.3,
     });
   });
 
-  it("Given health after a fight, Then 35 % is not green: red at 30 % and below, amber under 50 %, green from 50 %", () => {
+  it("Given health after a fight, Then 35 % is not green: red under 30 % (as the server's alert), amber under 50 %, green from 50 %", () => {
     const level = (current: number) => L.healthInfo({ health: { current, max: 100 } }).level;
-    expect(level(30)).toBe("bad");
+    expect(level(29)).toBe("bad");
+    expect(level(30)).toBe("warn");
     expect(level(31)).toBe("warn");
     expect(level(35)).toBe("warn");
     expect(level(49)).toBe("warn");

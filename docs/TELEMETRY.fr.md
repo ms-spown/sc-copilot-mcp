@@ -391,13 +391,13 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   | `boost_critical` | avertissement | Le boost signale critique |
   | `countermeasures_low`, `countermeasures_empty` | avertissement, critique | Mêmes seuils que les événements (trois salves ou moins ; aucune), pour un type vu avec du stock |
   | `health_low`, `down_or_dead` | avertissement, critique | Santé sous 30 pour cent ; santé 0 |
-
-  Le cadran de santé suit la même limite : rouge à 30 pour cent et moins, orange sous 50 pour cent, vert à partir de
-  50 pour cent (un choix, pas une mesure). La bande de santé envoyée au modèle la suit : basse jusqu'à 30 pour cent,
-  moyenne sous 50 pour cent.
   | `hunger_low`, `thirst_low` | info | Sous 25 pour cent |
   | `not_breathable` | critique, non vérifié | L'atmosphère est signalée non respirable |
   | `in_quantum`, `in_jump` | info | Mode quantique actif ; saut en cours |
+
+  Le cadran de santé suit la même limite que `health_low` : rouge sous 30 pour cent, orange de 30 à moins de 50 pour cent,
+  vert à partir de 50 pour cent (un choix, pas une mesure). La bande de santé envoyée au modèle la suit : basse sous 30
+  pour cent, moyenne sous 50 pour cent.
 
   Mesuré sur un vrai Aegis Harbinger (4.10.2) : en mode quantique le voyant SHLD s'éteint et les deux indicateurs
   d'alimentation des boucliers passent à faux, et tout revient à l'arrivée. Les événements `shields_powered_off` et
@@ -675,7 +675,8 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
   autre monnaie que l'aUEC n'est jamais ajouté. Le journal nomme les marchandises par un identifiant seulement (les 8
   premiers caractères du GUID du jeu) ; les noms que `sc_trade_journal` trouve dans la liste du wiki ne sont pas
   cherchés par le serveur en arrière-plan (une requête pour la liste publique, comparée localement sur le GUID complet,
-  au plus toutes les 5 minutes par GUID, jamais attendue par le sondage) : le trajet porte alors `commodity_name`. Tant
+  au plus toutes les 5 minutes par GUID, jamais attendue par le sondage, seulement avec la télémétrie activée, et pas du
+  tout avec `SC_COMMODITY_NAMES=off`) : le trajet porte alors `commodity_name`. Tant
   qu'il est inconnu la carte dit « marchandise inconnue » (l'identifiant n'est jamais affiché) et la ligne compacte d'un
   trajet en cours prend la marchandise du plan, étiquetée « d’après ton plan », et un plan ne peut
   pas être comparé aux marchandises du journal (« supposé »). Sans journal de jeu il n'y a pas de journal de commerce :

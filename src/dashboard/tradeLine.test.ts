@@ -1,14 +1,22 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from "vitest";
 import { buildTradeSection } from "./tradeRun.js";
-import { journalTransactions, tradeHistory, tradeLines } from "./testing/tradeScenario.js";
+import {
+  AGRICIUM_GUID,
+  cargoBuyLine,
+  journalTransactions,
+  tradeHistory,
+  tradeLines,
+} from "./testing/tradeScenario.js";
 import {
   tradeAgo,
   tradeAgoLong,
   tradeElapsed,
   tradeInlineText,
   tradeRouteText,
+  tradePlanAttached,
   tradeRunIdle,
+  tradeShopContradicts,
 } from "./tradePanel.js";
 import { ledgerTradeNormalize } from "./ledgerPanel.js";
 import { movementsDetailText } from "./movementsPanel.js";
@@ -256,5 +264,82 @@ describe("Feature: the goods named by the server", () => {
       `Trajet en cours · Laranite · 696${NB}SCU achetés · en route depuis 2${NB}min`,
     );
     expect(tradeRouteText(L, null, named.runs[0])).toContain("Laranite");
+  });
+});
+
+describe("Feature: a plan is spent by the first run that begins after it", () => {
+  // run 1: bought at 20 s, sold at 200 s (Laranite); run 2: bought at 300 s (another good, same buying shop)
+  const TWO = [...tradeLines(BASE), cargoBuyLine(BASE, 300, 60_000, 300, AGRICIUM_GUID)];
+  const first = BASE + 20_000;
+  const second = BASE + 300_000;
+  const at = second + 130_000;
+
+  it("Given the plan arrived before both runs, Then the second run does not take it, and says why", () => {
+    const sec = section(TWO);
+    expect(sec.runs.map((r: any) => r.stage)).toEqual(["open", "complete"]);
+    const line = tradeInlineText(L, sec, true, PLAN, at, { conn: "online", planAt: BASE });
+    expect(line).toBe(
+      `Trajet en cours · marchandise inconnue · 300${NB}SCU achetés · en route depuis 2${NB}min · plan déjà utilisé par un trajet précédent, non rattaché`,
+    );
+    expect(line).not.toMatch(/Laranite|457/);
+  });
+
+  it("Given the plan arrived between the two runs, Then the second run is the first after it and takes it", () => {
+    const line = tradeInlineText(L, section(TWO), true, PLAN, at, {
+      conn: "online",
+      planAt: first + 60_000,
+    });
+    expect(line).toContain("d’après ton plan : Laranite, Port Tressler → Area18 TDD");
+  });
+
+  it("Given the plan arrived after the second run began, Then it is not attached", () => {
+    expect(
+      tradeInlineText(L, section(TWO), true, PLAN, at, { conn: "online", planAt: second + 1000 }),
+    ).toContain("plan reçu après le premier achat, non rattaché");
+  });
+});
+
+describe("Feature: a word every place has proves nothing", () => {
+  it("Given generic words in common, Then the plan still contradicts the shop; a specific word keeps it", () => {
+    // "Port" is shared, the specific words differ: contradiction
+    expect(tradeShopContradicts(L, "Port Olisar", "SCShop_Port_Tressler")).toBe(true);
+    expect(tradeShopContradicts(L, "Port Tressler", "SCShop_Port_Tressler")).toBe(false);
+    // nothing specific in the shop: not compared, so no contradiction
+    expect(tradeShopContradicts(L, "Lorville Hub", "SCShop_Cargo_Hub")).toBe(false);
+    expect(tradeShopContradicts(L, "Lorville Hub", "SCShop_Cargo_Admin_Centre")).toBe(false);
+    // a missing side is not compared
+    expect(tradeShopContradicts(L, "", "SCShop_Cargo_Tressler")).toBe(false);
+    expect(tradeShopContradicts(L, "Port Tressler", null)).toBe(false);
+  });
+
+  it("Given accents and case, Then they do not make a contradiction (combining marks are removed by an escaped range)", () => {
+    expect(tradeShopContradicts(L, "Café Étoilé Hub", "SCShop_Cafe_ETOILE")).toBe(false);
+    expect(tradeShopContradicts(L, "Cafe Etoile", "SCShop_Café_Étoile")).toBe(false);
+    expect(tradeShopContradicts(L, "Orison", "SCShop_Café_Étoile")).toBe(true);
+  });
+});
+
+describe("Feature: the full-screen header follows the same rule as the compact line", () => {
+  it("Given a named run and a plan for the same goods, Then the run's own name comes first in the route", () => {
+    const named = section(BUYS);
+    named.runs[0].commodity_name = "Laranite Ore";
+    expect(tradeRouteText(L, { ...PLAN, commodity: "Laranite" }, named.runs[0])).toBe(
+      "Laranite Ore · Port Tressler → Area18 TDD",
+    );
+  });
+
+  it("Given the plan is not this run's, Then the attachment says no, with the note when it is a matter of time", () => {
+    const run = section(BUYS).runs[0];
+    expect(tradePlanAttached(L, PLAN, run, BASE, [run]).ok).toBe(true);
+    expect(tradePlanAttached(L, PLAN, run, BASE + 60_000, [run])).toEqual({
+      ok: false,
+      note: "plan reçu après le premier achat, non rattaché",
+    });
+    expect(
+      tradePlanAttached(L, { ...PLAN, buy_terminal: "Lorville Hub" }, run, BASE, [run]),
+    ).toEqual({ ok: false, note: "" });
+    // no plan, no run: nothing to attach / the plan alone stands
+    expect(tradePlanAttached(L, null, run, BASE, [run]).ok).toBe(false);
+    expect(tradePlanAttached(L, PLAN, null, BASE, []).ok).toBe(true);
   });
 });

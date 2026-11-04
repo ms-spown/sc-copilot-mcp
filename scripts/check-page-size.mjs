@@ -18,10 +18,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // (25 kB of room for the next features); passing it is a decision to take in a review, and slimming the page again comes first.
 // 2026-11-04: 343.6 kB after the shortcuts zone and the balance choice (sticky mask, token, follow-the-server), against a margin of
 // 1.4 kB: the budget is now that size plus about 8 % (371 kB). It stays an internal guard; the host's own limit is still unproven.
-// 2026-11-04 (UX wave A): 349.6 kB with the trade line of a run under way (plan facts, idle runs, elapsed time, never an id), the
-// session pill and notice wording and the health limits; the budget is that size plus about 5 % (367 kB), rounded. Still our own
+// 2026-11-04 (UX wave A): 350.7 kB with the trade line of a run under way (plan facts, idle runs, elapsed time, never an id), the
+// session pill and notice wording and the health limits; the budget is that size plus about 5 % (368 kB), rounded. Still our own
 // guard, not a host limit: no feature is dropped to fit it.
-const BUDGET_BYTES = 367_000;
+const BUDGET_BYTES = 368_000;
 
 const page = await import(pathToFileURL(path.join(root, "dist", "dashboard", "page.js")).href);
 const bytes = Buffer.byteLength(page.dashboardHtml(), "utf8");

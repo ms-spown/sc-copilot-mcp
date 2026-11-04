@@ -140,6 +140,12 @@ describe("Feature: the page does not claim a trip when the game says the player 
     const l = line(w);
     expect(l).toContain("plan reçu après le premier achat, non rattaché");
     expect(l).not.toMatch(/Laranite|457|d’après ton plan/);
+    // the full-screen header says the same: the run's own goods, no estimate or note of the plan, the reason
+    await fullscreen(w);
+    const head = findAll(w.root, (n) => n.className === "tr-route")[0]!.textContent;
+    expect(head).toBe("marchandise inconnue · Tressler");
+    expect(meta(w)).not.toContain("trajet estimé");
+    expect(meta(w)).toContain("plan reçu après le premier achat, non rattaché");
   });
 });
 

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { HttpClient } from "../core/http.js";
 import { clearCache, configureDiskCache } from "../core/cache.js";
 import {
+  COMMODITY_MAX_NAMES,
   COMMODITY_MAX_WANTED,
   COMMODITY_RETRY_MS,
   CommodityNameResolver,
@@ -91,6 +92,22 @@ describe("Feature: the names of goods, looked up in the background", () => {
     await r.idle();
     expect(r.current([]).get(guid(20))).toBe("Twenty");
     expect(COMMODITY_MAX_WANTED).toBe(16);
+  });
+
+  it("Given more than 64 names, Then the oldest is dropped for the newest and the table stays at 64", async () => {
+    const guid = (i: number) =>
+      `${"0".repeat(8 - String(i).length)}${i}-1111-4222-8333-444444444444`;
+    const all = Array.from({ length: 96 }, (_, i) => guid(i));
+    const { client } = wiki(all.map((g, i) => ({ uuid: g, name: `Good ${i}` })));
+    const r = new CommodityNameResolver(client);
+    for (let b = 0; b < 6; b++) {
+      r.current(all.slice(b * 16, b * 16 + 16));
+      await r.idle();
+    }
+    const names = r.current([]);
+    expect(names.size).toBe(COMMODITY_MAX_NAMES);
+    expect(names.has(guid(0))).toBe(false);
+    expect(names.get(guid(95))).toBe("Good 95");
   });
 
   it("Given a name from the wiki, Then the run carries it as commodity_name, the id stays and is never the name", async () => {
