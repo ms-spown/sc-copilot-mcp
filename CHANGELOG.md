@@ -25,7 +25,7 @@ versions follow [Semantic Versioning](https://semver.org/).
     ("attends N s" is a state, not an error), a 20 s planner deadline (the page waits 32 s: the page's request timeout
     is now per call). The ship's quantum speed and hold come from the server's own state (the flown ship's wiki sheet),
     never from the page; "apply" is by the id of an option the server produced. The answer never contains the balance or
-    the budget. 57 tools now (51 listed to a client without live telemetry); golden, `docs/TOOLS.md`, README, FR docs and
+    the budget. 63 tools in this release (52 listed to a client without live telemetry); golden, `docs/TOOLS.md`, README, FR docs and
     SECURITY updated. The commerce card now also shows (with the bar alone) when there is neither a run nor a plan.
   - Privacy and rate hardening after an independent audit: option ids are random (128 bits) and expire with the answer
     (2 min); a route built from "Budget = mon solde" is marked private (no leg says it is limited by the budget), is
@@ -140,7 +140,7 @@ versions follow [Semantic Versioning](https://semver.org/).
   it is cut). Prices are converted from text to numbers; set, pack, stack and crate prices are bundles and stay apart
   from per-unit prices. Optional `check_price` places a price against the recent average. The deprecated
   `marketplace_averages` is not used.
-- Trade profile: 12 tools to 16. No fuel price tool: UEX's fuel prices are too old to rank refuel stops (median 43
+- Trade profile: the profile grows by these tools (23 in this release). No fuel price tool: UEX's fuel prices are too old to rank refuel stops (median 43
   days; reasons in docs/CAPABILITIES.md).
 - **Saved play sessions** (`sc_session_current`, `sc_session_list`, `sc_session_stats`, `sc_session_new`,
   `sc_session_end`; prompt `trade_copilot`; a session bar in the dashboard). The dashboard now works by session, and a
@@ -209,6 +209,32 @@ versions follow [Semantic Versioning](https://semver.org/).
 - `docs/USING_WITH_CLAUDE.md` and `.fr.md`: which part of the pasted block the server instructions make redundant, a
   trade accompaniment line in rule 3, and a canary test (three questions and the expected behaviour) to check in
   Claude Desktop or Claude Code whether the instructions are honoured.
+
+
+### Fixed
+
+- **Low-severity findings left open by independent audits** (one fix each, each with a test).
+  - `scmdb_rank_hauling`, offers: `stop_minutes` is used to the second (0.4 was rounded to 0, 0.5 to 1; the answer's
+    `time_model.stop_minutes` shows the exact value). A route that takes 0 seconds (0 minutes a stop and a pickup that
+    is also the drop-off) has a null hourly figure with the reason "no travel time", is never the best single offer and
+    no longer makes `vs_best_single` 0 or NaN. A drop-off at a pickup visited BEFORE its own cargo was loaded now costs
+    the second pass (it was left out); one at its own pickup or a later one stays free. A wrong `quantum_speed_ms` is refused before any UEX or wiki request.
+  - `scmdb_rank_hauling`, templates: a merged family is flagged `deduced_fixed_quantity` if ANY merged variant is (the
+    fingerprint does not tell a `[288,288]` variant from a `[288,0]` one); a contract that can roll 0 SCU no longer
+    reports 0 trips.
+  - Saved sessions: the "total partiel" notice is also shown when only gross margins are known (the overlap case); a trade
+    run stored twice by an older build no longer counts twice in turnover, cost, fees and gross margin, is no longer
+    reported as a left-out contract (`overlap_excluded`) and no longer makes `net_complete` false (the trip counts still
+    include the copy); orphan
+    `.stale-<pid>-<hex>` files of killed lock takeovers are swept like the `.tmp` files.
+  - `sc_trade_suggest`: a private (balance) budget cannot be probed through the cache. A private lookup is rate limited
+    like a run (one per interval, hit or miss, taken even when the general throttle then refuses), and a cached answer is
+    only served to a caller in the same private context (already true through the cache key; now also checked). Cost: two
+    Views asking the same private question at the same moment no longer share one run, and a re-click within 8 s is
+    throttled instead of served from memory. A typed budget keeps its free cache.
+  - `npm run check:sources` also probes the SCMDB hauling fields the extractor reads (`haulingOrders`, SCU, container
+    size) and UEX `container_sizes` (not run here).
+  - README (EN and FR): the `local` profile has 24 tools, not 12 (as `docs/TOOLS.md` says).
 
 ### Changed
 - Prompts `haul_plan` and `session_debrief` now say exactly what the answer must contain (a ranked list with the

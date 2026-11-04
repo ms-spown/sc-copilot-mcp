@@ -215,6 +215,7 @@ describe("Feature: a run that gets a late sale is one trip, not two", () => {
     );
     const m = summarizeSession(latest(state)!).money;
     expect(m.net_auec).toBe(100_000);
-    expect(m.overlap_excluded).toBe(1);
+    // The older copy is a run stored twice, not a contract that overlapped a run: it is not counted as one.
+    expect(m.overlap_excluded).toBe(0);
   });
 });

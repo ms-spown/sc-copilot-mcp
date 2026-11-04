@@ -43,6 +43,8 @@ export const LOCK_STALE_MS = 5_000;
 export const LOCK_WAIT_MS = 8_000;
 /** A temporary file this old is the leftover of a killed write. */
 const ORPHAN_TMP_MS = 60_000;
+/** The name `reclaim` gives a dead lock while it looks at it: `<lock>.stale-<pid>-<8 hex>`. */
+const RECLAIMED_NAME = /\.stale-\d+-[0-9a-f]{8}$/;
 const RENAME_RETRIES = 8;
 const KEEP_CORRUPT = 3;
 
@@ -413,16 +415,25 @@ export class SessionStore {
     return true;
   }
 
-  /** Leftovers of killed writes (temporary files nobody will finish) are removed once they are old. */
+  /**
+   * Leftovers of killed writes (temporary files nobody will finish) and of killed lock takeovers (`.stale-<pid>-<hex>`
+   * files) are removed once they are old.
+   */
   private async sweepOrphans(): Promise<void> {
     try {
       const dir = path.dirname(this.file);
       const prefix = `${path.basename(this.file)}.`;
       for (const n of await fs.readdir(dir)) {
-        if (!n.startsWith(prefix) || !n.endsWith(".tmp")) continue;
+        const tmp = n.endsWith(".tmp");
+        if (!n.startsWith(prefix) || !(tmp || RECLAIMED_NAME.test(n))) continue;
         const p = path.join(dir, n);
         const s = await fs.stat(p).catch(() => null);
-        if (s && Date.now() - s.mtimeMs > (this.opts.orphanTmpMs ?? ORPHAN_TMP_MS)) {
+        // A reclaimed lock keeps the age it had: one younger than the stale delay may still be put back by its taker.
+        const limit = Math.max(
+          this.opts.orphanTmpMs ?? ORPHAN_TMP_MS,
+          tmp ? 0 : (this.opts.lockStaleMs ?? LOCK_STALE_MS),
+        );
+        if (s && Date.now() - s.mtimeMs > limit) {
           await fs.rm(p, { force: true });
         }
       }

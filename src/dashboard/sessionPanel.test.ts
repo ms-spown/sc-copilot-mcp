@@ -164,6 +164,17 @@ describe("Feature: what the bar says first", () => {
     expect(i.notes.join(" ")).toContain("premier solde vu");
   });
 
+  it("Given gross margins only and a contract left out because it overlaps a run, Then the total says it is partial", () => {
+    const bar: any = sessionBar(NOW, true, "gross");
+    bar.current.money.overlap_excluded = 2;
+    const i = sessionBarInfo(L, sessionBarNormalize(bar, true), { showBalance: true, now: NOW });
+    expect(i.kpis[0].label).toBe("Marge brute des cargaisons");
+    expect(i.kpis[0].sub).toContain("hors frais");
+    expect(i.kpis[0].sub).toContain("total partiel : 2 contrat(s) non compté(s)");
+    // Without any overlap the line is unchanged.
+    expect(info("gross", true).kpis[0].sub).not.toContain("partiel");
+  });
+
   it("Given no session, a quiet one, an ended one, a read-only store and an off server, Then each is told straight", () => {
     expect(info("empty", true).empty).toBe(true);
     expect(info("stale", true).notes.join(" ")).toContain("nouvelle session");

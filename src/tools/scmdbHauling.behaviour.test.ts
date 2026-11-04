@@ -476,6 +476,54 @@ describe("Feature: offers mode prices the offers I see in the mobiGlas", () => {
   });
 });
 
+describe("Feature: offers mode keeps the user's numbers and refuses early (audit leftovers)", () => {
+  const one = [{ reward: 10_000, scu: 4, pickup: "Port Tressler", dropoffs: ["Everus Harbor"] }];
+
+  it.each([0.4, 0.5, 1.25])(
+    "Given stop_minutes %s, Then the time model uses exactly that",
+    async (m) => {
+      const { registry } = world(MERGED);
+      const { data } = body(
+        await registry.call("scmdb_rank_hauling", {
+          cargo_scu: 46,
+          quantum_speed_ms: 238314300,
+          stop_minutes: m,
+          offers: one,
+        }),
+      );
+      expect(data.time_model.stop_minutes).toBe(m);
+      const secs = 2 * Math.round(m * 60) + 10 + 20e9 / 238314300; // default spool: 10 s
+      expect(data.offers[0].alone.minutes).toBe(Math.round((secs / 60) * 10) / 10);
+    },
+  );
+
+  it("Given 0 minutes a stop and the same place twice, Then the answer is valid JSON with a null rate and a reason", async () => {
+    const { registry } = world(MERGED);
+    const r = await registry.call("scmdb_rank_hauling", {
+      cargo_scu: 46,
+      quantum_speed_ms: 238314300,
+      stop_minutes: 0,
+      offers: [{ reward: 10_000, scu: 4, pickup: "Port Tressler", dropoffs: ["Port Tressler"] }],
+    });
+    const { data } = body(r);
+    expect(data.offers[0].alone).toMatchObject({ reward_per_hour: null });
+    expect(data.offers[0].alone.reason).toMatch(/no travel time/);
+    expect(data.best_single_offer).toBeNull();
+  });
+
+  it("Given a bad quantum speed, Then it is refused before any UEX or wiki request", async () => {
+    const { registry, uex, wiki } = world(MERGED);
+    const r = await registry.call("scmdb_rank_hauling", {
+      ship_name: "Cutlass Black",
+      quantum_speed_ms: 5,
+      offers: one,
+    });
+    expect(r.isError).toBe(true);
+    expect(uex.get).not.toHaveBeenCalled();
+    expect(wiki.get).not.toHaveBeenCalled();
+  });
+});
+
 describe("Feature: every answer fits the output limit and none of our own sentences is cut", () => {
   const long = (label: string, n: number) => `${label} ${"x".repeat(n)}`;
 

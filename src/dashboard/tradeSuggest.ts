@@ -273,6 +273,8 @@ export class TradeSuggestService {
   /** Runs an "Et ensuite ?" suggestion was already computed for (bounded, memory only). */
   private readonly nextRuns = new Set<string>();
   private lastStartAt = Number.NEGATIVE_INFINITY;
+  /** The last private-budget lookup (cache, join or run): see the cache-oracle note in `search`. */
+  private lastPrivateLookupAt = Number.NEGATIVE_INFINITY;
   private readonly now: () => number;
   private readonly minInterval: number;
   private readonly ttl: number;
@@ -326,10 +328,26 @@ export class TradeSuggestService {
     if (cargo === undefined || cargo < 1) return { v: 1, state: "error", code: "no_cargo" };
     const key = this.keyOf(input, ship);
     const t = this.now();
+    const priv = input.budget_private === true;
 
-    // 1. the short cache
+    // A private budget is the player's balance. A cache or an in-flight join that answers "yes, a run with exactly this
+    // budget was made" (cached: true, no wait) would let a caller who can reach this tool find the balance by trying
+    // values. So a private lookup is rate limited like a run, hit or miss: one guess per interval, whatever the cache
+    // holds. The slot is taken before the general throttle below: a refused attempt costs as much as an accepted one, or
+    // misses would be free while hits stayed visible. A typed budget is the player's own number and keeps its free cache.
+    if (priv) {
+      const sincePrivate = t - this.lastPrivateLookupAt;
+      if (sincePrivate >= 0 && sincePrivate < this.minInterval) {
+        const wait = Math.ceil((this.minInterval - sincePrivate) / 1000);
+        return { v: 1, state: "throttled", retry_after_s: Math.max(1, wait) };
+      }
+      this.lastPrivateLookupAt = t;
+    }
+
+    // 1. the short cache. An entry is only served to a caller in the same private context as the one it was made for
+    // (the key carries the flag; this check is the belt to that brace).
     const held = this.cache.get(key);
-    if (held && t - held.at >= 0 && t - held.at < this.ttl) {
+    if (held && held.ok.private === priv && t - held.at >= 0 && t - held.at < this.ttl) {
       this.markNext(input.next_run);
       return { ...held.ok, cached: true, age_s: Math.round((t - held.at) / 1000) };
     }

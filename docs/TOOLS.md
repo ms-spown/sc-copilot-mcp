@@ -554,7 +554,7 @@ Rank hauling contracts for a ship from SCMDB's datamined list, or price concrete
 | `cargo_scu` | number | no | Hold size in SCU (wins over the ship's), e.g. when only part of it is free. |
 | `max_container_size` | number | no | Largest container size in SCU the ship takes (wins over UEX's list). |
 | `quantum_speed_ms` | number | no | offers: quantum speed in m/s when there is no ship_name. |
-| `stop_minutes` | number | no | offers: assumed minutes per stop (default 8, an unmeasured assumption). |
+| `stop_minutes` | number | no | offers: assumed minutes per stop, fractions allowed (default 8, an unmeasured assumption). |
 | `rank` | string | no | templates: the player's Hauling rank (Trainee, Rookie, Junior, Member, Experienced, Senior or Master): contracts outside it are left out. Omit to keep all. |
 | `system` | string | no | templates: keep contracts that run in this system ('Stanton', 'Pyro', 'Nyx'). |
 | `include_illegal` | boolean | no | templates: also show illegal contracts (default false). |

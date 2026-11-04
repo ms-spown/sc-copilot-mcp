@@ -811,7 +811,7 @@
         },
         "stop_minutes": {
           "type": "number",
-          "description": "offers: assumed minutes per stop (default 8, an unmeasured assumption)."
+          "description": "offers: assumed minutes per stop, fractions allowed (default 8, an unmeasured assumption)."
         },
         "rank": {
           "type": "string",
