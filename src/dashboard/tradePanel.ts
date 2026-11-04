@@ -320,11 +320,12 @@ export function tradeInlineText(L: any, trade: any, showBalance: boolean): strin
 /**
  * Builds the card and the compact line once; `render(ctx)` then only changes text, attributes and custom properties.
  * svgNs is the SVG namespace name, handed in by the View (one place names it).
- * ctx: { trade, plan, showBalance, fullscreen, balance, baseline }
+ * ctx: { trade, plan, showBalance, fullscreen, balance, baseline, decomposition }
  *   trade    the normalised commerce section of the ledger (or null)
  *   plan     the cleaned plan (or null)
  *   balance  the poll's balance { delta, since } while shown (fallback when no trade journal exists)
  *   baseline where the balance change is counted from, in words
+ *   decomposition the net taken apart change by change (movementsPanel.ts), or null
  */
 export function tradePanel(doc: any, L: any, svgNs: string): any {
   const cfg = tradeConfig();
@@ -668,8 +669,12 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           tiles.fees,
           tradeAmount(L, -m.fees.total, true),
           "",
-          tradeMethodLabel(m.fees.method),
-          tradeIsEstimate(m.fees.method),
+          // The balance movement block calls these fees "ambigu" when another possible cause sits in their window:
+          // the tile says the same word instead of a plain "mesuré".
+          ctx.decomposition && ctx.decomposition.fees_doubtful
+            ? "ambigu"
+            : tradeMethodLabel(m.fees.method),
+          (ctx.decomposition && ctx.decomposition.fees_doubtful) || tradeIsEstimate(m.fees.method),
           m.turnover ? tradePct(L, m.fees.total / m.turnover) + " du chiffre d’affaires" : "",
         );
       } else {
@@ -737,8 +742,10 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       setVar(r.bar, "--w", String(row.width));
       setVar(r.zero, "--z", String(layout.zero));
       setText(r.value, tradeAmount(L, row.value, true));
-      setText(r.tag, row.tag);
-      setAttr(r.tag, "data-estimate", row.estimate ? "1" : "0");
+      // Fees measured next to another possible cause carry the same word here as in the movements block.
+      const doubtRow = row.id === "fees" && !!ctx.decomposition && ctx.decomposition.fees_doubtful;
+      setText(r.tag, doubtRow ? "ambigu" : row.tag);
+      setAttr(r.tag, "data-estimate", row.estimate || doubtRow ? "1" : "0");
     }
     let flowText = "";
     if (m) {
@@ -772,6 +779,15 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       m &&
       m.fees.unexplained !== null &&
       m.turnover &&
+      Math.abs(m.fees.unexplained) > m.turnover * 0.02 &&
+      ctx.decomposition
+    )
+      // The net is taken apart change by change (movementsPanel.ts / balanceMovements.ts): say what it is made of.
+      warns.push(L.movementsWarningText(ctx.decomposition));
+    else if (
+      m &&
+      m.fees.unexplained !== null &&
+      m.turnover &&
       Math.abs(m.fees.unexplained) > m.turnover * 0.02
     )
       warns.push(
@@ -784,6 +800,18 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
             ? "un autre achat ou une autre dépense pendant le trajet ?"
             : "une récompense ou la vente d’autre chose ?") +
           ") : la variation du solde n’est pas le bénéfice de ce seul trajet.",
+      );
+    // Fees measured in a window that also holds another possible cause (a shop item, a contract reward, an insurance or
+    // hangar cost): the "mesuré" tag stays, but the card must say they may include it, whatever the size of the gap.
+    const dec = ctx.decomposition;
+    if (dec && dec.fees_doubtful && warns.join(" ").indexOf(L.movementsWarningText(dec)) < 0)
+      warns.push(
+        "Les frais mesurés tombent dans une fenêtre qui contient aussi une autre cause possible (achat d’objet, récompense ou assurance) : ils peuvent l’inclure.",
+      );
+    if (dec && dec.unmatched_transactions > 0 && m && m.fees.total !== null)
+      warns.push(
+        dec.unmatched_transactions +
+          " ligne(s) du journal n’ont trouvé aucun mouvement du solde correspondant : les frais mesurés sont à lire avec prudence.",
       );
     setText(warn, warns.length ? "Attention : " + warns.join(" ") : "");
     show(warn, warns.length > 0);
@@ -1081,7 +1109,8 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     }
   }
 
-  return { line, card: root, slot, render };
+  // `more` is the body of the folded details: blocks of other modules (the balance movements) are added to it.
+  return { line, card: root, slot, more: moreBody, render };
 }
 
 /** The functions of this file, in the order they are serialised (page.ts). */

@@ -220,10 +220,13 @@ describe("Feature: honest when it does not know", () => {
     await w.advance(3 * SECOND);
     const t = card(w);
     expect(t).toMatch(/Bénéfice net\s*variation du solde\s*\+543 000 aUEC/);
+    // The warning now takes the balance apart (balanceMovements.ts): the 400 000 has no line in the log, so it is
+    // named as not explained, and the old sentence about the profit stays.
     expect(t).toMatch(
-      /Attention : Le solde a monté de 400 000 aUEC de plus que la marge brute et les frais ne l’expliquent/,
+      /Attention : Variation du solde \+543 000 aUEC = ventes moins achats rapprochés du journal \+186 568 \(égal à la marge brute à 0,1 % près\) ; frais −43 568 \(mesurés\) ; non expliqué \+400 000\./,
     );
-    expect(t).toContain("la variation du solde n’est pas le bénéfice de ce seul trajet");
+    expect(t).toMatch(/Non expliqué : 1 mouvement\(s\) sans aucune ligne du journal à côté/);
+    expect(t).toContain("La variation du solde n’est pas le bénéfice de ce seul trajet");
     expect(t).toMatch(/Frais\s*mesuré\s*−43 568 aUEC/);
   });
 

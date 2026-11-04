@@ -8,6 +8,9 @@
 //   handler, answers the ui/* requests as the measured host does, and shows what the View sends to the conversation.
 // URL parameters: t=<seconds into the story> theme=light|dark w=<px> mode=inline|fullscreen balance=1 (presses the show-balance button) session=1
 //                 forced=off|waiting|game_without_telemetry|incompatible cut=1 plan=1 scroll=<px>
+//                 open=1  (unfolds the commerce card's details and the "Mouvements du solde" block)
+//                 trade=movements  (the story plus balance movements of every kind: an item, a probable reward, an unexplained
+//                 fall, a probable insurance cost; the "Mouvements du solde" block; src/dashboard/testing/movementsScenario.ts)
 //                 trade=story|unknown|partial|second|none  (the commerce card, with a made-up trade journal that follows
 //                 the figures of a real run: see src/dashboard/testing/tradeScenario.ts; its loop lasts 600 s, the run is
 //                 settled from t=215; it implies plan=full: a plan with prices and a price curve; none = no journal)
@@ -67,11 +70,12 @@ import { specsSamples } from "/dist/dashboard/testing/specsFixtures.js";
 import { sessionBar, sessionToolAnswer } from "/dist/dashboard/testing/sessionScenario.js";
 import { tradeBalanceAt, tradeLedger } from "/dist/dashboard/testing/tradeScenario.js";
 import { suggestAnswer } from "/dist/dashboard/testing/suggestFixtures.js";
+import { movementBalanceAt, movementsLedger } from "/dist/dashboard/testing/movementsScenario.js";
 const q = new URLSearchParams(location.search);
 const seek = Number(q.get("t") ?? 0);
 const scenario = new Scenario(Date.now() - seek * 1000);
 const trade = q.get("trade");
-if (trade) scenario.uec = tradeBalanceAt; // before the first frame: the stream carries the balance of the trade story
+if (trade) scenario.uec = trade === "movements" ? movementBalanceAt : tradeBalanceAt; // before the first frame: the stream carries the balance of the trade story
 scenario.advanceTo(seek * 1000);
 if (q.get("forced")) scenario.forced = q.get("forced");
 if (q.get("cut")) scenario.cut = true;
@@ -132,7 +136,9 @@ if (sess !== "none") {
 // trade section that the real model builds from invented transactions.
 const TRADE_PLAN = { commodity: "Laranite", buy_terminal: "Port Tressler", sell_terminal: "Area18 TDD", scu: 696, expected_profit_auec: 180000, buy_unit_price: 189, sell_unit_price: 457, est_trip_minutes: 25, safety_note: "Route peu risquée", price_points: [430, 436, 441, 450, 447, 455, 462, 458, 449, 452, 460, 457, 463, 459], price_points_label: "14 derniers relevés" };
 if (trade) {
-  scenario.ledger = (include, nowMs) => tradeLedger(nowMs, scenario.epoch, include, trade, TRADE_PLAN);
+  scenario.ledger = trade === "movements"
+    ? (include, nowMs) => movementsLedger(nowMs, scenario.epoch, include, TRADE_PLAN)
+    : (include, nowMs) => tradeLedger(nowMs, scenario.epoch, include, trade, TRADE_PLAN);
 }
 $("specs").value = q.get("specs") ?? "ready";
 // The scenario holds the wiki sheet of its ship in the chosen state; the poll sends it through the real delta protocol.
@@ -200,6 +206,10 @@ if (q.get("menu")) frame.addEventListener("load", () => {
     if (r) r.click();
   }, 2600);
 });
+// open=1: unfold the commerce card's details and the "Mouvements du solde" block (they are folded by default).
+if (q.get("open")) frame.addEventListener("load", () => setTimeout(() => {
+  for (const d of frame.contentDocument.querySelectorAll("details.tr-more, details.mv")) d.open = true;
+}, 2200));
 if (q.get("scroll")) frame.addEventListener("load", () => setTimeout(() => frame.contentWindow.scrollTo(0, Number(q.get("scroll"))), 1500));
 frame.src = "/view.html";
 setInterval(() => { $("clock").textContent = "histoire : " + Math.round(scenario.t / 1000) + " s"; }, 500);

@@ -4,6 +4,8 @@ import type { LogEvent } from "../providers/gamelog/parser.js";
 import type { BalancePoint } from "../providers/telemetry/service.js";
 import { buildTradeSection, type TradePlan, type TradeSection } from "./tradeRun.js";
 import type { Transaction } from "../providers/gamelog/trade.js";
+import type { MovementEvent, MovementsSection } from "./balanceMovements.js";
+import { movementsSectionFor, withDecompositions } from "./movementsLedger.js";
 
 /**
  * The transport ledger: contracts of the current game session (from Game.log) linked to the balance change that
@@ -331,6 +333,11 @@ export interface LedgerPayload {
    * in it sits under `runs[].money`, built ONLY when the poll asked for the balance.
    */
   trade?: TradeSection;
+  /**
+   * Where the money went (balanceMovements.ts): the balance changes of the game session, each with at most one cause
+   * and a confidence. Present ONLY when the poll asked for the balance (every figure in it is derived from it).
+   */
+  movements?: MovementsSection;
   /** Present only when the payload had to be cut to stay bounded. */
   truncated?: string;
 }
@@ -345,6 +352,8 @@ export interface LedgerInput {
   plan?: PlanForLedger | undefined;
   /** The transactions of the trade journal; absent: no journal, no `trade` section. */
   trades?: readonly Transaction[] | undefined;
+  /** Insurance, hangar and session events of the log (ledgerService.movementEvents()); absent: none known. */
+  movementEvents?: readonly MovementEvent[] | undefined;
   nowMs: number;
 }
 
@@ -454,6 +463,13 @@ export function boundLedger(
   let out = payload;
   const notes: string[] = [];
   const size = (p: LedgerPayload) => JSON.stringify(p).length;
+  if (size(out) > maxChars && out.movements && out.movements.listed.length > 10) {
+    out = {
+      ...out,
+      movements: { ...out.movements, listed: out.movements.listed.slice(0, 10), truncated: true },
+    };
+    notes.push("movements cut to 10");
+  }
   if (size(out) > maxChars) {
     out = { ...out, contracts: out.contracts.map((c) => ({ ...c, steps: c.steps.slice(0, 3) })) };
     notes.push("steps cut to 3");
@@ -497,6 +513,20 @@ export function buildLedgerPayload(input: LedgerInput): LedgerPayload {
       plan: input.plan,
       nowMs,
     });
+  }
+  if (includeBalance && base.status === "ok") {
+    // Where the money went: only with the balance, from the same history the figures above come from.
+    const sources = {
+      history,
+      transactions: input.trades,
+      contracts: all.flatMap((c) =>
+        c.endedMs === null ? [] : [{ state: c.state, endedMs: c.endedMs, title: c.title }],
+      ),
+      events: input.movementEvents ?? [],
+    };
+    if (payload.trade) payload.trade = withDecompositions(payload.trade, sources);
+    const movements = movementsSectionFor(sources, nowMs);
+    if (movements) payload.movements = movements;
   }
   return boundLedger(payload);
 }
