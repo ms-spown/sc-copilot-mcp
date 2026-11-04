@@ -30,6 +30,7 @@ export function session(n: number, over: Partial<Session> = {}): Session {
     note: "",
     price_refusals: 0,
     price_refusal_last_at: null,
+    ship_losses: [],
     updated_at: stamp(n),
     ...over,
   };

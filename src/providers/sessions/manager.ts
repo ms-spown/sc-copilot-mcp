@@ -326,6 +326,7 @@ export class SessionManager {
       game: info,
       trips: this.withPlans(collected.trips, collected.plan_distance),
       ...(collected.price_refusals ? { priceRefusals: collected.price_refusals } : {}),
+      ...(collected.ship_losses ? { shipLosses: collected.ship_losses } : {}),
       context: collected.context,
     };
     await this.apply((s) => observe(s, obs, this.rc));

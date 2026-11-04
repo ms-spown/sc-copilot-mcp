@@ -4,6 +4,7 @@ import type { LogEvent } from "../providers/gamelog/parser.js";
 import type { BalancePoint } from "../providers/telemetry/service.js";
 import { buildTradeSection, type TradePlan, type TradeSection } from "./tradeRun.js";
 import type { Transaction } from "../providers/gamelog/trade.js";
+import type { ShipLoss } from "../providers/gamelog/shipLoss.js";
 import type { MovementEvent, MovementsSection } from "./balanceMovements.js";
 import { movementsSectionFor, withDecompositions } from "./movementsLedger.js";
 import type { CalibrationSection } from "../providers/sessions/calibration.js";
@@ -362,6 +363,8 @@ export interface LedgerInput {
   movementEvents?: readonly MovementEvent[] | undefined;
   /** The route calibration (sessions); used only with the balance. */
   calibration?: CalibrationSection | undefined;
+  /** The player's ships destroyed with him aboard (ledgerService.shipLosses()); absent: none known. */
+  losses?: readonly ShipLoss[] | undefined;
   nowMs: number;
 }
 
@@ -526,6 +529,7 @@ export function buildLedgerPayload(input: LedgerInput): LedgerPayload {
       includeBalance,
       plan: input.plan,
       nowMs,
+      losses: input.losses,
     });
   }
   if (includeBalance && base.status === "ok") {

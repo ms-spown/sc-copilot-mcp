@@ -217,6 +217,8 @@ export class DashboardService {
       ...(trades ? { trades } : {}),
       ...(movementEvents ? { movementEvents } : {}),
       ...(calibration ? { calibration } : {}),
+      // The ship losses: their SCU go with or without the balance, the aUEC paid only with it (tradeRun.ts).
+      ...(this.ledger ? { losses: this.ledger.shipLosses() } : {}),
     });
   }
 

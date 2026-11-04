@@ -1,9 +1,12 @@
 import { randomBytes } from "node:crypto";
 import {
   MAX_INTERRUPTIONS,
+  MAX_SHIP_LOSSES,
   MAX_TRIPS,
   NOTE_MAX,
+  ShipLossSchema,
   TripSchema,
+  type ShipLossInput,
   cleanText,
   type Session,
   type StoreState,
@@ -53,6 +56,8 @@ export interface Observation {
   trips: readonly TripInput[];
   /** The game's refusals for a moved price, as the trade journal lists them (providers/gamelog/priceRefusals.ts). */
   priceRefusals?: readonly { at: string }[];
+  /** The player's ships destroyed with him aboard, as the trip source lists them (providers/gamelog/shipLoss.ts). */
+  shipLosses?: readonly ShipLossInput[];
   context: { location: string | null; commodity: string | null; at: string | null } | null;
 }
 
@@ -106,6 +111,7 @@ function create(
     note: "",
     price_refusals: 0,
     price_refusal_last_at: null,
+    ship_losses: [],
     updated_at: stamp,
   };
   state.next_number += 1;
@@ -283,6 +289,41 @@ function countRefusals(cur: Session, list: readonly { at: string }[] | undefined
   return true;
 }
 
+/**
+ * Adds the ships destroyed with the player aboard that this session does not hold yet (one per ship, by its hash), inside the
+ * session. Idempotent like the refusals: the same list again, or seen by a second server process, adds nothing. A loss
+ * stored while the trade journal was not readable (its cargo unknown) is completed when a later look knows the cargo; a known
+ * cargo is never replaced. The list is bounded: the oldest go first.
+ */
+function recordLosses(cur: Session, list: readonly ShipLossInput[] | undefined): boolean {
+  if (!list || list.length === 0) return false;
+  const from = ms(cur.started_at) - 2000;
+  const to = cur.ended_at === null ? Infinity : ms(cur.ended_at) + 60_000;
+  const held = cur.ship_losses ?? (cur.ship_losses = []);
+  let changed = false;
+  for (const input of list) {
+    const parsed = ShipLossSchema.safeParse(input);
+    if (!parsed.success) continue;
+    const at = ms(parsed.data.at);
+    if (at < from || at > to) continue;
+    const i = held.findIndex((x) => x.ship_ref === parsed.data.ship_ref);
+    if (i >= 0) {
+      if (held[i]!.cargo_scu === null && parsed.data.cargo_scu !== null) {
+        held[i] = parsed.data;
+        changed = true;
+      }
+      continue;
+    }
+    held.push(parsed.data);
+    changed = true;
+  }
+  if (changed) {
+    held.sort((a, b) => ms(a.at) - ms(b.at));
+    if (held.length > MAX_SHIP_LOSSES) held.splice(0, held.length - MAX_SHIP_LOSSES);
+  }
+  return changed;
+}
+
 // ---------------------------------------------------------------------------------------------
 // One observation of the game
 // ---------------------------------------------------------------------------------------------
@@ -428,6 +469,7 @@ export function observe(state: StoreState, obs: Observation, cfg: ReduceConfig):
     if (action === "none") action = "trips";
   }
   if (countRefusals(cur, obs.priceRefusals)) changed = true;
+  if (recordLosses(cur, obs.shipLosses)) changed = true;
   if (changed) cur.updated_at = iso(now);
   return { changed, current: cur, action };
 }

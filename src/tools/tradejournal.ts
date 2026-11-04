@@ -4,8 +4,10 @@ import { formatOutputRaw } from "../core/format.js";
 import { addNote } from "../core/provenance.js";
 import type { ParsedLog } from "../providers/gamelog/parser.js";
 import type { GameLog } from "../providers/gamelog/reader.js";
+import { buildShipLosses, lossCuts } from "../providers/gamelog/shipLoss.js";
 import {
   buildTradeJournal,
+  pairCargoRuns,
   type CargoRun,
   type SessionJournal,
   type Transaction,
@@ -27,6 +29,16 @@ const MAX_RUNS_PER_SESSION = 30;
 /** The `sessions` part of the answer, pretty-printed: leaves room for the rest under the 40 000-character limit. */
 const MAX_SESSIONS_CHARS = 32_000;
 const UNKNOWN = "unknown commodity";
+
+/**
+ * The journal of one log, with its round trips cut where the player's ship was destroyed with cargo bought for it
+ * aboard: the lost cargo is not paired with a later sale of the same goods (shipLoss.ts).
+ */
+function journalOf(p: ParsedLog): SessionJournal {
+  const j = buildTradeJournal(p.commerce, p.span.last);
+  const cuts = lossCuts(buildShipLosses(p.ships ?? [], j.transactions));
+  return cuts.length > 0 ? { ...j, cargo_runs: pairCargoRuns(j.transactions, cuts) } : j;
+}
 
 const ok = (value: unknown): ToolResult => ({
   content: [{ type: "text", text: formatOutputRaw(value) }],
@@ -109,7 +121,7 @@ export function tradeJournalTools({
           .map((s, i) => ({
             s,
             current: i === 0 && s.running,
-            j: buildTradeJournal(s.parsed.commerce, s.parsed.span.last),
+            j: journalOf(s.parsed),
           }))
           .filter((x) => x.j.transactions.length > 0);
 

@@ -180,6 +180,30 @@ export function ledgerTradeNormalize(raw: any): any {
     runs,
   };
   if (refusals.length > 0) section.price_refusals = refusals;
+  // The player's ship destroyed with him aboard (shipLoss.ts): a model, a cause code, a kind of causer, a place token and the
+  // SCU presumed lost. The aUEC paid is a balance figure: it is kept only when the sender put a number there, and the
+  // channel and the strip below drop it. Every text is a fixed word or cleaned; nothing of the sender's survives otherwise.
+  const losses = (Array.isArray(raw.ship_losses) ? raw.ship_losses : [])
+    .slice(-5)
+    .filter((x: any) => x && typeof x === "object" && ledgerIso(x.at) !== null)
+    .slice(-3)
+    .map((x: any) => {
+      const item: any = {
+        at: new Date(Date.parse(x.at)).toISOString(),
+        ship_class: ledgerText(x.ship_class, 60) || null,
+        cause: ledgerOneOf(x.cause, ["collision", "combat", "self_destruct"], "unknown"),
+        causer: ledgerOneOf(x.causer, ["self", "other", "npc"], "unknown"),
+        zone: ledgerText(x.zone, 60) || null,
+        cargo_scu: ledgerNum(x.cargo_scu),
+        cargo_buys: ledgerNum(x.cargo_buys) || 0,
+        unconfirmed_buys: ledgerNum(x.unconfirmed_buys) || 0,
+        run_id: ledgerText(x.run_id, 40) || null,
+      };
+      const paid = ledgerNum(x.paid_auec);
+      if (paid !== null) item.paid_auec = paid;
+      return item;
+    });
+  if (losses.length > 0) section.ship_losses = losses;
   return section;
 }
 
@@ -273,6 +297,8 @@ export function ledgerChannelClean(raw: any): any {
   for (const c of n.contracts) delete c.gain;
   // The commerce runs keep their goods, places, quantities and times, never their money.
   if (n.trade) for (const r of n.trade.runs) r.money = null;
+  // The aUEC paid for the cargo presumed lost comes from the balance too (the SCU stays: it is not an amount).
+  if (n.trade && n.trade.ship_losses) for (const l of n.trade.ship_losses) delete l.paid_auec;
   return n;
 }
 
@@ -301,6 +327,14 @@ export function ledgerStripBalance(raw: any): any {
         return copy;
       }),
     });
+    // The aUEC paid for the cargo presumed lost is derived from the balance: out with it.
+    if (Array.isArray(raw.trade.ship_losses)) {
+      out.trade.ship_losses = raw.trade.ship_losses.map((l: any) => {
+        const copy: any = Object.assign({}, l);
+        delete copy.paid_auec;
+        return copy;
+      });
+    }
   }
   return out;
 }

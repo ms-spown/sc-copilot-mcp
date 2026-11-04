@@ -1725,7 +1725,8 @@ export function shipContext(poll: any): any {
  */
 export function summaryInfo(poll: any, items: any[], refusal?: any): any {
   if (!poll || poll.state !== "live") return null;
-  if (!poll.ship && !poll.pilot) return null;
+  // A ship just destroyed leaves no ship in the stream, and perhaps no pilot yet: the loss is still worth saying.
+  if (!poll.ship && !poll.pilot && !(refusal && refusal.loss)) return null;
   // With the ship off, "powerplant off" is the situation, not an alert: it must not hide a refusal at the kiosk.
   const off = shipIsOff(poll);
   const list = off ? items.filter((i: any) => i.id !== "powerplant_off") : items;

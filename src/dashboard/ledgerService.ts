@@ -7,6 +7,12 @@ import {
   type Transaction,
 } from "../providers/gamelog/trade.js";
 import type { GameLog } from "../providers/gamelog/reader.js";
+import {
+  buildShipLosses,
+  tidyShipRecords,
+  type ShipLoss,
+  type ShipRecord,
+} from "../providers/gamelog/shipLoss.js";
 import { buildContracts, EMPTY_LEDGER, type LedgerBase } from "./ledger.js";
 import type { MovementEvent } from "./balanceMovements.js";
 
@@ -76,6 +82,9 @@ export interface LedgerLogSource {
     events: LogEvent[];
     /** The commerce lines of the same text (absent: none). */
     commerce?: TradeRecord[];
+    /** The ship-loss lines of the same text (absent: none), and the hash of the player's own id the log gave. */
+    ships?: ShipRecord[];
+    playerRef?: string | null;
     /** The last timestamp of the text, by the log's own clock (absent: unknown). */
     lastTime?: string | null;
     truncated: boolean;
@@ -111,6 +120,8 @@ export function ledgerLogFrom(gameLog: GameLog): LedgerLogSource {
       return {
         events: r.parsed.events,
         commerce: r.parsed.commerce,
+        ships: r.parsed.ships,
+        playerRef: r.parsed.player_ref,
         lastTime: r.parsed.span.last,
         truncated: r.truncated,
         modifiedAt: r.modifiedAt,
@@ -164,6 +175,11 @@ export class LedgerService {
   private commerceKeys = new Set<string>();
   private lastTime: string | null = null;
   private journal: Transaction[] = [];
+  /** The ship-loss lines kept (bounded, de-duplicated) and the losses worked out from them and the journal. */
+  private ships: ShipRecord[] = [];
+  private losses: ShipLoss[] = [];
+  /** A hash of the player's own entity id, memory only: a log read in pieces gets its login line once. */
+  private playerRef: string | null = null;
   private movementLog: MovementEvent[] = [];
   private movementKeys = new Set<string>();
   /** How the file was read, for tests and diagnostics. */
@@ -213,6 +229,16 @@ export class LedgerService {
   }
 
   /**
+   * The player's own ships destroyed with him aboard in this log (shipLoss.ts), oldest first, with the cargo each probably
+   * took with it (read against the trade journal). Empty until the log has been read, when it is not configured, and when
+   * nothing happened. The paid amounts in it come from the trade journal: callers withhold them like any aUEC figure.
+   */
+  shipLosses(): readonly ShipLoss[] {
+    if (!this.source || !this.source.configured) return [];
+    return this.current.status === "ok" ? this.losses : [];
+  }
+
+  /**
    * Insurance claims, hangar requests and session boundaries of the session, oldest first, as last read (time and
    * type only). Empty until the log has been read or when it is not configured: the explainer then simply has no
    * such event to lean on.
@@ -249,6 +275,9 @@ export class LedgerService {
     this.commerceKeys = new Set();
     this.lastTime = null;
     this.journal = [];
+    this.ships = [];
+    this.losses = [];
+    this.playerRef = null;
     this.movementLog = [];
     this.movementKeys = new Set();
   }
@@ -274,6 +303,7 @@ export class LedgerService {
       this.lastModified = stat.mtimeMs;
       this.reads += 1;
       this.journal = buildTradeJournal(this.commerce, this.lastTime).transactions;
+      this.losses = buildShipLosses(this.ships, this.journal);
       this.current = {
         status: "ok",
         asOf: stat.mtimeMs,
@@ -301,7 +331,8 @@ export class LedgerService {
     this.offset = size;
     // A log in UTF-16 cannot be read from the middle: every read stays a full one.
     this.head = head && !(head[0] === 0xff && head[1] === 0xfe) ? head.toString("hex") : null;
-    this.add(r.events, r.commerce ?? [], r.lastTime ?? null);
+    this.playerRef = r.playerRef ?? null;
+    this.add(r.events, r.commerce ?? [], r.lastTime ?? null, r.ships ?? []);
   }
 
   /** Parses only what was added since the last read. False when a full read is needed instead. */
@@ -322,16 +353,24 @@ export class LedgerService {
     if (start > 0) text = text.slice(text.indexOf("\n") + 1);
     this.bytesParsed += end;
     this.incrementalReads += 1;
-    const parsed = parseLog(text);
-    this.add(parsed.events, parsed.commerce, parsed.span.last);
+    const parsed = parseLog(text, { playerRef: this.playerRef });
+    if (parsed.player_ref !== null) this.playerRef = parsed.player_ref;
+    this.add(parsed.events, parsed.commerce, parsed.span.last, parsed.ships);
     this.offset = start + end;
     return true;
   }
 
   /** Keeps the events the ledger uses that have not been seen yet (the look-behind re-reads some). */
-  private add(events: LogEvent[], commerce: readonly TradeRecord[], lastTime: string | null): void {
+  private add(
+    events: LogEvent[],
+    commerce: readonly TradeRecord[],
+    lastTime: string | null,
+    ships: readonly ShipRecord[] = [],
+  ): void {
     if (lastTime !== null && (this.lastTime === null || lastTime > this.lastTime))
       this.lastTime = lastTime;
+    // Few, and the look-behind re-reads some: tidied (de-duplicated, bounded) as a whole each time.
+    if (ships.length > 0) this.ships = tidyShipRecords([...this.ships, ...ships]);
     for (const r of commerce) {
       const key = JSON.stringify(r);
       if (this.commerceKeys.has(key)) continue;

@@ -27,6 +27,23 @@ versions follow [Semantic Versioning](https://semver.org/).
   test deletes its temporary folder. The tests now close their managers (which waits for that look) before removing the
   folder. Test support only.
 
+### Added
+- Loss tracker. When the player's own ship is destroyed with him aboard (build 4.10: `[ActorState] Dead ... destroyed
+  vehicle`; the 2025 `Actor Death` of the player inside the ship as a legacy path), the dashboard says so in the alert slot
+  (header verdict, compact line, commerce card box, ahead of a refused price), the commerce card marks the run it
+  interrupted, the saved session keeps it and the session debrief lists it. The cause is a collision only when a
+  `FatalCollision ... PlayerPilot: 1` of the same ship precedes by at most 1 s (or the 2025 `Vehicle Destruction` line says
+  so), else "not logged". The cargo is PRESUMED lost: successful purchases bound to that ship by the cargo kiosk and not
+  sold, in SCU and aUEC PAID (the purchase price, not the value; failed purchases ignored, unconfirmed ones counted apart).
+  Value lost, insurance and killer are shown as "non journalisés"; the cargo attribution is labelled as verified on 2025-build
+  logs only. Suicides, routine insurance claims, other actors' deaths and AI vehicles the player destroyed are not counted.
+- Sessions file: a new additive `ship_losses` list per session (format version stays 2; an older file reads as empty).
+  The aUEC paid is a balance figure: withheld from the bar, the list, the stats, the poll, the channel between Views and the
+  debrief unless the balance is allowed. The privacy sentence (README, SECURITY, CAPABILITIES, TELEMETRY, ARCHITECTURE and
+  the block for Claude, English and French) names the new category.
+- A loss with cargo ends the run in the commerce model and in the journal's cargo runs, so a later sale of the same goods
+  is not paired with the lost cargo.
+
 ## [2.5.0] - 2026-11-04
 
 ### Fixed (documentation)

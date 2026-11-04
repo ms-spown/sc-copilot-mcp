@@ -51,6 +51,7 @@ export function createSessionStack(deps: SessionStackDeps): SessionStack {
         () => ledger.trades(),
         history,
         () => manager.currentPlan,
+        () => ledger.shipLosses(),
       ),
     ]),
     gameHint: createGameRunning(gameLog, now),

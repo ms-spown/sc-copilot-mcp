@@ -761,6 +761,21 @@ function withoutMoneyFields(s: Session): Session {
     start_balance_quality: null,
     last_balance: null,
     last_balance_at: null,
+    // Copied by name: the aUEC paid for the cargo presumed lost is a balance figure and is not carried over.
+    ship_losses: (s.ship_losses ?? []).map((l) => ({
+      at: l.at,
+      ship_ref: l.ship_ref,
+      ship_class: l.ship_class,
+      cause: l.cause,
+      causer: l.causer,
+      zone: l.zone,
+      via: l.via,
+      cargo_scu: l.cargo_scu,
+      cargo_buys: l.cargo_buys,
+      unconfirmed_buys: l.unconfirmed_buys,
+      cargo_paid_auec: null,
+      run_key: l.run_key,
+    })),
     trips: s.trips.map((t): Trip => ({
       key: t.key,
       kind: t.kind,
@@ -788,6 +803,54 @@ function withoutMoneyFields(s: Session): Session {
       fees_method: null,
     })),
   };
+}
+
+const LOSS_CAUSE: Record<string, string> = {
+  collision: "collision",
+  combat: "combat",
+  self_destruct: "autodestruction",
+};
+const LOSS_CAUSER: Record<string, string> = {
+  self: "le joueur pilotait",
+  other: "autre joueur, d’après le nom",
+  npc: "IA, d’après le nom",
+};
+
+/**
+ * The ships destroyed with the player aboard, one line each (empty when none). A time, a model, a cause, a kind of causer, a
+ * place token and the SCU presumed lost. The aUEC PAID for that cargo (the purchase price, not the value) only with money. What
+ * the log does not say is said: the value lost, the insurance and the killer.
+ */
+function shipLossLines(s: Session, money: boolean): string[] {
+  const list = s.ship_losses ?? [];
+  if (list.length === 0) return [];
+  const out: string[] = ["### Vaisseaux détruits (joueur à bord)"];
+  for (const l of list.slice(-DEBRIEF_LIMITS.breaks)) {
+    const parts = [utc(l.at)];
+    const model = markdownText((l.ship_class ?? "").replace(/_/g, " "), 60);
+    if (model) parts.push(model);
+    parts.push(
+      `cause : ${LOSS_CAUSE[l.cause] ?? "non journalisée"}${LOSS_CAUSER[l.causer] ? ` (${LOSS_CAUSER[l.causer]})` : ""}`,
+    );
+    const zone = markdownText(l.zone ?? "", 60);
+    if (zone) parts.push(`lieu : ${zone}`);
+    if (l.cargo_scu === null) parts.push("cargo : journal d’achats non lisible");
+    else if (l.cargo_scu <= 0) parts.push("aucun achat de cargo présumé à bord");
+    else {
+      const paid =
+        money && l.cargo_paid_auec !== null
+          ? ` · ${aUEC(l.cargo_paid_auec)} payés (prix d’achat, pas la valeur)`
+          : "";
+      parts.push(`cargo présumé perdu : ${fmtDec(l.cargo_scu, 2)}${NBSP}SCU${paid} (non confirmé)`);
+    }
+    if (l.unconfirmed_buys > 0)
+      parts.push(`${l.unconfirmed_buys} achat(s) non confirmé(s) non compté(s)`);
+    out.push(`- ${parts.join(" · ")}`);
+  }
+  out.push(
+    "- Valeur perdue, assurance et responsable : non journalisés. Le cargo présumé perdu est celui acheté pour ce vaisseau sans vente ensuite, une estimation : attribution vérifiée sur des journaux de builds 2025 seulement.",
+  );
+  return out;
 }
 
 /** The newest items of a list, at most `maxItems` and as many as fit in `maxChars` once rendered (`min` of them at least). */
@@ -900,6 +963,11 @@ export function buildDebrief(sessions: readonly Session[], options: DebriefOptio
     const h = headline(b.sum, b.rows, { money });
     md.push(...h.lines);
     md.push("");
+    const lost = shipLossLines(b.s, money);
+    if (lost.length > 0) {
+      md.push(...lost);
+      md.push("");
+    }
     for (const u of h.unexplained)
       unexplainedAll.push(multi ? `Session ${b.sum.number} : ${u}` : u);
     const unclean = b.s.interruptions.filter((i) => i.kind === "unclean").length;

@@ -97,7 +97,7 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
    session de jeu enregistrée. Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais
    écrites. La seule exception est le résumé de session : le solde au départ et à la dernière observation ; la version
    du jeu, les heures (dont la durée pendant laquelle le jeu a été vu en marche) et les coupures ; le dernier lieu et
-   les dernières marchandises nommés par le journal ; la note du joueur ; le nombre de prix refusés ; et, pour chaque
+   les dernières marchandises nommés par le journal ; la note du joueur ; le nombre de prix refusés ; pour chaque vaisseau détruit avec le joueur à bord, l'heure, le modèle, la cause, le type de responsable (jamais un nom), le lieu et le cargo présumé perdu (SCU, et les aUEC payés avec les chiffres d'argent), identifié seulement par une courte empreinte ; et, pour chaque
    trajet, son libellé (titre du contrat, lieux, marchandises), la quantité, le coût, le revenu, la marge, les frais,
    le net et le plan appliqué (profit prévu, quantité, terminaux). Il est gardé dans un fichier local, sessions.json,
    seulement quand la télémétrie est activée ; ce serveur ne l'envoie jamais nulle part, sauf que les outils

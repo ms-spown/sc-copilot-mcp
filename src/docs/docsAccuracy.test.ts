@@ -7,7 +7,12 @@ import { GameLog } from "../providers/gamelog/reader.js";
 import { Scmdb } from "../providers/scmdb/store.js";
 import { MAX_INSTRUCTIONS_LENGTH, SERVER_INSTRUCTIONS } from "../instructions.js";
 import { PROMPTS } from "../prompts.js";
-import { InterruptionSchema, SessionSchema, TripSchema } from "../providers/sessions/types.js";
+import {
+  InterruptionSchema,
+  SessionSchema,
+  ShipLossSchema,
+  TripSchema,
+} from "../providers/sessions/types.js";
 import { CATALOG, PROFILE_NAMES } from "../tools/catalog.js";
 import { allTools } from "../tools/registry.js";
 
@@ -252,9 +257,9 @@ describe("Feature: the English and French pages state the same things", () => {
 
 /** The reviewed sentence about what stays in memory and what is saved. Change it here and in every page below. */
 const PRIVACY_EN =
-  "Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (the money figures only with `include_balance`); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it.";
+  "Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; for each ship destroyed with you aboard, its time, model, cause, kind of causer (never a name), place token and the cargo presumed lost (SCU, and the aUEC paid with the money figures), identified only by a short hash; and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (the money figures only with `include_balance`); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it.";
 const PRIVACY_FR =
-  "Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais écrites. La seule exception est le résumé de session : le solde au départ et à la dernière observation ; la version du jeu, les heures (dont la durée pendant laquelle le jeu a été vu en marche) et les coupures ; le dernier lieu et les dernières marchandises nommés par le journal ; votre note ; le nombre de prix refusés ; et, pour chaque trajet, son libellé (titre du contrat, lieux, marchandises), la quantité, le coût, le revenu, la marge, les frais, le net et le plan appliqué (profit prévu, quantité, terminaux). Il est gardé dans un fichier local, `sessions.json`, seulement quand la télémétrie est activée ; ce serveur ne l'envoie jamais nulle part, sauf que les outils `sc_session_*` en renvoient des parties à votre client MCP, donc à votre conversation (les chiffres d'argent seulement avec `include_balance`) ; `SC_SESSIONS=off` le désactive ; et supprimer `sessions.json` ainsi que les copies `.bak` et `.corrupt` à côté de lui l'efface.";
+  "Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais écrites. La seule exception est le résumé de session : le solde au départ et à la dernière observation ; la version du jeu, les heures (dont la durée pendant laquelle le jeu a été vu en marche) et les coupures ; le dernier lieu et les dernières marchandises nommés par le journal ; votre note ; le nombre de prix refusés ; pour chaque vaisseau détruit avec vous à bord, l'heure, le modèle, la cause, le type de responsable (jamais un nom), le lieu et le cargo présumé perdu (SCU, et les aUEC payés avec les chiffres d'argent), identifié seulement par une courte empreinte ; et, pour chaque trajet, son libellé (titre du contrat, lieux, marchandises), la quantité, le coût, le revenu, la marge, les frais, le net et le plan appliqué (profit prévu, quantité, terminaux). Il est gardé dans un fichier local, `sessions.json`, seulement quand la télémétrie est activée ; ce serveur ne l'envoie jamais nulle part, sauf que les outils `sc_session_*` en renvoient des parties à votre client MCP, donc à votre conversation (les chiffres d'argent seulement avec `include_balance`) ; `SC_SESSIONS=off` le désactive ; et supprimer `sessions.json` ainsi que les copies `.bak` et `.corrupt` à côté de lui l'efface.";
 
 /**
  * The same sentence as rule 5 of the block pasted into Claude: no backticks (the block is a code fence) and addressed to
@@ -269,6 +274,8 @@ const blockVariant = (sentence: string) =>
       "the player's MCP client, and so to the conversation",
     )
     .replace("votre note", "la note du joueur")
+    .replace("with you aboard", "with the player aboard")
+    .replace("avec vous à bord", "avec le joueur à bord")
     .replace(
       "votre client MCP, donc à votre conversation",
       "le client MCP du joueur, donc à la conversation",
@@ -314,6 +321,31 @@ const COVERED_BY: Record<string, { en: string; fr: string } | string> = {
   note: { en: "your note", fr: "votre note" },
   price_refusals: { en: "the count of refused prices", fr: "le nombre de prix refusés" },
   price_refusal_last_at: { en: "the count of refused prices", fr: "le nombre de prix refusés" },
+  ship_losses: {
+    en: "for each ship destroyed with you aboard",
+    fr: "pour chaque vaisseau détruit avec vous à bord",
+  },
+  // Ship loss
+  at: { en: "its time", fr: "l'heure" },
+  ship_ref: {
+    en: "identified only by a short hash",
+    fr: "identifié seulement par une courte empreinte",
+  },
+  ship_class: { en: "model", fr: "le modèle" },
+  cause: { en: "cause", fr: "la cause" },
+  causer: { en: "kind of causer (never a name)", fr: "le type de responsable (jamais un nom)" },
+  zone: { en: "place token", fr: "le lieu" },
+  via: "allowed: which log line told the destruction (a label about the covered time and cause)",
+  cargo_scu: { en: "the cargo presumed lost (SCU", fr: "le cargo présumé perdu (SCU" },
+  cargo_buys:
+    "allowed: the number of purchase lines behind the SCU presumed lost, a count about a covered figure",
+  unconfirmed_buys:
+    "allowed: the number of purchases left out because the journal could not confirm them, a count",
+  cargo_paid_auec: {
+    en: "the aUEC paid with the money figures",
+    fr: "les aUEC payés avec les chiffres d'argent",
+  },
+  run_key: "allowed: a hash of the trade run the lost purchases belong to, never a game identifier",
   // Trip
   key: "allowed: a hash of what identifies the trip, never a game identifier",
   kind: "allowed: a type tag (hauling, trade, contract); `kind` of a break is covered by the breaks",
@@ -408,6 +440,7 @@ describe("Feature: every page says the same true thing about what is saved", () 
       ...Object.keys(SessionSchema.shape),
       ...Object.keys(TripSchema.shape),
       ...Object.keys(InterruptionSchema.shape),
+      ...Object.keys(ShipLossSchema.shape),
     ]);
     // A key nobody reviewed: add it to COVERED_BY with the phrase of the sentence that covers it, or an "allowed" reason,
     // and change the sentence (and its copies) if the new field is a new category of what is stored.
