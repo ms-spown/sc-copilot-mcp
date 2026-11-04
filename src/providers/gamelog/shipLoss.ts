@@ -1,7 +1,7 @@
 import type { Transaction } from "./trade.js";
 
 /**
- * Ship losses: "the player's own ship was destroyed with the player aboard", and what that probably cost a trade run.
+ * Ship losses: "a ship was destroyed with the player aboard", and what that probably cost a trade run.
  *
  * PURE and free of any Node module (the commerce model that imports it also runs in the preview): records in, losses out.
  * The records come from shipLossParse.ts, which reads the log lines. They carry NO name, no handle, no GUID and no raw entity
@@ -20,7 +20,10 @@ import type { Transaction } from "./trade.js";
  */
 
 export type ShipCause = "collision" | "combat" | "self_destruct" | "unknown";
-/** self: the player himself (his own collision); other: a human-looking name; npc: an AI-shaped name; unknown. A heuristic. */
+/**
+ * self: the causer's id is the player's (only the 2025 `Vehicle Destruction` line gives one); other: a human-looking name;
+ * npc: an AI-shaped name; unknown. The last two come from the SHAPE of a name: a heuristic. A 4.10 collision gives none.
+ */
 export type ShipCauser = "self" | "other" | "npc" | "unknown";
 export type ShipLossVia = "actor_state_dead" | "actor_death";
 
@@ -53,6 +56,11 @@ export interface ShipLossCargo {
   buys: number;
   /** Purchases for this ship the journal could not confirm (an error line followed several requests): NOT counted. */
   unconfirmed_buys: number;
+  /**
+   * Sales the journal could not confirm (of this ship's goods, or of no known ship): NOT counted as sales, so the cargo
+   * presumed lost may be OVERESTIMATED by what they sold.
+   */
+  unconfirmed_sells: number;
   /** ISO time of the latest purchase counted: it ties the loss to the run it interrupted. */
   last_buy_at: string | null;
 }
@@ -84,8 +92,17 @@ export const CARGO_LOOKBACK_MS = 3 * 3_600_000;
 export const COLLISION_WINDOW_MS = 1000;
 /** A `Vehicle Destruction` line of the same ship explains a death within this window (it may come just after it). */
 export const DESTROYED_WINDOW_MS = 3000;
-/** Records kept by the service, and losses listed. */
-export const SHIP_RECORDS_MAX = 400;
+/**
+ * Records kept by the service, per kind (the kiosk binding repeats at every cargo screen and must not push a destruction out),
+ * and losses listed.
+ */
+export const SHIP_RECORDS_MAX: Record<ShipRecord["kind"], number> = {
+  kiosk_ship: 300,
+  collision: 60,
+  dead: 40,
+  death: 40,
+  destroyed: 120,
+};
 export const SHIP_LOSSES_MAX = 20;
 
 const EPS = 1e-6;
@@ -107,7 +124,19 @@ export function tidyShipRecords(list: readonly ShipRecord[]): ShipRecord[] {
     out.push(r);
   }
   out.sort((a, b) => ms(a.time) - ms(b.time));
-  return out.slice(-SHIP_RECORDS_MAX);
+  // Each kind has its own bound (the newest are kept).
+  const count = new Map<ShipRecord["kind"], number>();
+  for (const r of out) count.set(r.kind, (count.get(r.kind) ?? 0) + 1);
+  const skip = new Map<ShipRecord["kind"], number>();
+  for (const [kind, n] of count) skip.set(kind, Math.max(0, n - SHIP_RECORDS_MAX[kind]));
+  return out.filter((r) => {
+    const left = skip.get(r.kind) ?? 0;
+    if (left > 0) {
+      skip.set(r.kind, left - 1);
+      return false;
+    }
+    return true;
+  });
 }
 
 interface Lot {
@@ -138,6 +167,7 @@ function cargoAt(
   };
   const lots = new Map<string, Lot[]>();
   let unconfirmed = 0;
+  let unconfirmedSells = 0;
   const lines = tx
     .filter(
       (t) =>
@@ -157,6 +187,7 @@ function cargoAt(
     const resource = t.resource as string;
     if (t.status === "unconfirmed") {
       if (t.side === "buy" && bound === ship) unconfirmed += 1;
+      if (t.side === "sell" && (bound === ship || bound === null)) unconfirmedSells += 1;
       continue;
     }
     // A failed line (an error followed it, or a sale for nothing) moved no cargo.
@@ -198,6 +229,7 @@ function cargoAt(
     paid_auec: Math.round(paid),
     buys,
     unconfirmed_buys: unconfirmed,
+    unconfirmed_sells: unconfirmedSells,
     last_buy_at: buys > 0 ? new Date(last).toISOString() : null,
   };
 }
@@ -241,9 +273,9 @@ export function buildShipLosses(
       cause = vd.cause;
       causer = vd.causer;
     } else if (crash) {
-      // The player was piloting the ship that hit something: his own collision.
+      // `PlayerPilot: 1` says a player piloted the ship that hit something; it does not prove who, nor whose ship it was:
+      // the cause is a collision, the causer stays unknown.
       cause = "collision";
-      causer = "self";
     } else if (vd) {
       causer = vd.causer;
     }

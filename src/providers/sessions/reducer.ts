@@ -316,8 +316,21 @@ function recordLosses(cur: Session, list: readonly ShipLossInput[] | undefined):
     const key = lossKey(parsed.data);
     const i = held.findIndex((x) => lossKey(x) === key);
     if (i >= 0) {
-      if (held[i]!.cargo_scu === null && parsed.data.cargo_scu !== null) {
-        held[i] = parsed.data;
+      // A later look may know more (the cargo once the journal is readable; the cause and the causer once the 2025
+      // `Vehicle Destruction` line, up to 3 s after the death, has been read). A known value is replaced only by a more
+      // precise one, never by "unknown", and never by another known value.
+      const old = held[i]!;
+      const next = { ...old };
+      if (old.cargo_scu === null && parsed.data.cargo_scu !== null) {
+        next.cargo_scu = parsed.data.cargo_scu;
+        next.cargo_paid_auec = parsed.data.cargo_paid_auec;
+      }
+      if (old.cause === "unknown" && parsed.data.cause !== "unknown")
+        next.cause = parsed.data.cause;
+      if (old.causer === "unknown" && parsed.data.causer !== "unknown")
+        next.causer = parsed.data.causer;
+      if (JSON.stringify(next) !== JSON.stringify(old)) {
+        held[i] = next;
         changed = true;
       }
       continue;

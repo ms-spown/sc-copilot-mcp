@@ -6,7 +6,7 @@
  *   1. THE ALERT. The game refused a transaction because the price moved (TransactionCostMismatch, listed by the trade
  *      journal): a sentence with the time and the side, for a few minutes, and a nudge to check the plan again. It carries
  *      no amount (only a time, a side and a kind) and also exists as one line for the compact view. The same slot shows,
- *      first, the player's ship destroyed with him aboard (shipLoss.ts) and the cargo presumed lost with it: the SCU always,
+ *      first, a ship destroyed with the player aboard (shipLoss.ts) and the cargo presumed lost with it: the SCU always,
  *      the aUEC paid (the purchase price, not the value) only while the balance is shown.
  *   2. THE CHECK. A button asks the server (`sc_trade_suggest`, action preflight, app-only, no argument: the server checks
  *      the plan IT holds) whether the plan still holds at UEX. The answer is a verdict per leg and overall; its sentences
@@ -26,10 +26,10 @@ export function tradePreflightConfig() {
     /** A refusal is shown as an alert for this long: it is about the kiosk the player is standing at. */
     refusalFreshMs: 10 * 60 * 1000,
     /**
-     * A ship loss stays in the alert for this long. Longer than a refusal: the player is usually respawning, and the game
-     * is often quit within a minute of the crash. The session card keeps it for good.
+     * A ship loss stays in the alert for this long (a refusal after it takes the slot if it is newer). The session card keeps
+     * the loss for good.
      */
-    lossFreshMs: 60 * 60 * 1000,
+    lossFreshMs: 15 * 60 * 1000,
   };
 }
 
@@ -97,19 +97,24 @@ export function tradeRefusalInfo(L: any, trade: any, now: number): any {
 export function tradeLossCargo(L: any, loss: any, showBalance: boolean): string {
   const scu = loss && typeof loss.cargo_scu === "number" ? loss.cargo_scu : null;
   const unconfirmed =
-    loss && loss.unconfirmed_buys > 0
+    (loss && loss.unconfirmed_buys > 0
       ? " " + loss.unconfirmed_buys + " achat(s) non confirmé(s) ne sont pas comptés."
-      : "";
+      : "") +
+    (loss && loss.unconfirmed_sells > 0
+      ? " " +
+        loss.unconfirmed_sells +
+        " vente(s) non confirmée(s) ne sont pas déduites : le cargo perdu peut être surestimé."
+      : "");
   if (scu === null) return "Cargo : le journal d’achats n’était pas lisible.";
   if (!(scu > 0)) return "Aucun achat de cargo présumé à bord." + unconfirmed;
   const paid =
     showBalance && typeof loss.paid_auec === "number"
-      ? ", " + L.fmtAuec(loss.paid_auec) + "00a0aUEC payés (prix d’achat, pas la valeur)"
+      ? ", " + L.fmtAuec(loss.paid_auec) + "\u00a0aUEC payés (prix d’achat, pas la valeur)"
       : "";
   return (
-    "Cargo présumé perdu00a0: " +
-    L.fmtNum(scu, 2) +
-    "00a0SCU" +
+    "Cargo présumé perdu\u00a0: " +
+    L.fmtNum(scu, scu % 1 === 0 ? 0 : 2) +
+    "\u00a0SCU" +
     paid +
     " (non confirmé)." +
     unconfirmed
@@ -117,7 +122,29 @@ export function tradeLossCargo(L: any, loss: any, showBalance: boolean): string 
 }
 
 /**
- * The newest ship loss that is still fresh, or null (trade: the normalised commerce section): the player's own ship was
+ * What the log says about the cause of a loss, as words: a collision, a combat, a self-destruction, or "not logged". The kind
+ * of causer comes from the SHAPE of a name (a human-looking name, an AI-shaped name) and is said to be so.
+ */
+export function tradeLossCause(loss: any): string {
+  const cause =
+    loss && loss.cause === "collision"
+      ? "collision"
+      : loss && loss.cause === "combat"
+        ? "combat"
+        : loss && loss.cause === "self_destruct"
+          ? "autodestruction"
+          : "cause non journalisée";
+  const by =
+    loss && loss.causer === "npc"
+      ? " par une IA (d’après le nom)"
+      : loss && loss.causer === "other"
+        ? " par un autre joueur (d’après le nom)"
+        : "";
+  return cause + by;
+}
+
+/**
+ * The newest ship loss that is still fresh, or null (trade: the normalised commerce section): a ship was
  * destroyed with him aboard (certain). Same shape as a price refusal so the header, the compact line and the alert box take
  * either: `label` (the header's words), `text` (what happened), `advice` (the cargo presumed lost), `note` (what the log does
  * not say), `ago`, `at`, `atMs`, `loss: true`. No name of anyone: a model, a cause and a kind of causer.
@@ -130,16 +157,6 @@ export function tradeLossInfo(L: any, trade: any, now: number, showBalance: bool
     if (!Number.isFinite(at) || now - at < -5000 || now - at > tradePreflightConfig().lossFreshMs)
       continue;
     if (best && at <= best.atMs) continue;
-    const cause =
-      l.cause === "collision"
-        ? "collision"
-        : l.cause === "combat"
-          ? "combat"
-          : l.cause === "self_destruct"
-            ? "autodestruction"
-            : "cause non journalisée";
-    const by =
-      l.causer === "npc" ? " par une IA" : l.causer === "other" ? " par un autre joueur" : "";
     best = {
       atMs: at,
       loss: true,
@@ -148,12 +165,11 @@ export function tradeLossInfo(L: any, trade: any, now: number, showBalance: bool
       text:
         "Vaisseau détruit, joueur à bord" +
         (l.ship_class ? " (" + l.ship_class.replace(/_/g, " ") + ")" : "") +
-        "00a0: " +
-        cause +
-        by +
+        "\u00a0: " +
+        tradeLossCause(l) +
         ".",
       advice: tradeLossCargo(L, l, showBalance),
-      note: "Valeur perdue, assurance et responsable00a0: non journalisés. Attribution cargo vérifiée sur builds 2025 seulement.",
+      note: "Valeur perdue, assurance et responsable\u00a0: non journalisés. Propriété du vaisseau non vérifiée. Attribution du cargo vérifiée sur des journaux de builds 2025 seulement.",
       at: "à " + L.formatClock(new Date(at).toISOString()),
       ago: "il y a " + L.formatAge(now - at),
     };
@@ -161,9 +177,15 @@ export function tradeLossInfo(L: any, trade: any, now: number, showBalance: bool
   return best;
 }
 
-/** The alert to show: a ship loss first (the more serious), else the newest price refusal, else null. */
+/**
+ * The alert to show: the newer of a ship loss and a price refusal (a refusal at the kiosk after the respawn is what the player
+ * stands in front of; the loss stays on the session card for good), either alone, else null.
+ */
 export function tradeAlertInfo(L: any, trade: any, now: number, showBalance: boolean): any {
-  return tradeLossInfo(L, trade, now, showBalance) || tradeRefusalInfo(L, trade, now);
+  const loss = tradeLossInfo(L, trade, now, showBalance);
+  const refusal = tradeRefusalInfo(L, trade, now);
+  if (loss && refusal) return refusal.atMs > loss.atMs ? refusal : loss;
+  return loss || refusal;
 }
 
 function tradePfText(value: any, max: number): string {
@@ -386,7 +408,7 @@ export function tradePreflightPanel(doc: any, L: any): any {
     const now = H.now;
     const refusal = H.enabled ? tradeRefusalInfo(L, H.trade, now) : null;
     // The alert slot holds the more serious of the two: a ship destroyed with the player aboard, else a refused price.
-    const alert = H.enabled ? tradeLossInfo(L, H.trade, now, !!H.showBalance) || refusal : null;
+    const alert = H.enabled ? tradeAlertInfo(L, H.trade, now, !!H.showBalance) : null;
     const planOk = tradePreflightPlanOk(H.plan);
     // The compact line: the alert alone.
     setText(line, alert ? (alert.text + " " + alert.advice).trim() : "");
@@ -514,6 +536,7 @@ export const TRADE_PREFLIGHT_VIEW_FUNCTIONS = [
   tradeVerdictInfo,
   tradeRefusalInfo,
   tradeLossCargo,
+  tradeLossCause,
   tradeLossInfo,
   tradeAlertInfo,
   tradePfText,

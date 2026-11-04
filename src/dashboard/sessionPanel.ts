@@ -344,15 +344,21 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
       "Vaisseau détruit à " +
         L.formatClock(l.at) +
         (l.ship_class ? " (" + l.ship_class.replace(/_/g, " ") + ")" : "") +
+        ", joueur à bord : " +
+        L.tradeLossCause(l) +
         ". " +
         L.tradeLossCargo(L, l, false),
     );
   }
+  if (cur.ship_losses.length > 0)
+    notes.push(
+      "Propriété du vaisseau non vérifiée ; valeur perdue, assurance et responsable non journalisés.",
+    );
   if (cur.ship_losses.length > 0 && hasMoney && money.lost_cargo_paid_auec !== null)
     notes.push(
-      "Payé pour ce cargo00a0: " +
+      "Payé pour ce cargo\u00a0: " +
         L.fmtAuec(money.lost_cargo_paid_auec) +
-        "00a0aUEC (prix d’achat, pas la valeur ; valeur perdue, assurance et responsable non journalisés).",
+        "\u00a0aUEC (prix d’achat, pas la valeur ; valeur perdue, assurance et responsable non journalisés).",
     );
   // The compact view's one line: the net per hour comes from the same `money` as the kpis, so it exists only while the
   // balance is shown.

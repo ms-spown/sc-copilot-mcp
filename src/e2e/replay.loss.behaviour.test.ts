@@ -49,7 +49,7 @@ describe("Feature: a ship destroyed with cargo bought for it", () => {
     expect(loss).toMatchObject({
       ship_class: "TEST_Hauler",
       cause: "collision",
-      causer: "self",
+      causer: "unknown",
       zone: "test_zone_001",
       cargo_scu: 100,
       paid_auec: PAID,
@@ -77,10 +77,10 @@ describe("Feature: a ship destroyed with cargo bought for it", () => {
       ["at", "cargo_paid_auec", "cargo_scu", "cause", "causer", "ship_class", "zone"].sort(),
     );
     expect(w.sessionsBytes()).not.toContain(entityRef(SHIP));
-    const revision = file.revision;
+    const stored = JSON.stringify(file.sessions[0]!.ship_losses);
     await w.playTo(420);
-    expect(w.sessionsJson().sessions[0]!.ship_losses).toHaveLength(1); // not counted again on later looks
-    void revision;
+    // not counted again, and not rewritten, on later looks
+    expect(JSON.stringify(w.sessionsJson().sessions[0]!.ship_losses)).toBe(stored);
 
     // ---- Nothing personal in the file or the answers; the price only with the balance.
     const bytes = w.sessionsBytes();

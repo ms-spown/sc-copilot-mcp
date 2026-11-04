@@ -28,7 +28,7 @@ versions follow [Semantic Versioning](https://semver.org/).
   folder. Test support only.
 
 ### Added
-- Loss tracker. When the player's own ship is destroyed with him aboard (build 4.10: `[ActorState] Dead ... destroyed
+- Loss tracker. When a ship is destroyed with the player aboard (build 4.10: `[ActorState] Dead ... destroyed
   vehicle`; the 2025 `Actor Death` of the player inside the ship as a legacy path), the dashboard says so in the alert slot
   (header verdict, compact line, commerce card box, ahead of a refused price), the commerce card marks the run it
   interrupted, the saved session keeps it and the session debrief lists it. The cause is a collision only when a

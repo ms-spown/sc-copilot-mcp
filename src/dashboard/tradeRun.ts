@@ -271,7 +271,7 @@ export interface TradeSection {
    */
   price_refusals?: PriceRefusal[];
   /**
-   * The player's own ship destroyed with him aboard (providers/gamelog/shipLoss.ts), newest last, with the cargo bought for it
+   * A ship destroyed with the player aboard (providers/gamelog/shipLoss.ts), newest last, with the cargo bought for it
    * and not sold, which is only PRESUMED lost. The SCU and the counts are not amounts and go with or without the balance;
    * `paid_auec` (the purchase price paid, not the value) exists only with `includeBalance`. Absent when there is none.
    */
@@ -290,6 +290,8 @@ export interface ShipLossView {
   /** Purchase lines behind `cargo_scu`, and purchases the journal could not confirm (not counted). */
   cargo_buys: number;
   unconfirmed_buys: number;
+  /** Sales the journal could not confirm: not counted, so the SCU presumed lost may be overestimated. */
+  unconfirmed_sells: number;
   /** The run (its `id`) the lost cargo was bought in; null when there is no cargo. */
   run_id: string | null;
   /** aUEC PAID (purchase price, not the value). Only with the balance. */
@@ -1044,6 +1046,7 @@ function lossViews(
       cargo_scu: l.cargo ? l.cargo.scu : null,
       cargo_buys: l.cargo ? l.cargo.buys : 0,
       unconfirmed_buys: l.cargo ? l.cargo.unconfirmed_buys : 0,
+      unconfirmed_sells: l.cargo ? l.cargo.unconfirmed_sells : 0,
       run_id: run ? new Date(run.txs[0]!.t).toISOString() : null,
       ...(includeBalance && l.cargo ? { paid_auec: l.cargo.paid_auec } : {}),
     };

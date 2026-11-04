@@ -197,6 +197,7 @@ export function ledgerTradeNormalize(raw: any): any {
         cargo_scu: ledgerNum(x.cargo_scu),
         cargo_buys: ledgerNum(x.cargo_buys) || 0,
         unconfirmed_buys: ledgerNum(x.unconfirmed_buys) || 0,
+        unconfirmed_sells: ledgerNum(x.unconfirmed_sells) || 0,
         run_id: ledgerText(x.run_id, 40) || null,
       };
       const paid = ledgerNum(x.paid_auec);

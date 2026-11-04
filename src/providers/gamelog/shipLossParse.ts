@@ -27,7 +27,9 @@ export function entityRef(id: string): string {
 
 const CLASS = /^[A-Za-z][A-Za-z0-9_]{1,59}$/;
 /** A place token: letters, digits, underscore, dot, dash; never a run of 5+ digits (that would be an entity id). */
-const PLACE = /^(?!.*\d{5})[A-Za-z0-9_.-]{1,60}$/;
+const PLACE = /^(?!.*\d{5})[A-Za-z][A-Za-z0-9]*(?:[_-][A-Za-z0-9]+){0,9}$/;
+/** The game's own lines are short (a few hundred characters); a longer one is not read at all (bounded work per line). */
+export const SHIP_LINE_MAX_CHARS = 4096;
 const SUFFIX = /^(.*?)_(\d{6,20})$/;
 /** Vehicles and entities the game flies for itself: their destruction is never the player's. */
 const AI_VEHICLE = /(^|_)(PU_AI|Unmanned|AIModule)(_|$)/i;
@@ -51,27 +53,28 @@ export interface ShipParseState {
 /** Does this line belong to this module at all? One cheap test per line. */
 export function mayBeShipLine(body: string): boolean {
   return (
-    body.includes("Dead>") ||
-    body.includes("<FatalCollision>") ||
-    body.includes("VehicleCargoDataRequest") ||
-    body.includes("<Actor Death>") ||
-    body.includes("<Vehicle Destruction>") ||
-    body.includes("AccountLoginCharacterStatus_Character")
+    body.length <= SHIP_LINE_MAX_CHARS &&
+    (body.includes("Dead>") ||
+      body.includes("<FatalCollision>") ||
+      body.includes("VehicleCargoDataRequest") ||
+      body.includes("<Actor Death>") ||
+      body.includes("<Vehicle Destruction>") ||
+      body.includes("AccountLoginCharacterStatus_Character"))
   );
 }
 
 const CHARACTER =
   /<AccountLoginCharacterStatus_Character> Character: .*? geid (\d+) .*state STATE_CURRENT/;
 const DEAD =
-  /\[ActorState\] Dead>.*?Actor '.*?' \[(\d+)\] ejected from zone '([^']*)' \[(\d+)\](?: to zone '([^']*)')?.*destroyed vehicle/;
+  /\[ActorState\] Dead>.*?Actor '[^']*' \[(\d+)\] ejected from zone '([^']*)' \[(\d+)\](?: to zone '([^']*)')?.*destroyed vehicle/;
 const COLLISION =
   /<FatalCollision> Fatal Collision occured for vehicle (\S+) \[.*?Zone: ([^,\]]*), PlayerPilot: (\d)\]/;
 const KIOSK =
   /LoadSelectedShipBindings> Sending VehicleCargoDataRequest for vehicleEntityId\[(\d+)\]/;
 const DEATH =
-  /<Actor Death> CActor::Kill: '.*?' \[(\d+)\] in zone '([^']*)' killed by .*? with damage type '([A-Za-z]+)'/;
+  /<Actor Death> CActor::Kill: '[^']*' \[(\d+)\] in zone '([^']*)' killed by .*? with damage type '([A-Za-z]+)'/;
 const DESTROY =
-  /<Vehicle Destruction> CVehicle::OnAdvanceDestroyLevel: Vehicle '([^']*)' \[(\d+)\] in zone '[^']*' .*? advanced from destroy level (\d+) to (\d+) caused by '(.*?)' \[(\d+)\] with '([A-Za-z]+)'/;
+  /<Vehicle Destruction> CVehicle::OnAdvanceDestroyLevel: Vehicle '([^']*)' \[(\d+)\] in zone '[^']*' .*? advanced from destroy level (\d+) to (\d+) caused by '([^']*)' \[(\d+)\] with '([A-Za-z]+)'/;
 
 /** Deaths of the player aboard a ship that count as the ship's destruction. A suicide (a reset) or a bleed-out never does. */
 const SHIP_DEATHS = new Set(["Crash", "Collision", "VehicleDestruction"]);
@@ -118,8 +121,9 @@ export function parseShipLine(
   }
   if (body.includes("Dead>")) {
     if (!(m = body.match(DEAD))) return null;
-    // The actor is read to be COMPARED with the player; another actor's line says nothing about him.
-    if (state.playerRef !== null && entityRef(m[1]!) !== state.playerRef) return null;
+    // The actor is read to be COMPARED with the player; another actor's line says nothing about him. Without the player's
+    // own reference (his login line is not in the text: a long log read from its end) nothing can be told: refused.
+    if (state.playerRef === null || entityRef(m[1]!) !== state.playerRef) return null;
     const { cls } = splitInstance(m[2]!);
     return { kind: "dead", time: ts, ship: entityRef(m[3]!), cls, zone: place(m[4]) };
   }

@@ -229,7 +229,7 @@ export class LedgerService {
   }
 
   /**
-   * The player's own ships destroyed with him aboard in this log (shipLoss.ts), oldest first, with the cargo each probably
+   * Ships destroyed with the player aboard in this log (shipLoss.ts), oldest first, with the cargo each probably
    * took with it (read against the trade journal). Empty until the log has been read, when it is not configured, and when
    * nothing happened. The paid amounts in it come from the trade journal: callers withhold them like any aUEC figure.
    */

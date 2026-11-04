@@ -119,7 +119,7 @@ export type Interruption = z.infer<typeof InterruptionSchema>;
 export const MAX_SHIP_LOSSES = 20;
 
 /**
- * The player's own ship destroyed with him aboard (providers/gamelog/shipLoss.ts), as the session keeps it. ONLY: the time,
+ * A ship destroyed with the player aboard (providers/gamelog/shipLoss.ts), as the session keeps it. ONLY: the time,
  * the ship MODEL, a cause code, the kind of causer (never a name), a place token, and the cargo PRESUMED lost with it: SCU,
  * and the aUEC PAID for it (the purchase price, not the value: balance-derived, so withheld like any other money figure).
  * NOTHING derived from a ship's identifier is stored (the hash that links a purchase to its ship lives in memory only), nor

@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { parseLog } from "./parser.js";
-import { buildShipLosses, lossCuts, tidyShipRecords, type ShipLoss } from "./shipLoss.js";
+import {
+  buildShipLosses,
+  lossCuts,
+  SHIP_RECORDS_MAX,
+  tidyShipRecords,
+  type ShipLoss,
+} from "./shipLoss.js";
 import { entityRef, parseShipLine } from "./shipLossParse.js";
 import { buildTradeJournal, pairCargoRuns } from "./trade.js";
 
 /**
- * The player's own ship destroyed with him aboard, from invented log lines of both log eras (4.10 and the 2025 builds):
+ * A ship destroyed with the player aboard, from invented log lines of both log eras (4.10 and the 2025 builds):
  * what counts as a loss, what must not, and what the records are allowed to hold. Every id, name and place below is made up.
  */
 
@@ -64,7 +70,7 @@ describe("Feature: the player's ship destroyed with him aboard (build 4.10)", ()
       at: new Date(BASE + 900_300).toISOString(),
       ship_class: "TEST_Hauler",
       cause: "collision",
-      causer: "self",
+      causer: "unknown",
       zone: "test_zone_001",
       via: "actor_state_dead",
     });
@@ -74,6 +80,7 @@ describe("Feature: the player's ship destroyed with him aboard (build 4.10)", ()
       paid_auec: 947857,
       buys: 1,
       unconfirmed_buys: 0,
+      unconfirmed_sells: 0,
       last_buy_at: new Date(BASE + 25_000).toISOString(),
     });
   });
@@ -147,6 +154,18 @@ describe("Feature: what the cargo presumed lost does and does not hold", () => {
     const cargo = run(kiosk(10), buy(25, 10, 1000), buy(26, 10, 1000), error(26.5)).cargo!;
     expect(cargo.scu).toBe(0);
     expect(cargo.unconfirmed_buys).toBe(2);
+  });
+
+  it("Given a sale the journal cannot confirm, Then it is counted apart (the cargo lost may be overestimated)", () => {
+    const cargo = run(
+      kiosk(10),
+      buy(25, 100),
+      sell(300, 40),
+      sell(301, 40),
+      error(301.5, "SomeError", "Selling"),
+    ).cargo!;
+    expect(cargo.unconfirmed_sells).toBe(2);
+    expect(cargo.scu).toBe(100);
   });
 
   it("Given the cargo was bought for ANOTHER ship (the kiosk named it), Then the destroyed ship carries none", () => {
@@ -301,10 +320,62 @@ describe("Feature: the parser stays cheap and safe", () => {
       `${at(4)} [Notice] <Vehicle Destruction> CVehicle::OnAdvanceDestroyLevel: Vehicle '' [ advanced from destroy level`,
       "no timestamp <FatalCollision> Fatal Collision occured for vehicle A_1234567 [Zone: z, PlayerPilot: 1]",
     ];
-    const state = { playerRef: null };
-    for (const line of hostile)
-      expect(parseShipLine(line.slice(line.indexOf(">") + 1), null, state)).toBeNull();
-    expect(parseLog(hostile.join("\n")).ships).toEqual([]);
+    // through the real parser, with the player known (so the identity check is not what stops them)
+    const known = parseLog(character());
+    for (const line of hostile) {
+      const parsed = parseLog(line, { playerRef: known.player_ref });
+      expect(parsed.ships, line.slice(0, 60)).toEqual([]);
+    }
+    // and a line with no timestamp is not a record whatever it holds
+    expect(
+      parseShipLine(
+        " Fatal Collision occured for vehicle A_1234567 [Zone: z, PlayerPilot: 1]",
+        null,
+        {
+          playerRef: null,
+        },
+      ),
+    ).toBeNull();
+  });
+
+  it("Given a Dead line while the player's login line is not in the text (a long log read from its end), Then it is refused", () => {
+    expect(parseLog(dead(900)).ships).toEqual([]);
+    expect(lossesOf([crash(899.9), dead(900)])).toEqual([]);
+  });
+
+  it("Given long lines, Then they are not read, and a worst-case line stays fast (no regex blow-up)", () => {
+    const apostrophes = (n: number) => " '".repeat(n);
+    const bad = [
+      `${at(1)} [Notice] <[ActorState] Dead> Actor${apostrophes(2000)} [1] ejected from zone`,
+      `${at(2)} [Notice] <[ActorState] Dead> ${"Actor 'x' [1] ejected from zone 'z' [1] ".repeat(60)}`,
+      `${at(3)} [Notice] <Actor Death> CActor::Kill: ${"' [1] in zone 'a' killed by ".repeat(120)}`,
+      `${at(4)} [Notice] <Vehicle Destruction> CVehicle::OnAdvanceDestroyLevel: Vehicle 'a' [1] in zone 'b' ${" advanced from destroy level 1 to 2 caused by".repeat(120)}`,
+    ];
+    const known = parseLog(character());
+    const started = Date.now();
+    for (const line of bad) parseLog(line, { playerRef: known.player_ref });
+    expect(Date.now() - started).toBeLessThan(500);
+    // 20 000 characters of one line: refused before any pattern runs
+    const huge = `${at(5)} [Notice] <[ActorState] Dead> Actor '${"x".repeat(20_000)}' [${ME}] ejected from zone 'TEST_Hauler_${SHIP}' [${SHIP}] due to previous zone being in a destroyed vehicle`;
+    const t0 = Date.now();
+    expect(parseLog(huge, { playerRef: known.player_ref }).ships).toEqual([]);
+    expect(Date.now() - t0).toBeLessThan(100);
+  });
+
+  it("Given a place token of an unknown form (spaces, dots, a GUID, braces), Then the zone is dropped", () => {
+    for (const odd of ["a b", "x.y", GUID, "{zone}", "-lead", "a--".padEnd(70, "b")]) {
+      const line = dead(900).replace("test_zone_001", odd);
+      expect(parseLog([character(), line].join("\n")).ships[0], odd).toMatchObject({ zone: null });
+    }
+  });
+
+  it("Given many kiosk records, Then they do not push a destruction out of the records kept", () => {
+    const kiosks = Array.from({ length: 2000 }, (_, i) => kiosk(i / 10));
+    const parsed = parseLog([character(), ...kiosks, dead(900)].join("\n"));
+    expect(tidyShipRecords(parsed.ships).filter((r) => r.kind === "dead")).toHaveLength(1);
+    expect(
+      tidyShipRecords(parsed.ships).filter((r) => r.kind === "kiosk_ship").length,
+    ).toBeLessThanOrEqual(SHIP_RECORDS_MAX.kiosk_ship);
   });
 
   it("Given a place token that holds a long number or odd characters, Then the zone is dropped", () => {

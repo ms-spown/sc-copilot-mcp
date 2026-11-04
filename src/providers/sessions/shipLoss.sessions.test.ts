@@ -252,17 +252,103 @@ describe("Feature: the page shows the loss in the alert slot", () => {
     ],
   });
 
-  it("Given a recent loss, Then the alert is the loss (not the newer refusal) with the honest labels", () => {
-    const a = tradeAlertInfo(L, section(), NOW, true);
+  it("Given a recent loss, Then the alert is the loss with the honest labels and the exact sentence", () => {
+    const a = tradeAlertInfo(L, { ...section(), price_refusals: [] }, NOW, true);
     expect(a.loss).toBe(true);
     expect(a.label).toBe("Vaisseau détruit");
-    expect(a.text).toContain("joueur à bord");
-    expect(a.text).toContain("collision");
-    expect(a.advice).toContain("640");
-    expect(a.advice).toContain("prix d’achat, pas la valeur");
-    expect(a.advice).toContain("non confirmé");
+    expect(a.text).toBe("Vaisseau détruit, joueur à bord (TEST Hauler)\xa0: collision.");
+    expect(a.advice).toMatch(
+      /^Cargo présumé perdu\xa0: 640\xa0SCU, 947\D{1,3}857\xa0aUEC payés \(prix d’achat, pas la valeur\) \(non confirmé\)\.$/,
+    );
     expect(a.note).toContain("non journalisés");
+    expect(a.note).toContain("Propriété du vaisseau non vérifiée");
     expect(a.note).toContain("2025");
+    // a collision names no causer: the owner of the ship is not verified
+    expect(a.text).not.toMatch(/pilot|propre|son vaisseau/i);
+  });
+
+  it("Given a refusal NEWER than the loss (after the respawn), Then the refusal takes the slot; the loss wins when it is the newer", () => {
+    const both = section(); // loss 18:15, refusal 18:19
+    const a = tradeAlertInfo(L, both, NOW, true);
+    expect(a.loss).toBeUndefined();
+    expect(a.label).toContain("Prix changé");
+    expect(tradeAlertInfo(L, section({ at: "2026-11-04T18:19:30.000Z" }), NOW, true).loss).toBe(
+      true,
+    );
+  });
+
+  it("Given a loss older than 15 minutes, Then it is out of the alert (the session card keeps it)", () => {
+    expect(tradeLossInfo(L, section({ at: "2026-11-04T18:03:00.000Z" }), NOW, true)).toBeNull();
+  });
+
+  it("Given a causer taken from the shape of a name, Then the words say so on the alert and on the session card", () => {
+    const npc = tradeLossInfo(L, section({ cause: "combat", causer: "npc" }), NOW, true);
+    expect(npc.text).toContain("combat par une IA (d’après le nom)");
+    const other = tradeLossInfo(L, section({ cause: "combat", causer: "other" }), NOW, true);
+    expect(other.text).toContain("combat par un autre joueur (d’après le nom)");
+    const s = withLoss();
+    s.ship_losses[0] = { ...s.ship_losses[0]!, cause: "combat", causer: "other" };
+    const info = sessionBarInfo(
+      L,
+      sessionBarNormalize(
+        {
+          v: 1,
+          status: "ok",
+          gap_hours: 3,
+          stale: false,
+          current: withoutMoney(summarizeSession(s)),
+        },
+        false,
+      ),
+      { showBalance: false, now: NOW },
+    );
+    expect(info.notes.join("\n")).toContain("combat par un autre joueur (d’après le nom)");
+    expect(info.notes.join("\n")).toContain("Propriété du vaisseau non vérifiée");
+  });
+
+  it("Given every text the loss produces, Then no no-break space is left as a bare '00a0' or a backslash escape", () => {
+    const texts: string[] = [];
+    for (const money of [true, false]) {
+      for (const over of [
+        {},
+        { cargo_scu: 0 },
+        { cargo_scu: null },
+        { cause: "combat", causer: "npc" },
+      ]) {
+        const a = tradeLossInfo(L, section(over), NOW, money);
+        texts.push(a.label, a.text, a.advice, a.note, a.at, a.ago);
+      }
+    }
+    const summary = summarizeSession(withLoss());
+    for (const money of [true, false]) {
+      const info = sessionBarInfo(
+        L,
+        sessionBarNormalize(
+          {
+            v: 1,
+            status: "ok",
+            gap_hours: 3,
+            stale: false,
+            current: money ? summary : withoutMoney(summary),
+          },
+          money,
+        ),
+        { showBalance: money, now: NOW },
+      );
+      texts.push(info.line, ...info.notes);
+    }
+    for (const t of texts) {
+      expect(t).not.toMatch(/[A-Za-z0-9]00a0/);
+      expect(t).not.toMatch(/\\u/);
+    }
+    expect(texts.join("\n")).toMatch(/perdu\xa0: 640\xa0SCU/);
+    expect(texts.join("\n")).toMatch(/Payé pour ce cargo\xa0: 947\D{1,3}857\xa0aUEC/);
+  });
+
+  it("Given sales the journal could not confirm, Then the alert says the cargo lost may be overestimated", () => {
+    const a = tradeLossInfo(L, section({ unconfirmed_sells: 2 }), NOW, true);
+    expect(a.advice).toContain("2 vente(s) non confirmée(s)");
+    expect(a.advice).toContain("surestimé");
   });
 
   it("Given the balance hidden, Then the SCU show and the paid amount does not, even if the section carried it", () => {
@@ -278,6 +364,37 @@ describe("Feature: the page shows the loss in the alert slot", () => {
     expect(tradeAlertInfo(L, { ship_losses: old.ship_losses }, NOW, true)).toBeNull();
   });
 
+  it("Given a loss recorded without its cause, Then a later look that knows it completes it, and never the other way round", () => {
+    const s = emptyState();
+    observe(s, obs({ now: T0 }), cfg);
+    const unknown = loss({
+      cause: "unknown",
+      causer: "unknown",
+      cargo_scu: null,
+      cargo_paid_auec: null,
+    });
+    observe(s, obs({ now: T0 + 6 * MIN, shipLosses: [unknown] }), cfg);
+    observe(
+      s,
+      obs({ now: T0 + 7 * MIN, shipLosses: [loss({ cause: "combat", causer: "other" })] }),
+      cfg,
+    );
+    expect(latest(s)!.ship_losses).toHaveLength(1);
+    expect(latest(s)!.ship_losses[0]).toMatchObject({
+      cause: "combat",
+      causer: "other",
+      cargo_scu: 640,
+    });
+    // a known value is not replaced by "unknown", nor by another known value
+    observe(s, obs({ now: T0 + 8 * MIN, shipLosses: [unknown] }), cfg);
+    observe(
+      s,
+      obs({ now: T0 + 9 * MIN, shipLosses: [loss({ cause: "collision", causer: "npc" })] }),
+      cfg,
+    );
+    expect(latest(s)!.ship_losses[0]).toMatchObject({ cause: "combat", causer: "other" });
+  });
+
   it("Given no cargo, or an unreadable journal, Then it says so instead of a zero", () => {
     expect(tradeLossInfo(L, section({ cargo_scu: 0 }), NOW, true).advice).toContain("Aucun achat");
     expect(tradeLossInfo(L, section({ cargo_scu: null }), NOW, true).advice).toContain(
@@ -286,7 +403,7 @@ describe("Feature: the page shows the loss in the alert slot", () => {
   });
 
   it("Given the ship gone from the stream, Then the header verdict still says the ship was destroyed", () => {
-    const alert = tradeAlertInfo(L, section(), NOW, false);
+    const alert = tradeAlertInfo(L, { ...section(), price_refusals: [] }, NOW, false);
     const poll = { state: "live", ship: null, pilot: null };
     const v = L.summaryInfo(poll, [], alert);
     expect(v.label).toContain("Vaisseau détruit");

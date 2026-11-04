@@ -12,7 +12,7 @@
  * Seen in real logs but deliberately NOT turned into events, because the log does not state
  * them: ordinary quantum travel, combat and kills, wallet balance, the player's position, a
  * death on foot (only corpse/hospital bookkeeping lines exist). The ONE death that is read is
- * the player's own ship being destroyed with him aboard: it goes to `ships`, apart from `events`
+ * a ship being destroyed with the player aboard: it goes to `ships`, apart from `events`
  * (shipLossParse.ts: no name, no handle, no raw id). Jump-point transits between systems
  * (Stanton <-> Pyro) ARE logged, by the jump drive's state machine, and are reported.
  */
@@ -218,7 +218,7 @@ export function parseLog(text: string, seed?: { playerRef?: string | null }): Pa
       continue;
     }
 
-    // --- the player's own ship destroyed (shipLossParse.ts); such a line is never anything else
+    // --- a ship destroyed with the player aboard (shipLossParse.ts); such a line is never anything else
     if (mayBeShipLine(body)) {
       const ship = parseShipLine(body, ts, shipState);
       if (ship) {

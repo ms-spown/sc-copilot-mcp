@@ -83,7 +83,7 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    (scw_snapshot_save), the fleet list and, only with live telemetry on, the saved play session. Frames and raw log
    lines stay in memory and are never written. The one exception is the session summary: the balance at the start and
    at the last sighting; the game version, the times (including how long the game was seen running) and the breaks;
-   the last place and goods the log named; the player's note; the count of refused prices; ship losses: time, model, cause, place, presumed cargo; and, for each trip, its
+   the last place and goods the log named; the player's note; the count of refused prices; ship losses: time, model, cause, place, presumed cargo (SCU and aUEC paid); and, for each trip, its
    label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned
    profit, quantity, terminals). It is kept in a local file, sessions.json, only when telemetry is on; this server
    never sends it anywhere, except that the sc_session_* tools return parts of it to the player's MCP client, and so

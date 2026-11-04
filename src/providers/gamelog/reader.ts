@@ -176,7 +176,7 @@ export class GameLog {
         // header; only the events come from the tail, so nothing is counted twice.
         text = text.slice(text.indexOf("\n") + 1);
         const headParsed = parseLog(decodeLog(head));
-        // The login line is in the header: the tail needs it to tell the player's own ship from other actors.
+        // The login line is in the header: the tail needs it to tell the player from other actors.
         parsed = parseLog(text, { playerRef: headParsed.player_ref });
         const header = headParsed.session;
         parsed.span.first = headParsed.span.first;

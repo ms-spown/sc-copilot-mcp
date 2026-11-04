@@ -806,7 +806,7 @@ const LOSS_CAUSE: Record<string, string> = {
   self_destruct: "autodestruction",
 };
 const LOSS_CAUSER: Record<string, string> = {
-  self: "le joueur pilotait",
+  self: "le joueur, d’après le journal",
   other: "autre joueur, d’après le nom",
   npc: "IA, d’après le nom",
 };
@@ -841,7 +841,7 @@ function shipLossLines(s: Session, money: boolean): string[] {
     out.push(`- ${parts.join(" · ")}`);
   }
   out.push(
-    "- Valeur perdue, assurance et responsable : non journalisés. Le cargo présumé perdu est celui acheté pour ce vaisseau sans vente ensuite, une estimation : attribution vérifiée sur des journaux de builds 2025 seulement.",
+    "- Valeur perdue, assurance et responsable : non journalisés. La propriété du vaisseau n’est pas vérifiée. Le cargo présumé perdu est celui acheté pour ce vaisseau sans vente ensuite, une estimation qui peut être surestimée (ventes non confirmées) : attribution vérifiée sur des journaux de builds 2025 seulement.",
   );
   return out;
 }
