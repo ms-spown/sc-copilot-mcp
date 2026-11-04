@@ -35,7 +35,7 @@ const ramp = (t: number, t0: number, t1: number, a: number, b: number) =>
   lerp(a, b, (t - t0) / (t1 - t0));
 
 /** The frame the game would send at `t` seconds, or null when it sends none. */
-export function frameAt(t: number): Frame | null {
+export function frameAt(t: number, gearOut = false): Frame | null {
   if (t < 6 || (t >= 100 && t < 110)) return null;
   const health = t < 60 ? 1 : t < 80 ? ramp(t, 60, 78, 1, 0.35) : 0.35;
   const hunger = ramp(t, 6, 120, 0.92, 0.86);
@@ -100,7 +100,7 @@ export function frameAt(t: number): Frame | null {
       flight: {
         state: {
           is_landed: landed,
-          gear: landed ? "deployed" : t < 18 ? "retracting" : "retracted",
+          gear: landed || (gearOut && t >= 18) ? "deployed" : t < 18 ? "retracting" : "retracted",
         },
         settings: {
           ifcs_coupled: mode,
@@ -190,6 +190,8 @@ export class Scenario {
    * made-up source (the trade story of tradeScenario.ts). null: the story's own balance.
    */
   uec: ((seconds: number) => number) | null = null;
+  /** Keep the landing gear out once the ship is flying (to preview and test "gear out, not landed"). */
+  gearOut = false;
   /** Stop delivering frames (the stream is cut) without ending the story. */
   cut = false;
   /** What Game.log says about the connection (connection.ts). null: the log is not available. */
@@ -211,7 +213,7 @@ export class Scenario {
       if (this.fedUntil < 0) continue;
       const loopT = (this.fedUntil / 1000) % SCENARIO_SECONDS;
       if (this.cut || this.forced) continue;
-      const frame = frameAt(loopT);
+      const frame = frameAt(loopT, this.gearOut);
       if (!frame) continue;
       const actorState = (frame["actor"] as { state?: Record<string, unknown> } | undefined)?.state;
       if (this.uec && actorState) actorState["uec_balance"] = this.uec(this.fedUntil / 1000);

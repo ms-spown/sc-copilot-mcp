@@ -538,23 +538,27 @@ the balance, and it presses nothing: it is a display.
   view and, in full screen, "Contexte inconnu : aucun rappel pour l'instant." (unknown context, no reminder yet).
 - **What triggers what.** Gear out (`ship.gear` is "deployed") and not landed (`ship.landed` is false): "Atterrissage
   automatique", worded "si la demande est accordée" because a pad being granted is not in the stream, then the landing
-  request. Landed: the take-off request. Powerplant off: Flight Ready. Quantum mode: engage the jump. Hostile lock:
-  decoys and noise (a countermeasure the stream reports as spent is left out). Shields down or cut (not in quantum
-  mode, where they are cut on purpose): power the shields. On foot or in EVA: the suit light, at the lowest priority
+  request. Landed: the take-off request. Powerplant off: Flight Ready. Quantum mode: the jump. Hostile lock: decoys
+  and noise (a countermeasure the stream reports as spent is left out). Shields cut, that is their power off (in
+  flight only, and not in quantum mode where they are cut on purpose): power the shields; shields that are merely down
+  get no advice, since powering a generator that is on does not bring them back. On foot or in EVA: the suit light, at the lowest priority
   ("si besoin"). A ground vehicle (recognised about 12 s after sitting down): the lights. Seated with no ship frame yet:
   Flight Ready, "si c'est un vaisseau".
 - **How much.** Compact view: at most three, in a wrapping line. Full screen: at most six. The rest, the sentence on keys
   and the "Il fait sombre" button sit behind ONE button (`aria-expanded`), the zone's only tab stop while folded. No live
   region, nothing stored.
-- **Keys.** A default key is printed only for R (Flight Ready), B (quantum mode; held to engage), C (cruise), Alt+C
-  (decoupled mode), X (brake), H (decoys, held), J (noise) and T (suit light), always next to the word "défaut", with a
-  tip that says to check it in your own settings. They come from public sources (the Star Citizen Tools wiki, and for R
-  also player guides) and **none has been checked in the game on 4.10**. Every action whose sources disagree or that no
-  source gives (landing gear, auto land, landing request, lights, shields power, exit seat, take-off) is shown WITHOUT a
-  key. The table is data, `shortcutsTable()` in `src/dashboard/shortcutsPanel.ts`, with a version, a date, the game
-  version and, for every entry, its `src` and a `verified` flag that stays false until someone checks it in the game. The
-  game's default keys follow the position of the QWERTY keyboard, so on an AZERTY keyboard R, B, C, X, H, J and T are the
-  same letters; that has not been checked in the game either.
+- **Keys.** The rule: a key is printed only when at least two independent public sources give it and none gives another
+  one. That leaves X (space brake), H (decoys), J (noise) and T (suit light), always next to the word "défaut", with a
+  tip that says to check it in your own settings, and **none has been checked in the game on 4.10**. Every other action
+  is shown WITHOUT a key, on purpose: the quantum jump (B is the SCM/NAV toggle in the master modes; the jump is a hold of
+  the left mouse button, which is not shown either), cruise and decoupled mode (a 4.10.2 guide swaps them against the
+  wiki), Flight Ready (a 4.10.2 guide says right Alt + R, not R), landing gear, auto land, landing request, take-off,
+  lights, shields power and exit seat. The table is data, `shortcutsTable()` in `src/dashboard/shortcutsPanel.ts`, one
+  row per action with the letters of the sources behind its key (`src`); the sources themselves, their dates, the
+  version of the table, the game version, the list of keys somebody saw working in the game (empty) and the reason each
+  withheld action has no key are in `src/dashboard/shortcutsSources.ts`, which is not shipped in the page. A test requires
+  two distinct sources for every key. On a keyboard with the AZERTY layout the letters X, H, J and T keep their place;
+  whether the game follows the layout or the physical position has not been checked.
 - **What it never says.** That the lights are off: `ship.lights_on` cannot tell "off" from "not reported", so the lights
   reminder carries no state ("état non lu"). The current flight mode: `advanced_hud_enabled_scm` and
   `advanced_hud_enabled_nav` are display preferences and are not read. That it is dark: nothing in the stream or the log

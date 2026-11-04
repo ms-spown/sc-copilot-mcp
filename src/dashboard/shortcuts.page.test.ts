@@ -18,6 +18,7 @@ import { Scenario } from "./testing/scenario.js";
  */
 
 const SECOND = 1000;
+const NB = String.fromCharCode(160);
 const ONLINE = { state: "online", since: "2026-11-04T10:00:00Z", code: null, reason: null };
 
 async function at(seconds: number, options: { fullscreen?: boolean } = {}) {
@@ -88,8 +89,8 @@ describe("Feature: the compact view shows at most three reminders of the moment"
     const w = await at(68);
     const shown = rows(w);
     expect(shown.length).toBeLessThanOrEqual(3);
-    expect(shown.map(rowText)[0]).toMatch(/^Leurres · verrouillage hostile H maintenir défaut$/);
-    expect(shown.map(rowText)[1]).toMatch(/^Brouillage · verrouillage hostile J défaut$/);
+    expect(shown.map(rowText)[0]).toBe("Leurres · verrouillage hostile H défaut");
+    expect(shown.map(rowText)[1]).toBe("Brouillage · verrouillage hostile J défaut");
     expect(buttons(w)[0]).toMatch(/^Voir les \d+ autres ▸$/);
   });
 
@@ -101,9 +102,7 @@ describe("Feature: the compact view shows at most three reminders of the moment"
 
   it("Given a seat before the ship's frames arrive, Then Flight Ready is offered with its doubt", async () => {
     const w = await at(14);
-    expect(rowText(rows(w)[0]!)).toBe(
-      "Flight Ready (démarrer le vaisseau) · si c’est un vaisseau R défaut",
-    );
+    expect(rowText(rows(w)[0]!)).toBe("Flight Ready (démarrer le vaisseau) · si c’est un vaisseau");
   });
 
   it("Given the gear out and the ship in the air, Then auto land is offered conditionally, with no key", async () => {
@@ -119,12 +118,21 @@ describe("Feature: the compact view shows at most three reminders of the moment"
     w = await made({ pilot: { locomotion: "seated" }, derived: { ground_vehicle: "ARGO_ATLS" } });
     expect(rows(w).map(rowText)[0]).toBe("Phares · état non lu");
     w = await made(flight({ conditions: [{ id: "powerplant_off", level: "info" }] }));
-    expect(rowText(rows(w)[0]!)).toBe("Flight Ready (démarrer le vaisseau) R défaut");
+    expect(rowText(rows(w)[0]!)).toBe("Flight Ready (démarrer le vaisseau)");
   });
 
-  it("Given the quantum mode, Then holding B is the first reminder", async () => {
+  it("Given the quantum mode, Then the jump is the first reminder and carries no key", async () => {
     const w = await made(flight({ derived: { in_quantum_mode: true } }));
-    expect(rowText(rows(w)[0]!)).toBe("Engager le saut quantique B maintenir défaut");
+    expect(rowText(rows(w)[0]!)).toBe("Saut quantique");
+  });
+
+  it("Given the made-up flight with the gear kept out (the preview's gear=out), Then auto land leads, conditionally", async () => {
+    const scenario = new Scenario();
+    scenario.gearOut = true;
+    const w = await startPage({ scenario });
+    await w.advance(26 * SECOND);
+    expect(rowText(rows(w)[0]!)).toBe("Atterrissage automatique · si la demande est accordée");
+    expect(zoneText(w)).toContain("· Train sorti, en vol");
   });
 });
 
@@ -157,7 +165,7 @@ describe("Feature: nothing is shown when nothing is known", () => {
     expect(isShown(zone(compact))).toBe(false);
     const full = await made({ pilot: { locomotion: "mystery" } }, { fullscreen: true });
     expect(isShown(zone(full))).toBe(true);
-    expect(zoneText(full)).toContain("Contexte inconnu : aucun rappel pour l’instant.");
+    expect(zoneText(full)).toContain("Contexte inconnu" + NB + ": aucun rappel pour l’instant.");
     expect(rows(full)).toEqual([]);
     expect(buttons(full)).toEqual([]);
   });
@@ -169,11 +177,11 @@ describe("Feature: full screen shows up to six reminders, the rest sits behind o
     expect(rows(w)).toHaveLength(6);
     expect(zoneText(w)).toContain("· En vol, près d’une planète");
     const fold = buttons(w)[0]!;
-    expect(fold).toMatch(/^Voir les 2 autres ▸$/);
+    expect(fold).toBe("Voir 1 autre ▸");
     unfold(w);
     await w.advance(100);
-    expect(rows(w)).toHaveLength(8);
-    expect(buttons(w)).toEqual(["Voir les 2 autres ▴", "Il fait sombre"]);
+    expect(rows(w)).toHaveLength(7);
+    expect(buttons(w)).toEqual(["Masquer ▴", "Il fait sombre"]);
     expect(FakeNode.focused?.className).toContain("sc-fold");
     // the explanation of the keys is written, not only a tip
     expect(zoneText(w)).toContain(shortcutsKeyNote());
@@ -191,7 +199,7 @@ describe("Feature: full screen shows up to six reminders, the rest sits behind o
       expect(c.attrs["tabindex"]).toBeUndefined();
       expect(c.attrs["role"]).toBeUndefined();
     }
-    const stops = findAll(zone(w), (n) => n.attrs["tabindex"] !== undefined);
+    const stops = findAll(zone(w), (n) => n.attrs["tabindex"] === "0");
     expect(stops).toEqual([]);
   });
 });
@@ -281,5 +289,83 @@ describe("Feature: what the zone never does", () => {
     for (const b of findAll(zone(w), (n) => n.tag === "button")) {
       expect(b.textContent || b.attrs["aria-label"]).toBeTruthy();
     }
+  });
+});
+
+describe("Feature: the keyboard is never lost and the dark button does not outlive its context", () => {
+  it("Given 'Il fait sombre' pressed on foot, Then going into a ship drops it", async () => {
+    const w = await made({ pilot: { locomotion: "on_foot" } });
+    unfold(w);
+    await w.advance(100);
+    press(w, "Il fait sombre");
+    await w.advance(100);
+    const dark = findAll(
+      zone(w),
+      (n) => n.tag === "button" && n.textContent === "Il fait sombre",
+    )[0]!;
+    expect(dark.attrs["aria-pressed"]).toBe("true");
+    w.host.overrides.poll = (base: any) => ({
+      ...base,
+      unchanged: undefined,
+      connection: ONLINE,
+      weapons: null,
+      conditions: [],
+      ...flight(),
+    });
+    await w.advance(3 * SECOND);
+    expect(dark.attrs["aria-pressed"]).toBe("false");
+    expect(rowText(rows(w)[0]!)).toBe("Saut quantique");
+    expect(zoneText(w)).not.toContain("Phares");
+  });
+
+  it("Given the focus on 'Il fait sombre' when the context stops offering it (and nothing is left to fold), Then the focus goes to the zone", async () => {
+    const w = await made({ pilot: { locomotion: "on_foot" } });
+    unfold(w);
+    await w.advance(100);
+    const dark = findAll(
+      zone(w),
+      (n) => n.tag === "button" && n.textContent === "Il fait sombre",
+    )[0]!;
+    (w.doc as any).activeElement = dark;
+    FakeNode.focused = null;
+    w.host.overrides.poll = (base: any) => ({
+      ...base,
+      unchanged: undefined,
+      connection: ONLINE,
+      weapons: null,
+      ...flight({ conditions: [{ id: "powerplant_off", level: "info" }] }),
+    });
+    await w.advance(3 * SECOND);
+    expect(isShown(dark)).toBe(false);
+    expect(FakeNode.focused).toBe(zone(w));
+  });
+
+  it("Given the focus on the fold button when it goes away too, Then the focus goes to the zone itself", async () => {
+    const w = await made(flight({ derived: { in_quantum_mode: true } }), { fullscreen: true });
+    // quantum mode: one reminder, no key, no light: nothing to fold
+    const fold = findAll(zone(w), (n) => n.className.includes("sc-fold"))[0]!;
+    expect(isShown(fold)).toBe(false);
+    w.host.overrides.poll = (base: any) => ({
+      ...base,
+      unchanged: undefined,
+      connection: ONLINE,
+      weapons: null,
+      ...flight({}, { gear: "deployed" }),
+    });
+    await w.advance(3 * SECOND);
+    expect(isShown(fold)).toBe(true);
+    (w.doc as any).activeElement = fold;
+    FakeNode.focused = null;
+    w.host.overrides.poll = (base: any) => ({
+      ...base,
+      unchanged: undefined,
+      connection: ONLINE,
+      weapons: null,
+      ...flight({ derived: { in_quantum_mode: true } }),
+    });
+    await w.advance(3 * SECOND);
+    expect(isShown(fold)).toBe(false);
+    expect(FakeNode.focused).toBe(zone(w));
+    expect(zone(w).attrs["tabindex"]).toBe("-1");
   });
 });

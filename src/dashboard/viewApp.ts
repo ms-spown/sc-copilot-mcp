@@ -1130,7 +1130,10 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     show(R.ctxGear, !!gear);
     setText(R.ctxGear, gearText);
     show(R.ctxLights, !!byId.lights);
-    setText(R.ctxLights, byId.lights ? byId.lights.label + " (non vérifié)" : "");
+    setText(
+      R.ctxLights,
+      byId.lights ? byId.lights.label + (byId.lights.on ? " (non vérifié)" : "") : "",
+    );
     void now;
   }
 

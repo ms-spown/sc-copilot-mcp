@@ -7,7 +7,7 @@
 // - The fake host plays the scenario of src/dashboard/testing/scenario.ts through the REAL normaliser and event
 //   handler, answers the ui/* requests as the measured host does, and shows what the View sends to the conversation.
 // URL parameters: t=<seconds into the story> theme=light|dark w=<px> mode=inline|fullscreen balance=1 (presses the show-balance button) session=1
-//                 forced=off|waiting|game_without_telemetry|incompatible cut=1 plan=1 scroll=<px>
+//                 forced=off|waiting|game_without_telemetry|incompatible cut=1 gear=out plan=1 scroll=<px>
 //                 open=1  (unfolds the commerce card's details and the "Mouvements du solde" block)
 //                 trade=movements  (the story plus balance movements of every kind: an item, a probable reward, an unexplained
 //                 fall, a probable insurance cost; the "Mouvements du solde" block; src/dashboard/testing/movementsScenario.ts)
@@ -90,6 +90,7 @@ if (trade) scenario.uec = trade === "movements" ? movementBalanceAt : tradeBalan
 scenario.advanceTo(seek * 1000);
 if (q.get("forced")) scenario.forced = q.get("forced");
 if (q.get("cut")) scenario.cut = true;
+if (q.get("gear") === "out") scenario.gearOut = true;
 // conn=disconnected|menu|closed|online: what Game.log says (3 minutes ago); a kick for inactivity when disconnected.
 if (q.get("conn")) {
   const state = q.get("conn");

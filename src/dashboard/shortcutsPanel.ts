@@ -4,16 +4,17 @@
  * (landing gear out, on foot, EVA, ground vehicle, powerplant off, quantum mode, hostile lock, shields cut). Shipped inside
  * the page next to viewLogic.ts, with the same rules (serialised with Function.prototype.toString): only function
  * declarations, no import (so nothing from `node:` can reach the browser), no module-level value, text only through
- * textContent. The table of keys is a function for that reason.
+ * textContent. The table of keys is a function for that reason; its sources are in shortcutsSources.ts (not shipped).
  *
  * What it will NOT do, on purpose:
- *   - guess a key. A default key is shown only where the public sources say so (`keys` + `src` in the table below), always
- *     labelled "défaut" with a tip that says to check it in the game's own settings. The rest is an action without a key.
+ *   - guess a key. A default key is shown only when at least two independent sources give it and none another (`src` in
+ *     the table below, checked by a test against shortcutsSources.ts), always labelled "défaut" with a tip that says to
+ *     check it in the game's own settings. The rest is an action without a key.
  *   - say that the lights are off. `ship.lights_on` is read as a bool(): "off" and "not reported" look the same, so the
  *     lights reminder never states or deduces a state. `advanced_hud_enabled_scm/nav` are display preferences, not read.
  *   - detect darkness. Nothing in the stream or in the log says it. The suit light is listed on foot and in EVA at the
- *     lowest priority ("si besoin"); a button the player presses ("Il fait sombre", kept in this View's memory only)
- *     lifts the lights to the top.
+ *     lowest priority ("si besoin"); a button the player presses ("Il fait sombre", kept in this View's memory only, and
+ *     dropped when the player goes from foot to a vehicle or back) lifts the lights to the top.
  *   - show anything when the stream is not live, when Game.log says menu / disconnected / closed, or when the frames are
  *     stale. An unknown context says so (full screen) or shows nothing (compact view).
  *   - read the balance or any other figure: it reads states (gear, locomotion, conditions), never amounts.
@@ -21,64 +22,43 @@
  */
 
 /**
- * The actions and their default keys. Edit here, nothing else holds a key.
- * One row per action: [id, label, keys, source letters, held]. Expanded below into objects:
- *  - `keys`: the default key(s) of the game, as printed on the keycap ("Alt" + "C" is two caps). Empty: no key shown.
- *  - `hold`: the key is held, not tapped.
- *  - `src`: where the key comes from (letters of `sources`). A key without a source is never shown (a test enforces it).
- *  - `verified`: seen working in the game by the maintainer on `game`. None is yet: every key is a public-source default.
- * Labels are our own short wording; no text of the sources is copied. Conflicting sources (landing gear N or V, auto land
- * hold Ctrl or N or T, ship lights T or unlisted, power O/U/I/P, request landing Alt+N) leave the entry WITHOUT a key.
- * T is shown only for the suit light, from one source; other guides give it to the ship lights or to auto land.
+ * The actions and their default keys. Edit here, nothing else holds a key. One row per action: [id, label, keys, src].
+ *  - `keys`: the default key(s) as printed on the keycap ("Alt" + "C" would be two caps). Empty: no key shown.
+ *  - `src`: the letters of the sources (shortcutsSources.ts) that confirm the key; at least two, or no key.
+ * Labels are our own short wording. Actions whose sources disagree or are missing carry no key (see `withheld` in
+ * shortcutsSources.ts for each reason). Nothing is "held": a key is shown as a plain key.
  */
 export function shortcutsTable(): any {
   const rows: any[][] = [
-    ["ready", "Flight Ready (démarrer le vaisseau)", ["R"], "wg"],
+    ["ready", "Flight Ready (démarrer le vaisseau)"],
     ["gear", "Train : sortir ou rentrer"],
     ["land_req", "Demander l’atterrissage"],
     ["land_auto", "Atterrissage automatique"],
     ["takeoff", "Demander le décollage"],
-    ["qt", "Mode quantique : entrer ou quitter", ["B"], "w"],
-    ["qt_go", "Engager le saut quantique", ["B"], "w", true],
-    ["cruise", "Régulateur de vitesse (cruise)", ["C"], "w"],
-    ["decoupled", "Mode découplé", ["Alt", "C"], "w"],
-    ["brake", "Frein spatial", ["X"], "w"],
-    ["decoy", "Leurres", ["H"], "w", true],
-    ["noise", "Brouillage", ["J"], "w"],
+    ["qt", "Saut quantique"],
+    ["cruise", "Régulateur de vitesse (cruise)"],
+    ["decoupled", "Mode découplé"],
+    ["brake", "Frein spatial", ["X"], "wscn"],
+    ["decoy", "Leurres", ["H"], "wscn"],
+    ["noise", "Brouillage", ["J"], "wscn"],
     ["shield_pw", "Alimenter les boucliers"],
     ["exit", "Quitter le siège"],
     ["lights", "Phares"],
-    ["suit", "Lampe de combinaison", ["T"], "w"],
+    ["suit", "Lampe de combinaison", ["T"], "wsn"],
   ];
-  return {
-    version: 1,
-    checked: "2026-11-04",
-    game: "4.10",
-    sources: {
-      w: "wiki Star Citizen Tools, page des commandes, révision du 13 juillet 2026",
-      g: "guides de joueurs, versions 3.x à 4.x",
-    },
-    items: rows.map((r) => ({
-      id: r[0],
-      label: r[1],
-      keys: r[2] || [],
-      hold: !!r[4],
-      src: r[3] || "",
-      verified: false,
-    })),
-  };
+  return rows.map((r) => ({ id: r[0], label: r[1], keys: r[2] || [], src: r[3] || "" }));
 }
 
 /** The sentence on keys: the tip on "défaut" and the line in the unfolded part. */
 export function shortcutsKeyNote(): string {
-  return "Touche par défaut du jeu, d’après des sources publiques : à vérifier dans vos réglages (sans touche affichée : voir vos réglages). En AZERTY, les touches par défaut suivent l’emplacement QWERTY ; R, B, C, X, H, J et T sont les mêmes.";
+  return "Touche par défaut du jeu, d’après des sources publiques : à vérifier dans vos réglages (sans touche affichée : voir vos réglages). Sur un clavier AZERTY, les lettres X, H, J et T gardent leur place ; la prise en compte de la disposition par le jeu n’est pas vérifiée.";
 }
 
 /**
  * The reminders for a poll, most relevant first. `opts`: { grey } (the View's own verdict that the values are not current:
  * stale frames, no stream), { dark } (the player pressed "Il fait sombre"). Pure.
  * Result: { show, id, label, items, lightable, empty }. `show` false means: nothing at all (no stream, menu, disconnected,
- * closed, stale). `items` are { id, label, keys, hold, note, tier } with tier 0 = alert, 1 = now, 2 = general, 3 = if needed.
+ * closed, stale). `items` are { id, label, keys, note, tier } with tier 0 = alert, 1 = now, 2 = general, 3 = if needed.
  */
 export function shortcutsFor(L: any, poll: any, opts: any): any {
   const o = opts || {};
@@ -102,13 +82,12 @@ export function shortcutsFor(L: any, poll: any, opts: any): any {
   };
   const NS = "état non lu";
   const FIRE = "verrouillage hostile";
+  // The colon of a French sentence takes a non-breaking space before it (built by code, never typed).
+  const COLON = String.fromCharCode(160) + ": ";
   // [id, tier, note]: 0 alert, 1 now, 2 general, 3 if needed
   const plan: any = {
     off: [["ready", 1]],
-    quantum: [
-      ["qt_go", 1],
-      ["qt", 2],
-    ],
+    quantum: [["qt", 1]],
     landed: [
       ["takeoff", 1],
       ["exit", 2],
@@ -167,8 +146,8 @@ export function shortcutsFor(L: any, poll: any, opts: any): any {
   };
   const empties: any = {
     jump: "Rien à presser pendant le saut.",
-    down: "À terre : aucun rappel.",
-    unknown: "Contexte inconnu : aucun rappel pour l’instant.",
+    down: "À terre" + COLON + "aucun rappel.",
+    unknown: "Contexte inconnu" + COLON + "aucun rappel pour l’instant.",
   };
 
   const ship = poll.ship;
@@ -196,12 +175,12 @@ export function shortcutsFor(L: any, poll: any, opts: any): any {
     if (!cond("countermeasures_empty", "decoy")) picks.push(["decoy", 0, FIRE]);
     if (!cond("countermeasures_empty", "noise")) picks.push(["noise", 0, FIRE]);
   }
-  // Shields are cut on purpose in quantum mode: no reminder there. The ship must be on.
-  if (ship && lightable) {
-    const sh = cond("shields_down") || cond("shields_off");
-    if (sh) {
-      picks.push(["shield_pw", 0, cond("shields_down") ? "boucliers tombés" : "boucliers coupés"]);
-    }
+  // Shields cut (their power is off), in flight only: they are cut on purpose in quantum mode and the ground needs none.
+  // Shields "down" (spent) get no advice: powering a generator that is on does not bring them back.
+  if (ship && lightable && id !== "landed") {
+    const sh = cond("shields_off");
+    if (sh && !(sh.data && sh.data.quantum === true))
+      picks.push(["shield_pw", 0, "boucliers coupés"]);
   }
   if (o.dark && lightable) {
     // Pressed by the player: the light goes first among the reminders of the moment, without "si besoin".
@@ -211,18 +190,17 @@ export function shortcutsFor(L: any, poll: any, opts: any): any {
   }
 
   const byId: any = {};
-  for (const e of shortcutsTable().items) byId[e.id] = e;
+  for (const e of shortcutsTable()) byId[e.id] = e;
   const items: any[] = [];
   for (let tier = 0; tier <= 3; tier++) {
     for (const p of picks) {
       const e = byId[p[0]];
       if (p[1] !== tier || !e) continue;
-      const keyed = !!e.src && e.keys.length > 0;
       items.push({
         id: e.id,
         label: e.label,
-        keys: keyed ? e.keys : [],
-        hold: keyed && e.hold,
+        // a key is never printed without its sources
+        keys: e.src.length > 1 ? e.keys : [],
         note: p[2] || "",
         tier,
       });
@@ -262,8 +240,7 @@ export function shortcutsPanel(doc: any, L: any): any {
     li.n = el("span", "sc-n", "");
     li.k = el("span", "sc-k");
     li.kc = el("kbd", "sc-kc", "");
-    li.h = el("span", "sc-h", "maintenir");
-    add(li.k, li.kc, li.h, el("span", "sc-h", "défaut"));
+    add(li.k, li.kc, el("span", "sc-h", "défaut"));
     setTip(li.k, L.shortcutsKeyNote());
     add(li, li.t, li.n, li.k);
     rows.push(li);
@@ -283,7 +260,7 @@ export function shortcutsPanel(doc: any, L: any): any {
   add(head, el("h2", "sc-title", "Raccourcis"), ctxName, fold);
   add(root, head, empty, list, more);
 
-  const st: any = { open: false, dark: false, last: null };
+  const st: any = { open: false, dark: false, last: null, fam: "" };
   fold.addEventListener("click", () => {
     st.open = !st.open;
     paint();
@@ -296,7 +273,14 @@ export function shortcutsPanel(doc: any, L: any): any {
 
   function paint() {
     const a = st.last;
-    const r = L.shortcutsFor(L, a.poll, { grey: a.grey, dark: st.dark });
+    let r = L.shortcutsFor(L, a.poll, { grey: a.grey, dark: st.dark });
+    // "Il fait sombre" is about the light in use: going from foot to a vehicle (or back) drops it.
+    const fam = !r.lightable ? st.fam : r.id === "foot" || r.id === "eva" ? "suit" : "lights";
+    if (st.fam && fam !== st.fam && st.dark) {
+      st.dark = false;
+      r = L.shortcutsFor(L, a.poll, { grey: a.grey, dark: false });
+    }
+    st.fam = fam;
     // The compact view spends no line on "no context" or "nothing to say".
     show(root, r.show && (a.fullscreen || r.items.length > 0));
     const vis = a.fullscreen ? 6 : 3;
@@ -317,19 +301,32 @@ export function shortcutsPanel(doc: any, L: any): any {
       show(li.n, !!it.note);
       show(li.k, it.keys.length > 0);
       setText(li.kc, it.keys.join("+"));
-      show(li.h, !!it.hold);
     }
+    // A button that goes away must not take the keyboard focus with it: it goes to the next control, or to the zone.
+    const had = doc.activeElement;
     show(fold, canFold);
     show(more, canFold && st.open);
     show(dark, r.lightable);
+    if (had === dark && !r.lightable) {
+      if (canFold) fold.focus();
+      else {
+        setAttr(root, "tabindex", "-1");
+        root.focus();
+      }
+    } else if (had === fold && !canFold) {
+      setAttr(root, "tabindex", "-1");
+      root.focus();
+    }
     setAttr(dark, "aria-pressed", st.dark ? "true" : "false");
     setText(
       foldText,
-      extra > 1
-        ? "Voir les " + extra + " autres"
-        : extra > 0
-          ? "Voir 1 autre"
-          : "À propos des touches",
+      st.open
+        ? "Masquer"
+        : extra > 1
+          ? "Voir les " + extra + " autres"
+          : extra > 0
+            ? "Voir 1 autre"
+            : "À propos des touches",
     );
     setText(foldCaret, st.open ? " ▴" : " ▸");
     setAttr(fold, "aria-expanded", st.open ? "true" : "false");

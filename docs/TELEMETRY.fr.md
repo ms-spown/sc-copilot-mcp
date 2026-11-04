@@ -563,23 +563,29 @@ chiffre ni le solde, et elle n'appuie sur rien : c'est un affichage.
 - **Ce qui déclenche quoi.** Train sorti (`ship.gear` vaut « deployed ») et vaisseau pas posé (`ship.landed` est faux) :
   « Atterrissage automatique », formulé « si la demande est accordée » parce qu'un pad accordé n'est pas dans le flux,
   puis la demande d'atterrissage. Posé : la demande de décollage. Centrale éteinte : Flight Ready. Mode quantique :
-  engager le saut. Verrouillage hostile : leurres et brouillage (une contre-mesure que le flux dit épuisée est omise).
-  Boucliers tombés ou coupés (pas en mode quantique, où ils sont coupés exprès) : alimenter les boucliers. À pied ou en
+  le saut. Verrouillage hostile : leurres et brouillage (une contre-mesure que le flux dit épuisée est omise).
+  Boucliers coupés, c'est-à-dire alimentation coupée (en vol seulement, et pas en mode quantique, où ils sont coupés
+  exprès) : alimenter les boucliers ; des boucliers simplement tombés n'ont aucun conseil, puisqu'alimenter un
+  générateur qui fonctionne ne les ramène pas. À pied ou en
   EVA : la lampe de combinaison, en priorité basse (« si besoin »). Véhicule terrestre (reconnu environ 12 s après
   l'assise) : les phares. Assis sans trame de vaisseau pour l'instant : Flight Ready, « si c'est un vaisseau ».
 - **Combien.** Vue compacte : trois au plus, sur une ligne qui passe à la ligne. Plein écran : six au plus. Le reste, la
   phrase sur les touches et le bouton « Il fait sombre » sont derrière UN bouton (`aria-expanded`), le seul arrêt de
   tabulation de la zone tant qu'elle est repliée. Aucune zone « live », rien n'est enregistré.
-- **Les touches.** Une touche par défaut n'est écrite que pour R (Flight Ready), B (mode quantique ; maintenue pour
-  engager), C (cruise), Alt+C (mode découplé), X (frein), H (leurres, maintenue), J (brouillage) et T (lampe de
-  combinaison), toujours à côté du mot « défaut », avec une info-bulle qui dit de vérifier dans vos propres réglages.
-  Elles viennent de sources publiques (le wiki Star Citizen Tools, et pour R aussi des guides de joueurs) et **aucune n'a
-  été vérifiée en jeu sur la 4.10**. Toute action dont les sources se contredisent ou qu'aucune source ne donne (train,
-  atterrissage automatique, demande d'atterrissage, phares, puissance des boucliers, quitter le siège, décollage) est
-  affichée SANS touche. La table est une donnée, `shortcutsTable()` dans `src/dashboard/shortcutsPanel.ts`, avec une
-  version, une date, la version du jeu et, pour chaque entrée, son `src` et un drapeau `verified` qui reste faux tant que
-  personne ne l'a vérifié en jeu. Les touches par défaut du jeu suivent l'emplacement du clavier QWERTY : sur un clavier
-  AZERTY, R, B, C, X, H, J et T sont les mêmes lettres ; cela n'a pas non plus été vérifié en jeu.
+- **Les touches.** La règle : une touche n'est écrite que si au moins deux sources publiques indépendantes la donnent et
+  qu'aucune n'en donne une autre. Il reste X (frein spatial), H (leurres), J (brouillage) et T (lampe de combinaison),
+  toujours à côté du mot « défaut », avec une info-bulle qui dit de vérifier dans vos propres réglages, et **aucune n'a
+  été vérifiée en jeu sur la 4.10**. Toute autre action est affichée SANS touche, exprès : le saut quantique (B est la
+  bascule SCM/NAV des modes maîtres ; le saut est un appui long sur le bouton gauche de la souris, qui n'est pas affiché
+  non plus), le régulateur de vitesse et le mode découplé (un guide 4.10.2 les inverse par rapport au wiki), Flight Ready
+  (un guide 4.10.2 dit Alt droit + R, pas R), le train, l'atterrissage automatique, la demande d'atterrissage, le
+  décollage, les phares, la puissance des boucliers et quitter le siège. La table est une donnée, `shortcutsTable()` dans
+  `src/dashboard/shortcutsPanel.ts`, une ligne par action avec les lettres des sources derrière sa touche (`src`) ; les
+  sources elles-mêmes, leurs dates, la version de la table, la version du jeu, la liste des touches que quelqu'un a vues
+  fonctionner en jeu (vide) et la raison pour laquelle chaque action écartée n'a pas de touche sont dans
+  `src/dashboard/shortcutsSources.ts`, qui n'est pas livré dans la page. Un test exige deux sources distinctes pour
+  chaque touche. Sur un clavier à la disposition AZERTY, les lettres X, H, J et T gardent leur place ; on n'a pas vérifié
+  si le jeu suit la disposition ou la position physique.
 - **Ce qu'elle ne dit jamais.** Que les phares sont éteints : `ship.lights_on` ne distingue pas « éteint » de « non
   rapporté », donc le rappel des phares ne porte aucun état (« état non lu »). Le mode de vol courant :
   `advanced_hud_enabled_scm` et `advanced_hud_enabled_nav` sont des préférences d'affichage et ne sont pas lus. Qu'il
