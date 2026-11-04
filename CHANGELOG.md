@@ -6,6 +6,33 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed (dashboard, UX wave B: the ship loss and the contextual "Ask Claude" button)
+- **A ship loss is the gravest event of the page (audit recommendation R2).** One new top tone, "fatal" (solid red fill, built on
+  the existing danger colour: no new hue), above the red tint of shields down and a hostile lock and the amber of a hit or a
+  refused price. The header chip and the alert box use it; events older than a minute are made small and quiet while the
+  loss stands (live conditions never are). The box is two lines (what happened and when; the cargo presumed lost in SCU, the
+  aUEC paid only with the amounts shown), the cautions are folded under "Pourquoi ce n'est pas certain ?" (a native details
+  element, keyboard reachable) and "Et maintenant" states facts only (the run the loss interrupted will not be finished, said only
+  while that run is still the newest of the journal; a new session or run can begin; folded in the compact view, where the box adds
+  about 60 to 75 px to the one line of a refused price, measured in real Chrome). The "fatal" tone leads the header verdict for
+  3 minutes only and never over a red condition that began after the loss; then the normal order of gravity applies (the loss is an
+  amber entry) while the box keeps it for 15 minutes. Reduced history chips keep their age and "non vérifié" flag and their contrast.
+  The glyphs of the alerts have an empty alternative text for screen readers.
+  A refused price that is newer than the loss still takes the slot (as before). No value, replacement cost, insurance outcome or
+  culprit is shown: the log has none. **The insurance claim is not shown, and the reason is stated:** the parser reads the claim
+  request, but the dashboard receives it only inside the balance-gated movement explainer, so "no claim seen" would be false with
+  the amounts hidden; showing it needs a new field, left out on purpose. The "Analyser la perte" message points Claude to `sc_log_context`, which gives the session's claim COUNT (no time, no link to this loss) and says so.
+- **"Ask Claude" follows the situation (R4).** The analysis button reads "Analyser la perte" after a loss, "Que faire
+  maintenant ?" after a refused price, "Debrief du trajet" for 30 minutes after a run ended, else "Analyser" (compact) /
+  "Analyser ma situation" (full screen). Each sends a FIXED message (tests pin: no digit, no ship, nothing from the log, never the
+  balance) naming the tools to read. The player's choice is read at click time, for these messages AND the older "Analyser" and
+  "Bilan": amounts hidden, every tool call says `include_balance false` and the message says not to include the balance; amounts
+  shown, the message does not name `include_balance` (the server applies the choice, so the answers carry what the dashboard shows).
+  A refused item keeps the plain "Analyser"; the refusal and debrief messages tell Claude to use the selling terminal named by the
+  journal or by the player, else to ask. In full screen the
+  loss box carries its own copy of the button. The page grows from 350.7 kB to 357.7 kB, inside the internal budget of 368 kB
+  (our own guard, not a proven host limit).
+
 ## [2.6.0] - 2026-11-04
 
 Behaviour change first: **the aUEC balance and every amount derived from it are now SHOWN by default**; hiding them is the opt-in

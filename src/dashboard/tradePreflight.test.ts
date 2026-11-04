@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import { ledgerChannelClean, ledgerStripBalance, ledgerTradeNormalize } from "./ledgerPanel.js";
 import { PREFLIGHT_PLAN, preflightAnswer } from "./testing/preflightFixtures.js";
 import {
+  tradeAlertInfo,
+  tradeAskInfo,
+  tradeLossCargo,
+  tradeLossCause,
+  tradeLossInfo,
   tradePreflightClean,
   tradePreflightMatches,
   tradePreflightPlanOk,
@@ -215,6 +220,151 @@ describe("Feature: the alert of a refusal at the kiosk", () => {
     expect(
       tradeRefusalInfo(L, trade(null as any, 5 as any, { at: 4 }, { at: "no" }), NOW),
     ).toBeNull();
+  });
+});
+
+describe("Feature: a ship loss, as one box of two lines and a fold", () => {
+  const loss = (msAgo: number, extra: object = {}) => ({
+    at: new Date(NOW - msAgo).toISOString(),
+    ship_class: "MISC_Hull_C",
+    cause: "combat",
+    causer: "other",
+    zone: "OOC_Stanton_3a_Lyria",
+    cargo_scu: 696,
+    cargo_buys: 3,
+    unconfirmed_buys: 0,
+    unconfirmed_sells: 2,
+    run_id: "2026-11-04T11:00:00.000Z",
+    paid_auec: 137_911,
+    ...extra,
+  });
+  // the newest run is the one the losses below are tied to (run_id), unless a test says otherwise
+  const trade = (...ship_losses: object[]): any => ({
+    source: "journal",
+    runs: [{ id: "2026-11-04T11:00:00.000Z" }],
+    ship_losses,
+  });
+  const refusalAt = (msAgo: number) => ({
+    at: new Date(NOW - msAgo).toISOString(),
+    side: "sell",
+    kind: "commodity",
+    confidence: "confirmed",
+  });
+
+  for (const shown of [false, true]) {
+    it(`Given a fresh loss (amounts ${shown ? "shown" : "hidden"}), Then line one is the fact, line two the cargo, and every doubt is in the fold`, () => {
+      const info = tradeLossInfo(L, trade(loss(31_000)), NOW, shown);
+      expect(info.tone).toBe("fatal");
+      expect(info.run).toBe(true);
+      expect(info.text).toMatch(
+        /^Vaisseau détruit à \d{2}:\d{2}:\d{2}, joueur à bord \(MISC Hull C\)\s: combat\.$/,
+      );
+      expect(info.text).not.toMatch(/nom|journalis|vérifi/);
+      expect(info.advice).toContain("Cargo présumé perdu");
+      expect(info.advice).toContain("696");
+      // the doubts about the cargo are not in line two, only in the fold
+      expect(info.advice).not.toContain("non confirmée(s)");
+      expect(info.why).toContain("2 vente(s) non confirmée(s) ne sont pas déduites");
+      expect(info.why).toContain(
+        "Responsable d’après la forme du nom : un autre joueur ou une entité inconnue.",
+      );
+      expect(info.why).toContain("Propriété du vaisseau non vérifiée.");
+      expect(info.why).toContain("non journalisés");
+      expect(info.why).toContain("builds 2025");
+      // the amount paid goes with the balance only, and never into the fold
+      expect(/137\D{0,3}911/.test(info.advice)).toBe(shown);
+      expect(info.why).not.toMatch(/137\D{0,3}911/);
+      // nothing invented: no value, no replacement cost, no insurance outcome, no name
+      expect(JSON.stringify(info)).not.toMatch(/remboursé|Lyria|OOC_/);
+    });
+  }
+
+  it("Given the same loss, Then the sentences of the session card keep their wording (cause with who, cargo with doubts)", () => {
+    expect(tradeLossCause(loss(1))).toBe(
+      "combat par un autre joueur ou une entité inconnue (d’après le nom)",
+    );
+    expect(tradeLossCause(loss(1), true)).toBe("combat");
+    expect(tradeLossCargo(L, loss(1), false)).toContain(
+      "2 vente(s) non confirmée(s) ne sont pas déduites",
+    );
+    expect(tradeLossCargo(L, loss(1), false, true)).not.toContain("non confirmée(s)");
+  });
+
+  it("Given a loss with no cargo bought for it, Then no run was cut", () => {
+    expect(tradeLossInfo(L, trade(loss(1000, { run_id: null })), NOW, false).run).toBe(false);
+  });
+
+  it("Given a loss tied to an OLDER run than the newest (a respawn and a new run), Then the current run is not said to be cut", () => {
+    const two = {
+      source: "journal",
+      runs: [{ id: "2026-11-04T11:30:00.000Z" }, { id: "2026-11-04T11:00:00.000Z" }],
+      ship_losses: [loss(1000)],
+    };
+    expect(tradeLossInfo(L, two, NOW, false).run).toBe(false);
+    // tied to the newest, it is; with no run in the section at all, nothing is claimed
+    expect(
+      tradeLossInfo(
+        L,
+        { ...two, ship_losses: [loss(1000, { run_id: two.runs[0]!.id })] },
+        NOW,
+        false,
+      ).run,
+    ).toBe(true);
+    expect(tradeLossInfo(L, { ...two, runs: [] }, NOW, false).run).toBe(false);
+  });
+
+  it("Given two fresh losses, Then the newest one is the alert", () => {
+    const info = tradeLossInfo(L, trade(loss(9 * 60_000), loss(40_000)), NOW, false);
+    expect(info.ago).toBe("il y a 40 s");
+  });
+
+  it("Given a refused ITEM, Then the button is the plain one; a refused good gives the question", () => {
+    const item = {
+      source: "journal",
+      runs: [],
+      price_refusals: [{ ...refusalAt(5_000), kind: "item" }],
+    };
+    expect(tradeAskInfo(L, item, NOW, true)).toEqual({ kind: "analyse", label: "Analyser" });
+    const good = { source: "journal", runs: [], price_refusals: [refusalAt(5_000)] };
+    expect(tradeAskInfo(L, good, NOW, true).kind).toBe("refusal");
+  });
+
+  it("Given a loss and a refusal, Then the alert keeps the newer one, each with its own tone", () => {
+    const newerRefusal = { ...trade(loss(60_000)), price_refusals: [refusalAt(5_000)] };
+    expect(tradeAlertInfo(L, newerRefusal, NOW, false).tone).toBe("warn");
+    const newerLoss = { ...trade(loss(5_000)), price_refusals: [refusalAt(60_000)] };
+    expect(tradeAlertInfo(L, newerLoss, NOW, false).tone).toBe("fatal");
+  });
+
+  it("Given the situations, Then the Ask Claude button picks its kind and its words", () => {
+    const run = (stage: string, endedMsAgo: number): any => ({
+      source: "journal",
+      runs: [{ stage, ended_at: new Date(NOW - endedMsAgo).toISOString() }],
+    });
+    expect(tradeAskInfo(L, trade(loss(1000)), NOW, true)).toEqual({
+      kind: "loss",
+      label: "Analyser la perte",
+    });
+    const refused = { source: "journal", runs: [], price_refusals: [refusalAt(5_000)] };
+    expect(tradeAskInfo(L, refused, NOW, true)).toEqual({
+      kind: "refusal",
+      label: "Que faire maintenant ?",
+    });
+    expect(tradeAskInfo(L, run("complete", 60_000), NOW, true)).toEqual({
+      kind: "debrief",
+      label: "Debrief du trajet",
+    });
+    // not finished, finished long ago, no trade at all: the plain button
+    const plain = { kind: "analyse", label: "Analyser" };
+    for (const t of [run("partial", 60_000), run("complete", 2 * 3600_000), null, undefined]) {
+      expect(tradeAskInfo(L, t, NOW, true)).toEqual(plain);
+    }
+    // a server that does not answer has no alert box: the plain button, even over a loss
+    expect(tradeAskInfo(L, trade(loss(1000)), NOW, false)).toEqual(plain);
+    // a loss beats a finished run
+    expect(
+      tradeAskInfo(L, { ...run("complete", 1000), ship_losses: [loss(1000)] }, NOW, true).kind,
+    ).toBe("loss");
   });
 });
 

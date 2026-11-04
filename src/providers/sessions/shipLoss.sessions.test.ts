@@ -6,7 +6,7 @@ import {
   ledgerTradeNormalize,
 } from "../../dashboard/ledgerPanel.js";
 import { sessionBarInfo, sessionBarNormalize } from "../../dashboard/sessionPanel.js";
-import { tradeAlertInfo, tradeLossInfo } from "../../dashboard/tradePreflight.js";
+import { tradeAlertInfo, tradeLossCargo, tradeLossInfo } from "../../dashboard/tradePreflight.js";
 import { buildTradeSection } from "../../dashboard/tradeRun.js";
 import * as ViewLogic from "../../dashboard/viewLogic.js";
 import * as Preflight from "../../dashboard/tradePreflight.js";
@@ -363,13 +363,18 @@ describe("Feature: the page shows the loss in the alert slot", () => {
     const a = tradeAlertInfo(L, { ...section(), price_refusals: [] }, NOW, true);
     expect(a.loss).toBe(true);
     expect(a.label).toBe("Vaisseau détruit");
-    expect(a.text).toBe("Vaisseau détruit, joueur à bord (MISC Freelancer)\xa0: collision.");
+    expect(a.text).toMatch(
+      /^Vaisseau détruit à \d{2}:\d{2}:\d{2}, joueur à bord \(MISC Freelancer\)\xa0: collision\.$/,
+    );
+    expect(a.tone).toBe("fatal");
     expect(a.advice).toMatch(
       /^Cargo présumé perdu\xa0: 640\xa0SCU, 947\D{1,3}857\xa0aUEC payés \(prix d’achat, pas la valeur\) \(non confirmé\)\.$/,
     );
-    expect(a.note).toContain("non journalisés");
-    expect(a.note).toContain("Propriété du vaisseau non vérifiée");
-    expect(a.note).toContain("2025");
+    // the doubts moved to the fold ("why"): still all there, none in the two lines
+    expect(a.why).toContain("non journalisés");
+    expect(a.why).toContain("Propriété du vaisseau non vérifiée");
+    expect(a.why).toContain("2025");
+    expect(a.text + a.advice).not.toMatch(/non journalisés|non vérifiée|2025/);
     // a collision names no causer: the owner of the ship is not verified
     expect(a.text).not.toMatch(/pilot|propre|son vaisseau/i);
   });
@@ -390,10 +395,13 @@ describe("Feature: the page shows the loss in the alert slot", () => {
 
   it("Given a causer taken from the shape of a name, Then the words say so on the alert and on the session card", () => {
     const npc = tradeLossInfo(L, section({ cause: "combat", causer: "npc" }), NOW, true);
-    expect(npc.text).toContain("combat par une IA (d’après le nom)");
+    // on the alert, the cause alone is in the sentence and who goes in the fold, still said to come from the name's shape
+    expect(npc.text).toContain("combat.");
+    expect(npc.text).not.toContain("IA");
+    expect(npc.why).toContain("Responsable d’après la forme du nom : une IA.");
     const other = tradeLossInfo(L, section({ cause: "combat", causer: "other" }), NOW, true);
-    expect(other.text).toContain(
-      "combat par un autre joueur ou une entité inconnue (d’après le nom)",
+    expect(other.why).toContain(
+      "Responsable d’après la forme du nom : un autre joueur ou une entité inconnue.",
     );
     const s = withLoss();
     s.ship_losses[0] = { ...s.ship_losses[0]!, cause: "combat", causer: "other" };
@@ -427,7 +435,7 @@ describe("Feature: the page shows the loss in the alert slot", () => {
         { cause: "combat", causer: "npc" },
       ]) {
         const a = tradeLossInfo(L, section(over), NOW, money);
-        texts.push(a.label, a.text, a.advice, a.note, a.at, a.ago);
+        texts.push(a.label, a.text, a.advice, a.why, a.at, a.ago);
       }
     }
     const summary = summarizeSession(withLoss());
@@ -456,10 +464,15 @@ describe("Feature: the page shows the loss in the alert slot", () => {
     expect(texts.join("\n")).toMatch(/Payé pour ce cargo\xa0: 947\D{1,3}857\xa0aUEC/);
   });
 
-  it("Given sales the journal could not confirm, Then the alert says the cargo lost may be overestimated", () => {
+  it("Given sales the journal could not confirm, Then the alert says in its fold that the cargo lost may be overestimated", () => {
     const a = tradeLossInfo(L, section({ unconfirmed_sells: 2 }), NOW, true);
-    expect(a.advice).toContain("2 vente(s) non confirmée(s)");
-    expect(a.advice).toContain("surestimé");
+    expect(a.why).toContain("2 vente(s) non confirmée(s)");
+    expect(a.why).toContain("surestimé");
+    // the two lines stay short; the card of the commerce and the session keep the whole sentence
+    expect(a.advice).not.toContain("non confirmée(s)");
+    expect(tradeLossCargo(L, { cargo_scu: 640, unconfirmed_sells: 2 }, false)).toContain(
+      "surestimé",
+    );
   });
 
   it("Given the balance hidden, Then the SCU show and the paid amount does not, even if the section carried it", () => {
