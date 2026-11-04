@@ -219,7 +219,10 @@ export function isSafeCollectionName(name: string): boolean {
  * moved with SCMCP_BUILD_CACHE_DIR may hold other things.
  */
 export const BUILD_CACHE_LIMITS = { maxFiles: 60, maxBytes: 400 * 1024 * 1024 };
-const BUILD_CACHE_FILE = /^[A-Za-z0-9_.-]+__[A-Za-z0-9_.-]+__[0-9a-f]{10}\.json$/;
+/** `<dataset>__<collection>__<10 hex of the build sha>.json`, the dataset one of ours, the collection a safe name. */
+const BUILD_CACHE_FILE = new RegExp(
+  `^(?:${Object.keys(DATASETS).join("|")})__[A-Za-z0-9_.-]+__[0-9a-f]{10}\\.json$`,
+);
 
 /** Prune the dump cache past its limits; `keep` is the file just written. Failures are ignored. */
 export function pruneBuildCache(dir: string = CACHE_DIR, keep?: string): Promise<string[]> {

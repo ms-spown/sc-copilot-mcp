@@ -50,6 +50,43 @@ describe("Feature: the HTTP disk cache is pruned all along the life of the serve
   });
 });
 
+describe("Feature: pruning the HTTP disk cache touches only the files the cache wrote", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-diskprune-names-"));
+    configureDiskCache(dir);
+  });
+  afterEach(() => {
+    configureDiskCache(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("Given files that only look like ours, When the folder is pruned, Then every one survives (even the oldest)", async () => {
+    const hex = "0123456789abcdef".repeat(4); // 64
+    const lookAlikes = [
+      "keepme.json",
+      "notes.txt",
+      `${hex}.json.bak`,
+      `${hex}.JSON`,
+      `${hex.slice(1)}.json`, // 63
+      `${hex}0.json`, // 65
+      `${hex.toUpperCase()}.json`, // not the lower-case hex the cache writes
+      `${hex}.json.tmp`,
+    ];
+    const old = (Date.now() - 365 * 86_400_000) / 1000;
+    for (const n of lookAlikes) {
+      fs.writeFileSync(path.join(dir, n), "mine");
+      fs.utimesSync(path.join(dir, n), old, old);
+    }
+    const c = client(10);
+    for (let i = 0; i < 700; i++) await fetchWithCache(c, `/question-${i}`);
+    for (const n of lookAlikes) expect(fs.existsSync(path.join(dir, n)), n).toBe(true);
+    // ... and the real ones were pruned all the same
+    const ours = fs.readdirSync(dir).filter((n) => /^[0-9a-f]{64}\.json$/.test(n));
+    expect(ours.length).toBeLessThanOrEqual(450);
+  });
+});
+
 describe("Feature: a byte budget on the memory cache", () => {
   it("Given answers of 10 kB and a budget of 35 kB, When ten are fetched, Then at most three stay", async () => {
     configureMemoryCache({ maxBytes: 35_000 });

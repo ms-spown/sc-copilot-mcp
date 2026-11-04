@@ -115,6 +115,42 @@ describe("Feature: the cache folder keeps the newest commits only", () => {
     expect(cacheFiles()).toContain("notes.txt");
   });
 
+  it("Given files that only look like ours, Then they all survive the pruning", async () => {
+    fs.mkdirSync(path.join(dir, "scmdb"), { recursive: true });
+    const lookAlikes = [
+      "keepme.json",
+      "notes.txt",
+      "010101010101__changelog-all-0123456789ab.json.bak",
+      "010101010101__changelog-all-0123456789ab.JSON",
+      "010101010101__changelog-all-0123456789a.json", // 11 hex
+      "010101010101__changelog-all-0123456789abc.json", // 13 hex
+      "010101010101__changelog.json", // the layout before this release: not ours any more
+      "01010101010__changelog-all-0123456789ab.json", // 11 hex of commit
+      "010101010101__other-all-0123456789ab.json",
+    ];
+    for (const n of lookAlikes) fs.writeFileSync(path.join(dir, "scmdb", n), "mine");
+    await readCommits(makeScmdb(), 6);
+    for (const n of lookAlikes) expect(cacheFiles(), n).toContain(n);
+  });
+
+  it("Given a file written by the store, Then its name holds nothing the server said, and its content is the validated value", async () => {
+    const s = makeScmdb(undefined, [{ version: "1.0.1", extra: { deep: [1, 2] } }]);
+    newCommit(1);
+    const loaded = await s.changelog();
+    const [name] = cacheFiles();
+    expect(name).toMatch(/^[0-9a-f]{12}__changelog-all-[0-9a-f]{12}\.json$/);
+    const onDisk = fs.readFileSync(path.join(dir, "scmdb", name), "utf8");
+    expect(onDisk).toBe(JSON.stringify(loaded.data));
+    expect(JSON.parse(onDisk)).toEqual([{ version: "1.0.1", extra: { deep: [1, 2] } }]);
+  });
+
+  it("Given a body that is not the shape of its file, Then nothing is written to the cache", async () => {
+    const s = makeScmdb(undefined, { not: "a list" });
+    newCommit(1);
+    await expect(s.changelog()).rejects.toThrow(/unexpected shape/);
+    expect(fs.existsSync(path.join(dir, "scmdb"))).toBe(false);
+  });
+
   it("Given the newest copy, Then it is never the one removed", async () => {
     const s = makeScmdb();
     await readCommits(s, 8);

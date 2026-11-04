@@ -29,7 +29,9 @@ const left = () => fs.readdirSync(dir).sort();
 /** The lock file of a server that stopped long ago (a fresh one means a write in progress, which is refused). */
 const staleLock = () => {
   const old = (Date.now() - 10 * 60_000) / 1000;
-  fs.utimesSync(path.join(dir, "sessions.json.lock"), old, old);
+  for (const n of fs.readdirSync(dir).filter((f) => f.includes(".lock"))) {
+    fs.utimesSync(path.join(dir, n), old, old);
+  }
 };
 
 const OURS = [
@@ -39,6 +41,9 @@ const OURS = [
   "sessions.json.bak-2026-11-03T08-00-00-000Z",
   "sessions.json.corrupt-2026-11-02T08-00-00-000Z",
   "sessions.json.lock",
+  "sessions.json.lock.takeover",
+  "sessions.json.lock.stale-4242-9f3a1c2b",
+  "sessions.json.lock.takeover.stale-4242-9f3a1c2b",
   "sessions.json.4242.9f3a1c2b.tmp",
 ];
 const NOT_OURS = [
@@ -56,6 +61,10 @@ const NOT_OURS = [
   "sessions.json.bak-2026-11-04T08-00-00-000Z.txt",
   "sessions.json.v1.bak.old",
   "sessions.json.12.tmp.keep",
+  "sessions.json.lock.stale-4242", // no id
+  "sessions.json.lock.stale-4242-9f3a1c2bZ",
+  "sessions.json.lock.takeover.keep",
+  "sessions.json.stale-4242-9f3a1c2b", // not the name of a lock
 ];
 
 describe("Feature: planWipe lists what belongs to the session file", () => {
@@ -183,11 +192,51 @@ describe("Feature: it refuses a path that does not look like the sessions file",
     expect(plan.files).toHaveLength(2);
   });
 
-  it("Given the default name with damaged content, Then it is still wiped (a corrupt copy is the case for wiping)", async () => {
-    write("sessions.json", "{ not json");
+  it("Given a file named exactly sessions.json that is not a sessions file, Then it is refused, with the reason and none of its content", async () => {
+    for (const text of [
+      "{ not json " + SECRET,
+      JSON.stringify({ note: SECRET }),
+      JSON.stringify({ version: "2", sessions: [], note: SECRET }),
+      JSON.stringify({ version: 2, note: SECRET }),
+      JSON.stringify([SECRET]),
+      "",
+    ]) {
+      write("sessions.json", text);
+      write("sessions.json.v1.bak");
+      const plan = await planWipe(file);
+      expect(plan.refused, text).toMatch(/does not look like a sessions file/);
+      expect(plan.files).toEqual([]);
+      const shown = describeWipe(plan, false);
+      expect(shown).not.toContain(SECRET);
+      expect(shown).toMatch(/delete it by hand/i);
+      expect(left()).toEqual(["sessions.json", "sessions.json.v1.bak"]); // nothing was touched
+    }
+  });
+});
+
+describe("Feature: a name that differs by case is not 'nothing to delete'", () => {
+  it("Given Sessions.json on disk and sessions.json asked for, Then it says no such file and names the similar one", async () => {
+    write("Sessions.json");
+    const plan = await planWipe(file);
+    expect(plan.refused).toMatch(/no such file/);
+    expect(plan.refused).toContain("Sessions.json");
+    const shown = describeWipe(plan, false);
+    expect(shown).not.toMatch(/nothing to delete/i);
+    expect(shown).not.toContain(SECRET);
+    expect(left()).toEqual(["Sessions.json"]);
+  });
+
+  it("Given the right case on disk too, Then the exact name is the one wiped", async () => {
+    write("sessions.json");
     const plan = await planWipe(file);
     expect(plan.refused).toBeUndefined();
-    expect(plan.files.map((f) => f.name)).toEqual(["sessions.json"]);
+  });
+
+  it("Given nothing at all in the folder, Then it still says there is nothing to delete", async () => {
+    write("unrelated.txt", "x");
+    const plan = await planWipe(file);
+    expect(plan.refused).toBeUndefined();
+    expect(describeWipe(plan, false)).toMatch(/nothing to delete/i);
   });
 });
 
@@ -197,6 +246,19 @@ describe("Feature: a write in progress is not interrupted", () => {
     write("sessions.json.lock", "");
     const plan = await planWipe(file, { now: () => Date.now() });
     expect(plan.refused).toMatch(/in use|being written|lock/i);
+  });
+
+  it("Given a fresh takeover gate or a fresh reclaimed lock, Then it is refused too", async () => {
+    for (const name of [
+      "sessions.json.lock.takeover",
+      "sessions.json.lock.stale-4242-9f3a1c2b",
+      "sessions.json.lock.takeover.stale-4242-9f3a1c2b",
+    ]) {
+      write("sessions.json");
+      write(name, "");
+      expect((await planWipe(file)).refused, name).toMatch(/fresh/);
+      fs.rmSync(path.join(dir, name));
+    }
   });
 
   it("Given a stale lock file, Then it is wiped with the rest", async () => {

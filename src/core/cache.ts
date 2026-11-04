@@ -76,6 +76,9 @@ function diskPath(key: string): string | null {
   return path.join(dir, `${createHash("sha256").update(key).digest("hex")}.json`);
 }
 
+/** `<sha-256 of the key, 64 lower-case hex digits>.json`: what `diskPath` writes. */
+const DISK_NAME = /^[0-9a-f]{64}\.json$/;
+
 /** The folder is checked at the first write of a run, then again every this many writes (a long-lived server keeps writing). */
 const PRUNE_EVERY_WRITES = 50;
 let writesSincePrune = 0;
@@ -88,7 +91,8 @@ async function pruneDisk(dir: string): Promise<void> {
   pruning = true;
   writesSincePrune = 0;
   try {
-    const names = (await fs.readdir(dir)).filter((n) => n.endsWith(".json"));
+    // Only the exact names diskPath writes: a user's keepme.json in that folder is never counted or removed.
+    const names = (await fs.readdir(dir)).filter((n) => DISK_NAME.test(n));
     if (names.length <= MAX_DISK_FILES) return;
     const stats = await Promise.all(
       names.map(async (n) => ({ n, t: (await fs.stat(path.join(dir, n))).mtimeMs })),

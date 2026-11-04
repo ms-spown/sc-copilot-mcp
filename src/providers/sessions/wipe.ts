@@ -17,7 +17,8 @@ import { shortPath } from "../../core/paths.js";
 /** A lock younger than this means a server is writing right now: wiping under its feet is refused. */
 const LOCK_IN_USE_MS = 30_000;
 
-export type WipeKind = "sessions" | "format-backup" | "backup" | "corrupt" | "lock" | "tmp";
+export type WipeKind =
+  "sessions" | "format-backup" | "backup" | "corrupt" | "lock" | "lock-leftover" | "tmp";
 
 export interface WipeFile {
   name: string;
@@ -45,7 +46,9 @@ function kindOf(name: string, base: string): WipeKind | null {
   if (/^\.v\d{1,3}\.bak$/.test(rest)) return "format-backup";
   if (new RegExp(`^\\.bak-${STAMP}$`).test(rest)) return "backup";
   if (new RegExp(`^\\.corrupt-${STAMP}$`).test(rest)) return "corrupt";
-  if (rest === ".lock") return "lock";
+  // The lock, the gate of a lock takeover, and what a killed takeover leaves (`<lock or gate>.stale-<pid>-<8 hex>`).
+  if (rest === ".lock" || rest === ".lock.takeover") return "lock";
+  if (/^\.lock(\.takeover)?\.stale-\d{1,10}-[0-9a-f]{8}$/.test(rest)) return "lock-leftover";
   if (/^\.\d{1,10}(\.[0-9a-f]{8})?\.tmp$/.test(rest)) return "tmp";
   return null;
 }
@@ -79,6 +82,21 @@ export async function planWipe(file: string, deps: { now?: () => number } = {}):
     );
   }
 
+  let names: string[];
+  try {
+    names = await fs.readdir(dir);
+  } catch {
+    return { dir, file: resolved, files: [] };
+  }
+  // A name that differs from a file of the folder only by its case is not "nothing to delete": say what is there
+  // (its name only). The folder listing is the truth here: some systems answer a lookup in any case.
+  const similar = names.find((n) => n !== base && n.toLowerCase() === base.toLowerCase());
+  if (!names.includes(base) && similar) {
+    return refuse(
+      `${base}: no such file. A file with a similar name is there: ${similar} (the case differs). Check the case in SCMCP_SESSIONS_FILE. Nothing was touched.`,
+    );
+  }
+
   let mainStat: Awaited<ReturnType<typeof fs.lstat>> | null = null;
   try {
     mainStat = await fs.lstat(resolved);
@@ -88,31 +106,22 @@ export async function planWipe(file: string, deps: { now?: () => number } = {}):
   if (mainStat && !mainStat.isFile()) {
     return refuse(`${base} is not a file (a folder or a link), so it was not touched.`);
   }
-  // The default name is ours by definition, even if its content is damaged (that is a case for wiping). A custom
-  // name (SCMCP_SESSIONS_FILE) must hold what the store writes, or the variable points at someone else's file.
-  if (!mainStat && base !== DEFAULT_NAME) {
+  // Whatever the name, a file is deleted only if it holds what the store writes (an integer `version` and a `sessions`
+  // list): the default name can be somebody else's file too, and SCMCP_SESSIONS_FILE can point anywhere.
+  if (mainStat) {
+    const readable = mainStat.size <= MAX_LOOK_BYTES;
+    if (!readable || !looksLikeSessions(await fs.readFile(resolved, "utf8"))) {
+      return refuse(
+        `${base} does not look like a sessions file (it has no integer "version" and no "sessions" list${readable ? "" : "; it is also far too big to be one"}), so it and its copies were not touched. If it is yours, delete it by hand; otherwise check SCMCP_SESSIONS_FILE.`,
+      );
+    }
+  } else if (base !== DEFAULT_NAME) {
+    // Only the copies are left, and nothing shows that a custom name belongs to the sessions file.
     return refuse(
       `${base} is not there, and nothing else shows that this name belongs to the sessions file, so no copy next to it was touched. Check SCMCP_SESSIONS_FILE.`,
     );
   }
-  if (mainStat && base !== DEFAULT_NAME) {
-    let ok = false;
-    if (mainStat.size <= MAX_LOOK_BYTES) {
-      ok = looksLikeSessions(await fs.readFile(resolved, "utf8"));
-    }
-    if (!ok) {
-      return refuse(
-        `${base} does not look like a sessions file (no version and sessions list), so it was not touched. Check SCMCP_SESSIONS_FILE.`,
-      );
-    }
-  }
 
-  let names: string[];
-  try {
-    names = await fs.readdir(dir);
-  } catch {
-    return { dir, file: resolved, files: [] };
-  }
   const files: WipeFile[] = [];
   for (const name of names) {
     const kind = kindOf(name, base);
@@ -124,7 +133,7 @@ export async function planWipe(file: string, deps: { now?: () => number } = {}):
       continue;
     }
     if (!stat.isFile()) continue; // a link, a folder: never followed, never removed
-    if (kind === "lock" && now() - stat.mtimeMs < LOCK_IN_USE_MS) {
+    if ((kind === "lock" || kind === "lock-leftover") && now() - stat.mtimeMs < LOCK_IN_USE_MS) {
       return refuse(
         `${name} is fresh: a server is writing the sessions right now. Close Claude Desktop (or wait a few seconds) and run it again.`,
       );

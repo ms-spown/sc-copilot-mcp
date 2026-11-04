@@ -83,7 +83,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 - **Growth is bounded (audit F4).** Parsed SCMDB files: 16 at most and 160 MB of JSON text, least recently used first. Memory
   cache: 96 MB of JSON text besides the 300 entries. SCMDB cache folder: the files of the newest 3 commits. Dump cache
   folder: 60 files and 400 MB. The HTTP disk cache is checked every 50 writes, not only at the first one of a run. Only
-  files named like the server's own are pruned.
+  files named like the server's own exact names are pruned (a `keepme.json` in the HTTP cache folder is left alone). The
+  SCMDB cache now stores only the value its shape accepted, re-encoded, under a name built from the commit, the kind, the
+  channel and a hash (nothing the server said is a path component); the files of the previous naming are no longer used
+  and can be deleted from the `scmdb` folder (one re-download).
 - A symbolic link or junction named `Game.log` is followed only to a file that is itself called `*.log` (audit F7).
   `SAFE_NAME` of SCMDB no longer accepts `.` and `..` as a file name (audit F13).
 

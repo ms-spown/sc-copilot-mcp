@@ -47,6 +47,24 @@ describe("Feature: pruneBuildCache", () => {
     }
   });
 
+  it("Given files that only look like ours, Then every one survives, even the oldest", async () => {
+    const lookAlikes = [
+      "keepme.json",
+      "notes.txt",
+      "ships__vehicles__0123456789.json.bak",
+      "ships__vehicles__0123456789.JSON",
+      "ships__vehicles__012345678.json", // 9 hex
+      "ships__vehicles__0123456789a.json", // 11 hex
+      "ships__vehicles__0123456789ABCDEF.json",
+      "mydata__vehicles__0123456789.json", // a dataset this server does not have
+      "ships__vehicles.json",
+    ];
+    for (const n of lookAlikes) put(n, 10, 9_999_999);
+    for (let i = 0; i < BUILD_CACHE_LIMITS.maxFiles + 5; i++) put(ours(i), 10, 1000 - i);
+    await pruneBuildCache(dir);
+    for (const n of lookAlikes) expect(fs.readdirSync(dir), n).toContain(n);
+  });
+
   it("Given a folder under the limits, Then nothing is removed", async () => {
     for (let i = 0; i < 5; i++) put(ours(i), 10, 100 - i);
     expect(await pruneBuildCache(dir)).toEqual([]);
