@@ -95,13 +95,14 @@ export function tradeHistory(base: number, nowMs: number): BalancePoint[] {
   return out;
 }
 
-export type TradeVariant = "story" | "unknown" | "partial" | "none" | "second";
+export type TradeVariant = "story" | "unknown" | "partial" | "none" | "second" | "estimated";
 
 /**
  * The ledger payload (with its trade section) at `nowMs` for a variant:
  *   story   the run above, complete.
  *   unknown the dashboard was opened after the purchases: the balance before the first purchase was not seen.
  *   partial only the first sale happened (the second lot is still on board).
+ *   estimated the stream was cut while the sales were settled: the fees cannot be measured per side, only deduced (hatched).
  *   none    no trade journal feeds the dashboard.
  *   second  the run above followed by a second, smaller one (a new purchase after the sales).
  */
@@ -119,6 +120,11 @@ export function tradeLedger(
   );
   let history = tradeHistory(base, nowMs);
   if (variant === "none") transactions = undefined;
+  if (variant === "estimated") {
+    // The balance is known before the purchases and at the end, with the stream cut around the sales.
+    history = history.filter((p) => p.at < base + 20_000 || p.at > base + 202_000);
+    history = history.map((p) => (p.at < base + 20_000 ? { ...p, until: base + 19_900 } : p));
+  }
   if (variant === "unknown") history = history.filter((p) => p.at > base + 30_000);
   if (variant === "partial") {
     transactions = transactions?.filter((t) => t.at !== tradeTransactions(base)[3]!.at);

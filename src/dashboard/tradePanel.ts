@@ -289,15 +289,16 @@ export function tradeInlineText(L: any, trade: any, showBalance: boolean): strin
 
 /**
  * Builds the card and the compact line once; `render(ctx)` then only changes text, attributes and custom properties.
+ * svgNs is the SVG namespace name, handed in by the View (one place names it).
  * ctx: { trade, plan, showBalance, fullscreen, balance, baseline }
  *   trade    the normalised commerce section of the ledger (or null)
  *   plan     the cleaned plan (or null)
  *   balance  the poll's balance { delta, since } while shown (fallback when no trade journal exists)
  *   baseline where the balance change is counted from, in words
  */
-export function tradePanel(doc: any, L: any): any {
+export function tradePanel(doc: any, L: any, svgNs: string): any {
   const cfg = tradeConfig();
-  const SVG = "http://www.w3.org/2000/svg";
+  const SVG = svgNs;
   const el = (tag: string, cls?: string, text?: string): any => {
     const n = doc.createElement(tag);
     if (cls) n.className = cls;
@@ -761,7 +762,7 @@ export function tradePanel(doc: any, L: any): any {
       setText(r.label, label);
       setText(r.value, value);
       setText(r.sub, sub);
-      setAttr(r.root, "data-estimate", estimate ? "1" : "0");
+      setAttr(r.root, "data-estimate", estimate && value !== "—" ? "1" : "0");
     };
     if (run) {
       paceRow(
@@ -810,7 +811,9 @@ export function tradePanel(doc: any, L: any): any {
           ? m.planned_net.basis === "prix_du_plan"
             ? "plan − frais au taux observé, sur le chiffre d’affaires du plan"
             : "plan − frais au taux observé, sur le chiffre d’affaires de ce trajet"
-          : "même résultat que ce trajet",
+          : pj && pj.next_run_net !== null
+            ? "même résultat que ce trajet"
+            : "il faut un bénéfice net mesuré ou un plan et des frais observés",
         true,
         !!pj,
       );

@@ -193,6 +193,19 @@ describe("Feature: honest when it does not know", () => {
     expect(t).not.toContain("+143 000");
   });
 
+  it("Given the stream was cut around the sales, Then the fees are deduced as a total and labelled estimated", async () => {
+    const w = await page("estimated");
+    await w.advance(215 * SECOND);
+    await fullscreen(w);
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(3 * SECOND);
+    const t = card(w);
+    expect(t).toMatch(/Bénéfice net\s*mesuré\s*\+143 000 aUEC/);
+    expect(t).toMatch(/Frais\s*estimé\s*−43 568 aUEC/);
+    expect(t).toContain("estimé : marge brute − bénéfice net, sans détail par côté");
+    expect(t).not.toContain("Achat\n");
+  });
+
   it("Given only the first lot was sold, Then the run is in progress and no net is claimed", async () => {
     const w = await page("partial");
     await w.advance(215 * SECOND);

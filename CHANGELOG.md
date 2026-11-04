@@ -6,6 +6,35 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Commerce card in the live dashboard** ("Commerce"). It replaces the misleading "Prévu / Réalisé" block, which put a
+  planned profit next to a balance change (the change also holds the goods bought, the sales and the fees). A pure model
+  (`src/dashboard/tradeRun.ts`) turns the transactions of a run, the balance history and the plan into: planned profit,
+  turnover, purchase cost, gross margin, price gap, fees, net profit (balance after the last sale minus the balance just
+  before the first purchase), run time, net per hour and an extrapolation with its assumptions, plus the planned profit
+  net of the observed fee rate. Fees are not in the game log: they are measured per side against the balance (a log
+  amount matched with the balance change within a few seconds, labelled "mesuré") and, when that cannot be done, deduced
+  as gross margin minus net and labelled "estimé"; unknown is shown as unknown, never as zero. The card shows the
+  headline numbers (net profit, turnover, fees, the next trip), a waterfall from planned to real, fees per side, pace
+  and projection, and a price curve ("cours") with the target price and the price really obtained; estimated figures are
+  hatched and tagged, measured ones are solid. All amounts of a run are built only when the player shows the balance and
+  never travel on the channel between Views or in a message to the model. The transactions come from a `TradeTransaction`
+  contract (`src/dashboard/tradeTypes.ts`) through an injected source; the Game.log parser is on `feat/trade-journal` and
+  is not wired yet, so for now the card shows the plan and the balance change under its real name. A hidden slot for a
+  future action bar (`tradeActions.ts`) is ready at the top of the card.
+- `sc_live_dashboard` plan: `buy_unit_price`, `sell_unit_price`, `est_trip_minutes`, `safety_note`, `price_points` (at
+  most 30), `price_points_for`, `price_points_label`. Cleaned and bounded on the server and again in the page; the
+  dashboard never calls UEX (golden and docs/TOOLS.md regenerated).
+- Preview: `trade=story|estimated|unknown|partial|second|none` and `fw=<px>`.
+
+### Changed
+- The transport ledger's last line is "Récompense mesurée, dernier contrat" (a contract's balance change is the reward
+  minus what it cost, not a profit) and the planned line says "avant frais". The ledger payload budget is 26 000
+  characters (it also holds the commerce section).
+
+### Removed
+- `planProgress` (the "Prévu / Réalisé" comparison of the plan card).
+
 ## [2.1.0] - 2026-11-03
 
 ### Added

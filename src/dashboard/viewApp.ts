@@ -895,7 +895,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
 
     // Commerce card (tradePanel.ts): full width at the top of the cockpit, a compact line under the small view.
     // Its action bar (tradeActions.ts) is a separate component in a slot of the card, hidden until it is built.
-    R.trade = L.tradePanel(doc, L);
+    R.trade = L.tradePanel(doc, L, SVG_NS);
     R.tradeActions = L.tradeActionsPanel(doc, L);
     add(R.trade.slot, R.tradeActions.root);
 

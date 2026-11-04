@@ -12,6 +12,7 @@
 //                 the figures of a real run: see src/dashboard/testing/tradeScenario.ts; its loop lasts 600 s, the run is
 //                 settled from t=215; it implies plan=full: a plan with prices and a price curve; none = no journal)
 //                 transport=story|off|loading|unreadable|empty|none   (the transport ledger; story by default, none = no field)
+//                 fw=<px>  (width of the frame in full screen, to see a narrow host at 360 px in a window that cannot be that narrow)
 //                 conn=disconnected|menu|closed|online  (the connection read from Game.log)
 //                 specs=ready|unknown|ambiguous|pending|error|none  (the ship sheet from the wiki; default ready; the figures
 //                 are synthetic, see src/dashboard/testing/specsFixtures.ts; the story's ship is always the same Cutter)
@@ -87,7 +88,7 @@ let host;
 let lastHeight = 180;
 const applyMode = () => {
   document.body.dataset.mode = host.displayMode;
-  if (host.displayMode === "fullscreen") { frame.style.width = "100%"; frame.style.height = "100%"; }
+  if (host.displayMode === "fullscreen") { frame.style.width = q.get("fw") ? q.get("fw") + "px" : "100%"; frame.style.height = "100%"; }
   else { setWidth(); frame.style.height = lastHeight + "px"; }
 };
 const deliver = (m) => {

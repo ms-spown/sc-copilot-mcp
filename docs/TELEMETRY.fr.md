@@ -379,9 +379,16 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   sur les dernières minutes, affichées avec leur fenêtre. L'échelle de vitesse est déduite, pas donnée par le jeu. Le
   rythme (aUEC par heure) n'apparaît que lorsque le solde est affiché, à partir de la variation depuis le repère de
   session.
-- **Plan de route.** Après `uex_get_trade_routes`, Claude peut passer un `plan` (marchandise, terminaux d'achat et
-  de vente, SCU, profit attendu, une courte note) à l'ouverture du tableau de bord. La page montre le profit prévu à
-  côté du profit mesuré. Le texte est nettoyé et plafonné (60 caractères) et affiché en texte brut.
+- **Plan de route.** Après `uex_get_trade_routes`, Claude peut passer un `plan` à l'ouverture du tableau de bord :
+  marchandise, terminaux d'achat et de vente, SCU, `expected_profit_auec` (le BÉNÉFICE prévu : ventes moins achats
+  avant frais, pas un chiffre d'affaires), prix unitaires d'achat et de vente, durée estimée du trajet en minutes,
+  une remarque de sécurité, une courte note et jusqu'à 30 prix récents (`price_points`, du plus ancien au plus
+  récent, avec `price_points_for` et `price_points_label`) qui dessinent la courbe des cours. Claude remplit les prix
+  avec les outils de prix UEX ; le tableau de bord n'appelle jamais UEX. Les textes sont nettoyés et plafonnés (60
+  caractères) et affichés en texte brut ; les nombres sont bornés ; moins de deux prix utilisables ne donnent pas de
+  courbe. Le plan alimente la carte Commerce ci-dessous. Une route suggérée a la forme d'un plan : l'appliquer comme
+  plan actif reviendra à la repasser dans le même nettoyage (la barre d'actions qui proposera des suggestions n'existe
+  pas encore ; son emplacement est dans la carte).
 - **Confidentialité du solde.** Le solde est masqué dans la page tant que vous ne cliquez pas sur « Afficher le
   solde ». C'est seulement alors que la page le demande au serveur (`include_balance`). Le solde n'est jamais mis
   dans le résumé automatique que la page peut envoyer au modèle, ni dans les messages fixes des boutons, ni sur le
@@ -463,7 +470,7 @@ ne prétendons pas qu'il soit approuvé par Cloud Imperium Games.
 Un aperçu pour les personnes qui travaillent sur la page : `npm run build`, puis `node scripts/dashboard-preview.mjs`,
 puis ouvrez l'adresse locale qu'il affiche (boucle locale, port 4173 par défaut). Il joue un vol fictif, saut
 quantique complet compris, face à un hôte factice ; ni jeu ni Claude n'interviennent. Paramètres : `t`, `theme`,
-`w`, `mode`, `scroll`, `forced`, `cut`, `plan`.
+`w`, `mode`, `scroll`, `forced`, `cut`, `plan`, `trade` (la carte Commerce avec un journal de commerce inventé : `story`, `estimated`, `unknown`, `partial`, `second`, `none`), `fw` (largeur du cadre en plein écran).
 
 ### Carnet de transport
 
@@ -493,8 +500,10 @@ seule ligne tant qu'un contrat est en cours (« Contrat en cours : titre, étape
   chevauchent, chaque chiffre contient aussi la récompense de l'autre et le signale ; le total compte le
   chevauchement une seule fois. Le rythme (aUEC par heure) demande au moins deux minutes de contrat. Le tableau de
   bord doit être ouvert (la télémétrie ne lit que pendant qu'une View interroge) pour que l'historique existe.
-- **Prévu et réalisé.** Si Claude a passé un `plan` de route à l'ouverture du tableau de bord, le panneau place le
-  profit prévu à côté du gain du dernier contrat terminé. Il ne peut pas vérifier que ce contrat est la route prévue.
+- **Prévu et récompense mesurée.** Si Claude a passé un `plan` de route à l'ouverture du tableau de bord, le panneau
+  place le profit prévu (avant frais) à côté de la « récompense mesurée » du dernier contrat terminé : c'est la
+  variation du solde sur ce contrat, donc la récompense moins ce que le contrat a coûté, pas un bénéfice. Il ne peut
+  pas vérifier que ce contrat est la route prévue. Pour le bilan d'un trajet commercial, voir la carte Commerce.
 - **Confidentialité du solde.** Tout ce qui dérive du solde (gain, total, rythme, prévu contre réalisé) est construit
   par le serveur et dessiné par la page seulement après votre clic sur « Afficher le solde ». Sans lui, le carnet ne
   montre que les étapes et les durées, et la réponse du serveur ne contient aucun de ces chiffres. Rien n'entre dans le
@@ -510,6 +519,62 @@ seule ligne tant qu'un contrat est en cours (« Contrat en cours : titre, étape
   reçoivent par le canal entre Views sans aucun chiffre dérivé du solde.
 - **Texte venu du jeu.** Les titres de contrat, les lieux et les marchandises sont nettoyés (caractères invisibles et
   de changement de direction retirés), plafonnés à 80 et 60 caractères, et affichés en texte brut uniquement.
+
+### Carte Commerce
+
+Une carte en haut du tableau de bord plein écran (« Commerce ») qui dit ce qu'un trajet commercial a vraiment rapporté,
+et une ligne dans la petite vue. Elle remplace l'ancien bloc « Prévu / Réalisé », qui mettait un BÉNÉFICE prévu à côté
+d'une VARIATION du solde : cette variation contient aussi le coût des marchandises, les ventes et les frais, donc les
+deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un seul sens :
+
+| Chiffre | Sens | Comment on l'obtient |
+| --- | --- | --- |
+| Bénéfice prévu | Le profit attendu du plan : ventes prévues moins achats prévus, avant frais | Du plan de Claude |
+| Chiffre d'affaires | Ce que les ventes ont rapporté (les montants des transactions de vente) | Mesuré (montants du journal) |
+| Coût d'achat | Ce que les achats ont coûté (les montants des transactions d'achat) | Mesuré (montants du journal) |
+| Marge brute | Chiffre d'affaires moins coût ; le chiffre à comparer au bénéfice prévu | Calculé |
+| Écart de prix | Marge brute moins bénéfice prévu. Les prix et les quantités le font bouger, et la carte le dit quand la quantité achetée diffère du plan | Calculé |
+| Frais | Ce que le service de chargement a pris en plus des prix. Le journal n'a pas de ligne de frais | Mesuré côté par côté contre le solde quand c'est possible, sinon le total déduit (marge brute moins net), marqué « estimé » |
+| Bénéfice net | Solde après la dernière vente moins solde juste avant le premier achat : le seul chiffre qui dit ce que vous avez vraiment gagné | Mesuré dans l'historique du solde de la télémétrie ; inconnu (jamais zéro) si le tableau de bord n'a pas vu le solde avant l'achat |
+
+- **D'où viennent les transactions.** D'un journal de commerce dont le contrat d'entrée est `TradeTransaction`
+  (`src/dashboard/tradeTypes.ts`) : heure, sens, nature, total en aUEC, quantité et unité, identifiant court de la
+  marchandise, boutique, indicateur autoLoading, résultat et confiance. Le parseur de Game.log qui les produira est
+  sur une autre branche (`feat/trade-journal`) ; tant qu'il n'est pas branché, aucun journal n'alimente le tableau de
+  bord : la carte le dit, montre le plan, et montre la variation du solde sous son vrai nom (« Variation du solde »,
+  avec l'avertissement que ce n'est pas un bénéfice). Les tests et l'aperçu utilisent des transactions inventées.  Un adaptateur interchangeable (`tradeJournalAdapter.ts`) convertit déjà les transactions de ce journal vers ce contrat ; le brancher prend quelques lignes une fois ce parseur fusionné.
+- **Comment les frais sont mesurés.** Pour chaque côté, les transactions proches dans le temps sont regroupées ; les
+  variations du solde vues dans une fenêtre autour d'elles (2 s avant à 8 s après le groupe, hypothèse non encore
+  mesurée avec le vrai jeu) sont additionnées. À l'achat : frais = (baisse du solde) moins prix. À la vente : frais =
+  prix moins (hausse du solde). Les frais peuvent être une variation à part un instant plus tard, d'où la somme. Un
+  groupe est refusé, jamais deviné, si la fenêtre contient une transaction de l'autre sens, un trou dans le flux, plus
+  de deux variations du solde par transaction, ou donne des frais invraisemblables (négatifs, ou plus de la moitié du
+  prix). « mesuré » : une transaction a été rapprochée ; « mesuré (groupé) » : plusieurs réglées ensemble. Si un côté
+  ne se rapproche pas, le total est déduit de la marge et du net et marqué « estimé » ; si le net est inconnu aussi,
+  les frais sont inconnus.
+- **Bénéfice net.** Le solde juste avant le premier achat est celui d'avant la première baisse du solde autour de lui ;
+  le solde final est lu 8 s après la dernière transaction. Un trajet en cours (cargaison pas entièrement vendue) n'a
+  pas de net.
+- **Rythme et projection.** La durée va du premier achat à la dernière transaction (deux minutes au moins, trajet
+  terminé). Les chiffres « à ce rythme » (net par heure, répétitions par heure, par 4 heures de jeu) et le prochain
+  trajet net de frais (bénéfice prévu moins le taux de frais observé fois le chiffre d'affaires) sont des estimations ;
+  la carte liste leurs hypothèses : même trajet, mêmes prix et même quantité, marchandise toujours disponible, prix
+  qui ne baissent pas quand on vend plus, frais au même taux, et une « journée » de 4 heures de jeu (hypothèse).
+- **Estimé contre mesuré.** Une barre mesurée est pleine et marquée « mesuré » ; une barre estimée est hachurée, a un
+  bord en pointillés et le mot « estimé ». La couleur n'est jamais le seul signal.
+- **Courbe des cours.** Les prix récents du plan, leur moyenne, le prix visé par le plan et, une fois le solde affiché,
+  le prix moyen réellement obtenu par SCU. Le point est le dernier prix. Les relevés sont ceux de Claude, tirés d'UEX,
+  et peuvent dater.
+- **Confidentialité du solde, plus stricte que le carnet.** Tout montant d'un trajet (chiffre d'affaires, coût, marge,
+  frais, net, rythme, projection) est construit par le serveur seulement quand la View a demandé le solde, et dessiné
+  seulement après votre clic. Sans lui, la section ne contient que marchandises, lieux, SCU, heures et nombres, rien en
+  aUEC. Elle circule sur le canal entre Views sans aucun montant (retiré par l'émetteur puis par le récepteur) et
+  n'entre jamais dans le résumé automatique ni dans les messages fixes.
+- **Plusieurs trajets.** Un achat après une vente commence un nouveau trajet (deux heures de silence aussi) ; la carte
+  montre le dernier et liste les précédents. Le plan s'applique au dernier trajet seulement ; si la marchandise ne
+  correspond pas, elle dit que le plan n'est pas vérifié.
+- **Emplacement de la barre d'actions.** Le haut de la carte a un composant séparé et masqué (`tradeActions.ts`)
+  réservé aux boutons et options qui demanderont des routes à Claude. Il ne fait rien pour l'instant.
 
 ## Confidentialité
 

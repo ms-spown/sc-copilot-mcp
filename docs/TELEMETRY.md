@@ -368,9 +368,15 @@ that this server provides and that the client renders next to the chat.
 - **Estimates are labelled.** Remaining hydrogen, hunger and thirst are straight-line estimates over the last
   minutes, shown with their window. The speed scale is deduced, not given by the game. Pace (aUEC per hour) appears
   only while the balance is shown, from the balance change since the session marker.
-- **Route plan.** After `uex_get_trade_routes`, Claude may pass a `plan` (commodity, buy and sell terminals, SCU,
-  expected profit, a short note) when it opens the dashboard. The page shows planned next to measured profit. The
-  text is cleaned and capped (60 characters) and displayed as plain text.
+- **Route plan.** After `uex_get_trade_routes`, Claude may pass a `plan` when it opens the dashboard: commodity, buy
+  and sell terminals, SCU, `expected_profit_auec` (the planned PROFIT: sales minus purchases before any fee, not a
+  turnover), unit buy and sell prices, an estimated trip time in minutes, a safety note, a short note and up to 30
+  recent prices (`price_points`, oldest first, with `price_points_for` and `price_points_label`) that draw the
+  price curve. Claude fills the prices from the UEX price tools; the dashboard never calls UEX. Text is cleaned and
+  capped (60 characters) and displayed as plain text; numbers are bounded; fewer than two usable price points make no
+  curve. The plan feeds the commerce card below. A suggested route has the same shape as a plan, so applying one as the
+  active plan will be a matter of passing it through the same cleaner (the action bar that will offer suggestions is
+  not built yet; its slot is in the card).
 - **Balance privacy.** The balance is hidden in the page until you click "Afficher le solde". Only then does the
   page ask the server for it (`include_balance`). The balance is never put in the automatic summary that the
   page may send to the model, nor in the fixed messages of the buttons, nor on the channel between dashboards (see
@@ -446,7 +452,7 @@ approved by Cloud Imperium Games.
 A preview for people who work on the page: `npm run build`, then `node scripts/dashboard-preview.mjs`, then open
 the local address it prints (loopback, port 4173 by default). It plays a made-up flight, including a full quantum
 jump, against a fake host; no game and no Claude is involved. Parameters: `t`, `theme`, `w`, `mode`, `scroll`,
-`forced`, `cut`, `plan`.
+`forced`, `cut`, `plan`, `trade` (the commerce card with an invented trade journal: `story`, `estimated`, `unknown`, `partial`, `second`, `none`), `fw` (frame width in full screen).
 
 ### Transport ledger
 
@@ -489,6 +495,61 @@ runs ("Contrat en cours : title, step 2/3").
   between Views without any figure derived from the balance.
 - **Text from the game.** Contract titles, places and goods are cleaned (invisible and direction-changing characters
   removed), capped at 80 and 60 characters, and displayed as plain text only.
+
+### Commerce card
+
+A card at the top of the full-screen dashboard ("Commerce") that says what a trading run really earned, and one line
+in the small view. It replaces the old "Prévu / Réalisé" block, which put a planned PROFIT next to a balance CHANGE:
+the balance change also holds the cost of the goods, the sales and the fees, so the two lines did not talk about the
+same thing. Each figure now has one meaning:
+
+| Figure | Meaning | How it is obtained |
+| --- | --- | --- |
+| Bénéfice prévu | The plan's expected profit: planned sales minus planned purchases, before fees | From Claude's plan |
+| Chiffre d'affaires | What the sales brought in (the amounts of the sell transactions) | Measured (log amounts) |
+| Coût d'achat | What the purchases cost (the amounts of the buy transactions) | Measured (log amounts) |
+| Marge brute | Chiffre d'affaires minus cost; the figure to compare with the planned profit | Calculated |
+| Écart de prix | Marge brute minus planned profit. Prices and quantities both move it, and the card says so when the bought quantity differs from the plan | Calculated |
+| Frais | What the loading service took on top of the prices. The log has no fee line | Measured per side against the balance when possible, else the total deduced (marge brute minus net), labelled "estimé" |
+| Bénéfice net | Balance after the last sale minus the balance just before the first purchase: the only figure that says what you really gained | Measured from the telemetry's balance history; unknown (never zero) when the dashboard did not see the balance before the purchase |
+
+- **Where the transactions come from.** From a trade journal whose input contract is `TradeTransaction`
+  (`src/dashboard/tradeTypes.ts`): time, side, kind, total aUEC, quantity and unit, short commodity id, shop,
+  autoLoading flag, outcome and confidence. The Game.log parser that will produce them is on another branch
+  (`feat/trade-journal`); until it is wired, no journal feeds the dashboard and the card says so, shows the plan, and
+  shows the balance change under its own name ("Variation du solde", with the warning that it is not a profit). Tests
+  and the preview use invented transactions. A swappable adapter (`tradeJournalAdapter.ts`) already maps the journal's
+  transactions to this contract; wiring it takes a few lines once that parser is merged.
+- **How fees are measured.** For each side, the transactions that are close in time are grouped; the balance changes
+  seen in a window around them (2 s before to 8 s after the group, an assumption not yet measured with the real game)
+  are added up. Buying: fee = (balance fall) minus price. Selling: fee = price minus (balance rise). The fee may be a
+  change of its own a moment later, hence the sum. A group is refused, never guessed, if the window holds a
+  transaction of the other side, a gap in the stream, more than two balance changes per transaction, or gives an
+  implausible fee (negative, or more than half of the price). "mesuré" means one transaction was matched; "mesuré
+  (groupé)" means several were settled together. If a side cannot be matched, the total is deduced from the margin and
+  the net and labelled "estimé"; if the net is unknown too, the fees are unknown.
+- **Net profit.** The balance just before the first purchase is the one before the first balance fall around it; the
+  final balance is read 8 s after the last transaction. A run still in progress (cargo not fully sold) has no net.
+- **Pace and projection.** Run time is the first purchase to the last transaction (at least two minutes, a finished
+  run). "À ce rythme" figures (net per hour, runs per hour, per 4 hours of play) and the next trip net of fees
+  (planned profit minus the observed fee rate times the turnover) are estimates, and the card lists their
+  assumptions: same trip, same prices and quantity, cargo always available, prices that do not drop when you sell
+  more, fees at the same rate, and a "day" of 4 hours of play (a hypothesis).
+- **Estimated against measured.** A measured bar is solid and tagged "mesuré"; an estimated one is hatched, has a
+  dashed edge and the word "estimé". Colour is never the only signal.
+- **Price curve.** The recent prices from the plan, their average, the target price of the plan and, once the balance
+  is shown, the average price really obtained per SCU. The dot is the last price. The points are Claude's, taken from
+  UEX, and may be old.
+- **Balance privacy, stricter than the ledger.** Every amount of a run (turnover, cost, margin, fees, net, pace,
+  projection) is built by the server only when the View asked for the balance and drawn only after your click. Without
+  it the section carries goods, places, SCU, times and counts, nothing in aUEC. It travels on the channel between
+  Views without any amount (stripped by the sender and again by the receiver) and never goes into the automatic
+  summary or the fixed messages.
+- **Several runs.** A purchase after a sale starts a new run (so does two hours of silence); the card shows the latest
+  and lists the earlier ones. The plan is applied to the latest run only; if the commodity does not match it says the
+  plan is not verified.
+- **Action bar slot.** The top of the card has a separate, hidden component (`tradeActions.ts`) reserved for the buttons
+  and options that will ask Claude for routes. It does nothing yet.
 
 ## Privacy
 
