@@ -13,7 +13,7 @@ export type SessionVariant =
   | "off"
   | "stale"
   | "ended"
-  | "waiting"
+  | "timing"
   | "readonly"
   | "gross"
   | "losses"
@@ -178,24 +178,25 @@ const ENDED_BY_HAND: Fixture = {
   startedAgoMs: 3 * HOUR,
   endReason: "manual",
 };
-/** ...and the empty session that waits for the game (nothing seen during it: no trip, no balance, no played time). */
-const WAITING: Fixture = {
+/** ...and the player's chronometer: a session that holds nothing (the game never seen), timed from the click 12 minutes ago. */
+const TIMING: Fixture = {
   number: 5,
-  startedAgoMs: 4 * MIN,
+  startedAgoMs: 12 * MIN,
   activeMs: 0,
   trips: 0,
   net: null,
   start: null,
   last: null,
   empty: true,
-  idleMs: 4 * MIN,
+  idleMs: 12 * MIN,
 };
 
-/** The `sessions` field of a poll answer. */
+/** The `sessions` field of a poll answer. `timingAgoMs`: how long ago the chronometer was started (default 12 min). */
 export function sessionBar(
   nowMs: number,
   includeBalance: boolean,
   variant: SessionVariant = "story",
+  timingAgoMs?: number,
 ) {
   const base = { v: 1 as const, gap_hours: 3, notice: null as string | null };
   if (variant === "off") return { ...base, status: "off", current: null, stale: false };
@@ -227,11 +228,17 @@ export function sessionBar(
       current: sessionSummary(ENDED_BY_HAND, nowMs, includeBalance),
       stale: false,
     };
-  if (variant === "waiting")
+  if (variant === "timing")
     return {
       ...base,
       status: "ok",
-      current: sessionSummary(WAITING, nowMs, includeBalance),
+      current: sessionSummary(
+        timingAgoMs === undefined
+          ? TIMING
+          : { ...TIMING, startedAgoMs: timingAgoMs, idleMs: timingAgoMs },
+        nowMs,
+        includeBalance,
+      ),
       stale: false,
     };
   if (variant === "gross")
@@ -289,19 +296,32 @@ export function sessionToolAnswer(
   args: Record<string, any>,
   nowMs: number,
   variant: SessionVariant = "story",
+  /** How many more (invented, older) ended sessions the file holds, to test a long list. */
+  extra = 0,
 ) {
   const include = args["include_balance"] !== false;
   // The history the variant implies: session 4 is the one in progress, ended by hand, or replaced by the waiting session 5.
-  const all =
+  const recent =
     variant === "ended"
       ? [...BASE, ENDED_BY_HAND]
-      : variant === "waiting"
-        ? [...BASE, { ...ENDED_BY_HAND, endReason: "new_session" as const }, WAITING]
+      : variant === "timing"
+        ? [...BASE, { ...ENDED_BY_HAND, endReason: "new_session" as const }, TIMING]
         : [...BASE, CURRENT];
+  const older: Fixture[] = Array.from({ length: extra }, (_, i) => ({
+    ...BASE[0]!,
+    number: 100 + i, // invented numbers: the list only needs distinct, older sessions
+    startedAgoMs: (60 + i) * HOUR,
+  }));
+  const all = [...older, ...recent];
   if (name === "sc_session_list") {
+    // Like the server: newest first, at most `limit` of them, and the total it holds.
+    const limit = typeof args["limit"] === "number" ? args["limit"] : 20;
     return {
       total: all.length,
-      sessions: [...all].reverse().map((f) => sessionSummary(f, nowMs, include)),
+      sessions: [...all]
+        .reverse()
+        .slice(0, limit)
+        .map((f) => sessionSummary(f, nowMs, include)),
     };
   }
   if (name === "sc_session_stats") {
@@ -416,36 +436,41 @@ export function sessionToolAnswer(
     };
   }
   // The shapes of tools/sessions.ts (the server's English messages are never shown by the View).
-  const live = variant === "waiting" ? WAITING : variant === "ended" ? ENDED_BY_HAND : CURRENT;
+  const live = variant === "timing" ? TIMING : variant === "ended" ? ENDED_BY_HAND : CURRENT;
   if (name === "sc_session_new") {
+    // Anything that holds something is closed; a chronometer that holds nothing is restarted (same session); with none or an
+    // ended session nothing is closed.
     const closes = variant === "story" || variant === "stale" || variant === "readonly";
-    return variant === "waiting"
-      ? {
-          ok: true,
-          started: false,
-          closed_session: null,
-          message: "Nothing started: session 5 is empty and still waits for the game.",
-          session: sessionSummary(live, nowMs, false),
-          persistence: { saved: true, status: "ok" },
-        }
-      : {
-          ok: true,
-          started: true,
-          closed_session: closes ? live.number : null,
-          message: "Session 5 started.",
-          session: sessionSummary(WAITING, nowMs, false),
-          persistence: { saved: true, status: "ok" },
-        };
+    const restarted = variant === "timing";
+    return {
+      ok: true,
+      started: true,
+      restarted,
+      closed_session: closes ? live.number : null,
+      message: restarted ? "Session 5 timer restarted from now." : "Session 5 started.",
+      session: sessionSummary({ ...TIMING, startedAgoMs: 1000 }, nowMs, false),
+      persistence: { saved: true, status: "ok" },
+    };
   }
   if (name === "sc_session_end") {
+    // A chronometer that holds nothing is deleted; a session in progress is ended by hand; none or ended: nothing to end.
     const reason =
-      variant === "waiting" ? "empty" : variant === "ended" ? "already_ended" : "ended";
+      variant === "timing"
+        ? "discarded"
+        : variant === "ended"
+          ? "already_ended"
+          : variant === "empty"
+            ? "none"
+            : "ended";
     const done = reason === "ended";
     return {
-      ok: done,
+      ok: done || reason === "discarded",
+      ended: done,
       reason,
       message: done ? "Session 4 ended." : "Nothing ended.",
-      session: sessionSummary(done ? ENDED_BY_HAND : live, nowMs, false),
+      ...(reason === "none"
+        ? {}
+        : { session: sessionSummary(done ? ENDED_BY_HAND : live, nowMs, false) }),
       persistence: { saved: true, status: "ok" },
     };
   }
@@ -454,11 +479,18 @@ export function sessionToolAnswer(
 
 /**
  * A stateful stand-in for the server's session side: the bar and the tools answer from ONE variant, and "Terminer" /
- * "Nouvelle session" move it the way the real reducer does (end: in progress to ended, an empty session stays; new: anything
- * but a waiting session to a waiting session 5). So a test or the preview sees the card change after a click.
+ * "Nouvelle session" move it the way the real reducer does (end: in progress to ended, a chronometer that holds nothing is
+ * deleted, so no session; new: any state to the player's chronometer, session 5). So a test or the preview sees the card
+ * change after a click.
  */
 export function sessionFake(initial: SessionVariant = "story") {
   let variant = initial;
+  let timingFrom: number | null = null;
+  // How long ago a chronometer that was there from the start began (the default fixture says 12 minutes).
+  let timingAgo: number | undefined;
+  // With saved sessions behind it, deleting the chronometer leaves the last one (ended) on the card; with none, nothing is left.
+  const hasHistory = initial !== "empty";
+  let extra = 0;
   const calls: string[] = [];
   return {
     get variant() {
@@ -467,15 +499,32 @@ export function sessionFake(initial: SessionVariant = "story") {
     set variant(v: SessionVariant) {
       variant = v;
     },
+    set timingAgoMs(v: number) {
+      timingAgo = v;
+    },
+    /** More (invented, older) sessions in the file, for the list. */
+    set extraSessions(n: number) {
+      extra = n;
+    },
     /** Every session tool call, in order (the same names as the real tools). */
     calls,
-    bar: (nowMs: number, include: boolean) => sessionBar(nowMs, include, variant),
+    bar: (nowMs: number, include: boolean) =>
+      sessionBar(
+        nowMs,
+        include,
+        variant,
+        timingFrom === null ? timingAgo : Math.max(0, nowMs - timingFrom),
+      ),
     tool: (name: string, args: Record<string, any>, nowMs: number) => {
-      const answer = sessionToolAnswer(name, args, nowMs, variant);
+      const answer = sessionToolAnswer(name, args, nowMs, variant, extra);
       if (name === "sc_session_end" || name === "sc_session_new") {
         calls.push(name);
-        if (name === "sc_session_end" && (answer as any).ok === true) variant = "ended";
-        if (name === "sc_session_new" && (answer as any).started === true) variant = "waiting";
+        if (name === "sc_session_new") timingFrom = nowMs; // the chronometer runs from the click
+        const reason = (answer as any).reason;
+        if (name === "sc_session_end" && reason === "ended") variant = "ended";
+        if (name === "sc_session_end" && reason === "discarded")
+          variant = hasHistory ? "ended" : "empty";
+        if (name === "sc_session_new" && (answer as any).started === true) variant = "timing";
       }
       return answer;
     },

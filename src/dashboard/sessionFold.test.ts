@@ -67,7 +67,7 @@ describe("Feature: the line of the folded session card", () => {
     expect(info.line).not.toContain("aUEC/h");
     expect(lineOf("ended", false)).toContain("terminée");
     expect(NB(lineOf("stale", false))).toContain("inactive depuis 3 h");
-    expect(lineOf("empty", false)).toBe("Aucune session");
+    expect(lineOf("empty", false)).toBe("Aucune session en cours");
   });
 });
 

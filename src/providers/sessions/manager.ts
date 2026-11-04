@@ -12,13 +12,14 @@ import type { SessionsConfig } from "./config.js";
 import {
   cloneLight,
   endCurrent,
-  ensureCurrent,
   isEmpty,
+  isUntouched,
   latest,
-  needsEnsure,
+  needsTidy,
   observe,
   setNote,
   startNew,
+  tidy,
   type EndReason,
   type Observation,
   type ReduceConfig,
@@ -192,6 +193,11 @@ export class SessionManager {
 
   get ledger(): LedgerService | undefined {
     return this.deps.ledger;
+  }
+
+  /** The game was seen running a moment ago (a look within the last 30 seconds saw it). */
+  get gameRunning(): boolean {
+    return this.now() - this.lastRunningAt < 30_000;
   }
 
   get enabled(): boolean {
@@ -430,8 +436,9 @@ export class SessionManager {
   }
 
   /**
-   * The session bar for the dashboard's poll. Attaches to the last session; after a break longer than the gap a new
-   * (empty) one is made, as the player asked. Money only with `includeBalance`.
+   * The session bar for the dashboard's poll. Attaches to the last session and NEVER starts one (opening the dashboard
+   * makes no session): an empty one nobody asked for is discarded, one quiet for longer than the gap is closed. Money only
+   * with `includeBalance`.
    */
   async bar(includeBalance: boolean): Promise<SessionBar> {
     const base = {
@@ -441,12 +448,7 @@ export class SessionManager {
     if (!this.enabled) return { ...base, status: "off", notice: null, current: null, stale: false };
     this.poke();
     const now = this.now();
-    try {
-      if (needsEnsure(await this.deps.store.read(), now, this.rc))
-        await this.apply((s) => ensureCurrent(s, now, this.rc));
-    } catch {
-      /* the file is busy: show what is there, the next poll tries again */
-    }
+    await this.tidy(now);
     const state = await this.deps.store.read();
     const cur = latest(state);
     const summary = cur ? summarizeSession(cur) : null;
@@ -457,6 +459,16 @@ export class SessionManager {
       current: summary ? (includeBalance ? summary : withoutMoney(summary)) : null,
       stale: !!cur && cur.ended_at === null && this.stale(cur, now),
     };
+  }
+
+  /** Discards a leftover empty session and closes a quiet one (reducer `tidy`), only when that changes something. */
+  private async tidy(now: number): Promise<void> {
+    try {
+      if (needsTidy(await this.deps.store.read(), now, this.rc))
+        await this.apply((s) => tidy(s, now, this.rc));
+    } catch {
+      /* the file is busy: show what is there, the next look tries again */
+    }
   }
 
   /** A session by id, or the last one; money only with `includeBalance`. */
@@ -471,6 +483,7 @@ export class SessionManager {
     open: boolean;
   } | null> {
     this.poke();
+    await this.tidy(this.now());
     const state = await this.deps.store.read();
     const s = id ? state.sessions.find((x) => x.id === id) : latest(state);
     if (!s) return null;
@@ -487,6 +500,7 @@ export class SessionManager {
 
   async list(limit: number, includeBalance: boolean) {
     this.poke();
+    await this.tidy(this.now());
     const state = await this.deps.store.read();
     const rows = [...state.sessions]
       .reverse()
@@ -537,7 +551,7 @@ export class SessionManager {
 
   /**
    * The debrief (providers/sessions/debrief.ts) of one session by id, else of the newest `last` sessions that hold something
-   * (an empty one waiting for the game is not a debrief). Money only with `includeMoney`, the start and last balance only
+   * (a chronometer that holds nothing is not a debrief). Money only with `includeMoney`, the start and last balance only
    * with `includeBalances` on top of it. Null when there is nothing to report.
    */
   async debrief(opts: {
@@ -632,14 +646,16 @@ export class SessionManager {
   }
 
   /**
-   * "Nouvelle session". `started` is false when nothing was started because the last session was still empty (the game was
-   * never seen during it: it already is the next one); `closedPrevious` is the number of the session this click closed
-   * (null when there was none to close: no session, one already ended, or an empty one). `previous` is the number of the
-   * last session before the click, whatever its state.
+   * "Démarrer une session" / "Nouvelle session" / "Redémarrer le chrono", at any time: a session the player starts exists and is
+   * timed from now even when the game is not running. `restarted` is true when the last session was already the player's own
+   * chronometer holding nothing: it is the same session, its start put at now. `closedPrevious` is the number of the session
+   * this click closed (null when there was none to close: no session, one already ended, or an empty one). `previous` is the
+   * number of the last session before the click, whatever its state.
    */
   async newSession(note?: string): Promise<{
     summary: SessionSummary;
     started: boolean;
+    restarted: boolean;
     previous: number | null;
     closedPrevious: number | null;
     saved: boolean;
@@ -651,10 +667,15 @@ export class SessionManager {
     const r = await this.apply((s) => startNew(s, now, this.rc, balance, note));
     return {
       summary: summarizeSession(r.current as Session),
-      started: r.action === "created",
+      started: true,
+      restarted: r.action === "restarted",
       previous: prev ? prev.number : null,
       closedPrevious:
-        r.action === "created" && prev && prev.ended_at === null && !isEmpty(prev)
+        r.action === "created" &&
+        prev &&
+        prev.ended_at === null &&
+        !isEmpty(prev) &&
+        !isUntouched(prev)
           ? prev.number
           : null,
       saved: this.persistence.saved,
@@ -662,21 +683,23 @@ export class SessionManager {
   }
 
   /**
-   * "Terminer". `reason` says why nothing was ended when `ended` is false: "none" (no session yet), "already_ended", or
-   * "empty" (the session only waits for the game: it has nothing to end). `summary` is the session the answer is about
-   * (the one just ended, or the one that could not be), never null when a session exists.
+   * "Terminer". `reason` says what happened: "ended" (kept in the history), "discarded" (the session held nothing, so it was
+   * deleted: `ended` is false, `discarded` true), "none" (no session yet) or "already_ended". `summary` is the session the
+   * answer is about (the one just ended or discarded, or the last one when nothing changed).
    */
   async endSession(note?: string): Promise<{
     ended: boolean;
+    discarded: boolean;
     reason: EndReason;
     summary: SessionSummary | null;
     saved: boolean;
   }> {
     await this.flush().catch(() => undefined);
     const now = this.now();
-    const r = await this.apply((s) => endCurrent(s, now, note));
+    const r = await this.apply((s) => endCurrent(s, now, note, { gameRunning: this.gameRunning }));
     return {
       ended: r.ended,
+      discarded: r.reason === "discarded",
       reason: r.reason,
       summary: r.current ? summarizeSession(r.current) : null,
       saved: this.persistence.saved,

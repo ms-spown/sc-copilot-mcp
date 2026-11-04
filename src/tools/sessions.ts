@@ -11,7 +11,10 @@ import type { ToolDefinition, ToolResult } from "./types.js";
  * (providers/sessions): when it began, the balance at its start and at its last sighting, the trips made and what they
  * earned. They exist only with SC_TELEMETRY=on and are left unlisted when SC_SESSIONS=off.
  *
- * - sc_session_current, sc_session_list and sc_session_stats only read. Every aUEC figure (balances, results, turnover,
+ * - sc_session_current, sc_session_list and sc_session_stats read: they change nothing of what the player did, but a look
+ *   first tidies the file (an empty session nobody asked for, left by an older server, is deleted; a chronometer untouched
+ *   for 24 hours is deleted; a session quiet for longer than the gap is closed at its last sighting), as the dashboard's poll
+ *   does. Every aUEC figure (balances, results, turnover,
  *   rates) is given by default (the player's choice, since 2.6) and left out when the caller passes include_balance=false
  *   or the server starts with SC_BALANCE=hidden: a tool result is part of the conversation, so the player may keep the
  *   money out of it. Counts, durations and place names are never left out.
@@ -119,7 +122,7 @@ export function sessionTools({
       inputSchema: {
         type: "object",
         properties: {
-          limit: { type: "number", description: "How many sessions, 1 to 50. Default 20." },
+          limit: { type: "number", description: "How many sessions, 1 to 200. Default 20." },
           include_balance: includeBalanceProp,
         },
       },
@@ -128,7 +131,7 @@ export function sessionTools({
         if (!sessions || !sessions.enabled) return off();
         const { limit, include_balance } = z
           .object({
-            limit: z.number().int().min(1).max(50).optional(),
+            limit: z.number().int().min(1).max(200).optional(),
             include_balance: z.boolean().optional(),
           })
           .parse(args || {});
@@ -176,7 +179,7 @@ export function sessionTools({
     {
       name: "sc_session_new",
       description:
-        "Starts a new play session now (the player pressed or asked for 'Nouvelle session'): the current one is closed with its numbers kept, the new one starts from the balance just seen. A session that is still empty (waiting for the game) already is the next one: nothing starts (started=false). The answer gives started and closed_session (the number of the session this call closed, or null when it closed none). Writes only this server's own session file; nothing is sent to the game. Use only when the player asks. Optional note (500 characters).",
+        "Starts a new play session now, at any time (the player pressed or asked for 'Démarrer une session' / 'Nouvelle session'): the current one, if it holds something, is closed with its numbers kept, and the new one is timed from now even when the game is not running yet, starting from the balance just seen if there is one. When the last session is already the player's own timer that holds nothing, it is the same session with its start put at now (restarted=true). The answer gives started (true), restarted and closed_session (the number of the session this call closed, or null when it closed none). Writes only this server's own session file; nothing is sent to the game. Use only when the player asks. Optional note (500 characters).",
       inputSchema: {
         type: "object",
         properties: { note: { type: "string", maxLength: 500 } },
@@ -189,10 +192,11 @@ export function sessionTools({
         return result({
           ok: true,
           started: made.started,
+          restarted: made.restarted,
           closed_session: made.closedPrevious,
-          message: made.started
-            ? `Session ${made.summary.number} started.${made.closedPrevious !== null ? ` Session ${made.closedPrevious} was closed.` : ""}${saveWarning(made.saved)}`
-            : `Nothing started: session ${made.summary.number} is empty and still waits for the game, so it already is the next session.${note ? " The note was added to it." : ""}${saveWarning(made.saved)}`,
+          message: made.restarted
+            ? `Session ${made.summary.number} timer restarted from now: it held nothing yet.${note ? " The note was added to it." : ""}${saveWarning(made.saved)}`
+            : `Session ${made.summary.number} started.${made.closedPrevious !== null ? ` Session ${made.closedPrevious} was closed.` : ""}${saveWarning(made.saved)}`,
           session: withoutMoney(made.summary),
           persistence: { saved: made.saved, status: sessions.notice ?? "ok" },
         });
@@ -201,7 +205,7 @@ export function sessionTools({
     {
       name: "sc_session_end",
       description:
-        "Ends the current play session now (the player asked to finish it); its numbers stay in the history. The next play period starts a new one once the game is seen starting afresh. A session that is still empty (waiting for the game) has nothing to end and stays open (ok=false, reason=empty). The answer's reason is ended, empty, already_ended (the last session was already ended) or none (no session yet); it acts on the last session. Writes only this server's own session file. Use only when the player asks. Optional note (500 characters).",
+        "Ends the current play session now (the player asked to finish it); its numbers stay in the history. The next play period starts a new one once the game is seen starting afresh. A session that holds nothing (the player's timer: no trip, no note, under 2 minutes played) is DELETED instead, nothing is archived (ok=true, reason=discarded), except while the game is running with no earlier session ended by hand, where it is ended and kept so that the game does not start another at once. The answer's reason is ended, discarded, already_ended (the last session was already ended) or none (no session yet); it acts on the last session. Writes only this server's own session file. Use only when the player asks. Optional note (500 characters).",
       inputSchema: {
         type: "object",
         properties: { note: { type: "string", maxLength: 500 } },
@@ -213,12 +217,13 @@ export function sessionTools({
         const ended = await sessions.endSession(note);
         const n = ended.summary?.number;
         return result({
-          ok: ended.ended,
+          ok: ended.ended || ended.discarded,
+          ended: ended.ended,
           reason: ended.reason,
           message: ended.ended
             ? `Session ${n} ended.${saveWarning(ended.saved)}`
-            : ended.reason === "empty"
-              ? `Nothing ended: session ${n} is empty and still waits for the game (nothing to close). It stays open.`
+            : ended.discarded
+              ? `Session ${n} held nothing (no trip, no note, barely played): it was deleted, nothing is archived.${note ? " The note was not kept: a deleted session keeps nothing." : ""}${saveWarning(ended.saved)}`
               : ended.reason === "already_ended"
                 ? `Nothing ended: session ${n} was already ended. Start a new one with sc_session_new, or the next play period will.`
                 : "Nothing ended: there is no session yet.",

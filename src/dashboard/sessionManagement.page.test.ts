@@ -44,27 +44,38 @@ const info = (variant: SessionVariant, show = true) =>
     now: NOW,
   });
 
-describe("Feature: what the card offers in each state", () => {
-  it("Given the five states, Then each offers exactly what can change something", () => {
+describe("Feature: what the card offers in each state (starting is possible in every state)", () => {
+  it("Given the five states, Then each offers the right buttons, and only a session that holds something asks a question", () => {
     const offers = (v: SessionVariant) => {
       const i = info(v);
-      return [i.phase, i.canEnd, i.canNew, i.newPrimary, i.newLabel];
+      return [i.phase, i.canEnd, i.canNew, i.closes, i.newPrimary, i.newLabel];
     };
-    expect(offers("empty")).toEqual(["none", false, true, true, "Démarrer une session"]);
-    expect(offers("waiting")).toEqual(["waiting", false, false, false, "Nouvelle session"]);
-    expect(offers("story")).toEqual(["active", true, true, false, "Nouvelle session"]);
-    expect(offers("stale")).toEqual(["idle", true, true, false, "Nouvelle session"]);
-    expect(offers("ended")).toEqual(["ended", false, true, true, "Nouvelle session"]);
+    expect(offers("empty")).toEqual(["none", false, true, false, true, "Démarrer une session"]);
+    expect(offers("timing")).toEqual(["timing", true, true, false, false, "Redémarrer le chrono"]);
+    expect(offers("story")).toEqual(["active", true, true, true, false, "Nouvelle session"]);
+    expect(offers("stale")).toEqual(["idle", true, true, true, false, "Nouvelle session"]);
+    expect(offers("ended")).toEqual(["ended", false, true, false, true, "Nouvelle session"]);
   });
 
-  it("Given a session waiting for the game, Then it says so (no 'en cours', no dash) and explains why nothing is offered", () => {
-    const i = info("waiting");
-    expect(i.chip).toBe("en attente du jeu");
-    expect(i.line).toBe("Session 5 · en attente du jeu");
+  it("Given no session, Then the card says so and offers the primary start (never an empty 'Session N')", () => {
+    const i = info("empty");
+    expect(i.title).toBe("Aucune session en cours");
+    expect(i.line).toBe("Aucune session en cours");
     expect(i.kpis).toEqual([]);
-    expect(i.hint).toContain("Rien à terminer ni à recommencer");
-    expect(i.sub).toMatch(/^créée /);
-    expect(JSON.stringify(i)).not.toContain("en cours");
+    expect(i.hint).toContain("démarre toute seule quand le jeu est lancé et connecté");
+    expect(i.hint).toContain("le chrono part de ton clic, même jeu fermé");
+  });
+
+  it("Given the player's chronometer (the game never seen), Then it is 'en cours' with the elapsed time, never 'en attente'", () => {
+    const i = info("timing");
+    expect(i.chip).toBe("en cours");
+    expect(i.line).toBe("Session 5 · chrono 12 min 00 s");
+    expect(i.kpis.map((k: any) => [k.label, NB(k.value)])).toEqual([["Chrono", "12 min 00 s"]]);
+    expect(i.sub).toMatch(/^chrono lancé .* · rien d’enregistré pour l’instant$/);
+    expect(i.hint).toContain("expire après 24 h sans activité");
+    expect(i.hint).toContain("ne repart pas à zéro quand le jeu se lance");
+    expect(i.hint).toContain("la supprime");
+    expect(JSON.stringify(i)).not.toMatch(/attente/);
     expect(JSON.stringify(i.kpis)).not.toContain("\u2014");
   });
 
@@ -94,7 +105,7 @@ describe("Feature: what the card offers in each state", () => {
     );
     expect(row({ status: "ended", end_reason: "gap" })).toBe("terminée · inactivité prolongée");
     expect(row({ status: "ended", end_reason: null })).toBe("terminée");
-    expect(row({ status: "open", empty: true })).toBe("en attente du jeu");
+    expect(row({ status: "open", empty: true })).toBe("en cours · chrono");
     expect(row({ status: "open", empty: false })).toBe("en cours");
     expect(row({ status: "open", empty: false, game_closed_at: "2026-12-01T19:00:00Z" })).toBe(
       "en cours · jeu fermé",
@@ -108,40 +119,38 @@ describe("Feature: what the card offers in each state", () => {
       ok: true,
       reason: "ended",
       message: "Session 4 ended.",
-      session: {
-        ...(sessionBar(NOW, false, "ended").current as any),
-      },
+      session: { ...(sessionBar(NOW, false, "ended").current as any) },
     };
     const t = (kind: string, r: any) => NB(sessionActionText(kind, r, NOW));
     expect(t("end", ended)).toMatch(
       /^Session 4 terminée (à \d\d:\d\d|hier \d\d:\d\d) \(6 trajets\)\. Elle reste dans l’historique\.$/,
     );
-    const waiting = sessionBar(NOW, false, "waiting").current;
-    expect(t("end", { ok: false, reason: "empty", session: waiting })).toBe(
-      "Rien à terminer : la session 5 attend le jeu.",
+    const timing = sessionBar(NOW, false, "timing").current;
+    expect(t("end", { ok: true, ended: false, reason: "discarded", session: timing })).toBe(
+      "Session 5 supprimée : elle ne contenait rien, il n’y a rien à archiver.",
     );
     expect(t("end", { ok: false, reason: "already_ended", session: ended.session })).toBe(
       "La session 4 est déjà terminée.",
     );
     expect(t("end", { ok: false, reason: "none" })).toBe("Il n’y a aucune session à terminer.");
-    expect(t("new", { ok: true, started: true, closed_session: 4, session: waiting })).toBe(
+    expect(t("new", { ok: true, started: true, closed_session: 4, session: timing })).toBe(
       "Session 5 démarrée. La session 4 est terminée et reste dans l’historique.",
     );
-    expect(t("new", { ok: true, started: true, closed_session: null, session: waiting })).toBe(
+    expect(t("new", { ok: true, started: true, closed_session: null, session: timing })).toBe(
       "Session 5 démarrée.",
     );
-    expect(t("new", { ok: true, started: false, session: waiting })).toBe(
-      "Rien à démarrer : la session 5 attend déjà le jeu.",
+    expect(t("new", { ok: true, started: true, restarted: true, session: timing })).toBe(
+      "Chrono de la session 5 redémarré : il repart de maintenant (la session ne contenait rien).",
     );
     expect(
-      t("new", { ok: true, started: true, persistence: { saved: false }, session: waiting }),
+      t("new", { ok: true, started: true, persistence: { saved: false }, session: timing }),
     ).toContain("Attention : le changement n’a pas pu être enregistré sur le disque");
     for (const s of [
       t("end", ended),
       t("new", { started: true, message: "Session 5 started." }),
-      t("end", { ok: false, reason: "empty", message: "Nothing ended: session 5 is empty." }),
+      t("end", { ok: true, reason: "discarded", message: "Session 5 held nothing." }),
     ])
-      expect(s).not.toMatch(/started|ended|Nothing|session file/i);
+      expect(s).not.toMatch(/started|ended|Nothing|held|session file/i);
   });
 });
 
@@ -305,23 +314,22 @@ describe("Feature: the card of a session in progress", () => {
     expect(toolNames(w)).toEqual(["sc_session_end"]);
   });
 
-  it("Given an ended session, When 'Nouvelle session' is pressed, Then nothing is asked (nothing is closed) and the waiting session 5 appears with the result", async () => {
+  it("Given an ended session, When 'Nouvelle session' is pressed, Then nothing is asked (nothing is closed) and the player's chronometer 5 appears with the result", async () => {
     const { w } = await managed("ended");
     expect(text(w)).toMatch(/Session 4\nterminée /);
     await click(w, "Nouvelle session", 1500);
     expect(toolNames(w)).toEqual(["sc_session_new"]);
     expect(said(w)).toBe("Session 5 démarrée.");
     expect(text(w)).toContain("Session 5");
-    expect(text(w)).toContain("en attente du jeu");
-    expect(offered(w, "Terminer la session")).toBe(false);
-    expect(offered(w, "Nouvelle session")).toBe(false);
-    expect(text(w)).toContain("Rien à terminer ni à recommencer");
+    expect(text(w)).toContain("Chrono");
+    expect(offered(w, "Terminer la session")).toBe(true);
+    expect(offered(w, "Redémarrer le chrono")).toBe(true);
     // Still there a minute later (the poll does not erase it).
     await w.advance(60 * SECOND);
     expect(said(w)).toBe("Session 5 démarrée.");
   });
 
-  it("Given a session in progress, When 'Nouvelle session' is confirmed, Then the old one is said to be closed and the new one waits", async () => {
+  it("Given a session in progress, When 'Nouvelle session' is confirmed, Then the old one is said to be closed and the new one's chronometer runs", async () => {
     const { w } = await managed("story");
     await click(w, "Nouvelle session", 100);
     expect(toolNames(w)).toEqual([]);
@@ -330,34 +338,93 @@ describe("Feature: the card of a session in progress", () => {
     expect(said(w)).toBe(
       "Session 5 démarrée. La session 4 est terminée et reste dans l’historique.",
     );
-    expect(text(w)).toContain("en attente du jeu");
+    expect(text(w)).toContain("Chrono");
   });
 });
 
-describe("Feature: nothing is offered that cannot change anything", () => {
-  it("Given a session that waits for the game, Then there is no 'Terminer' and no 'Nouvelle session', and nothing is ever sent", async () => {
-    const { w } = await managed("waiting");
-    expect(text(w)).toContain("en attente du jeu");
-    expect(text(w)).toContain(
-      "Rien à terminer ni à recommencer : cette session démarre toute seule dès que le jeu est détecté.",
-    );
-    expect(offered(w, "Terminer la session")).toBe(false);
-    expect(offered(w, "Nouvelle session")).toBe(false);
-    // No KPI, so no dash standing for a figure that does not exist.
-    expect(kpiValues(w)).toEqual([]);
-    await w.advance(30 * SECOND);
-    expect(toolNames(w)).toEqual([]);
-  });
-
-  it("Given no session at all, Then one button starts it at once, as the primary action, and it is said", async () => {
+describe("Feature: the player can start a session at any time, and the chronometer is theirs", () => {
+  it("Given no session at all, Then one primary button starts it at once (no question), the chronometer runs and it is said", async () => {
     const { w } = await managed("empty");
-    expect(text(w)).toContain("Aucune session");
+    expect(text(w)).toContain("Aucune session en cours");
     expect(offered(w, "Terminer la session")).toBe(false);
     expect(button(w, "Démarrer une session")!.className).toBe("btn small primary");
     await click(w, "Démarrer une session", 1500);
     expect(toolNames(w)).toEqual(["sc_session_new"]);
     expect(said(w)).toBe("Session 5 démarrée.");
-    expect(text(w)).toContain("en attente du jeu");
+    expect(text(w)).toMatch(/Session 5\nen cours/);
+    expect(offered(w, "Démarrer une session")).toBe(false);
+    expect(offered(w, "Redémarrer le chrono")).toBe(true);
+  });
+
+  it("Given the player's chronometer, Then it is 'en cours' with a running time, and 'Redémarrer le chrono' restarts it at once, without a question", async () => {
+    const { w, fake } = await managed("timing");
+    expect(text(w)).toMatch(/Session 5\nen cours/);
+    expect(text(w)).toContain("rien d’enregistré pour l’instant");
+    expect(text(w)).toContain("expire après 24 h sans activité");
+    expect(kpiValues(w)).toHaveLength(1);
+    expect(kpiValues(w)[0]).toMatch(/^1\d min \d\d s$/);
+    expect(offered(w, "Nouvelle session")).toBe(false);
+    await click(w, "Redémarrer le chrono", 1500);
+    expect(toolNames(w)).toEqual(["sc_session_new"]); // no question first: nothing is closed
+    expect(offered(w, "Confirmer : redémarrer")).toBe(false);
+    expect(said(w)).toBe(
+      "Chrono de la session 5 redémarré : il repart de maintenant (la session ne contenait rien).",
+    );
+    expect(fake.variant).toBe("timing");
+    expect(kpiValues(w)[0]).toMatch(/^\d s$|^\d\d s$|^0 s$/); // back near zero
+  });
+
+  it("Given a chronometer that ran for over 15 minutes, Then restarting or deleting it asks first, and cancelling changes nothing", async () => {
+    const { w, fake } = await managed("timing");
+    fake.timingAgoMs = 40 * 60_000;
+    await w.advance(6 * SECOND);
+    await click(w, "Redémarrer le chrono", 100);
+    expect(toolNames(w)).toEqual([]);
+    expect(text(w)).toMatch(
+      /Redémarrer le chrono de la session 5 \? Il tourne depuis 40 min \d\d s/,
+    );
+    expect(offered(w, "Confirmer : redémarrer")).toBe(true);
+    await click(w, "Annuler", 100);
+    await click(w, "Terminer la session", 100);
+    expect(toolNames(w)).toEqual([]);
+    expect(text(w)).toMatch(/Supprimer la session 5 \? Son chrono tourne depuis 40 min/);
+    await click(w, "Confirmer la suppression", 1500);
+    expect(toolNames(w)).toEqual(["sc_session_end"]);
+    expect(said(w)).toBe("Session 5 supprimée : elle ne contenait rien, il n’y a rien à archiver.");
+  });
+
+  it("Given the chronometer deleted with a session behind it, Then the previous (ended) session is on the card with a primary 'Nouvelle session', and the line stays", async () => {
+    const { w } = await managed("timing");
+    await click(w, "Terminer la session", 1500);
+    expect(toolNames(w)).toEqual(["sc_session_end"]);
+    expect(offered(w, "Confirmer la fin")).toBe(false);
+    expect(said(w)).toBe("Session 5 supprimée : elle ne contenait rien, il n’y a rien à archiver.");
+    // Session 4 is still the last session: it is shown as ended, with the primary way to start the next one.
+    expect(text(w)).toMatch(/Session 4\nterminée /);
+    expect(button(w, "Nouvelle session")!.className).toBe("btn small primary");
+    expect(text(w)).not.toContain("Aucune session en cours");
+    await w.advance(60 * SECOND);
+    expect(said(w)).toBe("Session 5 supprimée : elle ne contenait rien, il n’y a rien à archiver.");
+    expect(toolNames(w)).toEqual(["sc_session_end"]);
+  });
+
+  it("Given the line about a deleted session 5, When a new session 5 appears, Then the old line goes (it is not about this one)", async () => {
+    const { w, fake } = await managed("timing");
+    await click(w, "Terminer la session", 1500);
+    expect(said(w)).toContain("Session 5 supprimée");
+    fake.variant = "timing"; // the game starts the next session, which gets the number 5 again
+    await w.advance(6 * SECOND);
+    expect(text(w)).toMatch(/Session 5\nen cours/);
+    expect(said(w)).toBe("");
+  });
+
+  it("Given nothing left at all, Then the card says 'Aucune session en cours' with the primary start", async () => {
+    const { w } = await managed("empty");
+    await click(w, "Démarrer une session", 1500);
+    await click(w, "Terminer la session", 1500);
+    expect(said(w)).toBe("Session 5 supprimée : elle ne contenait rien, il n’y a rien à archiver.");
+    expect(text(w)).toContain("Aucune session en cours");
+    expect(button(w, "Démarrer une session")!.className).toBe("btn small primary");
   });
 
   it("Given a quiet session, Then it can still be ended, with the question", async () => {
@@ -365,6 +432,16 @@ describe("Feature: nothing is offered that cannot change anything", () => {
     expect(offered(w, "Terminer la session")).toBe(true);
     await click(w, "Terminer la session", 100);
     expect(text(w)).toContain("Terminer la session 4 (6 trajets) ?");
+  });
+
+  it("Given every state, Then a way to start a session is always on the card", async () => {
+    for (const variant of ["empty", "timing", "story", "stale", "ended"] as const) {
+      const { w } = await managed(variant);
+      const starts = ["Démarrer une session", "Redémarrer le chrono", "Nouvelle session"].filter(
+        (l) => offered(w, l),
+      );
+      expect(starts, variant).toHaveLength(1);
+    }
   });
 });
 
@@ -410,24 +487,24 @@ describe("Feature: what goes wrong is said, and stays said", () => {
     await click(w, "Terminer la session", 100);
     await click(w, "Confirmer la fin", 1500);
     expect(said(w)).toContain("Session 4 terminée");
-    fake.variant = "waiting"; // the game was relaunched: the server made the next session (number 5)
+    fake.variant = "timing"; // another View started the next session (number 5)
     await w.advance(6 * SECOND);
     expect(said(w)).toBe("");
-    expect(text(w)).toContain("en attente du jeu");
+    expect(text(w)).toContain("Chrono");
   });
 });
 
 describe("Feature: the compact line, the past sessions and the amounts follow the state", () => {
-  it("Given the compact view, Then the folded line carries the state: waiting, or ended at a time", async () => {
-    const waiting = await managed("waiting");
+  it("Given the compact view, Then the folded line carries the state: chronometer, or ended at a time", async () => {
+    const timing = await managed("timing");
     const fold = (w: PageWorld) =>
       NB(findAll(w.root, (n) => n.className.split(" ").includes("ses-one"))[0]!.textContent);
-    expect(fold(waiting.w)).toContain("Session 5 · en attente du jeu");
+    expect(fold(timing.w)).toMatch(/Session 5 · chrono \d+ min \d\d s/);
     const ended = await managed("ended");
     expect(fold(ended.w)).toMatch(/Session 4 · terminée (à \d\d:\d\d|hier \d\d:\d\d) · 6 trajets/);
   });
 
-  it("Given the list of past sessions, Then each row says in words whether it is in progress, waiting or ended, and how", async () => {
+  it("Given the list of past sessions, Then each row says in words whether it is in progress or ended, and how", async () => {
     const { w } = await managed("story");
     await click(w, "Sessions ▾");
     const rowLabels = findAll(
@@ -443,7 +520,7 @@ describe("Feature: the compact line, the past sessions and the amounts follow th
     expect(
       rowLabels.some(
         (l) =>
-          l.startsWith("Ouvrir la session 1") && l.endsWith(", terminée · inactivité prolongée"),
+          l.startsWith("Ouvrir la session 3") && l.endsWith(", terminée · inactivité prolongée"),
       ),
     ).toBe(true);
     // The menu no longer holds "Terminer": it is on the card.
@@ -451,6 +528,80 @@ describe("Feature: the compact line, the past sessions and the amounts follow th
       findAll(w.root, (n) => n.tag === "button" && n.textContent === "Terminer la session"),
     ).toHaveLength(1);
     expect(text(w)).toContain("terminée · inactivité prolongée");
+  });
+
+  it("Given the Sessions button, Then ONE button opens and closes the list (aria-expanded flips), with no separate 'Fermer'", async () => {
+    const { w } = await managed("story");
+    const toggle = () => button(w, "Sessions ▾") ?? button(w, "Sessions ▴")!;
+    expect(toggle().attrs["aria-expanded"]).toBe("false");
+    await click(w, "Sessions ▾");
+    expect(toggle().attrs["aria-expanded"]).toBe("true");
+    expect(text(w)).toContain("Sessions passées");
+    expect(button(w, "Fermer")).toBeNull();
+    await click(w, "Sessions ▴");
+    expect(toggle().attrs["aria-expanded"]).toBe("false");
+    expect(text(w)).not.toContain("Sessions passées");
+  });
+
+  it("Given more than three sessions, Then the list shows the 3 latest (the current one included) and 'Toutes les sessions' shows them all, and back", async () => {
+    const { w } = await managed("story"); // 4 sessions saved
+    await click(w, "Sessions ▾");
+    const rows = () =>
+      findAll(
+        w.root,
+        (n) =>
+          n.tag === "button" &&
+          n.attrs["aria-label"]?.startsWith("Ouvrir la session ") === true &&
+          isShown(n),
+      ).map((n) => NB(n.attrs["aria-label"]!).split(" : ")[0]);
+    expect(rows()).toEqual(["Ouvrir la session 4", "Ouvrir la session 3", "Ouvrir la session 2"]);
+    expect(button(w, "Toutes les sessions (4)")!.attrs["aria-expanded"]).toBe("false");
+    await click(w, "Toutes les sessions (4)", 100);
+    expect(rows()).toHaveLength(4);
+    expect(button(w, "Les 3 dernières seulement")!.attrs["aria-expanded"]).toBe("true");
+    await click(w, "Les 3 dernières seulement", 100);
+    expect(rows()).toHaveLength(3);
+    // Closing and reopening starts again from the latest few.
+    await click(w, "Toutes les sessions (4)", 100);
+    await click(w, "Sessions ▴");
+    await click(w, "Sessions ▾");
+    expect(rows()).toHaveLength(3);
+  });
+
+  it("Given more than 30 sessions (45), Then 'Toutes les sessions (45)' asks for ALL of them and shows 45 rows, honestly", async () => {
+    const { w, fake } = await managed("story");
+    fake.extraSessions = 41; // 4 + 41 = 45 saved sessions
+    await click(w, "Sessions ▾");
+    const asked = () =>
+      w.host.log.tools.filter((t) => t.name === "sc_session_list").map((t) => t.args["limit"]);
+    expect(asked()).toEqual([3]); // the latest few only, at first
+    const rows = () => findAll(w.root, (n) => n.className === "ses-row" && isShown(n)).length;
+    expect(rows()).toBe(3);
+    await click(w, "Toutes les sessions (45)", 500);
+    expect(asked()).toEqual([3, 45]); // the total the server reported, not a fixed 30
+    expect(rows()).toBe(45);
+    expect(button(w, "Les 3 dernières seulement")).not.toBeNull();
+    await click(w, "Les 3 dernières seulement", 100);
+    expect(rows()).toBe(3);
+  });
+
+  it("Given three sessions or fewer, Then there is nothing more to show and no button for it", async () => {
+    const { w, fake, at } = await managed("story");
+    w.host.overrides.tool = (name: string, args: any) => {
+      const answer = fake.tool(name, args, at()) as any;
+      // The server holds two sessions only.
+      return name === "sc_session_list"
+        ? { total: 2, sessions: answer.sessions.slice(0, 2) }
+        : answer;
+    };
+    await click(w, "Sessions ▾");
+    const all = findAll(
+      w.root,
+      (n) => n.tag === "button" && n.textContent.startsWith("Toutes les sessions"),
+    );
+    expect(all.length).toBeGreaterThan(0); // the button exists in the page...
+    for (const b of all) expect(isShown(b)).toBe(false); // ...and is not offered
+    expect(findAll(w.root, (n) => n.className === "ses-row" && isShown(n))).toHaveLength(2);
   });
 
   it("Given a session ended by hand, Then its row says so and it opens for its detail as before", async () => {
