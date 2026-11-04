@@ -38,6 +38,7 @@ import type {
   ToolResult,
 } from "./types.js";
 import { uexTools } from "./uex.js";
+import { uexCommerceTools } from "./uexCommerce.js";
 import { vocabularyTools } from "./vocabulary.js";
 import { wikiTools } from "./wiki.js";
 
@@ -59,6 +60,7 @@ export function allTools(clients: ToolClients, probes: StatusProbe[] = []): Tool
   return [
     ...statusTools(probes),
     ...uexTools(clients),
+    ...uexCommerceTools(clients),
     ...wikiTools(clients),
     ...sctTools(clients),
     ...patchNotesTools(clients),

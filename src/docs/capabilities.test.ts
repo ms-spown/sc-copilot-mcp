@@ -62,12 +62,11 @@ describe("Feature: the capabilities guide names real tools and misses none", () 
     expect(unknown).toEqual([]);
   });
 
-  it("Given the 49 implemented tools, When the guide is read, Then each one is mentioned and the count is right", () => {
+  it("Given every implemented tool, When the guide is read, Then each one is mentioned and the count is right", () => {
     const mentioned = new Set(codeSpans(doc));
     const missing = [...toolNames].filter((n) => !mentioned.has(n));
     expect(missing).toEqual([]);
-    expect(tools).toHaveLength(49);
-    expect(doc).toContain("49 tools exist");
+    expect(doc).toContain(`${tools.length} tools exist`);
   });
 
   it("Given a tool in a profile, When the guide gives the profile sizes, Then they match the catalog", () => {
@@ -80,7 +79,7 @@ describe("Feature: the capabilities guide names real tools and misses none", () 
     }
   });
 
-  it("Given the telemetry tools, When telemetry is off, Then the guide's count of listed tools is 44", () => {
+  it("Given the telemetry tools, When telemetry is off, Then the guide's count of listed tools is right", () => {
     const hidden = tools.filter((t) => t.advertised?.() === false).map((t) => t.name);
     // With no telemetry client, the tools that need it are not advertised (the dashboard ones also need a View).
     expect(hidden.sort()).toEqual([

@@ -99,6 +99,18 @@ export const CATALOG: Record<string, CatalogEntry> = {
   // Player-written ads: the only UEX tool whose text is not ours to trust.
   uex_search_marketplace: { ...uex, trust: "untrusted_text", profiles: ["trade"] },
 
+  // Refining, shop items and the player marketplace (uexCommerce.ts). They return UEX names (ores, terminals,
+  // items, attributes) from player-driven data, so they are untrusted_text like the other row-returning UEX tools.
+  uex_get_refining_margins: { ...uex, trust: "untrusted_text", maxText: 200, profiles: ["trade"] },
+  uex_get_item_prices: { ...uex, trust: "untrusted_text", maxText: 200, profiles: ["trade"] },
+  uex_compare_items: { ...uex, trust: "untrusted_text", maxText: 200, profiles: ["trade"] },
+  uex_get_marketplace_prices: {
+    ...uex,
+    trust: "untrusted_text",
+    maxText: 200,
+    profiles: ["trade"],
+  },
+
   scw_get_vehicle: { ...wiki, profiles: ["core"] },
   scw_get_item: { ...wiki, profiles: ["core"] },
   scw_list_vehicles: { ...wiki, profiles: ["data"] },

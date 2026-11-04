@@ -7,6 +7,25 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **`uex_get_refining_margins`.** Which refinery is best for an ore, or which ore is worth refining most, from UEX
+  (`refineries_yields`, `refineries_capacities`, `refineries_methods`, the ore-sales prices and the refined product
+  linked by `id_parent`, which is one-directional for some ores). UEX has no ore-to-refined conversion ratio and no
+  refining cost, so the tool ranks and never gives an aUEC profit: refineries by the yield bonus players reported
+  (ties share a rank), ores by an index where the best is 100. The capacity value is shown with its unit marked
+  unverified and is not used to rank. `refineries_audits` is never read (it carries a player's handle). The
+  `mining_prep` prompt mentions it.
+- **`uex_get_item_prices` and `uex_compare_items`.** Where to buy a ship component, weapon, armor piece or food
+  cheapest (`items`, `items_prices`, `categories`), and two items side by side with their `items_attributes`
+  (differences only for numbers of the same unit, no verdict on which is better). Every price row carries its age,
+  a stale flag (over 30 days) and whether its game version is older than LIVE. `items_prices_all` (6.4 MB) is never
+  called.
+- **`uex_get_marketplace_prices`.** A player-market price guide from `marketplace_prices_averages`,
+  `marketplace_trends` and, on request, `marketplace_prices_history` (capped by UEX at 1000 rows: the summary says when
+  it is cut). Prices are converted from text to numbers; set, pack, stack and crate prices are bundles and stay apart
+  from per-unit prices. Optional `check_price` places a price against the recent average. The deprecated
+  `marketplace_averages` is not used.
+- Trade profile: 12 tools to 16. No fuel price tool: UEX's fuel prices are too old to rank refuel stops (median 43
+  days; reasons in docs/CAPABILITIES.md).
 - **Trade journal from the game log** (`sc_trade_journal`, profile `local`, read-only, off with the log). Per play
   session, newest first: every shop purchase and sale (`SendShopBuyRequest`, `SendStandardItemBuyRequest`,
   `SendShopSellRequest`) and cargo-kiosk purchase and sale (`SendCommodityBuyRequest` in cSCU, converted to SCU;

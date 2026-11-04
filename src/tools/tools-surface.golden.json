@@ -1000,6 +1000,43 @@
     }
   },
   {
+    "name": "uex_compare_items",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "item_a": {
+          "type": "string",
+          "description": "First item name (e.g. 'Burst')."
+        },
+        "item_b": {
+          "type": "string",
+          "description": "Second item name (e.g. 'Voyage')."
+        },
+        "category": {
+          "type": "string",
+          "description": "UEX item category of the first item (and of the second unless category_b)."
+        },
+        "category_b": {
+          "type": "string",
+          "description": "Optional: category of the second item."
+        },
+        "size_a": {
+          "type": "number",
+          "description": "Optional: size of the first item."
+        },
+        "size_b": {
+          "type": "number",
+          "description": "Optional: size of the second item."
+        }
+      },
+      "required": [
+        "item_a",
+        "item_b",
+        "category"
+      ]
+    }
+  },
+  {
     "name": "uex_get_commodities",
     "inputSchema": {
       "type": "object",
@@ -1077,6 +1114,114 @@
     "inputSchema": {
       "type": "object",
       "properties": {}
+    }
+  },
+  {
+    "name": "uex_get_item_prices",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "item_name": {
+          "type": "string",
+          "description": "Words of the item name (e.g. 'Burst', 'FR-66', 'P4-AR'). A close spelling is tried when nothing matches exactly."
+        },
+        "category": {
+          "type": "string",
+          "description": "UEX item category or section (e.g. 'Quantum Drives', 'Guns', 'Foods'). At most three categories are opened. An unknown or too wide name returns the list of categories in `categories`."
+        },
+        "company": {
+          "type": "string",
+          "description": "Optional: maker name (e.g. 'ArcCorp')."
+        },
+        "size": {
+          "type": "number",
+          "description": "Optional: item size (e.g. 1, 2, 3)."
+        },
+        "star_system_name": {
+          "type": "string",
+          "description": "Optional: only terminals in this system (exact, e.g. 'Stanton')."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Items to price when several match (default 3, max 4)."
+        },
+        "locations": {
+          "type": "number",
+          "description": "Rows per side, buy and sell, per item (default 8, max 15). The answer is cut, and says so, if it would be too large."
+        },
+        "with_attributes": {
+          "type": "boolean",
+          "description": "Add the item's stats from UEX (one more request per item). Default false."
+        }
+      },
+      "required": [
+        "item_name",
+        "category"
+      ]
+    }
+  },
+  {
+    "name": "uex_get_marketplace_prices",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "item_name": {
+          "type": "string",
+          "description": "Item name or part of it (e.g. 'MG Scrip', 'Wikelo'). Must be unique or exact; several matches are listed."
+        },
+        "id_item": {
+          "type": "number",
+          "description": "UEX item id, when known (wins over item_name)."
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "buy",
+            "sell"
+          ],
+          "description": "Optional: one side only. 'sell' = players offering the item (what you pay), 'buy' = players wanting it (what you are paid)."
+        },
+        "quality_tier": {
+          "type": "number",
+          "description": "Optional: one quality tier (0 = unqualified)."
+        },
+        "include_history": {
+          "type": "boolean",
+          "description": "Add a summary of recent adverts (price changes of the last 30 days). Heavy: UEX sends up to 1000 rows and the summary then covers only the newest ones, which it says. Default false."
+        },
+        "check_price": {
+          "type": "number",
+          "description": "Optional: a price per unit to place against the recent average (needs operation)."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Without an item: how many of the most traded items (default 15, max 50)."
+        }
+      }
+    }
+  },
+  {
+    "name": "uex_get_refining_margins",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ore": {
+          "type": "string",
+          "description": "Ore to refine (e.g. 'Laranite', 'Gold', 'Quantainium'; '(Raw)' or '(Ore)' is optional). Omit to rank all ores."
+        },
+        "star_system_name": {
+          "type": "string",
+          "description": "Optional: only refineries in this star system (exact name, e.g. 'Stanton', 'Pyro', 'Nyx')."
+        },
+        "limit": {
+          "type": "number",
+          "description": "Rows to return (default 10, max 30): refineries, or ores without `ore`."
+        },
+        "include_methods": {
+          "type": "boolean",
+          "description": "With `ore`: add the refining methods with UEX's 1 to 3 ratings for yield, cost and speed (default true). The ratings are not numbers of aUEC or minutes."
+        }
+      }
     }
   },
   {
