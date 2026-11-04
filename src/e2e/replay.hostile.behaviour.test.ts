@@ -71,8 +71,12 @@ describe("Feature: hostile text in the log", () => {
     // ---- Ask for everything, with and without the balance.
     const without = await sweepWithoutBalance(w);
     const withB = await sweepWithBalance(w);
-    const journal = await w.call("sc_trade_journal", { resolve_names: false });
+    const journal = await w.call("sc_trade_journal", {
+      resolve_names: false,
+      include_balance: true,
+    });
     // (every call is recorded by the world: the sweep below reads them all back)
+    await w.call("sc_trade_journal", { include_balance: true });
     await w.call("sc_trade_journal", {});
     await w.call("sc_session_current", { include_balance: true });
     await w.call("sc_session_list", { include_balance: true });

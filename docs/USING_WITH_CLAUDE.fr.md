@@ -81,6 +81,7 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
      n'a ni solde du portefeuille ni frais d'autochargement : donnez une marge BRUTE seulement (recette moins coût
      des SCU appariés), jamais un résultat net ; le succès d'un achat ou d'une vente de fret est déduit (aucune
      ligne d'erreur), dites-le ; une marchandise « unknown commodity » reste inconnue.
+     Ses montants en aUEC ne viennent qu'avec include_balance (ici : les montants), après avoir demandé au joueur.
    - La session de jeu enregistrée du joueur (trajets, temps, dernier lieu et dernières marchandises nommés par le journal :
      une estimation) : sc_session_current pour reprendre et accompagner, sc_session_stats et sc_session_list pour regarder
      en arrière ; chiffres d'argent seulement avec include_balance. Pour garder ou partager une session (équipage, org,

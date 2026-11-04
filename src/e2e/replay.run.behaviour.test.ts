@@ -236,7 +236,9 @@ describe("Feature: the player's run, from the first frame to the saved session",
     });
     expect(current.session.money.plan.efficiency).toBeCloseTo(F.net / PLAYER_RUN.planned, 3);
     expect(current.recent_trips).toHaveLength(1);
-    const journal = (await w.call("sc_trade_journal", { resolve_names: false })).data;
+    const journal = (
+      await w.call("sc_trade_journal", { resolve_names: false, include_balance: true })
+    ).data;
     const cargo = journal.sessions[0].cargo_runs[0];
     expect(cargo).toMatchObject({
       state: "closed",
@@ -256,6 +258,14 @@ describe("Feature: the player's run, from the first frame to the saved session",
       journalText,
       [PLAYER_RUN.start, PLAYER_RUN.end, F.net, F.fees, F.buyFee, F.sellFee],
       "sc_trade_journal",
+    );
+    // Without the flag the journal gives no aUEC amount at all (cost, turnover, margin, line totals): the positive
+    // control is the call above, which asked for them.
+    const bare = await w.call("sc_trade_journal", { resolve_names: false });
+    expectAbsent(
+      JSON.stringify(bare),
+      [F.cost, F.turnover, F.gross, F.buyFee, F.sellFee],
+      "sc_trade_journal without include_balance",
     );
 
     // Route reliability is silent: one run is not a sample (n < 2), in the tool and in the poll.

@@ -102,7 +102,9 @@ describe("Feature: a late sale of stock from before the run", () => {
 
     // The journal pairs the same lines by goods, over the whole session: the sale without a purchase is a run of its
     // own there, and the two gross margins add up to the card's.
-    const journal = (await w.call("sc_trade_journal", { resolve_names: false })).data;
+    const journal = (
+      await w.call("sc_trade_journal", { resolve_names: false, include_balance: true })
+    ).data;
     const cargo = journal.sessions[0].cargo_runs as any[];
     expect(cargo.reduce((s, c) => s + c.gross_margin_auec, 0)).toBe(F.gross);
     expect(cargo.reduce((s, c) => s + c.sold_without_purchase_scu, 0)).toBe(LATE.scu);
@@ -167,7 +169,9 @@ describe("Feature: cargo transactions the game rejects", () => {
     });
 
     // The journal lists both rows as failed and does not count them.
-    const journal = (await w.call("sc_trade_journal", { resolve_names: false })).data;
+    const journal = (
+      await w.call("sc_trade_journal", { resolve_names: false, include_balance: true })
+    ).data;
     const s = journal.sessions[0];
     expect(s.totals.excluded.failed).toBe(2);
     expect(s.totals.cargo).toMatchObject({

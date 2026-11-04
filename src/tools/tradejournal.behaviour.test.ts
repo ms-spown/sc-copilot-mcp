@@ -114,7 +114,7 @@ describe("Feature: sc_trade_journal", () => {
           { uuid: WASTE.toUpperCase(), name: "Waste" },
         ]),
       );
-      const out = body(await registry.call("sc_trade_journal", {}));
+      const out = body(await registry.call("sc_trade_journal", { include_balance: true }));
       expect(out.provenance).toMatchObject({ trust: "untrusted_text", kind: "local_log" });
       expect(out.notice).toBeTruthy();
       const s = out.data.sessions[0];
@@ -156,6 +156,69 @@ describe("Feature: sc_trade_journal", () => {
     });
   });
 
+  describe("Scenario: aUEC amounts are withheld unless the player agreed (include_balance)", () => {
+    // Every amount of TRIP, as a number a scan can look for: line totals, unit prices, cost, revenue, margins, spending.
+    const AMOUNTS = [120923, 10581, 292480, 25592, 131504, 318072, 186568, 900, 1.889409, 267.8];
+    const AMOUNT_KEYS =
+      /"(total_auec|unit_price_auec|shop_unit_price_scu|cost_auec|revenue_auec|gross_margin_auec|gross_margin_per_scu_auec|bought_auec|sold_auec|auec)"/;
+
+    it("Given no flag, When I ask for the journal, Then no amount, key or figure of aUEC is in the answer", async () => {
+      const { registry } = world(TRIP, () => wikiPage([{ uuid: WASTE, name: "Waste" }]));
+      const result = await registry.call("sc_trade_journal", {});
+      const text = result.content[0].text;
+      expect(text).not.toMatch(AMOUNT_KEYS);
+      for (const amount of AMOUNTS) expect(text, String(amount)).not.toContain(String(amount));
+      const out = JSON.parse(text);
+      expect(out.data.money_note).toMatch(/include_balance=true/);
+    });
+
+    it("Given no flag, Then counts, SCU, kinds, statuses, categories and the structure stay", async () => {
+      const { registry } = world(TRIP, () => wikiPage([{ uuid: WASTE, name: "Waste" }]));
+      const s = body(await registry.call("sc_trade_journal", {})).data.sessions[0];
+      expect(s.cargo_runs[0]).toMatchObject({
+        commodity_name: "Waste",
+        state: "closed",
+        paired_scu: 696,
+        bought_scu: 696,
+        buy_lines: 2,
+        sell_lines: 2,
+        estimated: true,
+      });
+      expect(s.spending_by_category).toEqual([
+        { category: "armor", lines: 1, quantity: 3, inferred: true },
+      ]);
+      expect(s.totals.cargo).toMatchObject({ bought_scu: 696, sold_scu: 696, buy_lines: 2 });
+      expect(s.transactions[0]).toMatchObject({
+        kind: "commodity",
+        side: "buy",
+        unit: "SCU",
+        quantity: 640,
+        status: expect.any(String),
+        confidence: "inferred",
+      });
+      expect(s.transactions_shown).toBe(5);
+    });
+
+    it("Given include_balance true, Then the amounts are there (positive control) and there is no withheld note", async () => {
+      const { registry } = world(TRIP, () => wikiPage([{ uuid: WASTE, name: "Waste" }]));
+      const out = body(await registry.call("sc_trade_journal", { include_balance: true }));
+      expect(out.data.sessions[0].cargo_runs[0]).toMatchObject({
+        cost_auec: 131504,
+        revenue_auec: 318072,
+        gross_margin_auec: 186568,
+      });
+      expect(out.data.sessions[0].transactions[0].total_auec).toBe(120923);
+      expect(out.data.money_note).toBeUndefined();
+    });
+
+    it("Given include_balance false, Then it is the same as no flag", async () => {
+      const { registry } = world(TRIP, () => wikiPage([{ uuid: WASTE, name: "Waste" }]));
+      const text = (await registry.call("sc_trade_journal", { include_balance: false })).content[0]
+        .text;
+      expect(text).not.toMatch(AMOUNT_KEYS);
+    });
+  });
+
   describe("Scenario: names", () => {
     it("Given the wiki does not know the GUID, Then it is 'unknown commodity', not a guess", async () => {
       const { registry } = world(TRIP, () => wikiPage([{ uuid: OTHER, name: "Not Mine" }]));
@@ -166,7 +229,7 @@ describe("Feature: sc_trade_journal", () => {
       const { registry } = world(TRIP, () => {
         throw new Error("boom");
       });
-      const out = body(await registry.call("sc_trade_journal", {}));
+      const out = body(await registry.call("sc_trade_journal", { include_balance: true }));
       expect(out.data.sessions[0].cargo_runs[0].gross_margin_auec).toBe(186568);
       expect(out.data.sessions[0].cargo_runs[0].commodity_name).toBe("unknown commodity");
       expect(out.data.commodity_names.lookup_error).toBeTruthy();
@@ -211,7 +274,9 @@ describe("Feature: sc_trade_journal", () => {
 
     it("Given 130 cargo lines, 40 shop lines and max_transactions 120, Then the answer is cut to fit and says how much", async () => {
       const { registry } = world(busySession(T0, 65, 40), wiki);
-      const out = body(await registry.call("sc_trade_journal", { max_transactions: 120 }));
+      const out = body(
+        await registry.call("sc_trade_journal", { max_transactions: 120, include_balance: true }),
+      );
       fits(out);
       const s = out.data.sessions[0];
       expect(s.transactions_total).toBe(170);
@@ -228,7 +293,11 @@ describe("Feature: sc_trade_journal", () => {
       const { registry } = world(busySession(T0, 65, 40), wiki);
       fits(
         body(
-          await registry.call("sc_trade_journal", { max_transactions: 120, resolve_names: false }),
+          await registry.call("sc_trade_journal", {
+            max_transactions: 120,
+            resolve_names: false,
+            include_balance: true,
+          }),
         ),
       );
     });
@@ -243,7 +312,11 @@ describe("Feature: sc_trade_journal", () => {
         fs.utimesSync(f, old, old);
       }
       const out = body(
-        await registry.call("sc_trade_journal", { sessions: 5, max_transactions: 120 }),
+        await registry.call("sc_trade_journal", {
+          sessions: 5,
+          max_transactions: 120,
+          include_balance: true,
+        }),
       );
       fits(out);
       expect(out.data.sessions).toHaveLength(3);
@@ -280,8 +353,9 @@ describe("Feature: sc_trade_journal", () => {
   describe("Scenario: limits", () => {
     it("Given many transactions, Then only the latest are listed and totals still cover all", async () => {
       const { registry } = world(TRIP, () => wikiPage([]));
-      const s = body(await registry.call("sc_trade_journal", { max_transactions: 2 })).data
-        .sessions[0];
+      const s = body(
+        await registry.call("sc_trade_journal", { max_transactions: 2, include_balance: true }),
+      ).data.sessions[0];
       expect(s.transactions_total).toBe(5);
       expect(s.transactions_shown).toBe(2);
       expect(s.totals.cargo.sold_auec).toBe(318072);
