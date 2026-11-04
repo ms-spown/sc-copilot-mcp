@@ -662,7 +662,7 @@ export function tradeNextWanted(trade: any, plan: any, tried: string, now: numbe
 export function tradeActionsPanel(doc: any, L: any): any {
   const cfg = tradeActionsConfig();
   const objectives = tradeObjectives();
-  const { el, add, setText, setAttr, show, setTip } = L.domKit(doc);
+  const { el, add, setText, setAttr, setVar, show, setTip } = L.domKit(doc);
 
   // ---- the state
   const S: any = {
@@ -744,14 +744,46 @@ export function tradeActionsPanel(doc: any, L: any): any {
       c.badges.push(b);
       add(badges, b);
     }
-    // The quiet line about the player's own saved runs of this goods (calibrationPanel.ts); hidden unless there are data.
+    // Estimated / measured / ratio side by side (calibrationCompare in calibrationPanel.ts): the estimate is always there once
+    // the block is shown; the measured and the ratio come from the player's own saved runs, so the whole block exists only
+    // while the balance is shown and is emptied (not just hidden) when it is not.
     c.calib = el("div", "ta-calib");
-    c.calibText = el("span", "ta-calib-text", "");
+    c.cmp = el("div", "ta-cmp");
+    c.cmp.setAttribute("role", "group");
+    const cell = (kind: string, label: string): any => {
+      const k: any = { root: el("div", "ta-cmp-cell") };
+      k.root.setAttribute("data-cell", kind);
+      k.label = el("span", "ta-cmp-label", label);
+      k.value = el("span", "ta-cmp-value", "");
+      k.unit = el("span", "ta-cmp-unit", "");
+      k.sub = el("span", "ta-cmp-sub", "");
+      const head = el("div", "ta-cmp-head");
+      add(head, k.label);
+      if (kind === "estimate") {
+        // The planner's figure is an estimate and says so in capitals, with the card's dashed tag.
+        k.tag = el("span", "tr-tag", "ESTIMATION");
+        k.tag.setAttribute("data-estimate", "1");
+        add(head, k.tag);
+      }
+      add(k.root, head, k.value, k.unit, k.sub);
+      return k;
+    };
+    c.cE = cell("estimate", "Estimé");
+    c.cM = cell("measured", "Mesuré");
+    c.cR = cell("ratio", "Réalisé ÷ prévu");
+    c.cR.bar = el("span", "ta-cmp-bar");
+    c.cR.bar.setAttribute("aria-hidden", "true");
+    c.cR.fill = el("span", "ta-cmp-fill");
+    add(c.cR.bar, c.cR.fill);
+    add(c.cR.root, c.cR.bar);
+    add(c.cmp, c.cE.root, c.cM.root, c.cR.root);
+    c.calibApply = el("p", "ta-cmp-apply", "");
+    c.calibCaution = el("p", "ta-cmp-caution", "");
     c.calibTag = el("span", "tr-tag", "");
     c.calibMore = el("details", "ta-calib-more");
     c.calibMoreText = el("p", "ta-calib-more-text", "");
     add(c.calibMore, el("summary", "ta-calib-sum", "Comment lire ça"), c.calibMoreText);
-    add(c.calib, c.calibText, c.calibTag, c.calibMore);
+    add(c.calib, c.cmp, c.calibApply, c.calibCaution, c.calibTag, c.calibMore);
     c.calib.setAttribute("data-hidden", "1");
     c.apply = el("button", "btn ta-apply", "Appliquer comme plan");
     c.apply.setAttribute("type", "button");
@@ -1202,6 +1234,50 @@ export function tradeActionsPanel(doc: any, L: any): any {
   }
 
   // ---- painting
+  /**
+   * The estimated / measured / ratio block of a card. With nothing to show (the balance is hidden, no run of this goods) every
+   * text, tip, label and the bar are EMPTIED, not just hidden: what the block held came from the balance.
+   */
+  function paintCompare(c: any, m: any) {
+    const on = !!m;
+    const ratio = on && m.mode === "ratio";
+    setAttr(c.cmp, "aria-label", on ? "Comparaison : estimé, mesuré, ratio" : "");
+    setAttr(c.cmp, "data-mode", on ? m.mode : "");
+    setText(c.cE.value, on ? m.estValue : "");
+    setText(c.cE.unit, on ? m.estUnit : "");
+    setText(c.cE.sub, on ? m.estSub : "");
+    setTip(
+      c.cE.tag,
+      on
+        ? "Le gain calculé par le planificateur sur les prix UEX du moment : des relevés de la communauté, pas une promesse."
+        : "",
+      true,
+    );
+    setText(c.cM.label, on ? m.measLabel : "Mesuré");
+    setText(c.cM.value, on ? m.measValue : "");
+    setText(c.cM.unit, on ? m.measUnit : "");
+    setText(c.cM.sub, on ? m.measSub : "");
+    show(c.cR.root, ratio);
+    setText(c.cR.value, ratio ? m.ratioValue : "");
+    setText(c.cR.unit, "");
+    setText(c.cR.sub, ratio ? m.ratioSub : "");
+    setVar(c.cR.fill, "--fill", ratio && m.fill >= 0 ? m.fill + "%" : "0%");
+    show(c.cR.bar, ratio && m.fill >= 0);
+    setText(c.calibApply, on ? m.apply : "");
+    show(c.calibApply, on && m.apply !== "");
+    const caution = on ? m.caution : "";
+    setText(
+      c.calibCaution,
+      caution === "" ? "" : caution.charAt(0).toUpperCase() + caution.slice(1) + ".",
+    );
+    show(c.calibCaution, caution !== "");
+    setText(c.calibTag, ratio ? m.tag : "");
+    show(c.calibTag, ratio);
+    setAttr(c.calibTag, "data-estimate", "1");
+    setTip(c.calibTag, ratio ? m.hint : "", true);
+    setText(c.calibMoreText, on ? m.reading : "");
+  }
+
   function fillCard(c: any, o: any, objective: string, rank: string, hero: boolean) {
     c.option = o;
     show(c.root, !!o);
@@ -1237,19 +1313,12 @@ export function tradeActionsPanel(doc: any, L: any): any {
       if (d !== undefined) setText(c.lines[i], d);
     }
     // Only while the balance is shown (the ratios come from it), and for the first leg: a plan holds one commodity.
-    const leg = o.legs[0];
     const cal =
-      tradeBalanceNumber(H.balance) !== null && H.calibration && leg
-        ? L.calibrationLine(H.calibration, leg.commodity, leg.from, leg.to, o.legs.length)
+      tradeBalanceNumber(H.balance) !== null && H.calibration
+        ? L.calibrationCompare(L, H.calibration, o)
         : null;
     show(c.calib, !!cal);
-    if (cal) {
-      setText(c.calibText, cal.text);
-      setText(c.calibTag, cal.tag);
-      setAttr(c.calibTag, "data-estimate", "1");
-      setTip(c.calibTag, cal.hint, true);
-      setText(c.calibMoreText, cal.more);
-    } else setTip(c.calibTag, "", true);
+    paintCompare(c, cal);
     const applied = S.appliedId === o.id;
     setText(c.apply, applied ? "Plan appliqué" : "Appliquer comme plan");
     setAttr(c.apply, "aria-pressed", applied ? "true" : "false");

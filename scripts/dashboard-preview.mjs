@@ -169,12 +169,12 @@ if (trade) {
 }
 // calib=1: the calibration section the real server adds to the ledger, only for a poll that asked for the balance.
 if (q.get("calib")) {
-  const g = (over) => ({ kind: "commodity", commodity: "Laranite", buy_terminal: null, sell_terminal: null, n: 4, confidence: "medium", gross_ratio: 0.737, gross_min: 0.65, gross_max: 0.83, high_variance: false, net_ratio: 0.762, net_n: 4, net_confidence: "medium", fee_rate: 0.137, fee_n: 4, last_run_age_days: 1, quantity_adjusted: 0, quantity_unknown: 0, goods_unverified: true, ...over });
+  const g = (over) => ({ kind: "commodity", commodity: "Laranite", buy_terminal: null, sell_terminal: null, n: 4, confidence: "medium", gross_ratio: 0.737, gross_min: 0.65, gross_max: 0.83, gross_avg_auec: 140030, gross_planned_avg_auec: 190000, net_avg_auec: 144780, net_planned_avg_auec: 190000,high_variance: false, net_ratio: 0.762, net_n: 4, net_confidence: "medium", fee_rate: 0.137, fee_n: 4, last_run_age_days: 1, quantity_adjusted: 0, quantity_unknown: 0, goods_unverified: true, ...over });
   const CALIBRATION = { v: 1, patch_line: "4.10", groups: [
     g({}),
     g({ kind: "route", buy_terminal: "Port Tressler", sell_terminal: "Area18 TDD" }),
-    g({ commodity: "Gold", n: 2, confidence: "low", gross_ratio: 0.58, gross_min: 0.2, gross_max: 0.96, high_variance: true, net_ratio: null, net_n: 0, fee_n: 2 }),
-    g({ commodity: "Agricium", n: 8, confidence: "medium", gross_ratio: 0.91, gross_min: 0.8, gross_max: 1.04, net_ratio: 0.88, net_n: 8, fee_rate: 0.052, fee_n: 8, last_run_age_days: 23 }),
+    g({ commodity: "Gold", n: 2, confidence: "low", gross_ratio: 0.58, gross_min: 0.2, gross_max: 0.96, high_variance: true, net_ratio: null, net_n: 0, fee_n: 2, net_avg_auec: null, net_planned_avg_auec: null }),
+    g({ commodity: "Agricium", n: 8, confidence: "medium", gross_ratio: 0.91, gross_min: 0.8, gross_max: 1.04, gross_avg_auec: 138320, gross_planned_avg_auec: 152000, net_ratio: 0.88, net_n: 8, net_avg_auec: 133760, net_planned_avg_auec: 152000, fee_rate: 0.052, fee_n: 8, last_run_age_days: 23 }),
   ] };
   const withoutCalibration = scenario.ledger;
   if (withoutCalibration) scenario.ledger = (include, nowMs) => { const l = withoutCalibration(include, nowMs); return include ? { ...l, calibration: CALIBRATION } : l; };
@@ -262,7 +262,15 @@ const server = http.createServer((req, res) => {
     res.end(body);
   };
   if (url.pathname === "/") return send(200, "text/html; charset=utf-8", HARNESS);
-  if (url.pathname === "/view.html") return send(200, "text/html; charset=utf-8", page.dashboardHtml({ balanceHidden: url.searchParams.get("hidden") === "1", token: "previewtoken0123456789abcdef012345" }));
+  if (url.pathname === "/view.html")
+    return send(
+      200,
+      "text/html; charset=utf-8",
+      page.dashboardHtml({
+        balanceHidden: url.searchParams.get("hidden") === "1",
+        token: "previewtoken0123456789abcdef012345",
+      }),
+    );
   if (url.pathname.startsWith("/dist/") && url.pathname.endsWith(".js")) {
     const file = path.resolve(root, "." + url.pathname);
     if (file.startsWith(dist + path.sep) && fs.existsSync(file)) {

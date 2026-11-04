@@ -1041,10 +1041,20 @@ compares what the plan promised with what you really got (`src/providers/session
   rate on the plan's turnover. An ESTIMATE, always with its number of runs and its confidence; it claims no cause (a ratio
   below 100 % can come from prices, quantity or a slow sale).
 - **Where it shows.** `sc_session_stats` (section `route_reliability`, not with `include_balance` false); a quiet line under each
-  suggested route of the action bar ("D'après tes N trajets ... : tu réalises ≈ X % du prévu (frais ≈ Y %)", with the tag
-  "estimé · N trajets", only when data exist; a route with two legs says "Sur le 1er tronçon" in the line and, in the
-  fold "Comment lire ça", that it is not a round-trip figure; the confidence is in the tag's tooltip, and stays in the tag
-  when it is low); the tile "Si tu refais ce trajet" of the commerce card, which prefers the calibrated
+  suggested route of the action bar: three values side by side, only when data exist and the balance is shown. ESTIMÉ (tag
+  "ESTIMATION"): the planner's profit per trip and per hour from UEX prices. MESURÉ: the mean of the player's own runs of that
+  route or goods (the mean realised gross margin, or the mean net when the ratio in use is the net one) with their number
+  and the mean they were planned at. RÉALISÉ ÷ PRÉVU: the same ratio as the tile below (the net ratio, else the gross ratio
+  less the usual fees), with a small bar on a 0 to 200 % scale, the tag "estimé · N trajets · confiance ..." (its tooltip
+  explains the confidence) and what it gives: "Si tu refais ce trajet ≈ X aUEC (prévu Y × Z %)". **Rules.** Under 3 runs
+  behind the figure in use the card gives their number and nothing else (no ratio, no applied figure, no tag; the tile and
+  the tools keep their 2-run minimum). The ratio is applied to the profit of the FIRST leg only, which is what "apply as
+  plan" stores and so what the runs were compared with: a card with two legs says "Si tu refais le 1er tronçon" and gives no
+  figure for the round trip; an hourly figure is applied only to a card of one leg, as the applied trip over the estimated
+  cycle. A ratio above 500 % is worded "écart très élevé", not printed, and nothing is applied to it. The mean over the
+  planned mean is the ratio; it is NOT the measured mean divided by today's estimate (the fold says so). The fold "Comment
+  lire ça" also says the ratio is censored to about 50 % to 200 % (see the selection bias above). The block exists only while
+  the balance is shown and is emptied, not just hidden, when it is hidden again. The tile "Si tu refais ce trajet" of the commerce card, which prefers the calibrated
   figure when the plan in force has a group of 2 runs or more; one sentence in the server instructions and in the prompt
   `trade_copilot` so that Claude quotes it with its number of runs.
 - **Privacy.** A ratio times the plan reveals the realised result, so the section exists only where the balance is shown:

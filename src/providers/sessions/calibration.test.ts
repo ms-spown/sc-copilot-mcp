@@ -161,6 +161,25 @@ describe("Feature: the typical ratio, its spread and its confidence", () => {
     expect(g.gross_median).toBe(0.7);
     expect(g.gross_min).toBe(0.5);
     expect(g.gross_max).toBe(0.9);
+    // the two means behind the pooled ratio: (9 000 + 50 000) / 2 and (10 000 + 100 000) / 2, whose quotient is the ratio
+    expect(g.gross_avg_auec).toBe(29_500);
+    expect(g.gross_planned_avg_auec).toBe(55_000);
+    expect(g.gross_avg_auec! / g.gross_planned_avg_auec!).toBeCloseTo(g.gross_ratio!, 3);
+  });
+
+  it("Given runs with a net of their own, Then the net means are over those runs and their quotient is the net ratio; given fewer than two, Then none", () => {
+    const r = calibrate([sessionWith(1, [run(), run({}, 100_000, 60_000)])]);
+    const g = commodity(r)!;
+    // nets 76 000 and 56 000 (gross less 4 000 of fees) over plans of 100 000 each
+    expect(g.net_n).toBe(2);
+    expect(g.net_avg_auec).toBe(66_000);
+    expect(g.net_planned_avg_auec).toBe(100_000);
+    expect(g.net_avg_auec! / g.net_planned_avg_auec!).toBeCloseTo(g.net_ratio!, 3);
+    // a single run gives no ratio and so no mean (a mean of one run is that run, not a typical figure)
+    const one = commodity(calibrate([sessionWith(1, [run()])]))!;
+    expect(one.gross_avg_auec).toBeNull();
+    expect(one.net_avg_auec).toBeNull();
+    expect(one.net_planned_avg_auec).toBeNull();
   });
 
   it("Given confidence rules, Then they are the documented ones", () => {

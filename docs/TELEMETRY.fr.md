@@ -1106,10 +1106,22 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   chiffre d'affaires du plan. Une ESTIMATION, toujours avec son nombre de cargaisons et sa confiance ; elle n'affirme
   aucune cause (un ratio sous 100 % peut venir des prix, de la quantité ou d'une vente lente).
 - **Où cela s'affiche.** `sc_session_stats` (section `route_reliability`, pas avec `include_balance` à false) ; une ligne
-  discrète sous chaque route suggérée de la barre d'actions (« D'après tes N trajets ... : tu réalises ≈ X % du prévu
-  (frais ≈ Y %) », avec l'étiquette « estimé · N trajets », seulement quand il y a des données ; une route à deux
-  tronçons dit « Sur le 1er tronçon » dans la ligne et, dans le repli « Comment lire ça », que ce n'est pas un chiffre
-  d'aller-retour ; la confiance est dans l'infobulle de l'étiquette, et reste dans l'étiquette quand elle est faible) ; la tuile « Si tu refais ce
+  sous chaque route suggérée de la barre d'actions : trois valeurs côte à côte, seulement quand il y a des données et que le
+  solde est affiché. ESTIMÉ (étiquette « ESTIMATION ») : le gain du planificateur par trajet et par heure, d'après les prix
+  UEX. MESURÉ : la moyenne de tes propres trajets de cette route ou de cette marchandise (la marge brute réalisée moyenne, ou
+  le net moyen quand le ratio utilisé est le net) avec leur nombre et la moyenne à laquelle ils étaient prévus. RÉALISÉ ÷
+  PRÉVU : le même ratio que la tuile ci-dessous (le ratio net, sinon le ratio brut moins les frais habituels), avec une petite
+  barre sur une échelle de 0 à 200 %, l'étiquette « estimé · N trajets · confiance ... » (son infobulle explique la
+  confiance) et ce qu'il donne : « Si tu refais ce trajet ≈ X aUEC (prévu Y × Z %) ». **Règles.** Sous 3 trajets derrière le
+  chiffre utilisé, la carte donne leur nombre et rien d'autre (ni ratio, ni chiffre appliqué, ni étiquette ; la tuile et les
+  outils gardent leur minimum de 2 trajets). Le ratio s'applique au profit du PREMIER tronçon seulement, ce que « Appliquer
+  comme plan » enregistre et donc ce à quoi les trajets ont été comparés : une carte à deux tronçons dit « Si tu refais le 1er
+  tronçon » et ne donne aucun chiffre d'aller-retour ; un chiffre par heure n'est appliqué qu'à une carte d'un seul tronçon,
+  comme le trajet appliqué sur le cycle estimé. Un ratio au-dessus de 500 % est écrit « écart très élevé », pas affiché, et
+  rien ne lui est appliqué. La moyenne réalisée sur la moyenne prévue donne le ratio ; ce n'est PAS le mesuré divisé par
+  l'estimation d'aujourd'hui (le repli le dit). Le repli « Comment lire ça » dit aussi que le ratio est censuré à environ
+  50 % à 200 % (voir le biais de sélection ci-dessus). Le bloc n'existe que tant que le solde est affiché et il est vidé, pas
+  seulement caché, quand on le masque de nouveau. La tuile « Si tu refais ce
   trajet » de la carte de commerce, qui préfère le chiffre calibré quand le plan en cours a un groupe de 2 cargaisons ou
   plus ; une phrase dans les instructions du serveur et dans le prompt `trade_copilot` pour que Claude la cite avec son
   nombre de cargaisons.

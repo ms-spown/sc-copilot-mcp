@@ -33,6 +33,20 @@ versions follow [Semantic Versioning](https://semver.org/).
   loss box carries its own copy of the button. The page grows from 350.7 kB to 357.7 kB, inside the internal budget of 368 kB
   (our own guard, not a proven host limit).
 
+### Changed (dashboard, UX audit R5: route cards)
+- **Route cards: the estimate, what you measured and the ratio, side by side (UX audit R5).** Under each route of "Chercher une
+  route", the quiet calibration line is replaced by three aligned values: ESTIMÉ (tag "ESTIMATION": the planner's profit per
+  trip and per hour from UEX prices), MESURÉ (the mean of your own runs of that route or goods, their number and what they were
+  planned at) and RÉALISÉ ÷ PRÉVU (the ratio of the tile "Si tu refais ce trajet", with a small 0 to 200 % bar, its confidence
+  tag and what it gives: "Si tu refais ce trajet ≈ X aUEC (prévu Y × Z %)"). Rules: under 3 runs the card gives their number
+  and nothing else; the ratio is applied to the first leg's profit only (a card of two legs says "1er tronçon" and gives no
+  round-trip figure; an hourly figure only for a card of one leg); a huge gap is worded, not printed; the fold "Comment lire
+  ça" says the ratio is censored to about 50 % to 200 % and is not the measured mean over today's estimate. Shown only with the
+  balance, and emptied (hidden nodes and attributes included) when it is hidden again.
+- The calibration groups of `sc_session_stats` (`route_reliability`) and of the dashboard poll carry four new mean amounts
+  (`gross_avg_auec`, `gross_planned_avg_auec`, `net_avg_auec`, `net_planned_avg_auec`), derived from the balance like the ratios
+  and withheld with them.
+
 ## [2.6.0] - 2026-11-04
 
 Behaviour change first: **the aUEC balance and every amount derived from it are now SHOWN by default**; hiding them is the opt-in

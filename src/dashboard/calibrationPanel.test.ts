@@ -5,7 +5,9 @@ import { buildCalibration, calibrationForPoll } from "../providers/sessions/cali
 import { NOW as SESSION_NOW, session } from "../providers/sessions/fixtures.testing.js";
 import type { SessionManager } from "../providers/sessions/manager.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
+import { figure } from "../testing/replay/audit.js";
 import {
+  calibrationCompare,
   calibrationExpected,
   calibrationFromLedger,
   calibrationLine,
@@ -22,6 +24,7 @@ import {
   ledgerText,
 } from "./ledgerPanel.js";
 import { DashboardService } from "./service.js";
+import { fmtAuec } from "./viewLogic.js";
 import {
   findAll,
   findButton,
@@ -51,7 +54,14 @@ const NBSP_FREE = (s: string) => s.replace(/[\u00a0\u202f]/g, " ");
 const GROSS = 0.737;
 const NET = 0.762;
 const FEE = 0.137;
-const WIRE = /0\.737|0\.762|0\.137|gross_ratio|net_ratio|fee_rate|"calibration"/;
+/** The mean amounts behind the ratios, made up so that none can appear by chance (each is a whole figure when scanned). */
+const GROSS_AVG = 91_337;
+const GROSS_PLANNED = 123_941;
+const NET_AVG = 94_411;
+const NET_PLANNED = 123_901;
+const MEANS = [GROSS_AVG, GROSS_PLANNED, NET_AVG, NET_PLANNED];
+const WIRE =
+  /0\.737|0\.762|0\.137|gross_ratio|net_ratio|fee_rate|"calibration"|gross_avg_auec|net_avg_auec|planned_avg_auec/;
 
 const group = (over: Record<string, unknown> = {}) => ({
   kind: "commodity",
@@ -65,9 +75,13 @@ const group = (over: Record<string, unknown> = {}) => ({
   gross_median: 0.74,
   gross_min: 0.65,
   gross_max: 0.83,
+  gross_avg_auec: GROSS_AVG,
+  gross_planned_avg_auec: GROSS_PLANNED,
   high_variance: false,
   net_ratio: NET,
   net_n: 4,
+  net_avg_auec: NET_AVG,
+  net_planned_avg_auec: NET_PLANNED,
   net_confidence: "medium",
   fee_rate: FEE,
   fee_n: 4,
@@ -237,6 +251,191 @@ describe("Feature: the calibrated expectation and the tile 'Si tu refais ce traj
     ).toBeNull();
     expect(calibrationNextTile(calib, null, { planned_profit: 1 })).toBeNull();
     expect(calibrationExpected(null, 100)).toBeNull();
+  });
+});
+
+describe("Feature: the three values of a route card (calibrationCompare)", () => {
+  const LF = { ...L, fmtAuec };
+  const leg = (over: Record<string, unknown> = {}) => ({
+    commodity: "Laranite",
+    from: "Port Tressler",
+    to: "Area18 TDD",
+    buy_price: 189,
+    sell_price: 457,
+    profit_per_scu: 268,
+    scu: 696,
+    ...over,
+  });
+  const option = (legs: unknown[], over: Record<string, unknown> = {}) => ({
+    legs,
+    profit_per_trip: 214_368,
+    profit_per_hour: 279_610,
+    cycle_minutes: 46,
+    ...over,
+  });
+  const calibOf = (...g: Record<string, unknown>[]) =>
+    calibrationNormalize(L, { v: 1, groups: g.map((x) => group(x)) })!;
+  const cmp = (c: unknown, o: unknown) => calibrationCompare(LF, c, o);
+
+  it("Given four runs, Then the estimate, the measured mean and the ratio are side by side, in the ratio of the tile", () => {
+    const m = cmp(calibOf({}), option([leg()], { profit_per_trip: 186_528 }));
+    expect(m.mode).toBe("ratio");
+    expect(NBSP_FREE(m.estValue)).toBe("≈ +186 528");
+    expect(NBSP_FREE(m.estSub)).toBe("≈ +279 610 aUEC par heure");
+    expect(m.measLabel).toBe("Mesuré · 4 trajets");
+    expect(NBSP_FREE(m.measValue)).toBe("≈ +94 411");
+    expect(NBSP_FREE(m.measSub)).toBe(
+      "de cette marchandise · résultat net · prévu alors ≈ +123 901 aUEC",
+    );
+    expect(NBSP_FREE(m.ratioValue)).toBe("76 %");
+    expect(m.fill).toBe(38);
+    // the mean over the mean is the ratio (here 94 411 / 123 901 = 0.762)
+    expect(NET_AVG / NET_PLANNED).toBeCloseTo(NET, 3);
+    // the very figure of the tile "Si tu refais ce trajet", for the same plan
+    const tile = calibrationNextTile(
+      calibOf({}),
+      { commodity: "Laranite", scu: 696, sell_unit_price: 457 },
+      { planned_profit: 186_528 },
+    );
+    const trip = NBSP_FREE(fmtAuec(tile.auec, true));
+    const hour = NBSP_FREE(fmtAuec(Math.round((tile.auec / 46) * 60), true));
+    expect(NBSP_FREE(m.apply)).toBe(
+      `Si tu refais ce trajet ≈ ${trip} aUEC (prévu ≈ +186 528 × 76 %), soit ≈ ${hour} aUEC par heure.`,
+    );
+    expect(m.tag).toBe(tile.tag);
+  });
+
+  it("Given fewer than three runs, Then only their number comes back: no ratio, no applied figure, no tag, no bar", () => {
+    for (const n of [2]) {
+      const m = cmp(calibOf({ n, net_n: n }), option([leg()]));
+      expect(m.mode).toBe("count");
+      expect(m.measValue).toBe(`${n} trajets`);
+      expect(m.measSub).toContain("pas assez pour un ratio (3 trajets minimum)");
+      expect(m).toMatchObject({
+        ratioValue: "",
+        apply: "",
+        tag: "",
+        hint: "",
+        caution: "",
+        fill: -1,
+      });
+      const { reading: _reading, ...visible } = m; // the fold names the 50 % and 200 % ceiling, nothing else
+      void _reading;
+      expect(JSON.stringify(visible)).not.toMatch(/%|Si tu refais/);
+      // the planner's estimate is still given
+      expect(NBSP_FREE(m.estValue)).toBe("≈ +214 368");
+    }
+  });
+
+  it("Given three runs but a net on two only, Then the gross ratio less the usual fees is used and the net is not", () => {
+    const m = cmp(
+      calibOf({ n: 3, net_n: 2, fee_n: 3, gross_ratio: 0.9, fee_rate: 0.05 }),
+      option([leg({ commodity: "Laranite", sell_price: 1599, profit_per_scu: 119, scu: 500 })]),
+    );
+    expect(m.mode).toBe("ratio");
+    expect(m.measLabel).toBe("Mesuré · 3 trajets");
+    expect(m.measSub).toContain("marge brute, avant frais");
+    expect(m.ratioSub).toContain("sur la marge brute");
+    expect(NBSP_FREE(m.apply)).toContain("≈ +13 575 aUEC");
+    expect(NBSP_FREE(m.apply)).toContain(
+      "Frais habituels déjà déduits (5 % du chiffre d’affaires)",
+    );
+    expect(m.tag).toBe("estimé · 3 trajets · confiance faible");
+  });
+
+  it("Given fewer than three runs with fees known, Then no net is worked out: the gross ratio is shown and nothing is applied", () => {
+    const m = cmp(calibOf({ n: 5, net_n: 2, fee_n: 2 }), option([leg()]));
+    expect(m.mode).toBe("ratio");
+    expect(NBSP_FREE(m.ratioValue)).toBe("74 %");
+    expect(m.measLabel).toBe("Mesuré · 5 trajets");
+    expect(m.apply).toBe(
+      "Pas assez de trajets avec frais connus pour chiffrer le net (3 minimum) : aucun chiffre appliqué.",
+    );
+    expect(NBSP_FREE(m.apply)).not.toMatch(/\+\d/);
+  });
+
+  it("Given a card of two legs, Then the ratio is applied to the first leg alone and never to the round-trip total or the hour", () => {
+    const m = cmp(calibOf({}), option([leg(), leg({ commodity: "Medical Supplies", scu: 120 })]));
+    const apply = NBSP_FREE(m.apply);
+    expect(apply).toBe(
+      "Si tu refais le 1er tronçon (Laranite) ≈ +142 134 aUEC (prévu ≈ +186 528 × 76 %). Pas de chiffre pour l’aller-retour entier.",
+    );
+    expect(m.estUnit).toBe("aUEC pour les 2 tronçons");
+    expect(JSON.stringify(m)).not.toMatch(figure(Math.round(214_368 * NET)));
+    expect(apply).not.toContain("par heure");
+    expect(m.reading).toContain("pas un chiffre pour l’aller-retour");
+  });
+
+  it("Given a one-leg card with no known duration, Then the trip is applied and no hourly figure is made up", () => {
+    const m = cmp(
+      calibOf({}),
+      option([leg()], { profit_per_hour: null, cycle_minutes: null, profit_per_trip: 186_528 }),
+    );
+    expect(NBSP_FREE(m.apply)).toBe(
+      "Si tu refais ce trajet ≈ +142 134 aUEC (prévu ≈ +186 528 × 76 %).",
+    );
+    expect(m.estSub).toBe("durée inconnue : pas de gain par heure");
+  });
+
+  it("Given a leg that loses money, a huge ratio or a missing mean, Then nothing is applied and nothing is made up", () => {
+    const loss = cmp(calibOf({}), option([leg({ profit_per_scu: -5 })]));
+    expect(loss.apply).toBe("");
+    // no net is worked out for a leg with no profit: the gross ratio is what is left to show
+    expect(NBSP_FREE(loss.ratioValue)).toBe("74 %");
+    const huge = cmp(calibOf({ gross_ratio: 666, net_ratio: 650 }), option([leg()]));
+    expect(huge.ratioValue).toBe("écart très élevé");
+    expect(huge.fill).toBe(-1);
+    expect(huge.apply).toBe("");
+    // a server that sends no mean: the number of runs only, the ratio stays
+    const old = cmp(calibOf({ net_avg_auec: null, net_planned_avg_auec: null }), option([leg()]));
+    expect(old.measValue).toBe("4 trajets");
+    expect(old.measSub).not.toContain("prévu alors");
+    expect(NBSP_FREE(old.ratioValue)).toBe("76 %");
+  });
+
+  it("Given no group for the goods of the first leg, or no calibration, or no leg, Then nothing", () => {
+    expect(cmp(calibOf({}), option([leg({ commodity: "Agricium" })]))).toBeNull();
+    expect(cmp(calibOf({}), option([leg({ commodity: "Lara" })]))).toBeNull();
+    expect(cmp(null, option([leg()]))).toBeNull();
+    expect(cmp(calibOf({}), option([]))).toBeNull();
+    expect(cmp(calibOf({}), null)).toBeNull();
+  });
+
+  it("Given any group, Then the fold always says the ratio is censored, and the price link when the goods are unverified", () => {
+    const plain = cmp(calibOf({}), option([leg()]));
+    expect(plain.reading).toContain("Il reste entre ≈ 50 % et ≈ 200 % par construction");
+    expect(plain.reading).not.toContain("lien par prix");
+    const unverified = cmp(
+      calibOf({ goods_unverified: true, confidence_capped: true }),
+      option([leg()]),
+    );
+    expect(unverified.reading).toContain("lien par prix");
+    expect(unverified.reading).toContain("Confiance plafonnée à « moyenne »");
+    expect(unverified.measSub).toContain("similaires (marchandise non vérifiée)");
+    expect(unverified.hint).toContain("plafonnée");
+  });
+
+  it("Given a hostile section, Then the means are whole, finite and bounded, and never invented", () => {
+    const n = calibrationNormalize(L, {
+      v: 1,
+      groups: [
+        {
+          ...group(),
+          gross_avg_auec: 9e99,
+          gross_planned_avg_auec: "12",
+          net_avg_auec: -9e99,
+          net_planned_avg_auec: 1234.56,
+        },
+        { ...group(), gross_avg_auec: undefined, net_avg_auec: null },
+      ],
+    })!;
+    expect(n.groups[0]).toMatchObject({
+      gross_avg_auec: 1e12,
+      gross_planned_avg_auec: null,
+      net_avg_auec: -1e12,
+      net_planned_avg_auec: 1235,
+    });
+    expect(n.groups[1]).toMatchObject({ gross_avg_auec: null, net_avg_auec: null });
   });
 });
 
@@ -435,14 +634,16 @@ const PLAN = {
   sell_unit_price: 457,
 };
 
-async function page(opts: { always?: boolean; plan?: boolean } = {}) {
+async function page(opts: { always?: boolean; plan?: boolean; section?: CalibrationSection } = {}) {
   const scenario = new Scenario();
   scenario.specs = specsSamples(scenario.now).ready;
   scenario.uec = tradeBalanceAt;
   scenario.ledger = (include, nowMs) => {
     const base = tradeLedger(nowMs, scenario.epoch, include, "story", PLAN);
     // `always`: a hostile or buggy server that sends the section even to a View that did not ask for the balance
-    return include || opts.always ? ({ ...base, calibration: SECTION } as any) : base;
+    return include || opts.always
+      ? ({ ...base, calibration: opts.section ?? SECTION } as any)
+      : base;
   };
   const w = await startPage({ scenario });
   if (opts.plan) {
@@ -464,52 +665,296 @@ const text = (w: PageWorld) => NBSP_FREE(visibleText(w.root));
 const shown = (w: PageWorld, label: string): FakeNode[] =>
   findAll(w.root, (n) => n.tag === "button" && n.textContent === label && isShown(n));
 
-describe("Feature: the line under the suggestions, in the assembled page", () => {
-  it("Given the balance is shown, When routes are searched, Then each card of a known goods carries its quiet line with n, the share, the fees and the confidence", async () => {
-    const w = await page();
+/** The shown cards of the action bar (results, chains and "Et ensuite ?"). */
+const cardsOf = (w: PageWorld): FakeNode[] =>
+  findAll(w.root, (n) => n.tag === "article" && n.className === "ta-card" && isShown(n));
+/** The card whose route is exactly this text (its first leg, so the goods, is told apart from its neighbours). */
+const cardOf = (w: PageWorld, route: string): string => {
+  const card = cardsOf(w).find((c) => findAll(c, (n) => n.tag === "h4")[0]?.textContent === route);
+  if (!card) throw new Error(`no card for ${route}`);
+  return NBSP_FREE(visibleText(card));
+};
+/** Every word a node holds, hidden nodes and attributes and style variables included (the page keeps nothing it hid). */
+const everything = (w: PageWorld): string => {
+  const parts: string[] = [];
+  const visit = (n: FakeNode) => {
+    for (const [k, v] of Object.entries(n.attrs)) parts.push(`${k}=${v}`);
+    for (const [k, v] of Object.entries(n.style.props)) parts.push(`${k}:${v}`);
+    for (const c of n.children) visit(c);
+  };
+  visit(w.root);
+  return NBSP_FREE(w.root.textContent) + "\n" + NBSP_FREE(parts.join("\n"));
+};
+
+/**
+ * An amount as the page writes it (thousands separated by a space, a no-break space or nothing), as a whole figure: not a part
+ * of a longer number, not a decimal fraction (a clock in milliseconds has already fooled this kind of scan twice).
+ */
+const amount = (n: number): RegExp =>
+  new RegExp(`(?<![0-9.])${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, "\\D?")}(?![0-9])`);
+const FIGURES = [
+  ...MEANS,
+  131_377, // Agricium measured net mean
+  135_731, // Agricium measured gross mean
+  148_623, // Agricium planned net mean
+  148_667, // Agricium planned gross mean
+  142_134, // Laranite applied to the first leg
+  134_368, // Agricium applied to the trip
+  212_160, // Agricium applied to the hour
+  13_575, // Quartz applied to the trip
+  15_663, // Quartz applied to the hour
+];
+/** Everything in a dump of the page that is the player's own runs: the words, the amounts, the ratios, the raw wire. */
+function leaks(all: string): string[] {
+  const found: string[] = [];
+  const words =
+    /Mesuré · \d|Si tu refais le 1er|Si tu refais ce trajet ≈|trajets minimum|tu réalises|D’après tes|confiance (faible|moyenne|élevée)|estimé · \d|prévu alors|par trajet, en moyenne/;
+  // each hit comes with the words around it, to tell a leak from a coincidence
+  const around = (m: RegExpExecArray) =>
+    all.slice(Math.max(0, m.index - 40), m.index + m[0].length + 40);
+  const w = words.exec(all);
+  if (w) found.push(around(w));
+  for (const n of FIGURES) {
+    const m = amount(n).exec(all);
+    if (m) found.push(around(m));
+  }
+  const wire = WIRE.exec(all);
+  if (wire) found.push(around(wire));
+  return found;
+}
+
+/** The words of every block, hidden ones included: once emptied they hold no digit at all (the fixed labels have none). */
+const blockWords = (w: PageWorld): string =>
+  findAll(w.root, (n) => n.className === "ta-calib")
+    .map((n) => n.textContent)
+    .join("\n");
+
+// Made-up groups for the cards of the made-up planner (suggestFixtures.ts): one per case worth a sentence.
+const CARD_SECTION: CalibrationSection = {
+  v: 1,
+  patch_line: "4.10",
+  groups: [
+    // Laranite on the route of the 2-leg card: four runs, net basis
+    group({ kind: "route", buy_terminal: "Port Tressler", sell_terminal: "Area18 TDD" }),
+    // Agricium (a one-leg card): eight runs, a net ratio of 0.884
+    group({
+      commodity: "Agricium",
+      n: 8,
+      net_n: 8,
+      gross_ratio: 0.913,
+      net_ratio: 0.884,
+      gross_avg_auec: 135_731,
+      gross_planned_avg_auec: 148_667,
+      net_avg_auec: 131_377,
+      net_planned_avg_auec: 148_623,
+    }),
+    // Gold: two runs, unverified goods: the number of runs and nothing else
+    group({
+      commodity: "Gold",
+      n: 2,
+      confidence: "low",
+      goods_unverified: true,
+      net_n: 0,
+      net_ratio: null,
+      net_avg_auec: null,
+      net_planned_avg_auec: null,
+    }),
+    // Quartz: three runs, a net on two only: the gross ratio less the usual fees (5 %), applied to the first leg
+    group({
+      commodity: "Quartz",
+      n: 3,
+      confidence: "low",
+      gross_ratio: 0.9,
+      net_n: 2,
+      net_ratio: 0.88,
+      fee_rate: 0.05,
+      fee_n: 3,
+    }),
+    // Scrap: a ratio so far from 1 that it is worded, not printed
+    group({
+      commodity: "Scrap",
+      n: 3,
+      confidence: "low",
+      gross_ratio: 666,
+      net_ratio: 650,
+      net_n: 3,
+    }),
+  ] as never,
+};
+
+describe("Feature: estimated, measured and ratio side by side on a route card, in the assembled page", () => {
+  it("Given the balance is shown, When routes are searched, Then a card of a known route shows the estimate, the measured mean and the ratio with what it gives", async () => {
+    const w = await page({ section: CARD_SECTION });
     findButton(w.root, "Afficher le solde").click();
     await w.advance(3 * SECOND);
     findButton(w.root, "Plus rentable").click();
     await w.advance(300);
-    const t = text(w);
-    // Laranite, Port Tressler -> Area18 TDD: the route's own group
-    expect(t).toContain(
-      "tes 4 trajets sur cette route : tu réalises ≈ 74 % du prévu (frais ≈ 14 %).",
+    const card = cardOf(w, "Port Tressler → Area18 TDD → Port Tressler");
+    // (a) the planner's figure, labelled as an estimate, per trip (both legs) and per hour
+    expect(card).toContain("ESTIMATION");
+    expect(card).toContain("≈ +214 368");
+    expect(card).toContain("aUEC pour les 2 tronçons");
+    expect(card).toContain("≈ +279 610 aUEC par heure");
+    // (b) what the player's own runs averaged, with how many and what they were planned at
+    expect(card).toContain("Mesuré · 4 trajets");
+    expect(card).toContain("≈ +94 411");
+    expect(card).toContain("aUEC par trajet, en moyenne");
+    expect(card).toContain("sur cette route · résultat net · prévu alors ≈ +123 901 aUEC");
+    // (c) the ratio of the tile, what it gives on the FIRST leg only, and its confidence
+    expect(card).toContain("76 %");
+    expect(card).toContain("sur le net · réalisé ÷ prévu");
+    expect(card).toContain(
+      "Si tu refais le 1er tronçon (Laranite) ≈ +142 134 aUEC (prévu ≈ +186 528 × 76 %). Pas de chiffre pour l’aller-retour entier.",
     );
-    // Gold: two runs, unverified goods, said to be an indication only
-    expect(t).toContain("tes 2 trajets similaires (marchandise non vérifiée");
-    // a two-leg card says the line is about the first leg, and the fold says it is no round-trip figure
-    expect(t).toContain("Sur le 1er tronçon, d’après tes");
-    expect(t).toContain("pas un chiffre pour l’aller-retour");
-    expect(t).toContain("Peu de trajets : indicatif seulement.");
-    expect(t).toContain("estimé · 4 trajets · confiance moyenne");
-    expect(t).toContain("estimé · 2 trajets · confiance faible");
-    expect(t).toContain("Comment lire ça");
-    // goods with no group have no line (Quartz, Scrap, Agricium); the chain that also starts with Laranite has the same one
-    expect(t.match(/d’après tes \d+ trajets/gi)).toHaveLength(3);
+    expect(card).toContain("estimé · 4 trajets · confiance moyenne");
+    // the round-trip total is never multiplied by a ratio measured on one leg, and no hourly figure is applied to it
+    expect(card).not.toMatch(figure(Math.round(214_368 * NET)));
+    expect(card).not.toContain("soit");
+    // the old sentence is merged into the block, not repeated
+    expect(card).not.toContain("tu réalises");
+    expect(card).not.toContain("D’après tes");
+    // the fold is there and says what the ceiling is
+    expect(card).toContain("Comment lire ça");
+    expect(card).toContain("Il reste entre ≈ 50 % et ≈ 200 % par construction");
+    expect(card).toContain("ce n’est pas le mesuré divisé par l’estimation d’aujourd’hui");
+    expect(card).toContain("pas un chiffre pour l’aller-retour");
   });
 
-  it("Given the balance is hidden, Then there is no line, even when the server sent the section anyway", async () => {
-    const w = await page({ always: true });
+  it("Given a card of one leg, Then the ratio is applied to the trip and to the hour (the applied trip over the estimated cycle)", async () => {
+    const w = await page({ section: CARD_SECTION });
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(3 * SECOND);
+    findButton(w.root, "Plus rentable").click();
+    await w.advance(300);
+    const card = cardOf(w, "Lorville CBD → Area18 TDD → Lorville CBD");
+    expect(card).toContain("Mesuré · 8 trajets");
+    expect(card).toContain("≈ +131 377");
+    expect(card).toContain("de cette marchandise · résultat net · prévu alors ≈ +148 623 aUEC");
+    expect(card).toContain("88 %");
+    // 152 000 x 0.884 = 134 368; over 38 minutes, 212 160 an hour
+    expect(card).toContain(
+      "Si tu refais ce trajet ≈ +134 368 aUEC (prévu ≈ +152 000 × 88 %), soit ≈ +212 160 aUEC par heure.",
+    );
+    expect(card).toContain("estimé · 8 trajets · confiance moyenne");
+  });
+
+  it("Given two runs only, Then the card gives their number and no ratio, no applied figure, no confidence tag", async () => {
+    const w = await page({ section: CARD_SECTION });
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(3 * SECOND);
+    findButton(w.root, "Plus rentable").click();
+    await w.advance(300);
+    const card = cardOf(w, "Everus Harbor → Seraphim Station → Everus Harbor");
+    expect(card).toContain("ESTIMATION");
+    expect(card).toContain("Mesuré");
+    expect(card).toContain("2 trajets");
+    expect(card).toContain(
+      "similaires (marchandise non vérifiée) · pas assez pour un ratio (3 trajets minimum)",
+    );
+    expect(card).not.toContain("Réalisé ÷ prévu");
+    // no ratio of any kind (the fold only names the 50 % and 200 % ceiling)
+    expect(card.replace(/≈ 50 % et ≈ 200 %/, "")).not.toMatch(/\d\s?%/);
+    expect(card).not.toContain("Si tu refais");
+    expect(card).not.toContain("estimé ·");
+    expect(card).not.toContain(" aUEC par trajet, en moyenne");
+  });
+
+  it("Given three runs with a net on two only, Then the gross ratio less the usual fees is used, and said", async () => {
+    const w = await page({ section: CARD_SECTION });
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(3 * SECOND);
+    findButton(w.root, "Plus rentable").click();
+    await w.advance(300);
+    const card = cardOf(w, "Magnus Gateway → Area18 TDD → Magnus Gateway");
+    expect(card).toContain("Mesuré · 3 trajets");
+    expect(card).toContain("marge brute, avant frais");
+    expect(card).toContain("90 %");
+    // 59 500 x 0.9 less 5 % of 1599 x 500 = 13 575; over 52 minutes, 15 663 an hour
+    expect(card).toContain(
+      "Si tu refais ce trajet ≈ +13 575 aUEC (prévu ≈ +59 500 × 90 %), soit ≈ +15 663 aUEC par heure. Frais habituels déjà déduits (5 % du chiffre d’affaires).",
+    );
+    expect(card).toContain("estimé · 3 trajets · confiance faible");
+    expect(card).toContain("Peu de trajets : indicatif seulement.");
+  });
+
+  it("Given a ratio so far from 1 that it rests on a tiny plan, Then the card says so and applies nothing", async () => {
+    const w = await page({ section: CARD_SECTION });
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(3 * SECOND);
+    findButton(w.root, "Plus rentable").click();
+    await w.advance(300);
+    const card = cardOf(w, "Everus Harbor → Port Tressler → Everus Harbor");
+    expect(card).toContain("écart très élevé");
+    expect(card).not.toMatch(/666|65\s?000/);
+    expect(card).not.toContain("Si tu refais");
+  });
+
+  it("Given a card, Then the bar is decoration, the tips are reachable by keyboard and nothing in the block is a live region", async () => {
+    const w = await page({ section: CARD_SECTION });
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(3 * SECOND);
+    findButton(w.root, "Plus rentable").click();
+    await w.advance(300);
+    const blocks = findAll(w.root, (n) => n.className === "ta-calib" && isShown(n));
+    expect(blocks.length).toBeGreaterThan(3);
+    for (const b of blocks) {
+      expect(findAll(b, (n) => "aria-live" in n.attrs || n.attrs["role"] === "status")).toEqual([]);
+      for (const bar of findAll(b, (n) => n.className === "ta-cmp-bar"))
+        expect(bar.attrs["aria-hidden"]).toBe("true");
+      // the fold is a native details/summary (keyboard: Enter or Space)
+      expect(
+        findAll(b, (n) => n.tag === "details" && n.className === "ta-calib-more"),
+      ).toHaveLength(1);
+      expect(findAll(b, (n) => n.tag === "summary").map((n) => n.textContent)).toEqual([
+        "Comment lire ça",
+      ]);
+      // the estimate tag explains itself through the one tip mechanism and is in the tab order
+      const est = findAll(b, (n) => n.className === "tr-tag" && n.textContent === "ESTIMATION")[0]!;
+      expect(est.attrs["tabindex"]).toBe("0");
+      expect(est.attrs["data-tip"]).toContain("prix UEX");
+    }
+  });
+
+  it("Given the balance is hidden, Then there is no block, even when the server sent the section anyway", async () => {
+    const w = await page({ always: true, section: CARD_SECTION });
     findButton(w.root, "Plus rentable").click();
     await w.advance(300);
     const t = text(w);
     expect(t).toContain("Port Tressler");
-    expect(t).not.toContain("tes 4 trajets");
-    expect(t).not.toContain("tu réalises");
-    expect(t).not.toMatch(/74\s%|14\s%/);
+    // the block is hidden and EMPTY: nothing the balance made is in the page, hidden nodes and attributes included
+    expect(findAll(w.root, (n) => n.className === "ta-calib" && isShown(n))).toEqual([]);
+    expect(leaks(everything(w))).toEqual([]);
+    expect(blockWords(w)).not.toMatch(/\d/);
+    // and no node shows a bar
+    for (const f of findAll(w.root, (n) => n.className === "ta-cmp-fill"))
+      expect(f.style.props["--fill"] ?? "0%").toBe("0%");
   });
 
-  it("Given the balance is shown then hidden again, Then the lines go with it", async () => {
-    const w = await page();
+  it("Given the block was shown and the balance is hidden again, Then every figure of it leaves the page, hidden nodes and attributes included", async () => {
+    const w = await page({ section: CARD_SECTION });
     findButton(w.root, "Afficher le solde").click();
     await w.advance(3 * SECOND);
     findButton(w.root, "Plus rentable").click();
     await w.advance(300);
-    expect(text(w)).toContain("tes 4 trajets");
+    const shownNow = everything(w);
+    // the check can see them while they are there
+    expect(leaks(shownNow).length).toBeGreaterThan(8);
+    expect(shownNow).toMatch(amount(NET_AVG));
+    expect(shownNow).toContain("Mesuré · 4 trajets");
+    expect(shownNow).toMatch(/--fill:38%/);
     findButton(w.root, "Masquer").click();
     await w.advance(3 * SECOND);
-    expect(text(w)).not.toContain("tes 4 trajets");
+    expect(findAll(w.root, (n) => n.className === "ta-calib" && isShown(n))).toEqual([]);
+    expect(leaks(everything(w))).toEqual([]);
+    expect(blockWords(w)).not.toMatch(/\d/);
+    for (const f of findAll(w.root, (n) => n.className === "ta-cmp-fill"))
+      expect(f.style.props["--fill"] ?? "0%").toBe("0%");
+    // the tags of the emptied block have no tip and are out of the tab order
+    for (const b of findAll(w.root, (n) => n.className === "ta-calib"))
+      for (const t of findAll(b, (n) => n.className === "tr-tag")) {
+        expect(t.attrs["data-tip"] ?? "").toBe("");
+        expect(t.attrs["tabindex"] ?? "-1").toBe("-1");
+      }
   });
 
   it("Given a bubble open on a confidence tag, When the balance is hidden again, Then the tag loses its tip and the bubble closes", async () => {
@@ -529,8 +974,8 @@ describe("Feature: the line under the suggestions, in the assembled page", () =>
     await w.advance(3 * SECOND);
     // the hidden tags are not in the tab order and say nothing
     for (const t of tags) {
-      expect(t.attrs["data-tip"]).toBe("");
-      expect(t.attrs["tabindex"]).toBe("-1");
+      expect(t.attrs["data-tip"] ?? "").toBe("");
+      expect(t.attrs["tabindex"] ?? "-1").toBe("-1");
     }
     expect(isShown(bubble)).toBe(false);
   });
@@ -541,19 +986,26 @@ describe("Feature: the line under the suggestions, in the assembled page", () =>
     await w.advance(3 * SECOND);
     findButton(w.root, "Plus rentable").click();
     await w.advance(300);
-    expect(text(w)).toContain("tes 4 trajets");
+    expect(text(w)).toContain("Mesuré · 4 trajets");
     shown(w, "Demander à l’agent")[0]!.click();
     await w.advance(2 * SECOND);
     expect(w.host.log.messages.length).toBeGreaterThan(0);
+    const unwanted =
+      /Mesuré|Si tu refais|d’après tes \d+ trajets|tu réalises|marge brute|74 %|76 %|14 %|0\.737/i;
     for (const m of w.host.log.messages) {
       const clean = NBSP_FREE(m);
-      expect(clean).not.toMatch(
-        /d’après tes \d+ trajets|tu réalises|marge brute|74 %|14 %|0\.737/i,
-      );
+      expect(clean).not.toMatch(unwanted);
+      expect(clean).not.toContain("ESTIMATION");
+      for (const n of [...MEANS, 142_134]) expect(clean).not.toMatch(figure(n));
     }
-    for (const c of w.host.log.contexts)
-      expect(c).not.toMatch(/d’après tes \d+ trajets|tu réalises|74 %|0\.737/i);
-    for (const posted of w.bus!.log) expect(JSON.stringify(posted.data)).not.toMatch(WIRE);
+    for (const c of w.host.log.contexts) {
+      expect(NBSP_FREE(c)).not.toMatch(unwanted);
+      for (const n of [...MEANS, 142_134]) expect(c).not.toMatch(figure(n));
+    }
+    for (const posted of w.bus!.log) {
+      expect(JSON.stringify(posted.data)).not.toMatch(WIRE);
+      for (const n of MEANS) expect(JSON.stringify(posted.data)).not.toMatch(figure(n));
+    }
   });
 });
 
