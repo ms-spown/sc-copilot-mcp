@@ -344,8 +344,8 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
 - **La vue compacte, dans l'ordre de ce qu'un coup d'œil en vol demande.** L'en-tête avec le verdict, puis le refus de
   prix s'il y en a un, les alertes (aucune ligne tant qu'il n'y en a pas : le verdict le dit), les trois cadrans, le
   vaisseau sur une petite ligne, la session sur UNE ligne (« Session 4 · 6 trajets · 1 h 28 min », plus le net par heure
-  seulement solde affiché ; un vrai bouton avec `aria-expanded` déplie la carte entière, qui garde **Nouvelle session**
-  en bouton secondaire), la ligne du solde à côté, puis la ligne du contrat et « Chercher une route ». Mesuré dans Chrome
+  seulement solde affiché ; un vrai bouton avec `aria-expanded` déplie la carte entière, qui garde **Terminer la session** et **Nouvelle session**
+  en boutons secondaires, quand ils changent quelque chose), la ligne du solde à côté, puis la ligne du contrat et « Chercher une route ». Mesuré dans Chrome
   réel sur le vol inventé de l'aperçu, à 560 px : 691 px de haut avant, 326 px maintenant ; à 360 px avec un refus de
   prix 915 px avant, 510 px maintenant. Non vérifié : comment Claude Desktop dimensionne le cadre en ligne.
 - **Deux modes.** En ligne : une vue compacte. En plein écran (bouton dans la page) : le cockpit. Le bouton interroge
@@ -1030,13 +1030,27 @@ plantage du jeu et après un redémarrage du PC.
 - **Elle démarre** quand le jeu est vu en marche et qu'il n'y a pas de session, ou que la dernière est silencieuse
   depuis plus de 3 heures (`SC_SESSION_GAP_HOURS`, de 0,25 à 48) ; quand vous appuyez sur **Nouvelle session** (ou
   appelez `sc_session_new`) ; et quand le tableau de bord s'ouvre après une telle coupure (une session vide attend le
-  jeu, et une session vide est renouvelée, jamais empilée).
+  jeu, et une session vide est renouvelée, jamais empilée). Une session où le jeu n'a jamais été vu (ni trajet, ni solde,
+  ni temps de jeu) est **vide** : la carte dit « en attente du jeu », elle n'a rien à terminer et « Nouvelle session » ne
+  ferait que la recréer, donc ni l'un ni l'autre n'est proposé (`sc_session_end` répond `reason: "empty"` et
+  `sc_session_new` répond `started: false`, sans rien changer).
 - **Elle reprend** quand le jeu est revu dans le délai, que le jeu ait été fermé proprement ou non. La coupure est notée :
   `game_closed` si le jeu a écrit sa ligne de fermeture, `unclean` s'il n'y a pas de marqueur de fin (plantage,
   redémarrage du PC, ou serveur arrêté). Rien n'est inventé sur ce qui s'est passé entre-temps.
 - **Elle se termine** quand vous la terminez (**Terminer**, ou `sc_session_end` : elle n'est alors pas reprise, et la
   suivante démarre quand le jeu est vu repartir à neuf), quand une nouvelle démarre, ou quand le délai est dépassé
-  (close à sa dernière observation).
+  (close à sa dernière observation). Une session terminée **reste sur la carte**, quel que soit le temps d'attente et le
+  nombre d'interrogations du tableau de bord, jusqu'à ce que vous appuyiez sur **Nouvelle session** ou que le jeu montre une
+  nouvelle période de jeu (une connexion ou le menu dans Game.log, datés après la fin ; quand Game.log ne dit rien, un solde
+  qui apparaît après un silence). Un serveur redémarré qui ne voit son premier solde que tard n'est pas une nouvelle
+  période de jeu. Fermer le jeu n'est pas une fin : la session attend et reprend quand le jeu revient dans le délai (la
+  carte dit « jeu fermé » entre-temps). Le format du fichier ne change pas (pas de nouvelle valeur pour `end_reason` : un
+  ancien serveur le lit toujours). Un ancien serveur (2.7.0) qui écrit le même `sessions.json` ramène de son côté les anciens
+  comportements (une session vide supprimée puis recréée par l'interrogation, une session terminée remplacée après le
+  délai) ; le format reste compatible. Limite connue : `sc_session_end` et `sc_session_new` agissent sur la DERNIÈRE session
+  du serveur et ne prennent pas d'identifiant attendu, donc une confirmation devenue périmée (un autre tableau de bord ou
+  le jeu a démarré une session plus récente dans la courte fenêtre entre la question et le clic) pourrait terminer la
+  session plus récente ; le message affiché sur la carte nomme la session réellement terminée.
 - Le temps est compté d'après ce qui a été vu : le **temps actif** est le temps où le jeu a été vu en marche ; une
   coupure n'ajoute rien.
 
@@ -1193,11 +1207,22 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
 
 - **La barre** en haut du tableau de bord montre la session (numéro, état, depuis quand, temps actif), puis les chiffres
   qui comptent d'abord : solde affiché, le résultat, le rythme par heure, les trajets et le temps ; solde masqué, les
-  trajets et le temps. Dans la vue compacte elle tient sur une ligne (un bouton la déplie). Elle a **Nouvelle session** (deux clics, pour éviter un faux geste ; un bouton secondaire), **Sessions** (les sessions
-  passées avec leurs chiffres clés, les statistiques entre sessions, une session en détail, et **Terminer la session**).
-  Deux tableaux de bord de deux conversations montrent la même session, car elle vient du serveur.
-- **À l'ouverture**, le tableau de bord se rattache à la dernière session, sauf coupure de plus que le délai : une
-  nouvelle est alors créée.
+  trajets et le temps. Dans la vue compacte elle tient sur une ligne (un bouton la déplie) qui dit aussi l'état
+  (« en attente du jeu », « terminée à 16:10 »). La carte a cinq états : **aucune session** (« Démarrer une session »),
+  **en attente du jeu** (une session vide : aucun chiffre, aucun tiret, aucun bouton, et une ligne dit pourquoi), **en cours**
+  (ou « inactive » après un long silence), **terminée** (« terminée à 16:10 », comment, son résultat, et « Nouvelle
+  session » comme bouton principal) et, dans le menu **Sessions**, la liste des sessions passées avec l'état de chacune (en
+  cours, en attente du jeu, terminée : à la main, remplacée par une nouvelle session, ou par une longue inactivité) et une
+  session en détail. **Terminer la session** et **Nouvelle session** sont sur la carte, et seulement quand elles changent
+  quelque chose. Une session qui contient quelque chose pose une question, **en ligne à côté du bouton**, avec un bouton
+  Annuler et sans minuterie (une question devenue fausse, parce qu'un autre tableau de bord ou le jeu a changé la session,
+  est retirée et le dit) ; une action qui ne ferme rien se fait tout de suite. Le résultat s'écrit sous la carte (une
+  région vivante, donc annoncée par un lecteur d'écran) et y reste jusqu'à ce qu'une session plus récente soit sur la
+  carte ; il ne contient jamais de montant. Deux tableaux de bord de deux conversations montrent la même session, car elle
+  vient du serveur.
+- **À l'ouverture**, le tableau de bord se rattache à la dernière session, sauf si elle est ouverte et qu'il y a eu une
+  coupure de plus que le délai : une nouvelle (vide) est alors créée. Une session que vous avez terminée n'est jamais
+  remplacée dans votre dos.
 - **Outils** (profil `local` ; les trois premiers aussi dans `trade`) : `sc_session_current` (la session jusqu'ici, le
   dernier lieu et les dernières marchandises nommés par le journal, les derniers trajets : ce qu'il faut à Claude pour
   vous accompagner et proposer la prochaine route), `sc_session_list`, `sc_session_stats`, `sc_session_new`,

@@ -6,6 +6,39 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed (sessions: the "Terminer" and "Nouvelle session" buttons did nothing visible)
+- **Reproduced, with the game closed:** opening the dashboard made an empty "Session 1 · en cours" with dashes. "Terminer la
+  session" (hidden in the "Sessions" menu) turned into "Confirmer la fin" and, once confirmed, did nothing: the server dropped
+  the empty session, and the next poll made the same "Session 1" again. "Nouvelle session" did the same (it dropped the empty
+  session and recreated it under the same number). The confirmation was a second click with a 5 second timer that flipped back
+  silently, and the answer went to a polite area of the page that is folded away in the compact view and gone after 6 seconds
+  (and the server's English text). A server restarted after an end, with the game running, could also start a session by itself
+  when its first balance arrived late.
+- **The card now has five clear states**: no session ("Démarrer une session"), **en attente du jeu** (an empty session: no
+  dash, no figure, one line saying why nothing is offered), **en cours** (or inactive), and **terminée** ("terminée à 16:10", how
+  it ended, its result, and "Nouvelle session" as the main button). The folded line says the state too.
+- **Nothing is offered that cannot change anything.** "Terminer" is on the card (no longer in the menu) and only while the
+  session holds something; "Nouvelle session" is not offered on an empty session. Server side, ending an empty session or
+  starting a new one over an empty session now changes nothing and says so (`sc_session_end`: `ok: false`, `reason: "empty"`;
+  `sc_session_new`: `started: false`), instead of dropping and recreating it.
+- **A session ended by hand stays ended** on the card however long you wait: the dashboard's poll no longer makes a new
+  session behind your back (it did after 3 hours). The next one starts when you press "Nouvelle session" or when Game.log shows
+  a new play period (a join or the menu dated after the end). A late first balance after a server restart is no longer taken
+  for one when Game.log answers.
+- **The question is inline, has no timer and can be cancelled.** It appears only where a session with something in it would
+  be closed, next to the button, names the session and its trips, and stays until you answer (Escape cancels; it is withdrawn
+  and says so if the session changed meanwhile). An action that closes nothing is done at once. The result is written under the
+  card in a live region (announced by screen readers), in French, and stays until a newer session is shown; it never holds an
+  amount, so the balance choice has nothing to clear in it. If the change could not be written to disk, it says so.
+- **The list of past sessions says each state**: en cours, en attente du jeu, terminée, and how (fin manuelle, remplacée par une
+  nouvelle session, inactivité prolongée); an open session after a clean game quit says "jeu fermé". A session can still be
+  opened for its detail.
+- Tool answers: `sc_session_end` gains `reason` (`ended`, `empty`, `already_ended`, `none`) and always carries the session it is
+  about; `sc_session_new` gains `started` and `closed_session` and no longer claims to have closed a session that was
+  already ended or empty. Session summaries gain `empty` and `game_closed_at`. Existing fields are unchanged; the file
+  format is unchanged (no new `end_reason`), so an older server still reads it.
+- The page is 379.6 kB, under the unchanged 392 kB guardrail.
+
 ## [2.7.0] - 2026-11-04
 
 This release is the dashboard's UX pass, almost all in the page and its tests: **a ship loss is now the gravest event of the page** (a

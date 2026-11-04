@@ -340,8 +340,8 @@ that this server provides and that the client renders next to the chat.
 - **The compact view, in the order of what a glance in flight needs.** The header with the verdict, then the price
   refusal if there is one, the alerts (no row at all while there is none: the verdict says it), the three dials, the
   ship on one small row, the session on ONE line ("Session 4 · 6 trajets · 1 h 28 min", plus the net per hour only
-  while the balance is shown; a real button with `aria-expanded` unfolds the whole card, which keeps **Nouvelle
-  session** as a secondary button), the balance row beside it, then the contract line and "Chercher une route". Measured
+  while the balance is shown; a real button with `aria-expanded` unfolds the whole card, which keeps **Terminer la
+  session** and **Nouvelle session** as secondary buttons, each only when it changes something), the balance row beside it, then the contract line and "Chercher une route". Measured
   in real Chrome on the preview's made-up flight, at 560 px: 691 px high before, 326 px now; at 360 px with a price
   refusal 915 px before, 510 px now. Not verified: how Claude Desktop sizes the inline frame.
 - **What the cockpit shows.** Instruments: a speed dial whose scale is deduced from the speeds seen and says so
@@ -976,13 +976,25 @@ it again from any conversation, after a game crash, and after a reboot of the PC
 - **It starts** when the game is seen running and there is no session, or the last one has been quiet for more than
   3 hours (`SC_SESSION_GAP_HOURS`, 0.25 to 48); when you press **Nouvelle session** (or call `sc_session_new`); and when
   the dashboard is opened after such a break (an empty session waits for the game, and an empty one is renewed, never
-  piled up).
+  piled up). A session in which the game has never been seen (no trip, no balance, no played time) is **empty**: the card
+  says "en attente du jeu", it has nothing to end, and "Nouvelle session" would only recreate it, so neither is offered
+  (`sc_session_end` answers `reason: "empty"` and `sc_session_new` answers `started: false`, both without changing anything).
 - **It resumes** when the game is seen again within the gap, whether the game was closed cleanly or not. The break is
   written down: `game_closed` if the game wrote its quit line, `unclean` if there was no end marker (crash, reboot of the
   PC, or this server was not running). Nothing is invented about what happened meanwhile.
 - **It ends** when you end it (**Terminer**, or `sc_session_end`: it is then not resumed, and the next session starts
   when the game is seen starting afresh), when a new one starts, or when the gap is exceeded (closed at its last
-  sighting).
+  sighting). A session you ended **stays on the card**, however long you wait and however often the dashboard polls,
+  until you press **Nouvelle session** or the game shows a new play period (a join or the menu in Game.log dated after
+  the end; when Game.log says nothing, a balance appearing after a silence). A restarted server that only sees its first
+  balance late does not count as a new play period. Closing the game is not an end: the session waits and resumes when the
+  game is back within the gap (the card says "jeu fermé" in the meantime). The file format is unchanged (no new value for
+  `end_reason`, so an older server still reads it). An older server (2.7.0) that writes the same `sessions.json` brings back
+  the old behaviours on its own side (an empty session dropped and recreated by the poll, an ended session replaced after
+  the gap); the format stays compatible. Known limit: `sc_session_end` and `sc_session_new` act on the LAST session on the
+  server and take no expected id, so a confirmation that went stale (another dashboard or the game started a newer session
+  in the narrow window between the question and the click) could end the newer session; the message the card shows names
+  the session that was really ended.
 - Time is counted from what was seen: **active time** is the time the game was seen running; a gap adds nothing.
 
 ### What is stored, what a crash loses
@@ -1121,11 +1133,20 @@ compares what the plan promised with what you really got (`src/providers/session
 
 - **The bar** at the top of the dashboard shows the session (number, state, since when, active time), then the figures
   that matter first: with the balance shown, the result, the rate per hour, the trips and the time; with the balance
-  hidden, the trips and the time. In the compact view the bar is one line (a button that unfolds it). It has **Nouvelle session** (two clicks, to avoid a slip; a secondary button), **Sessions** (past
-  sessions with their key numbers, statistics across them, one session in detail, and **Terminer la session**). Two
-  dashboards of two conversations show the same session, because it comes from the server.
-- **When it opens**, the dashboard attaches to the last session unless there was a break of more than the gap, in which
-  case a new one is made.
+  hidden, the trips and the time. In the compact view the bar is one line (a button that unfolds it) that also says the state
+  ("en attente du jeu", "terminée à 16:10"). The card has five states: **no session** ("Démarrer une session"), **en attente
+  du jeu** (an empty session: no figure, no dash, no button, and a line says why), **en cours** (or "inactive" after a long
+  quiet), **terminée** ("terminée à 16:10", how it ended, its result, and "Nouvelle session" as the main button) and, in the
+  **Sessions** menu, the list of past sessions with the state of each (in progress, waiting for the game, ended: by hand,
+  replaced by a new session, or by a long inactivity) and one session in detail. **Terminer la session** and **Nouvelle
+  session** sit on the card, and only where they change something. A session that holds something asks first, **inline
+  next to the button**, with a cancel and no timer (a question that is no longer true, because another dashboard or the
+  game changed the session, is withdrawn and says so); an action that closes nothing is done at once. The result is
+  written in a line under the card (a live region, so a screen reader announces it) and stays there until a newer
+  session is on the card; it never holds an amount. Two dashboards of two conversations show the same session, because it
+  comes from the server.
+- **When it opens**, the dashboard attaches to the last session unless it is open and there was a break of more than the
+  gap, in which case a new (empty) one is made. A session you ended is never replaced behind your back.
 - **Tools** (`local` profile; the first three also in `trade`): `sc_session_current` (the session so far, the last place
   and goods the log named, the latest trips: what Claude needs to accompany you and propose the next run),
   `sc_session_list`, `sc_session_stats`, `sc_session_new`, `sc_session_end`, `sc_session_debrief` (the report, see below) and `sc_session_export` (the dashboard's own call for the whole report; not for the model).

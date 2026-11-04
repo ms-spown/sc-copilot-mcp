@@ -1,3 +1,4 @@
+import { isEmpty } from "./reducer.js";
 import type { Session, ShipLossRecord, Trip } from "./types.js";
 
 /**
@@ -89,6 +90,16 @@ export interface SessionSummary {
   started_at: string;
   ended_at: string | null;
   last_activity_at: string;
+  /**
+   * True while the game was never seen during the session (no trip, no balance, no active time): it is only waiting for the
+   * game. Such a session has nothing to end and nothing to restart, and the dashboard says "en attente du jeu".
+   */
+  empty: boolean;
+  /**
+   * When the game wrote its quit line during this OPEN session (it resumes if the game comes back within the gap); null
+   * once it was seen again, when it is ended, or when the game wrote no quit line.
+   */
+  game_closed_at: string | null;
   /** From the start to the end (or the last sighting). Includes interruptions. */
   duration_ms: number;
   /** The time the game was seen running. Rates use this one. */
@@ -205,6 +216,12 @@ export function summarizeSession(s: Session): SessionSummary {
     started_at: s.started_at,
     ended_at: s.ended_at,
     last_activity_at: s.last_activity_at,
+    empty: isEmpty(s),
+    // The quit line counts only while nothing was seen after it (a game back within the resume gap keeps the old line).
+    game_closed_at:
+      s.ended_at === null && s.quit_at !== null && ms(s.quit_at) >= ms(s.last_activity_at) - 5000
+        ? s.quit_at
+        : null,
     duration_ms: Math.max(0, end - ms(s.started_at)),
     active_ms: s.active_ms,
     interruptions: s.interruptions.length,

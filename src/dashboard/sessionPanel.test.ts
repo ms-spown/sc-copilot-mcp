@@ -183,8 +183,9 @@ describe("Feature: what the bar says first", () => {
     expect(info("empty", true).empty).toBe(true);
     expect(info("stale", true).notes.join(" ")).toContain("nouvelle session");
     expect(info("stale", true).chip).toBe("inactive");
-    expect(info("ended", true).chip).toBe("terminée");
+    expect(info("ended", true).chip).toMatch(/^terminée (à \d\d:\d\d|hier \d\d:\d\d)$/);
     expect(info("ended", true).canEnd).toBe(false);
+    expect(info("waiting", true).chip).toBe("en attente du jeu");
     expect(info("readonly", true).notes.join(" ")).toContain(
       "vient d’une version plus récente de ce serveur",
     );
@@ -308,7 +309,8 @@ describe("Feature: the bar in the page", () => {
     // The menu of past sessions is closed until the player opens it: nothing of it is drawn.
     expect(t).not.toContain("Sessions passées");
     expect(t).not.toContain("Retour à la liste");
-    expect(t).not.toContain("Terminer la session");
+    // "Terminer" is on the card itself (not hidden in the menu of past sessions), next to "Nouvelle session".
+    expect(isShown(findButton(w.root, "Terminer la session"))).toBe(true);
     expect(t).not.toMatch(MONEY_DIGITS);
     expect(isShown(findButton(w.root, "Nouvelle session"))).toBe(true);
     expect(w.host.log.polls.every((p) => p.includeBalance === false)).toBe(true);
@@ -343,30 +345,6 @@ describe("Feature: the bar in the page", () => {
     const w = await page("off");
     await w.advance(5 * SECOND);
     expect(text(w)).not.toContain("Nouvelle session");
-  });
-
-  it("Given 'Nouvelle session', Then the first click asks to confirm, the second calls the tool once and the bar is refreshed", async () => {
-    const w = await page();
-    await w.advance(5 * SECOND);
-    const polls = w.host.log.polls.length;
-    findButton(w.root, "Nouvelle session").click?.();
-    await w.advance(100);
-    expect(w.host.log.tools).toEqual([]);
-    expect(text(w)).toContain("Confirmer : nouvelle session");
-    findButton(w.root, "Confirmer : nouvelle session").click?.();
-    await w.advance(500);
-    expect(w.host.log.tools.map((t) => t.name)).toEqual(["sc_session_new"]);
-    expect(w.host.log.polls.length).toBeGreaterThan(polls);
-  });
-
-  it("Given a failure of the tool, Then the player is told and nothing breaks", async () => {
-    const w = await page();
-    await w.advance(5 * SECOND);
-    w.host.overrides.tool = () => new Error("the session file is busy");
-    findButton(w.root, "Nouvelle session").click?.();
-    findButton(w.root, "Confirmer : nouvelle session").click?.();
-    await w.advance(500);
-    expect(text(w)).toContain("Nouvelle session impossible");
   });
 
   it("Given the menu, Then it lists past sessions with their key numbers, and asks for money only when the balance is shown", async () => {
@@ -430,22 +408,6 @@ describe("Feature: the bar in the page", () => {
     const t = text(w);
     expect(t).toContain("Tendance : en hausse");
     expect(t).toContain("Meilleure : N° 2");
-  });
-
-  it("Given 'Terminer', Then it needs a confirmation and calls sc_session_end once", async () => {
-    const w = await page();
-    await w.advance(5 * SECOND);
-    findAll(
-      w.root,
-      (n) => n.tag === "button" && n.textContent.startsWith("Sessions"),
-    )[0]?.click?.();
-    await w.advance(500);
-    findButton(w.root, "Terminer la session").click?.();
-    await w.advance(50);
-    expect(w.host.log.tools.some((t) => t.name === "sc_session_end")).toBe(false);
-    findButton(w.root, "Confirmer la fin").click?.();
-    await w.advance(500);
-    expect(w.host.log.tools.filter((t) => t.name === "sc_session_end")).toHaveLength(1);
   });
 
   it("Given the page, Then the markup rules hold: text only through textContent, no session data in the browser's storage", () => {

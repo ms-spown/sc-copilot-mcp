@@ -591,6 +591,144 @@ describe("Feature: the balance does not leave without the player's choice", () =
   });
 });
 
+describe("Feature: session management with the game closed (every click has a durable result)", () => {
+  it("Given the dashboard opened with the game closed, Then the session waits for the game and has nothing to end", async () => {
+    const r = rig();
+    const bar = await r.manager.bar(false);
+    expect(bar.current?.number).toBe(1);
+    expect(bar.current?.empty).toBe(true);
+    const ended = await r.manager.endSession();
+    expect(ended.ended).toBe(false);
+    expect(ended.reason).toBe("empty");
+    // Nothing changed, nothing was dropped: the same session is still there with the same number.
+    const again = await r.manager.bar(false);
+    expect(again.current?.id).toBe(bar.current?.id);
+    expect(again.current?.status).toBe("open");
+    expect((await stored(r)).map((s) => s.number)).toEqual([1]);
+  });
+
+  it("Given an empty session, When 'Nouvelle session' is asked, Then nothing is started and the answer says so", async () => {
+    const r = rig();
+    const first = await r.manager.bar(false);
+    const writes = r.store.writes;
+    const made = await r.manager.newSession();
+    expect(made.started).toBe(false);
+    expect(made.summary.number).toBe(1);
+    expect(made.summary.id).toBe(first.current?.id);
+    expect(r.store.writes).toBe(writes);
+    expect((await stored(r)).map((s) => s.number)).toEqual([1]);
+  });
+
+  it("Given a manual end, Then the ended session stays on the bar for any length of time, with the dashboard polled again", async () => {
+    const r = rig();
+    r.log.running = true;
+    await playMinutes(r, 3, () => 1000);
+    const ended = await r.manager.endSession();
+    expect(ended.ended).toBe(true);
+    expect(ended.reason).toBe("ended");
+    r.log.running = false;
+    for (const wait of [MIN, HOUR, 5 * HOUR, 30 * HOUR]) {
+      r.clock.t += wait;
+      const bar = await r.manager.bar(false);
+      expect(bar.current?.number).toBe(1);
+      expect(bar.current?.status).toBe("ended");
+      expect(bar.current?.end_reason).toBe("manual");
+    }
+    expect((await stored(r)).map((s) => s.number)).toEqual([1]);
+  });
+
+  it("Given an ended session, When the player starts a new one, Then a waiting session replaces it and nothing is reported as closed", async () => {
+    const r = rig();
+    r.log.running = true;
+    await playMinutes(r, 3, () => 1000);
+    await r.manager.endSession();
+    r.log.running = false;
+    r.clock.t += 5 * MIN; // the game is gone: the last balance seen is no longer fresh
+    const made = await r.manager.newSession();
+    expect(made.started).toBe(true);
+    expect(made.closedPrevious).toBeNull();
+    expect(made.summary.number).toBe(2);
+    const bar = await r.manager.bar(false);
+    expect(bar.current?.number).toBe(2);
+    expect(bar.current?.empty).toBe(true);
+  });
+
+  it("Given a manual end then a server restart with the game running, Then a late first balance does not start a session by itself", async () => {
+    const r = rig();
+    r.log.running = true;
+    await playMinutes(r, 3, () => 1000);
+    await r.manager.endSession();
+    // A new server process: no memory of the balance, the stream is not connected yet (no balance), then it is.
+    const second = new SessionManager({
+      telemetry: r.tel.telemetry,
+      store: r.store,
+      config: { enabled: true, file, gapMs: 3 * HOUR },
+      gameHint: async () => ({ running: true, telemetryRegistered: true }),
+      connection: {
+        current: async () => ({
+          state: "online",
+          since: new Date(T0 - HOUR).toISOString(),
+          code: null,
+          reason: null,
+        }),
+      },
+      now: () => r.clock.t,
+    });
+    r.tel.s.balance = null;
+    r.clock.t += MIN;
+    await second.tick();
+    r.tel.s.balance = 1234;
+    r.clock.t += MIN;
+    await second.tick();
+    expect((await stored(r)).map((s) => s.number)).toEqual([1]);
+    expect((await second.bar(false)).current?.status).toBe("ended");
+  });
+
+  it("Given the game wrote its quit line, Then the open session says so until the game is seen again", async () => {
+    const r = rig();
+    r.log.running = true;
+    await playMinutes(r, 3, () => 1000);
+    r.log.running = false;
+    const since = new Date(r.clock.t).toISOString();
+    r.conn.info = { state: "closed", since, code: null, reason: null };
+    r.clock.t += MIN;
+    await r.manager.tick();
+    const closed = (await r.manager.bar(false)).current;
+    expect(closed?.status).toBe("open");
+    expect(closed?.game_closed_at).toBe(since);
+    // The game is back within the resume gap: the old quit line no longer says the game is closed.
+    r.log.running = true;
+    r.conn.info = {
+      state: "online",
+      since: new Date(r.clock.t).toISOString(),
+      code: null,
+      reason: null,
+    };
+    await playMinutes(r, 2, () => 1001);
+    const back = (await r.manager.bar(false)).current;
+    expect(back?.number).toBe(1);
+    expect(back?.game_closed_at).toBeNull();
+  });
+
+  it("Given an ended session, When the game is started again, Then a new session starts by itself", async () => {
+    const r = rig();
+    r.log.running = true;
+    await playMinutes(r, 3, () => 1000);
+    await r.manager.endSession();
+    r.conn.info = {
+      state: "online",
+      since: new Date(r.clock.t + 10 * MIN).toISOString(),
+      code: null,
+      reason: null,
+    };
+    r.clock.t += 20 * MIN;
+    r.tel.s.balance = 2000;
+    await r.manager.tick();
+    expect((await stored(r)).map((s) => s.number)).toEqual([1, 2]);
+    expect((await r.manager.bar(false)).current?.status).toBe("open");
+  });
+});
+
 describe("Feature: a file that cannot be written never breaks the server", () => {
   it("Given a busy lock, Then a tick reports nothing and the next one succeeds", async () => {
     const clock = { t: T0 };

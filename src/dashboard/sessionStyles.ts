@@ -28,6 +28,15 @@ export const SESSION_CSS = `
 .ses-kpi[data-kpi="time"], .ses-kpi[data-kpi="trips"] { color: var(--sc-text); }
 .ses-kpi[data-kpi="net"][data-tone=""] .ses-k-value { color: var(--sc-text3); font-weight: 500; }
 
+.ses[data-state="waiting"] .ses-chip { color: var(--sc-info); border-color: var(--sc-info); }
+.ses[data-state="ended"] .ses-chip { color: var(--sc-text); border-color: var(--sc-text3); font-weight: 650; }
+.ses-hint, .ses-confirm-text { margin: var(--sp-2) 0 0; font-size: var(--fs-s); color: var(--sc-text2); overflow-wrap: anywhere; }
+.ses-confirm { margin: var(--sp-2) 0 0; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--sc-warn); border-radius: var(--r-m); background: var(--tint-warn); }
+.ses-confirm-text { margin: 0 0 var(--sp-2); color: var(--sc-text); }
+.ses-confirm-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.ses-status { margin: 0; font-size: var(--fs-s); font-weight: 600; overflow-wrap: anywhere; }
+.ses-status:not(:empty) { margin-top: var(--sp-2); }
+.ses-status:focus-visible { outline: 2px solid var(--sc-ring); outline-offset: 2px; }
 .ses-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--sp-2); margin-left: auto; }
 .ses-notes { margin: var(--sp-2) 0 0; display: flex; flex-direction: column; gap: 2px; }
 .ses-note { margin: 0; font-size: var(--fs-s); color: var(--sc-text2); overflow-wrap: anywhere; }
@@ -47,6 +56,8 @@ export const SESSION_CSS = `
 .ses-r-n { font-weight: 650; font-variant-numeric: tabular-nums; }
 .ses-r-when { color: var(--sc-text2); }
 .ses-r-detail { color: var(--sc-text2); overflow-wrap: anywhere; }
+.ses-r-status { grid-column: 2 / -1; color: var(--sc-text3); font-size: var(--fs-xs); }
+.ses-row[data-open="1"] .ses-r-status { color: var(--sc-ok); }
 .ses-r-result { font-weight: 650; font-variant-numeric: tabular-nums; text-align: right; }
 .ses-r-result[data-tone="ok"] { color: var(--sc-ok); }
 .ses-r-result[data-tone="warn"] { color: var(--sc-warn); }
@@ -71,7 +82,7 @@ export const SESSION_CSS = `
 @media (max-width: 520px) {
   .ses { padding: var(--sp-3); }
   .ses-row { grid-template-columns: 3.5em minmax(0, 1fr) auto; }
-  .ses-r-detail { grid-column: 1 / -1; }
+  .ses-r-detail, .ses-r-status { grid-column: 1 / -1; }
   .ses-kpi[data-first="1"] .ses-k-value { font-size: var(--fs-l); }
 }
 `;
