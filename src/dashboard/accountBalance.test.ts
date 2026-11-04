@@ -37,14 +37,34 @@ const snap = (uec: number | string | undefined, ageMs: number) =>
   }) as never;
 
 describe("Feature: where the account balance comes from, and nothing invented", () => {
-  it("Given a live stream, Then the reading is live and carries no time", () => {
+  it("Given a live stream on the live channel, Then the reading is live, carries no time and no caveat", () => {
     const a = buildAccountBalance({
       status: { state: "live" },
       snapshot: snap(BAL, 200),
       connection: { state: "online" },
+      channel: "live",
       nowMs: NOW,
     });
     expect(a).toEqual({ source: "live", uec: BAL });
+  });
+
+  it("Given a live stream whose channel could not be read, Then it is shown but flagged, never claimed as verified", () => {
+    for (const channel of ["unknown", null, undefined] as const) {
+      const a = buildAccountBalance({
+        status: { state: "live" },
+        snapshot: snap(BAL, 200),
+        connection: { state: "online" },
+        channel,
+        nowMs: NOW,
+      });
+      expect(a).toEqual({ source: "live", uec: BAL, channel_unverified: true });
+    }
+    const kept = buildAccountBalance({
+      status: { state: "waiting" },
+      snapshot: snap(BAL, HOUR),
+      nowMs: NOW,
+    });
+    expect(kept).toMatchObject({ source: "last_known", from: "stream", channel_unverified: true });
   });
 
   it("Given a stream that went quiet (the game closed), Then the kept frame is the last known balance with its time", () => {
@@ -52,6 +72,7 @@ describe("Feature: where the account balance comes from, and nothing invented", 
       status: { state: "waiting" },
       snapshot: snap(BAL, 15 * HOUR),
       connection: { state: "closed" },
+      channel: "live",
       nowMs: NOW,
     });
     expect(a).toEqual({
@@ -210,7 +231,11 @@ describe("Feature: the poll carries the reminder only to a View that asked for t
     frameAgeMs?: number;
     saved?: SavedBalance | null;
     state?: string;
-    channel?: "live" | "ptu";
+    channel?: "live" | "ptu" | "unknown";
+    /** The saved sessions are switched off in the manager (enabled false) or there is no manager at all (SC_SESSIONS=off). */
+    sessions?: "on" | "disabled" | "none";
+    /** The service's own channel reader, used when there is no manager. */
+    ownChannel?: boolean;
   }) => {
     const telemetry = {
       enabled: true,
@@ -228,8 +253,9 @@ describe("Feature: the poll carries the reminder only to a View that asked for t
       stop: vi.fn(async () => undefined),
     } as unknown as Telemetry;
     const savedBalance = vi.fn(async () => opts.saved ?? null);
+    const gameChannel = vi.fn(async () => opts.channel ?? "live");
     const sessions = {
-      enabled: true,
+      enabled: opts.sessions !== "disabled",
       bar: async () => ({
         v: 1,
         status: "ok",
@@ -239,7 +265,7 @@ describe("Feature: the poll carries the reminder only to a View that asked for t
         stale: false,
       }),
       calibrationSection: async () => undefined,
-      gameChannel: async () => opts.channel ?? "live",
+      gameChannel,
       savedBalance,
     } as unknown as SessionManager;
     const service = new DashboardService(
@@ -249,21 +275,34 @@ describe("Feature: the poll carries the reminder only to a View that asked for t
       undefined,
       undefined,
       undefined,
-      sessions,
+      opts.sessions === "none" ? undefined : sessions,
+      undefined,
+      undefined,
+      opts.ownChannel ? gameChannel : undefined,
     );
-    return { service, savedBalance };
+    return { service, savedBalance, gameChannel };
   };
 
   it.each(HIDDEN_MODES)(
     "Given a saved balance and $label, Then the answer has no account field, no amount, and the file was not asked",
     async (mode) => {
-      const { service, savedBalance } = rig({ saved: { auec: BAL, at: iso(NOW - 15 * HOUR) } });
-      const poll = await service.poll({
-        includeBalance: wantsBalance(mode.args.include_balance, mode.policy),
-      });
-      expect(poll).not.toHaveProperty("account");
-      expect(JSON.stringify(poll)).not.toMatch(WHOLE);
-      expect(savedBalance).not.toHaveBeenCalled();
+      for (const sessions of ["on", "none"] as const) {
+        const { service, savedBalance, gameChannel } = rig({
+          saved: { auec: BAL, at: iso(NOW - 15 * HOUR) },
+          frameAgeMs: 200,
+          state: "live",
+          sessions,
+          ownChannel: true,
+        });
+        const poll = await service.poll({
+          includeBalance: wantsBalance(mode.args.include_balance, mode.policy),
+        });
+        expect(poll).not.toHaveProperty("account");
+        expect(JSON.stringify(poll)).not.toMatch(WHOLE);
+        expect(savedBalance).not.toHaveBeenCalled();
+        // the log head is not even looked at while the amounts are hidden
+        expect(gameChannel).not.toHaveBeenCalled();
+      }
     },
   );
 
@@ -290,6 +329,28 @@ describe("Feature: the poll carries the reminder only to a View that asked for t
     const poll = await service.poll({ includeBalance: true });
     expect(poll.account).toEqual({ source: "unknown", reason: "ptu" });
     expect(JSON.stringify(poll.account)).not.toMatch(WHOLE);
+  });
+
+  it.each(["disabled", "none"] as const)(
+    "Given saved sessions %s and a PTU game, Then the PTU frame is still not presented as the account balance",
+    async (sessions) => {
+      const { service, gameChannel } = rig({
+        frameAgeMs: 200,
+        state: "live",
+        channel: "ptu",
+        sessions,
+        ownChannel: true,
+      });
+      const poll = await service.poll({ includeBalance: true });
+      expect(poll.account).toEqual({ source: "unknown", reason: "ptu" });
+      expect(gameChannel).toHaveBeenCalled();
+    },
+  );
+
+  it("Given saved sessions off and no way to read the channel, Then the live frame is shown but flagged unverified", async () => {
+    const { service } = rig({ frameAgeMs: 200, state: "live", sessions: "none" });
+    const poll = await service.poll({ includeBalance: true });
+    expect(poll.account).toEqual({ source: "live", uec: BAL, channel_unverified: true });
   });
 
   it("Given a failing sessions file, Then the answer still comes, with an unknown balance", async () => {
@@ -343,6 +404,41 @@ describe("Feature: what the header says (pure)", () => {
   it("Given the answer in hand was asked without the balance, Then it waits instead of saying unknown", () => {
     expect(accountInfo({ v: 1, state: "waiting" }, true, NOW).kind).toBe("wait");
     expect(accountInfo(null, true, NOW).kind).toBe("wait");
+  });
+
+  it("Given a reading whose channel is unverified, Then it is shown with a short note and a tooltip, never as certain", () => {
+    const live = accountInfo(
+      poll({ source: "live", uec: BAL, channel_unverified: true }, "live"),
+      true,
+      NOW,
+    );
+    expect(live.kind).toBe("live");
+    expect(live.note).toBe("canal non vérifié");
+    expect(live.tip).toContain("PTU");
+    const kept = accountInfo(
+      poll({
+        source: "last_known",
+        uec: BAL,
+        at: iso(NOW - HOUR),
+        from: "stream",
+        channel_unverified: true,
+      }),
+      true,
+      NOW,
+    );
+    expect(NB(kept.note)).toBe("dernier solde connu · il y a 1 h · canal non vérifié");
+    // verified: no caveat
+    expect(accountInfo(poll({ source: "live", uec: BAL }, "live"), true, NOW).note).toBe("");
+    // hidden: nothing about the channel either
+    expect(
+      JSON.stringify(
+        accountInfo(
+          poll({ source: "live", uec: BAL, channel_unverified: true }, "live"),
+          false,
+          NOW,
+        ),
+      ),
+    ).not.toContain("canal");
   });
 
   it("Given a PTU game, Then it says so and shows no figure", () => {

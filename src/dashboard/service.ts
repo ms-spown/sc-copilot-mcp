@@ -1,5 +1,5 @@
 import type { ConnectionInfo } from "../providers/gamelog/connectionState.js";
-import type { SessionManager } from "../providers/sessions/manager.js";
+import type { GameInfo, SessionManager } from "../providers/sessions/manager.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
 import { buildAccountBalance } from "./accountBalance.js";
 import { POLL_CACHE_MS, POLL_EVENT_COUNT } from "./constants.js";
@@ -73,6 +73,11 @@ export class DashboardService {
     private readonly health?: HealthStatic,
     /** Names of the goods of the trade runs, looked up in the background (commodityNames.ts). Absent: the goods stay unnamed. */
     private readonly commodityNames?: CommodityNameResolver,
+    /**
+     * The channel of the game launched now (live, ptu), read from the head of Game.log (cached, bounded), for the account
+     * balance reminder. Without it, and without sessions, the channel is unknown.
+     */
+    private readonly channelSource?: () => Promise<GameInfo["channel"] | null>,
   ) {}
 
   get enabled(): boolean {
@@ -220,10 +225,15 @@ export class DashboardService {
     }
   }
 
-  /** The channel of the game launched now (live, ptu), from the sessions' game info; null when unknown or sessions are off. */
+  /**
+   * The channel of the game launched now (live, ptu), from the head of Game.log; null when it cannot be read (no log, no
+   * marker). It does not depend on the saved sessions being on: it is a bounded, cached, read-only look at the log, made only
+   * for an answer that asked for the balance.
+   */
   private async gameChannel() {
     try {
-      return this.sessions?.enabled ? await this.sessions.gameChannel() : null;
+      if (this.sessions) return await this.sessions.gameChannel();
+      return this.channelSource ? await this.channelSource() : null;
     } catch {
       return null;
     }

@@ -1144,12 +1144,16 @@ export function accountInfo(poll: any, showBalance: boolean, now: number, follow
     (typeof a.uec === "number"
       ? Number.isFinite(a.uec)
       : typeof a.uec === "string" && /^-?\d{1,20}$/.test(a.uec));
+  // The game's channel (live or PTU) could not be read from Game.log: the figure is shown, but a PTU one could not be told apart.
+  const unverified = usable && a.channel_unverified === true;
+  const unverifiedTip =
+    " Le canal du jeu (live ou PTU) n’a pas pu être lu dans Game.log : un solde du PTU ne se distinguerait pas.";
   if (usable && a.source === "live") {
     return {
       kind: "live",
       text: fmtAuec(a.uec) + "\u00a0aUEC",
-      note: "",
-      tip: "Relevé en direct du jeu.",
+      note: unverified ? "canal non vérifié" : "",
+      tip: "Relevé en direct du jeu." + (unverified ? unverifiedTip : ""),
       speak: "Solde en direct",
     };
   }
@@ -1159,11 +1163,15 @@ export function accountInfo(poll: any, showBalance: boolean, now: number, follow
     return {
       kind: "last_known",
       text: fmtAuec(a.uec) + "\u00a0aUEC",
-      note: "dernier solde connu" + (ago ? " · " + ago : ""),
+      note:
+        "dernier solde connu" +
+        (ago ? " · " + ago : "") +
+        (unverified ? " · canal non vérifié" : ""),
       tip:
-        a.from === "session"
+        (a.from === "session"
           ? "Dernier solde enregistré avec une session de jeu : le jeu ne le donne pas en ce moment."
-          : "Dernier relevé du flux du jeu, gardé en mémoire : le jeu ne le donne plus.",
+          : "Dernier relevé du flux du jeu, gardé en mémoire : le jeu ne le donne plus.") +
+        (unverified ? unverifiedTip : ""),
       speak: "Solde : dernier solde connu",
     };
   }

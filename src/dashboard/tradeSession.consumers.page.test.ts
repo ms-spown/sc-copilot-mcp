@@ -118,3 +118,98 @@ describe("Feature: the page has exactly one balance control", () => {
     },
   );
 });
+
+/** A page like `page`, with a loss and/or a refused price added to the journal's section, and no wiki sheet for the ship. */
+async function pageWith(
+  sessionStartS: number,
+  extra: (l: any, at: number) => void,
+  options: { specs?: boolean } = {},
+) {
+  const scenario = new Scenario();
+  if (options.specs !== false) scenario.specs = specsSamples(scenario.now).ready;
+  scenario.uec = tradeBalanceAt;
+  scenario.ledger = (include, nowMs) => {
+    const l: any = tradeLedger(nowMs, scenario.epoch, include, "story", PLAN);
+    extra(l, scenario.epoch + 410 * SECOND);
+    return l;
+  };
+  const w = await startPage({ scenario, balanceHidden: false });
+  w.host.overrides.poll = (base: any, include: boolean) => {
+    const bar: any = sessionBar(scenario.now, include, "story");
+    bar.current.started_at = new Date(scenario.epoch + sessionStartS * SECOND).toISOString();
+    bar.current.ended_at = null;
+    return { ...base, sessions: bar };
+  };
+  w.fromHost({
+    jsonrpc: "2.0",
+    method: "ui/notifications/tool-result",
+    params: { structuredContent: { view: "sc_live_dashboard", plan: PLAN } },
+  });
+  return w;
+}
+const verdictText = (w: PageWorld) =>
+  NB(findAll(w.root, (n) => n.className === "verdict")[0]!.textContent);
+
+describe("Feature: the action bar's hold list still reads the whole journal", () => {
+  it.each([
+    ["a session that began before the run", 0],
+    ["a session that began after the run", 300],
+  ])(
+    "Given %s and no wiki sheet, Then the run's 696 SCU is still the default hold",
+    async (_l, start) => {
+      const w = await pageWith(start, () => undefined, { specs: false });
+      await fullscreen(w);
+      await w.advance(240 * SECOND);
+      expect(NB(visibleText(w.root))).toContain("696");
+      findButton(w.root, "Plus rentable").click();
+      await w.advance(100);
+      expect(w.host.log.suggests.filter((a) => a.action === "search")[0]!.cargo_scu).toBe(696);
+    },
+  );
+});
+
+describe("Feature: a loss or a refused price is shown even when the run is of an older session", () => {
+  it("Given a ship lost 30 s ago with the cargo of the older run, Then the gravest alert is still there and the button asks about the loss", async () => {
+    const w = await pageWith(300, (l, at) => {
+      l.trade.ship_losses = [
+        {
+          at: new Date(at - 30 * SECOND).toISOString(),
+          ship_class: "MISC_Hull_C",
+          cause: "combat",
+          causer: "other",
+          zone: "OOC_Stanton_3a_Lyria",
+          cargo_scu: 56,
+          cargo_buys: 1,
+          unconfirmed_buys: 0,
+          unconfirmed_sells: 0,
+          run_id: l.trade.runs[0].id,
+        },
+      ];
+    });
+    await w.advance(410 * SECOND);
+    expect(verdictText(w)).toMatch(/^Vaisseau détruit/);
+    expect(askKind(w)).toBe("loss");
+    // the older run itself is still kept apart from the session's figures
+    await fullscreen(w);
+    expect(isShown(findAll(w.root, (n) => n.className.split(" ").includes("tr-last"))[0]!)).toBe(
+      true,
+    );
+  });
+
+  it("Given a price refused 20 s ago, Then the alert is shown too, with a session that has no run of its own", async () => {
+    const w = await pageWith(300, (l, at) => {
+      l.trade.price_refusals = [
+        {
+          at: new Date(at - 20 * SECOND).toISOString(),
+          side: "buy",
+          kind: "commodity",
+          confidence: "confirmed",
+          superseded: false,
+        },
+      ];
+    });
+    await w.advance(410 * SECOND);
+    expect(verdictText(w)).toMatch(/^Prix changé : achat refusé/);
+    expect(askKind(w)).toBe("refusal");
+  });
+});

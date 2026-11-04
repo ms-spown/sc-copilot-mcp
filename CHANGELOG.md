@@ -77,7 +77,11 @@ versions follow [Semantic Versioning](https://semver.org/).
   empty, so the file is read across all sessions); "Solde inconnu" with the reason ("jeu fermé", "aucun relevé pour l'instant",
   "télémétrie non activée", "jeu lancé sur le PTU") when nothing is known; "jeu fermé" is said only on the game's own quit line.
   A balance saved with a PTU session is never used (separate test economy) and a PTU stream is not presented as the account's
-  (PTU detected from the head of Game.log, so with sessions on). A View that follows another says "suivi par un autre tableau",
+  (PTU detected from the head of Game.log, with or without saved sessions: a bounded, cached, read-only look, made only for an answer
+  that asked for the balance). **Remaining fail-open cases:** when the channel cannot be read (no game log configured, a log without the
+  channel marker, an unreadable head) the stream's figure is still shown, but flagged "canal non vérifié" in the note and tooltip, because
+  a PTU figure could not be told apart; and a frame kept in memory from an earlier PTU launch of the same server process is not
+  detected once the log head says live. A View that follows another says "suivi par un autre tableau",
   not "masqué". Nothing is invented. New plain field `account` in the `sc_live_poll` answer
   (`source` live / last_known / unknown, outside the hashes; no tool name or input schema changed): it exists only in an answer built
   with the balance, so "Masquer le solde", `SC_BALANCE=hidden` and `include_balance: false` leave no field and no amount, and a hidden

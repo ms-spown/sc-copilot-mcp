@@ -33,6 +33,12 @@ export interface AccountBalance {
   from?: "stream" | "session";
   /** Why it is unknown; only for "unknown". */
   reason?: "game_closed" | "no_reading" | "ptu";
+  /**
+   * Only on a reading that came from the stream when the game's channel could not be read from Game.log (no log path, a log
+   * without the marker, an unreadable head): the figure is shown, but it cannot be told from a PTU one. Absent when the channel
+   * is known to be live.
+   */
+  channel_unverified?: true;
 }
 
 export interface SavedBalance {
@@ -89,9 +95,12 @@ export function buildAccountBalance(input: AccountInput): AccountBalance {
   if (channel === "ptu" && !hasSaved) return { source: "unknown", reason: "ptu" };
 
   const onPtu = channel === "ptu";
+  const unverified =
+    channel === "ptu" || channel === "live" ? {} : { channel_unverified: true as const };
   const fresh =
     !onPtu && !!stream && status.state === "live" && nowMs - stream.at <= ACCOUNT_LIVE_MS;
-  if (stream && fresh && !notInSession(connection)) return { source: "live", uec: stream.uec };
+  if (stream && fresh && !notInSession(connection))
+    return { source: "live", uec: stream.uec, ...unverified };
   // The newer reading wins; on a tie the stream's (it is the one that can be live again).
   if (stream && !onPtu && (!hasSaved || stream.at >= savedMs)) {
     return {
@@ -99,6 +108,7 @@ export function buildAccountBalance(input: AccountInput): AccountBalance {
       uec: stream.uec,
       at: new Date(stream.at).toISOString(),
       from: "stream",
+      ...unverified,
     };
   }
   if (hasSaved && saved) {

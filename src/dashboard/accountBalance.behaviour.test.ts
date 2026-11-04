@@ -109,7 +109,8 @@ describe("Feature: the account reminder follows the player's balance choice", ()
   it.each(SHOWN_MODES)("Given a live game and $label, Then the account is live", async (mode) => {
     const { poll } = await live(mode.policy);
     const { sc, text } = await poll({ ...mode.args });
-    expect(sc["account"]).toEqual({ source: "live", uec: BAL });
+    // This world has no Game.log, so the channel is unknown: the figure is shown and flagged, not claimed as verified.
+    expect(sc["account"]).toEqual({ source: "live", uec: BAL, channel_unverified: true });
     // The data lives in the structured content only: the text of the answer never carries it.
     expect(text).not.toMatch(WHOLE);
   });
