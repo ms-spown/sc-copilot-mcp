@@ -113,7 +113,7 @@ describe("Feature: the test run is the route's; step 1 stays a separate leg", ()
     expect(text).toContain(`Premier trajet de test : ${fmtNum(100)}`);
     expect(text).toContain("Ce test porte sur la route. L’étape 1 reste un trajet à part");
     // The step's own quantity is not in the test.
-    expect(text).not.toContain(fmtNum(90) + " SCU");
+    expect(text).not.toContain(fmtNum(90) + "\u00a0SCU");
   });
 
   it("Given a budget that is the balance, Then no outlay is written, with a step 1 as without", () => {
