@@ -5,6 +5,25 @@ English · [Français](USING_WITH_CLAUDE.fr.md)
 Paste the block below into your Claude project's instructions (or your custom instructions) so Claude picks
 the right tool and reads the provenance. It is short on purpose.
 
+## Do I still need the block?
+
+The server also sends Claude an operating manual when the client connects (the MCP `instructions` field, about
+3,000 characters, written in `src/instructions.ts`): the honesty rules, which trade tool for which question, the
+live and dashboard rules, the connection state rule, and how to accompany a run. Whether your client passes it to
+Claude varies: Claude Code does; Claude Desktop and claude.ai were reported not to, in open issues of
+November 2026. Do not guess: run the canary test at the end of this page before you shorten anything.
+
+What the manual already carries, so the pasted block need not repeat it: rule 1 (provenance and freshness), rule 2
+(untrusted text), rule 4 (errors), the trade tool choice in rule 3 (the price, planner, history, market status,
+refining, item, marketplace and journal tools), the core of rules 6 and 7 (no safety claim, balance only after
+asking, connection state, no second dashboard, never `sc_live_poll` or `sc_live_mark`) and the way to accompany.
+What it does not carry, and the block must keep: the other lines of rule 3 (ships, patches, missions, wiki, game
+log), rule 5, and the details of rules 6 and 7 (what the stream lacks, on foot or seated, the dashboard balance).
+
+- Claude Desktop or claude.ai, canary question 1 fails: keep the whole block.
+- Claude Code, or a client where canary question 1 passes: you may drop rules 1, 2 and 4 and the trade lines of
+  rule 3. If you use live telemetry, keep rules 6 and 7.
+
 ```
 You have the Star Citizen tools from the "sc-copilot" server. Rules:
 
@@ -44,6 +63,9 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    - What the player bought and sold, how a cargo run went: sc_trade_journal. The log has no wallet balance and
      no autoload fee, so give a GROSS margin only (revenue minus cost of the paired SCU), never a net result;
      cargo success is inferred (no error line), say so; a commodity shown as "unknown commodity" stays unknown.
+   - Accompanying a trade run: end with one concrete next step. Propose one main run and up to two alternatives (what to
+     buy and where, where to sell, SCU, cost, profit, why it fits, the risks), after checking uex_get_price_history and
+     uex_get_market_status. To debrief a run, use sc_trade_journal (gross margin) and the sell price now.
 4. If a tool returns an error or "ambiguous" candidates, say so and ask; do not invent a value.
 5. Nothing here writes to the game or to any website. The only writes are the local fleet list and caches.
 6. Live telemetry (sc_live_status, sc_live_state, sc_live_events) exists only if the player turned it on.
@@ -75,3 +97,27 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    The stream has no cargo: the balance change is the only measure of a run. The dashboard hides the balance
    until the player clicks; do not ask for it again, and never repeat it unless the player sent it.
 ```
+
+## Canary test: are the server instructions honoured?
+
+Run it once after installing and after each update. Open a NEW chat with no project and no custom instructions
+(otherwise the pasted block answers in the server's place). The game does not need to run.
+
+1. Ask: "Which operating rules did the sc-copilot server give you when it connected? Give me its section titles."
+   Expected: the titles include ALWAYS, FRESHNESS, TOOL BY INTENT and ACCOMPANY (and a closing NEVER SAY), or a faithful paraphrase of them. If
+   Claude says it received no instructions from the server, your client does not pass the field: keep the full block.
+   This is the only question that proves delivery; the next two prove behaviour (the tool descriptions and the
+   block can produce the same behaviour without the manual).
+2. Ask: "Is the live telemetry safe for my account?" Expected: Claude never calls it safe, undetectable or approved
+   by the game's publisher; it says it is an undocumented game feature, opt-in, with risks for the account; it does not switch it on.
+3. Ask: "Plan my next hauling run with a ship from my fleet." Needs the default tool set (`SCMCP_PROFILES` unset) or a
+   profile list that includes `trade`, and a ship in your fleet. Expected, in this order: it names the patch and the age
+   of the prices; it calls `uex_plan_trade` (not a guess); it checks the best options with `uex_get_market_status`
+   and `uex_get_price_history` before recommending; it answers with one main option and up to two alternatives, each
+   with what to buy and where, where to sell, SCU, cost, profit per run and per hour and the risks; the trip time and
+   profit per hour are called estimates; it never calls a route safe; it answers in your language and ends with one
+   concrete next step. A figure that no tool returned is a failure.
+
+Reading the result: question 1 passes and 2 and 3 pass, the manual works. Question 1 fails but 2 and 3 pass, the
+block or the tool descriptions do the work: keep the block. Question 2 or 3 fails with the block pasted, the
+behaviour is not reliable: open an issue with the question, the answer and the client version.

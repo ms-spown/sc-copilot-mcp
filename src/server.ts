@@ -9,6 +9,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { UI_EXTENSION_ID, UI_MIME_TYPE } from "./dashboard/constants.js";
 import { VERSION } from "./core/useragent.js";
+import { SERVER_INSTRUCTIONS } from "./instructions.js";
 import { findPrompt, PROMPTS } from "./prompts.js";
 import type { ToolRegistry } from "./tools/registry.js";
 
@@ -22,7 +23,10 @@ export function createMcpServer(registry: ToolRegistry): Server {
   const serveResources = registry.listResources().length > 0;
   const server = new Server(
     { name: "sc-copilot-mcp", version: VERSION },
-    { capabilities: { tools: {}, prompts: {}, ...(serveResources ? { resources: {} } : {}) } },
+    {
+      capabilities: { tools: {}, prompts: {}, ...(serveResources ? { resources: {} } : {}) },
+      instructions: SERVER_INSTRUCTIONS,
+    },
   );
 
   /** Does the connected client render MCP App Views? (It says so in `capabilities.extensions` at initialize.) */
