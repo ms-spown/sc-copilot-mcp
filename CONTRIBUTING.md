@@ -156,6 +156,8 @@ npm ci --ignore-scripts
 npm run lint && npm run format:check && npm run typecheck && npm test && npm run build && npm run check:docs && npm run check:page-size && npm run test:built && npm run audit:prod
 ```
 
+The `&&` chain works in cmd, Git Bash and PowerShell 7; in Windows PowerShell 5.1 run the commands one per line.
+
 `npm test` assembles the dashboard page from vitest's transform of the sources; the host receives the page assembled from
 the compiled `dist/dashboard/page.js` (the script without its blanks, see `minifyScript` in `src/dashboard/scriptMinify.ts`, proven by a test that a JavaScript
 parser reads both scripts the same).
@@ -271,7 +273,8 @@ after a patch, run `npm run check:sources` and fix what it flags.
    again: the `game-log` line must show the new version and build. If the header stops parsing, update
    `src/providers/gamelog/parser.ts` and add a hand-made line to the fixture in
    `src/providers/gamelog/gamelog.test.ts`. Do not commit a real log.
-6. **UEX specifics.** `check:sources` calls the five endpoints the tools use. A new required parameter shows as
+6. **UEX specifics.** `check:sources` calls the main UEX endpoints (the list is in `scripts/check-sources.mjs`; the tools use more
+   paths than it checks, so a change on another path does not show there). A new required parameter shows as
    an HTTP 400 with UEX's own message.
 7. **Spot-check in Claude** with `sc_data_status`, one trade route (`uex_get_trade_routes` with a cargo size),
    one `scmdb_changes` and one `sc_log_recent_events`.

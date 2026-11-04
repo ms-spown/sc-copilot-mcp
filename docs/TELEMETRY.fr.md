@@ -6,6 +6,15 @@ Un moyen optionnel, **désactivé par défaut**, pour sc-copilot-mcp de voir ce 
 vaisseau et votre personnage : vitesse, altitude, carburant, alimentation, voyants d'alerte, santé, portefeuille.
 Lisez cette page en entier avant de l'activer, en particulier les [Risques](#risques).
 
+> **À lire en premier**
+>
+> - **Ce que c'est.** Un moyen optionnel de laisser Claude lire ce que le jeu en cours rapporte sur votre vaisseau et votre personnage (vitesse, carburant, alimentation, santé, portefeuille), grâce à une fonction locale non documentée de Star Citizen. C'est local, en lecture seule, et désactivé par défaut.
+> - **Deux interrupteurs, tous deux à vous.** `SC_TELEMETRY=on` dans l'entrée du serveur, et `GRPC_CLIENT_SERVER_ENABLED=true` pour le RSI Launcher ([détails](#deux-interrupteurs-tous-deux-explicites)). Ni l'installation ni une mise à jour n'en règle aucun.
+> - **Risques.** CIG ne l'a ni autorisée ni interdite, les conditions de RSI s'appliquent à vous, et le risque est le vôtre : lisez les [Risques](#risques) (vers la fin de cette page) avant de l'activer.
+> - **Non vérifié.** Le mainteneur n'a pas encore vu le tableau de bord lui-même dans Claude Desktop (voir [Qui l'affiche](#tableau-de-bord-en-direct)).
+> - **L'éteindre.** `npm run telemetry -- disable --apply` (sans `--apply`, `enable` et `disable` sont des simulations qui n'écrivent rien). La commande ne retire que ce que l'outil a défini : une variable que vous avez définie à la main reste, et la commande indique comment la retirer. Redémarrez ensuite Claude Desktop, quittez complètement le RSI Launcher (icône de la zone de notification comprise) et relancez-le. Cela ne supprime pas vos sessions enregistrées.
+> - **Ce qui est enregistré, et comment l'effacer.** Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais écrites. La seule exception est le résumé de session : le solde au départ et à la dernière observation ; la version du jeu, les heures (dont la durée pendant laquelle le jeu a été vu en marche) et les coupures ; le dernier lieu et les dernières marchandises nommés par le journal ; votre note ; le nombre de prix refusés ; et, pour chaque trajet, son libellé (titre du contrat, lieux, marchandises), la quantité, le coût, le revenu, la marge, les frais, le net et le plan appliqué (profit prévu, quantité, terminaux). Il est gardé dans un fichier local, `sessions.json`, seulement quand la télémétrie est activée ; ce serveur ne l'envoie jamais nulle part, sauf que les outils `sc_session_*` en renvoient des parties à votre client MCP, donc à votre conversation (les chiffres d'argent seulement avec `include_balance`) ; `SC_SESSIONS=off` le désactive ; et supprimer `sessions.json` ainsi que les copies `.bak` et `.corrupt` à côté de lui l'efface. Détails : [Sessions enregistrées](#sessions-enregistrées).
+
 ## Ce que c'est, et d'où cela vient
 
 Star Citizen 4.10.2 et les versions suivantes contiennent un petit serveur local qui diffuse la télémétrie propre au
@@ -51,17 +60,20 @@ npm run telemetry -- disable --apply     # annule ce que l'outil a fait
   `SC_TELEMETRY=on` à l'entrée `sc-copilot` de `claude_desktop_config.json`, en modifiant cette seule clé et en
   conservant une sauvegarde horodatée du fichier. Elle ne remplace jamais le fichier, qui contient vos autres serveurs.
 - `disable --apply` ne retire que ce que l'outil a défini. Une variable que vous avez définie à la main reste, et la
-  commande indique comment la retirer.
+  commande indique comment la retirer. Elle ne supprime pas vos sessions enregistrées (`sessions.json`, qui contient
+  des soldes) : voir [Sessions enregistrées](#sessions-enregistrées) pour les effacer.
 - Les deux commandes sont des simulations tant que vous ne passez pas `--apply`. Redémarrez Claude Desktop après un
   changement de sa configuration.
 
 ### Pour un seul lancement (`--session`)
 
 ```bash
-npm run telemetry -- enable --session
+npm run telemetry -- enable --session --apply
 ```
 
-Crée un petit script de lancement qui définit la variable uniquement pour le RSI Launcher qu'il démarre. Rien de
+Sans `--apply`, c'est une simulation qui n'écrit rien. Avec, la commande crée un petit script de lancement,
+`start-rsi-launcher-with-telemetry.cmd`, dans `%APPDATA%\sc-copilot-mcp\` (`disable --apply` le supprime) ; le script
+définit la variable uniquement pour le RSI Launcher qu'il démarre. Rien de
 permanent n'est défini sur votre compte utilisateur, mais vous devez toujours démarrer le launcher par ce script, et
 un launcher déjà ouvert dans la zone de notification le met en échec.
 
@@ -305,7 +317,9 @@ menu et un changement de serveur ne sont pas encore vérifiés sur un vrai journ
 dernière lecture sont analysés. Sans journal configuré, rien n'est annoncé, ni dans un sens ni dans l'autre.
 
 Le lecteur démarre à la première requête, se reconnecte avec un délai croissant, s'arrête après cinq minutes sans
-requête, et garde tout en mémoire uniquement. Les événements n'existent que pendant le temps où le serveur tournait
+requête (avec les sessions enregistrées actives, il est maintenu en vie tant que le jeu tourne et les résumés de session
+sont enregistrés : voir [Sessions enregistrées](#sessions-enregistrées)), et garde les trames et les événements en
+mémoire uniquement. Les événements n'existent que pendant le temps où le serveur tournait
 tandis que le jeu envoyait des trames, et ils sont déduits, non rapportés par le jeu.
 
 ## Tableau de bord en direct
@@ -317,7 +331,7 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
 
 - **Qui l'affiche.** Claude Desktop est l'hôte que nous avons testé (version Microsoft Store 4.4212.0, serveur
   déclaré dans `claude_desktop_config.json`). **Claude Code et les autres clients en mode texte ne l'affichent pas** :
-  pour eux, les trois outils du tableau de bord ne sont pas listés du tout, donc le modèle ne les voit jamais. Le
+  pour eux, les outils du tableau de bord ne sont pas listés du tout, donc le modèle ne les voit jamais. Le
   serveur ne les liste que lorsque `SC_TELEMETRY=on` ET que le client a déclaré l'extension MCP Apps au démarrage.
   D'autres hôtes qui affichent les MCP Apps peuvent fonctionner ; nous ne les avons pas essayés. La mise en page a été
   itérée dans un vrai navigateur face à un hôte factice (360 à 2000 px, clair et sombre) ; **nous ne l'avons pas vue
@@ -442,7 +456,7 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   jamais été vu fonctionner.
 - **Ce dont la page se souvient.** Un seul drapeau dans le stockage propre au navigateur, `sc-copilot-help-seen` :
   « la légende a été lue ». C'est au mieux et jamais nécessaire : quand le stockage est indisponible (un bac à sable) la
-  page fonctionne pareil, et la légende ne s'ouvre d'elle-même que lorsque quelque chose est à régler (sa fermeture est alors gardée en mémoire pour la session). Le serveur ne stocke rien de nouveau sur le joueur.
+  page fonctionne pareil, et la légende ne s'ouvre d'elle-même que lorsque quelque chose est à régler (sa fermeture est alors gardée en mémoire pour la session). La page ne stocke rien d'autre que ce drapeau ; ce que le serveur enregistre est décrit dans [Sessions enregistrées](#sessions-enregistrées).
 - **Ce que font les boutons.** « Analyser ma situation », « Route avec mon solde et ce vaisseau » et « Bilan de
   session » publient un court message fixe dans la conversation, comme si vous l'aviez tapé, demandant à Claude
   d'utiliser `sc_live_state` et `sc_live_events` ; une confirmation apparaît à côté des boutons et s'efface seule.
@@ -518,7 +532,7 @@ ne prétendons pas qu'il soit approuvé par Cloud Imperium Games.
 
 Un aperçu pour les personnes qui travaillent sur la page : `npm run build`, puis `node scripts/dashboard-preview.mjs`,
 puis ouvrez l'adresse locale qu'il affiche (boucle locale, port 4173 par défaut). Il joue un vol fictif, saut
-quantique complet compris, face à un hôte factice ; ni jeu ni Claude n'interviennent. Paramètres : `t`, `theme`,
+quantique complet compris, face à un hôte factice ; ni jeu ni Claude n'interviennent. La liste qui suit n'est pas complète (`scripts/dashboard-preview.mjs` lit aussi `conn`, `preflight`, `transport`, `sessions`, `health`, `seen`, `help`, `calib`, `specs`, `balance`, `card`, `menu` et `open`) : lisez ce script pour la liste à jour. Paramètres : `t`, `theme`,
 `w`, `mode`, `scroll`, `forced`, `cut`, `plan`, `trade` (la carte Commerce avec un journal de commerce inventé : `story`, `estimated`, `unknown`, `partial`, `second`, `none`), `fw` (largeur du cadre en plein écran), `suggest` (ce que répond l'outil de la barre d'actions de commerce, avec des routes inventées et sans UEX : `ok`, `wait`, `error`, `empty`, `nospeed`, `reported`, `slow`), `click` (le libellé d'un bouton à presser) et `refine=1` (ouvre « Affiner »).
 
 ### Carnet de transport
@@ -883,8 +897,8 @@ Enregistré, par session : identifiant et numéro, heures de début et de fin, l
 note que vous avez écrite, et les trajets (heure de fin, un libellé, des marchandises et des lieux nettoyés et bornés,
 SCU, coût, revenu, marge brute ou résultat mesuré, profit prévu). **Jamais enregistré :** les trames, les lignes brutes
 du journal, votre pseudo, votre identifiant de compte, les adresses IP, les GUID de joueurs ou de sessions du jeu, les
-identifiants de mission (la clé d'un trajet est un hachage). Aucune donnée de session n'est jamais envoyée sur un
-réseau, et le suivi des sessions ne fait aucune requête vers aucun hôte.
+identifiants de mission (la clé d'un trajet est un hachage). Ce serveur n'envoie jamais de donnée de session sur un
+réseau, et le suivi des sessions ne fait aucune requête vers aucun hôte (ce que vous laissez Claude lire par les outils `sc_session_*` fait partie de votre conversation).
 
 Chaque changement est écrit aussitôt (un trajet, un solde de départ, une nouvelle session, une coupure) ; la seule chose
 limitée est l'horloge « vu pour la dernière fois », écrite au plus toutes les 15 secondes. Un plantage ou une coupure de
@@ -1078,10 +1092,7 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   la boucle locale, il n'est donc pas joignable depuis le réseau.
 - Il contient votre santé, votre vaisseau et votre **solde aUEC**. Il ne contient pas votre position.
 - Ce serveur ne journalise jamais les trames, ne les écrit jamais sur disque et ne les envoie jamais sur un réseau.
-  Ses diagnostics ne contiennent que des numéros de champs. La seule chose qu'il écrit à partir de ces données est
-  votre propre fichier de résumés de sessions (voir [Sessions enregistrées](#sessions-enregistrées)) : des résumés qui
-  incluent des soldes, par votre décision explicite, jamais des trames, et aucune donnée de session n'est envoyée sur un réseau.
-  `SC_SESSIONS=off` le désactive.
+  Ses diagnostics ne contiennent que des numéros de champs. Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais écrites. La seule exception est le résumé de session : le solde au départ et à la dernière observation ; la version du jeu, les heures (dont la durée pendant laquelle le jeu a été vu en marche) et les coupures ; le dernier lieu et les dernières marchandises nommés par le journal ; votre note ; le nombre de prix refusés ; et, pour chaque trajet, son libellé (titre du contrat, lieux, marchandises), la quantité, le coût, le revenu, la marge, les frais, le net et le plan appliqué (profit prévu, quantité, terminaux). Il est gardé dans un fichier local, `sessions.json`, seulement quand la télémétrie est activée ; ce serveur ne l'envoie jamais nulle part, sauf que les outils `sc_session_*` en renvoient des parties à votre client MCP, donc à votre conversation (les chiffres d'argent seulement avec `include_balance`) ; `SC_SESSIONS=off` le désactive ; et supprimer `sessions.json` ainsi que les copies `.bak` et `.corrupt` à côté de lui l'efface. Les résumés incluent des soldes, par votre décision explicite, et ce serveur ne fait aucune requête réseau pour eux (voir [Sessions enregistrées](#sessions-enregistrées)).
 - **Les résultats des outils font partie de votre conversation avec Claude**, qui est envoyée à Anthropic. Pour cette
   raison, le solde est retenu sauf si l'outil est appelé avec `include_balance`, et Claude a pour consigne de vous
   demander d'abord. Ce que vous laissez Claude lire est ce qui quitte votre machine.
@@ -1152,7 +1163,7 @@ manque avec son remède :
 | « Télémétrie du jeu : Désactivée côté serveur » | `npm run telemetry -- enable`, puis ajoutez `--apply` et redémarrez Claude Desktop |
 | « Journal du jeu (Game.log) : Non configuré » | Ajoutez `SC_INSTALL_DIR` (le dossier qui contient `Game.log`) au bloc `env` de l'entrée `sc-copilot`, redémarrez Claude Desktop. Sans lui : pas d'état de connexion, pas de journal de commerce, pas de grand livre |
 | « Journal du jeu : illisible » | `Game.log` n'existe qu'après un premier lancement du jeu ; sinon corrigez le dossier. `npm run doctor` pour le contrôle complet |
-| « Jeu lancé sans la télémétrie » | Quittez complètement le RSI Launcher (icône de la zone de notification comprise), relancez-le, lancez le jeu. `npm run telemetry -- status` montre les deux interrupteurs |
+| « Télémétrie du jeu : Le jeu a été lancé sans la télémétrie » | Quittez complètement le RSI Launcher (icône de la zone de notification comprise), relancez-le, lancez le jeu. `npm run telemetry -- status` montre les deux interrupteurs |
 | « Sessions enregistrées : À régler » | Lecture seule : mettez le serveur à jour. Écriture échouée : libérez de l'espace disque ou corrigez les droits du dossier de données (ou `SCMCP_SESSIONS_FILE`) |
 
 `npm run doctor` indique les deux interrupteurs, si le launcher doit être relancé, et l'état du port.

@@ -38,8 +38,10 @@ import type { ResourceDefinition, ToolDefinition, ToolResult } from "./types.js"
  * through `sc_live_poll` and writes its session markers through `sc_live_mark`; both are reserved to the View
  * (`visibility: ["app"]`) and the model is told not to call them.
  *
- * All three are listed only when SC_TELEMETRY=on AND the client declared the UI extension: Claude Code and other
- * text clients never see them. Nothing here writes to the game or to disk.
+ * All of them (the dashboard tools and the app-only ones) are listed only when SC_TELEMETRY=on AND the client declared
+ * the UI extension: Claude Code and other text clients never see them. Nothing here writes to the game, and the tools
+ * write no file themselves; the one exception is an applied route plan, which `applyPlan` below hands to the saved
+ * session (sessions.json) with the trip it marks.
  */
 
 const OPEN_META = { ui: { resourceUri: DASHBOARD_URI }, "ui/resourceUri": DASHBOARD_URI };

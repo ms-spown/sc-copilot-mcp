@@ -3,22 +3,23 @@
 [English](USING_WITH_CLAUDE.md) · Français
 
 Collez le bloc ci-dessous dans les instructions de votre projet Claude (ou dans vos instructions personnalisées)
-afin que Claude choisisse le bon outil et lise la provenance des données. Il est volontairement concis.
+afin que Claude choisisse le bon outil et lise la provenance des données. Il est long parce qu'il reprend l'essentiel du mode d'emploi du serveur, que certains
+clients ne transmettent pas à Claude (voir plus bas).
 
 ## Ai-je encore besoin du bloc ?
 
 Le serveur envoie aussi à Claude un mode d'emploi à la connexion du client (le champ MCP `instructions`, environ
-3 200 caractères, écrit dans `src/instructions.ts`) : les règles d'honnêteté, quel outil de commerce pour quelle
+3 500 caractères, la limite étant de 3 500, écrit dans `src/instructions.ts`) : les règles d'honnêteté, quel outil de commerce pour quelle
 question, les règles du direct et du tableau de bord, la règle sur l'état de connexion, et la manière
 d'accompagner une tournée. Que votre client le transmette à Claude varie : Claude Code le fait ; Claude Desktop et
-claude.ai ne le feraient pas, d'après des tickets ouverts en novembre 2026. Ne devinez pas : faites le test canari en fin
+claude.ai ne le feraient pas, d'après des tickets ouverts en novembre 2026 (non vérifié ici). Ne devinez pas : faites le test canari en fin
 de page avant de raccourcir quoi que ce soit.
 
 Ce que le mode d'emploi porte déjà, donc inutile de le répéter dans le bloc : la règle 1 (provenance et
 fraîcheur), la règle 2 (texte non fiable), la règle 4 (erreurs), le choix des outils de commerce dans la règle 3
 (prix, planificateur, historique, état du marché, raffinage, objets, marché des joueurs, journal et sessions enregistrées), l'essentiel des
 règles 6 et 7 (aucune affirmation de sûreté, solde seulement après demande, état de connexion, pas de second tableau
-de bord, jamais `sc_live_poll` ni `sc_live_mark`) et la manière d'accompagner. Ce qu'il ne porte pas, et que le bloc
+de bord, jamais `sc_live_poll`, `sc_live_mark` ni `sc_trade_suggest`) et la manière d'accompagner. Ce qu'il ne porte pas, et que le bloc
 doit garder : les autres lignes de la règle 3 (vaisseaux, patchs, missions, wiki, journal de jeu), la règle 5, et les
 détails des règles 6 et 7 (ce que le flux n'a pas, à pied ou assis, le solde du tableau de bord).
 
@@ -44,8 +45,9 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
    - Commerce : uex_get_trade_routes nécessite une ORIGINE (commodity, terminal ou planète) ; passez ship_name
      (un vaisseau issu de sc_fleet_get) ou cargo_capacity pour calculer le profit selon la soute disponible.
      Vérifiez les relevés joueurs derrière un prix. uex_get_commodity_prices pour savoir où une marchandise
-     s'achète et se vend ; uex_plan_trade classe aller-retours, chaînes de deux étapes et routes par profit
-     horaire ESTIMÉ (le temps de trajet est une estimation, dites-le), uex_get_price_history dit si un prix est
+     s'achète et se vend ; uex_plan_trade renvoie des aller-retours et des routes et, dans une liste à part, des
+     chaînes de deux étapes, chaque liste classée par profit horaire ESTIMÉ (le temps de trajet est une estimation,
+     dites-le), uex_get_price_history dit si un prix est
      haut ou bas pour un terminal (environ 10 points : historique court), uex_get_market_status signale pénurie
      ou saturation ; les autres outils uex_* (profil trade) pour les terminaux, moyennes, classements et
      annonces entre joueurs.
@@ -89,8 +91,19 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
      (marge brute) et le prix de vente actuel.
 4. Si un outil renvoie une erreur ou des candidats « ambiguous », dites-le et posez la question ; n'inventez
    jamais une valeur.
-5. Rien ici n'écrit dans le jeu ni sur aucun site web. Les seules écritures concernent la liste locale de flotte
-   et les caches.
+5. Rien ici n'écrit dans le jeu ni sur aucun site web. Les seules écritures sont des fichiers locaux : caches,
+   instantanés du wiki (scw_snapshot_save), liste de flotte et, seulement avec la télémétrie en direct activée, la
+   session de jeu enregistrée. Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais
+   écrites. La seule exception est le résumé de session : le solde au départ et à la dernière observation ; la version
+   du jeu, les heures (dont la durée pendant laquelle le jeu a été vu en marche) et les coupures ; le dernier lieu et
+   les dernières marchandises nommés par le journal ; la note du joueur ; le nombre de prix refusés ; et, pour chaque
+   trajet, son libellé (titre du contrat, lieux, marchandises), la quantité, le coût, le revenu, la marge, les frais,
+   le net et le plan appliqué (profit prévu, quantité, terminaux). Il est gardé dans un fichier local, sessions.json,
+   seulement quand la télémétrie est activée ; ce serveur ne l'envoie jamais nulle part, sauf que les outils
+   sc_session_* en renvoient des parties à le client MCP du joueur, donc à la conversation (les chiffres d'argent
+   seulement avec include_balance) ; SC_SESSIONS=off le désactive ; et supprimer sessions.json ainsi que les copies
+   .bak et .corrupt à côté de lui l'efface. Si le joueur demande ce qui est enregistré, dites-le ; ne prétendez jamais
+   que rien n'est gardé.
 6. La télémétrie en direct (sc_live_status, sc_live_state, sc_live_events) n'existe que si le joueur l'a activée.
    Appelez d'abord sc_live_status : il dit off, waiting ou live, et comment l'activer. En waiting ou connected, il n'y a
    simplement pas de données pour l'instant (menus, écrans de chargement, personnage pas encore apparu, ou jeu lancé

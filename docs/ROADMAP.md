@@ -4,7 +4,7 @@ Where the project stands and what is next, in product order: what helps the play
 promise, and every item says what is verified and what is not. The history of what shipped is in
 [CHANGELOG.md](../CHANGELOG.md); what each tool does is in [CAPABILITIES.md](CAPABILITIES.md).
 
-## Where it stands (2.2.0)
+## Where it stands (2.4.0)
 
 - **Data and answers:** UEX prices and routes, the Star Citizen Wiki, SCMDB (missions, crafting, mining), patch notes,
   your fleet, the optional local game log, honest `data_age` and estimate markers everywhere.
@@ -15,29 +15,26 @@ promise, and every item says what is verified and what is not. The history of wh
   connection state read from the log (kicked, menu, online), a transport ledger, a commerce card that compares the
   planned profit with the real one (turnover, cost, gross margin, fees measured per side, net), where the money went,
   saved play sessions that survive a crash, an action bar that finds the next route.
+- **Route reliability and checks (2.3.0 and 2.4.0):** the planner's profit set against the result of your own runs
+  (the typical ratio, with the number of runs and a confidence level; small samples stay silent), a health strip that
+  says what is wired and what is missing with the exact fix, a pre-flight check of the planned route's prices before
+  you leave, the alert when the price moved at the kiosk, and a session report to copy or save (Markdown or CSV).
 - **The agent:** server `instructions`, refreshed prompts (`haul_plan`, `trade_copilot`, `trade_review`,
   `session_debrief`), a block to paste into a Claude project.
 
 ## Next, in order of value
 
-1. **Route reliability from your own runs.** The planner's profit is a guess (UEX has almost no player reports); your
-   saved runs are evidence. Compare real and planned results per commodity and route and show the typical ratio, with
-   the number of runs and a confidence level. Small samples stay silent.
-2. **A dashboard that explains itself.** A health strip: what is wired, what is missing (game log not configured means
-   no connection state and no journal), with the exact fix; a legend for measured, calculated, estimated, probable and
-   unknown.
-3. **Pre-flight check and price drift.** Before leaving, re-check the planned route's prices; at the kiosk a
-   `TransactionCostMismatch` in the log means the price moved: say so and learn from it.
-4. **Losses.** Cargo lost or a ship destroyed, attributed to the run it cost, with the insurance claim.
-5. **Debrief and export.** A session report to copy or save (Markdown or CSV), and price watchlists.
-6. **On foot.** Vitals forecast, helmet state (in the log, not in the stream), kill and death counters, an interface
+1. **Losses.** Cargo lost or a ship destroyed, attributed to the run it cost, with the insurance claim.
+2. **Price watchlists.** Follow a commodity or a route and say when its price moves.
+3. **On foot.** Vitals forecast, helmet state (in the log, not in the stream), kill and death counters, an interface
    that adapts to ship, foot and EVA.
 
 ## Verified, and not verified
 
 - **Verified:** the parser on real logs of 95 files; the planned versus real arithmetic on a real run; the sessions
   file under concurrent processes and a killed process (simulated); the privacy guarantees by tests and probes.
-- **Not verified:** a complete run with telemetry, log and dashboard open together (the windows that match a log
+- **Not verified:** the live dashboard itself inside Claude Desktop (only a throwaway test page was displayed there,
+  see [MCP_APP_SPIKE.md](MCP_APP_SPIKE.md), a historical note); a complete run with telemetry, log and dashboard open together (the windows that match a log
   transaction with a balance change are assumptions: 2 s before to 8 s after for fees, 3 s before to 20 s after for
   rewards); the voluntary quit to the menu; the behaviour inside Claude Desktop (whether it honours server
   `instructions`, the size limit for an MCP App page, clipboard and storage in its sandbox).

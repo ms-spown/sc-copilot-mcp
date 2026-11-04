@@ -6,6 +6,15 @@ An optional, **off by default** way for sc-copilot-mcp to see what the running g
 your character: speed, altitude, fuel, power, warning lights, health, wallet. Read this whole page before you
 switch it on, in particular [Risks](#risks).
 
+> **Read this first**
+>
+> - **What it is.** An optional way to let Claude read what the running game reports about your ship and character (speed, fuel, power, health, wallet), through an undocumented local feature of Star Citizen. It is local and read-only, and off by default.
+> - **Two switches, both yours.** `SC_TELEMETRY=on` in the server entry, and `GRPC_CLIENT_SERVER_ENABLED=true` for the RSI Launcher ([details](#two-switches-both-explicit)). Installing or updating sets neither.
+> - **Risks.** CIG has neither allowed nor forbidden it, the RSI terms apply to you, and the risk is yours: read [Risks](#risks) (near the end of this page) before you switch it on.
+> - **Not verified.** The maintainer has not yet seen the dashboard itself inside Claude Desktop (see [Who shows it](#live-dashboard)).
+> - **Turn it off.** `npm run telemetry -- disable --apply` (without `--apply`, `enable` and `disable` are dry runs that write nothing). It removes only what the tool set: a variable you set by hand stays, and the command says how to remove it. Then restart Claude Desktop, quit the RSI Launcher completely (tray icon too) and start it again. It does not delete your saved sessions.
+> - **What is saved, and how to erase it.** Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (the money figures only with `include_balance`); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it. Details: [Saved sessions](#saved-sessions).
+
 ## What it is, and where it comes from
 
 Star Citizen 4.10.2 and later contain a small local server that streams the game's own telemetry. It is
@@ -51,16 +60,19 @@ npm run telemetry -- disable --apply     # undoes what the tool did
   `SC_TELEMETRY=on` to the `sc-copilot` entry of `claude_desktop_config.json`, by editing that one key and keeping a
   timestamped backup of the file. It never replaces the file, which holds your other servers.
 - `disable --apply` removes only what the tool set. A variable you set by hand stays, and the command says how to
-  remove it.
+  remove it. It does not delete your saved sessions (`sessions.json`, which holds balances): see
+  [Saved sessions](#saved-sessions) to wipe them.
 - Both commands are dry runs unless you pass `--apply`. Restart Claude Desktop after a change to its configuration.
 
 ### Only for one launch (`--session`)
 
 ```bash
-npm run telemetry -- enable --session
+npm run telemetry -- enable --session --apply
 ```
 
-Creates a small launcher script that sets the variable only for the RSI Launcher it starts. Nothing permanent is
+Without `--apply` this is a dry run and writes nothing. With it, the command creates a small launcher script,
+`start-rsi-launcher-with-telemetry.cmd`, in `%APPDATA%\sc-copilot-mcp\` (`disable --apply` removes it); the script sets
+the variable only for the RSI Launcher it starts. Nothing permanent is
 set on your user account, but you must always start the launcher through that script, and a launcher already open
 in the tray defeats it.
 
@@ -300,8 +312,9 @@ tools (the game's own reason text stays in the page, as text only); no handle, a
 quit to the menu and a server change are not yet checked on a real log. One `stat` per poll, and only the bytes added since the last
 read are parsed. Without a configured log nothing is reported, and nothing is claimed either way.
 
-The reader starts at the first request, reconnects with a growing delay, stops after five minutes without a request,
-and keeps everything in memory only. Events exist only for the time the server was running while the game was
+The reader starts at the first request, reconnects with a growing delay, stops after five minutes without a request
+(with saved sessions on, it is kept alive while the game runs and the session summaries are saved: see
+[Saved sessions](#saved-sessions)), and keeps frames and events in memory only. Events exist only for the time the server was running while the game was
 sending frames, and they are inferred, not reported by the game.
 
 ## Live dashboard
@@ -312,7 +325,7 @@ with the instruments on the left, the ship in the middle and the pilot on the ri
 that this server provides and that the client renders next to the chat.
 
 - **Who shows it.** Claude Desktop is the host we tested (Microsoft Store build 4.4212.0, server declared in
-  `claude_desktop_config.json`). **Claude Code and other text clients do not render it**: for them the three
+  `claude_desktop_config.json`). **Claude Code and other text clients do not render it**: for them the
   dashboard tools are not listed at all, so the model never sees them. The server lists them only when
   `SC_TELEMETRY=on` AND the client declared the MCP Apps extension at start. Other hosts that render MCP Apps
   may work; we have not tried them. The layout was iterated in a real browser against a fake host (360 to 2000 px,
@@ -426,7 +439,7 @@ that this server provides and that the client renders next to the chat.
   means the values are not current, "non vérifié" that the field has never been seen working.
 - **What the page remembers.** One flag in the browser's own storage, `sc-copilot-help-seen`: "the legend was read". It
   is best effort and never needed: when the storage is unavailable (a sandbox) the page works the same, and the legend
-  opens by itself only when something needs setting up (closing it is then kept in memory for the session). The server stores nothing new about the player.
+  opens by itself only when something needs setting up (closing it is then kept in memory for the session). The page stores nothing but this flag; what the server saves is described in [Saved sessions](#saved-sessions).
 - **What the buttons do.** "Analyser ma situation", "Route avec mon solde et ce vaisseau" and "Bilan de session" post
   a short fixed message in the conversation, as if you had typed it, asking Claude to use `sc_live_state` and
   `sc_live_events`; a confirmation appears next to the buttons and clears itself. Session markers live in this
@@ -496,7 +509,7 @@ approved by Cloud Imperium Games.
 
 A preview for people who work on the page: `npm run build`, then `node scripts/dashboard-preview.mjs`, then open
 the local address it prints (loopback, port 4173 by default). It plays a made-up flight, including a full quantum
-jump, against a fake host; no game and no Claude is involved. Parameters: `t`, `theme`, `w`, `mode`, `scroll`,
+jump, against a fake host; no game and no Claude is involved. The list that follows is not complete (`scripts/dashboard-preview.mjs` also reads `conn`, `preflight`, `transport`, `sessions`, `health`, `seen`, `help`, `calib`, `specs`, `balance`, `card`, `menu` and `open`): read that script for the current ones. Parameters: `t`, `theme`, `w`, `mode`, `scroll`,
 `forced`, `cut`, `plan`, `trade` (the commerce card with an invented trade journal: `story`, `estimated`, `unknown`, `partial`, `second`, `none`), `fw` (frame width in full screen), `suggest` (what the commerce action bar's tool answers, with invented routes and no UEX: `ok`, `wait`, `error`, `empty`, `nospeed`, `reported`, `slow`), `click` (a button label to press) and `refine=1` (opens "Affiner").
 
 ### Transport ledger
@@ -837,7 +850,7 @@ Stored, per session: id and number, start and end time, the balance at the start
 `late`) and at the last sighting, the game version and channel, active time, the breaks, the note you wrote, and the
 trips (end time, a label and goods and places cleaned and capped, SCU, cost, revenue, gross margin or measured result,
 planned profit). **Never stored:** frames, raw log lines, your handle, your account id, IP addresses, GUIDs of players or
-game sessions, mission identifiers (a trip's key is a hash). No session data is ever sent over a network, and session tracking makes no request to any host.
+game sessions, mission identifiers (a trip's key is a hash). This server never sends session data over a network, and session tracking makes no request to any host (what you let Claude read through the `sc_session_*` tools is part of your conversation).
 
 Every change is written at once (a trip, a start balance, a new session, a break); the only thing throttled is the
 "last seen" clock, written at most every 15 seconds. A crash or a power cut therefore loses **at most the last 15
@@ -1012,9 +1025,7 @@ compares what the plan promised with what you really got (`src/providers/session
   it is not reachable from the network.
 - It contains your health, your ship and your **aUEC balance**. It does not contain your position.
 - This server never logs frames, never writes them to disk and never sends them over a network. Its diagnostics
-  contain field numbers only. The one thing it writes from this data is your own session summary file
-  (see [Saved sessions](#saved-sessions)): summaries including balances, by your explicit decision, never frames, and
-  no session data is sent over a network. `SC_SESSIONS=off` turns it off.
+  contain field numbers only. Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (the money figures only with `include_balance`); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it. The summaries include balances, by your explicit decision, and this server makes no network request for them (see [Saved sessions](#saved-sessions)).
 - **Tool results are part of your conversation with Claude**, which goes to Anthropic. For that reason the balance
   is withheld unless the tool is called with `include_balance`, and Claude is told to ask you first. What you let
   Claude read is what leaves your machine.
@@ -1082,7 +1093,7 @@ The dashboard's own health strip (see [Live dashboard](#live-dashboard)) lists w
 | "Télémétrie du jeu: Désactivée côté serveur" | `npm run telemetry -- enable`, then add `--apply` and restart Claude Desktop |
 | "Journal du jeu (Game.log): Non configuré" | Add `SC_INSTALL_DIR` (the folder that contains `Game.log`) to the `env` of the `sc-copilot` entry, restart Claude Desktop. Without it: no connection state, no trade journal, no ledger |
 | "Journal du jeu: illisible" | `Game.log` only exists after a first launch of the game; otherwise fix the folder. `npm run doctor` for the full check |
-| "Jeu lancé sans la télémétrie" | Quit the RSI Launcher completely (tray icon too), start it again, start the game. `npm run telemetry -- status` shows both switches |
+| "Télémétrie du jeu: Le jeu a été lancé sans la télémétrie" | Quit the RSI Launcher completely (tray icon too), start it again, start the game. `npm run telemetry -- status` shows both switches |
 | "Sessions enregistrées: À régler" | Read-only: update the server. Write failed: free disk space or fix the rights of the data folder (or `SCMCP_SESSIONS_FILE`) |
 
 ## Credits

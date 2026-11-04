@@ -43,11 +43,16 @@ src/providers/  sessions (saved play sessions: store, reducer, stats, manager, t
                 telemetry (opt-in live stream: wire decoder, schema table, reader on node:http2, handler, service)
 src/tools/      one file per group (definition + handler together), catalog.ts (provenance + profiles),
                 registry.ts (envelope, scoping), status.ts (sc_data_status)
+src/dashboard/  the live dashboard (MCP App): poll, service, ledger, trade and pre-flight, health strip, session bar,
+                viewApp/viewLogic/page (the one HTML page, size-budgeted), testing/ (fake host)
+src/instructions.ts, src/prompts.ts   what Claude is told by the server (manual, length-bounded; the prompts)
+src/testing/    shared test helpers (replay harness, waitFor)
 src/install/    mergeConfig (pure planning of the Claude Desktop config merge), telemetrySwitch + jsonEdit
                 (npm run telemetry: text-level edit of one key, user variable through an injectable EnvStore)
 src/server.ts   MCP server around a registry (tests connect to it in memory; index.ts adds stdio)
 src/e2e/        protocol-level behaviour tests; src/docs/ generator of docs/TOOLS.md
-scripts/        install-claude-desktop.mjs, check-sources.mjs, mcp-probe.mjs (stale, see CONTRIBUTING)
+scripts/        install-claude-desktop.mjs, check-sources.mjs, mcp-probe.mjs (stale, see CONTRIBUTING); the list of
+                scripts is package.json
 ```
 
 ## Conventions that matter
@@ -69,8 +74,8 @@ scripts/        install-claude-desktop.mjs, check-sources.mjs, mcp-probe.mjs (st
 
 ## Verify before saying done
 
-`npm run lint && npm test && npm run build && npm run audit:prod`, then `npm run check:sources` for anything that
-touches a source. Report what ran and what did not.
+`npm run lint && npm run format:check && npm run typecheck && npm test && npm run build && npm run check:docs && npm run check:page-size && npm run test:built && npm run audit:prod` (the chain of CONTRIBUTING.md, which CI runs; one command per line in Windows PowerShell 5.1), then
+`npm run check:sources` for anything that touches a source. Report what ran and what did not.
 
 ## API facts that cost time (do not re-derive)
 

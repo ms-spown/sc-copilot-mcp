@@ -31,7 +31,7 @@ export function userCacheDir(
   return path.join(env.XDG_CACHE_HOME || path.join(home, ".cache"), APP);
 }
 
-/** Data the user would miss: wiki snapshots. */
+/** Data the user would miss: wiki snapshots and the saved play sessions (sessions.json). */
 export function userDataDir(
   env: Env = process.env,
   platform: string = process.platform,

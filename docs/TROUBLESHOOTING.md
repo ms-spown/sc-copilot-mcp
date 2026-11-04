@@ -73,13 +73,13 @@ without changing anything; `npm run doctor` repeats it. Full explanations and th
 
 - **Claude Code and other text clients never show it.** They cannot render a page, so the server does not even list
   `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark` and `sc_trade_suggest` to them. Use `sc_live_state` there.
-- **`SC_TELEMETRY=on` must be set** in the `sc-copilot` entry. Without it the three tools and the page are not
+- **`SC_TELEMETRY=on` must be set** in the `sc-copilot` entry. Without it the dashboard tools and the page are not
   served at all. `sc_live_status` tells you.
 - **Quit Claude Desktop completely** (tray icon included) and start it again after any change to the server entry:
   closing the window is not enough, the tool list is read when the app starts.
 - Ask Claude to open the live dashboard; if it answers with text only, say that `sc_live_dashboard` is the tool to
   call. If the tool is missing from the list, the client did not declare that it can show Views.
-- **It shows "Télémétrie désactivée", "En attente du jeu" or "Jeu lancé sans télémétrie"**: follow the matching
+- **It shows "Télémétrie désactivée", "En attente du premier signal" or "Jeu lancé sans télémétrie"**: follow the matching
   line of the section above. The page is only a mirror of `sc_live_status`.
 - **It stopped updating**: the page pauses when its window is hidden or scrolled out of view and retires after 30
   minutes away; click "Reprendre".
@@ -97,8 +97,9 @@ A source changed after a patch. Run `npm run check:sources`: it names the file a
 ## Windows specifics
 
 - Paths with spaces are fine; the installer writes absolute paths as JSON.
-- Caches live in `%LOCALAPPDATA%\sc-copilot-mcp`, your fleet in `%APPDATA%\sc-copilot-mcp\fleet.json`.
-  Delete the cache folder any time; it is rebuilt on demand.
+- Caches live in `%LOCALAPPDATA%\sc-copilot-mcp\cache`; delete that folder any time, it is rebuilt on demand. Do not
+  delete `%LOCALAPPDATA%\sc-copilot-mcp\data`: it holds your saved sessions (`sessions.json`, only with live telemetry
+  on) and your wiki snapshots, which cannot be rebuilt. Your fleet is in `%APPDATA%\sc-copilot-mcp\fleet.json`.
 - If `npm run install:claude` cannot find the config, pass `--config <path to claude_desktop_config.json>`.
 
 ## Still stuck

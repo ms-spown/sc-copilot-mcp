@@ -36,7 +36,7 @@ you point it at, and only if you do.
 | Your ship, live (off by default) | "Is my landing gear down? How much hydrogen is left?" | `sc_live_status`, `sc_live_state`, `sc_live_dashboard` |
 | Freshness | "Is this data current?" | `sc_data_status` |
 
-Six ready-made prompts chain these for you (see [Prompts](#prompts)). Every capability, with its source, its
+Seven ready-made prompts chain these for you (see [Prompts](#prompts)). Every capability, with its source, its
 freshness, its limits and what it needs: **[docs/CAPABILITIES.md](docs/CAPABILITIES.md)**.
 
 ## What you get
@@ -81,6 +81,12 @@ npm run build
    `--apply` first copies `claude_desktop_config.json` to a timestamped `.bak-…`, then adds or updates
    only `mcpServers["sc-copilot"]`. Your other servers are never shown or changed, and no secret is written
    there. Leave out `--install-dir` to keep the game log off. Restart Claude Desktop afterwards.
+   **Re-running it replaces that entry's `env`**: only `SCMCP_PROFILES`, the log setting you pass and `SC_TELEMETRY`
+   survive. Any other variable you added by hand (`SC_SESSIONS=off`, `SC_SESSION_GAP_HOURS`, `SCMCP_SESSIONS_FILE`,
+   `SCMCP_FLEET_FILE`, `SCMCP_TOOLS`) is dropped, so `SC_SESSIONS=off` silently reverts: add them back to the `env` of
+   the entry afterwards, or edit the entry by hand instead of re-running the installer (the dry run shows the new entry
+   before anything is written). After a `git pull` and `npm run build` the existing entry keeps working: re-run the
+   installer only to change the entry itself.
    On macOS or Linux pass `--config <path>`; or add the same entry by hand:
 
    ```json
@@ -97,14 +103,15 @@ npm run build
 
 3. **Check it.** `npm run doctor` checks your installation (Node, build, token, Claude config, game log, fleet
    file) and says how to fix each problem; nothing is sent anywhere and no secret is printed.
-   `npm run check:sources` asks every data source for its version and verifies the files and fields the tools rely
-   on. In Claude, ask for `sc_data_status`.
+   `npm run check:sources` asks every data source for its version and checks the main UEX endpoints, every SCMDB file
+   kind and the `Game.log` header (it does not cover every UEX path the tools use: the ones it checks are listed in
+   `scripts/check-sources.mjs`). In Claude, ask for `sc_data_status`.
 
 ## Tools (65)
 
 Claude sees 52 of them by default: `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll`,
-`sc_live_mark` and `sc_trade_suggest` are listed only when live telemetry is on (the last four also need a client that
-can show them, such as Claude Desktop), and the seven `sc_session_*` tools only when it is on and `SC_SESSIONS` is not `off`.
+`sc_live_mark` and `sc_trade_suggest` are listed only when live telemetry is on (the last four, and `sc_session_export`,
+also need a client that can show them, such as Claude Desktop), and the seven `sc_session_*` tools only when it is on and `SC_SESSIONS` is not `off`.
 
 Full parameter reference: **[docs/TOOLS.md](docs/TOOLS.md)** (generated from the code). By theme:
 
@@ -132,7 +139,7 @@ at startup instead of listing nothing. Scoping is for speed, not security: an un
 | **core**  | 14    | The everyday copilot: status, ships, trade basics, missions, patch notes, your fleet |
 | **trade** | 23    | The full UEX market toolbox, with refining, shop items, the player market and hauling contracts |
 | **data**  | 16    | Reference data, crafting, mining, patch history, wiki browsing                       |
-| **local** | 24    | Your game log, live telemetry and sessions, your fleet, your own data files          |
+| **local** | 26    | Your game log, live telemetry and sessions, your fleet, your own data files          |
 
 When to use which is in [docs/USING_WITH_CLAUDE.md](docs/USING_WITH_CLAUDE.md); each tool's description says
 what it returns and its limits.
@@ -144,6 +151,7 @@ the right tools in the right order and telling Claude to state how fresh the dat
 
 | Prompt            | What it does                                                                                                      |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `trade_copilot`   | Reads your saved session, compares it with live UEX routes and proposes the next run, with the reasoning; needs telemetry and saved sessions |
 | `haul_plan`       | Best 3 trade options for one of your ships, ranked by estimated profit per hour, with the risks (few reports, old data, saturated markets, too-good profit, illegal cargo) |
 | `patch_briefing`  | What the newest update changed and what it means for you and your fleet                                           |
 | `session_debrief` | What you did in your last session, from your game log, and what to do next                                        |
@@ -158,13 +166,14 @@ the right tools in the right order and telling Claude to state how fresh the dat
 | `UEXTOKEN`                                                       | UEX bearer token, in `.env`. Only ever sent to UEX hosts                                                                                                        |
 | `SCMCP_PROFILES`, `SCMCP_TOOLS`                                  | Which tools to advertise (see above)                                                                                                                            |
 | `SC_INSTALL_DIR`                                                 | A channel folder such as `…\StarCitizen\LIVE`: enables `sc_log_*` on its `Game.log`. Off if unset                                                               |
-| `SC_SESSIONS`                                                    | `off` switches the saved play sessions off while telemetry stays on (no file created or read). They exist only with `SC_TELEMETRY=on` (see below) |
+| `SC_SESSIONS`                                                    | `off` (also `0`, `false`, `no`) switches the saved play sessions off while telemetry stays on (no file created or read). They exist only with `SC_TELEMETRY=on` (see below) |
 | `SCMCP_SESSIONS_FILE`                                            | Session file (default `%LOCALAPPDATA%\sc-copilot-mcp\data\sessions.json`) |
 | `SC_SESSION_GAP_HOURS`                                           | Quiet time after which the next play period is a new session (default 3, from 0.25 to 48) |
-| `SC_TELEMETRY`                                                   | `on` switches the optional live telemetry on, server side. Off if unset (see below)                                                                             |
+| `SC_TELEMETRY`                                                   | `on` (also `1`, `true`, `yes`) switches the optional live telemetry on, server side. Off if unset (see below)                                                   |
 | `SC_GAME_LOG_PATH`                                               | A specific `.log` file instead (only `.log` files are accepted)                                                                                                 |
 | `SCMCP_FLEET_FILE`                                               | Fleet file (default `%APPDATA%\sc-copilot-mcp\fleet.json`)                                                                                                      |
-| `SCMCP_CACHE_DIR`, `SCMCP_DATA_DIR`, `SCMCP_CONFIG_DIR`          | Cache (HTTP responses, dumps, SCMDB), data (wiki snapshots) and config folders. Defaults are per-user (`%LOCALAPPDATA%` / `%APPDATA%` on Windows, XDG on Linux) |
+| `SCMCP_CACHE_DIR`, `SCMCP_DATA_DIR`, `SCMCP_CONFIG_DIR`          | Cache (HTTP responses, dumps, SCMDB: can be deleted), data (wiki snapshots and `sessions.json`: keep) and config folders. Defaults are per-user (`%LOCALAPPDATA%` / `%APPDATA%` on Windows, XDG on Linux) |
+| `SCMCP_SNAPSHOT_DIR`, `SCMCP_BUILD_CACHE_DIR`                    | Override the wiki snapshot folder and the folder where patch-dump builds are cached                                                                             |
 | `SCMCP_UEX_BASE_URL`, `SCMCP_SCW_BASE_URL`, `SCMCP_SCT_BASE_URL` | Override an API base. Must be https on an allowlisted host or the server refuses to start                                                                       |
 | `SCMCP_SCMDB_REPO`, `SCMCP_DATA_REPO`, `SCMCP_DATA_REPO_PATH`    | Where SCMDB and the patch dumps are read from                                                                                                                   |
 | `SCMCP_GITHUB_TOKEN`                                             | Optional, raises the GitHub rate limit. Dedicated: an ambient `GITHUB_TOKEN` is never used                                                                      |
@@ -197,16 +206,20 @@ counted. CIG does not guarantee the format; `npm run check:sources` shows if the
 
 The game has an undocumented local telemetry server. If you choose, this server can read it so that Claude can
 answer about your ship and character right now: speed, altitude, hydrogen, landing gear, power, warning lights,
-health, hunger, thirst.
+health, hunger, thirst. **Read the [risks](docs/TELEMETRY.md#risks) before you switch it on**: it is an undocumented
+game feature, and the risk is yours. Everything else is in [docs/TELEMETRY.md](docs/TELEMETRY.md) (it opens with a
+short "Read this first" block).
 
 - **Off unless you switch on two things:** `SC_TELEMETRY=on` in the server entry, and
   `GRPC_CLIENT_SERVER_ENABLED=true` in the environment of the RSI Launcher. Nothing is set by installing or
   updating. Without the first, no connection is ever attempted.
 - **One command:** `npm run telemetry -- status` shows both switches and changes nothing. `npm run telemetry -- enable`
   is a dry run, `npm run telemetry -- enable --apply` does it and `npm run telemetry -- disable --apply` undoes
-  what it set. Then quit the RSI Launcher completely (tray icon too) and start it again.
+  what it set (it does not delete your saved sessions: see the next point). Then quit the RSI Launcher completely
+  (tray icon too) and start it again.
 - **What it never does:** talk to anything but `127.0.0.1:2942`, send the game anything except an empty request, or
-  log, store or send the frames. Everything stays in memory.
+  log, write or send the frames.
+- **What it saves, and where.** Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (the money figures only with `include_balance`); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it. The file is in `%LOCALAPPDATA%\sc-copilot-mcp\data` (see [Saved sessions](docs/TELEMETRY.md#saved-sessions)).
 - **What it cannot see:** position, shield level, hull, heat, ammo, power distribution or quantum fuel. Health 0
   means down or dead. The aUEC balance is withheld from Claude unless you agree (`include_balance`).
 - **A live dashboard (optional).** With telemetry on, Claude Desktop can show a live dashboard in the conversation
@@ -216,13 +229,15 @@ health, hunger, thirst.
   older ones follow it. Every value shows its age, nothing is invented, the aUEC balance stays hidden until you click,
   and nothing is sent to the game. The speed dial uses the ship's limits from the Star Citizen Wiki when exactly one
   sheet fits the ship (labelled "wiki"), and says so when it keeps its own scale. Claude Code does not display it. See
-  [docs/TELEMETRY.md](docs/TELEMETRY.md#live-dashboard).
+  [docs/TELEMETRY.md](docs/TELEMETRY.md#live-dashboard). **Unverified:** the layout was tested in a browser against
+  a fake host, and a throwaway test page was displayed in Claude Desktop, but the maintainer has not yet seen this
+  dashboard itself inside Claude Desktop (see [docs/ROADMAP.md](docs/ROADMAP.md)).
 - **A transport ledger (optional, needs the game log).** In that dashboard, the contracts of the session with their
   pickup and drop-off steps (when the log carries them: absent from the build 4.10 logs of the reference install) and, once you show the balance, the raw balance change over each completed contract; the
   game log has no quantity and no reward. See [docs/TELEMETRY.md](docs/TELEMETRY.md#transport-ledger).
 - **Read the risks first.** It is an undocumented game feature. As far as we know CIG has neither allowed nor
-  forbidden using it, the RSI terms apply to you, and the risk is yours. Everything is in
-  [docs/TELEMETRY.md](docs/TELEMETRY.md).
+  forbidden using it, the RSI terms apply to you, and the risk is yours. The details are in
+  [docs/TELEMETRY.md](docs/TELEMETRY.md#risks), and the rest of that page explains everything above.
 
 ## Limits you should know
 
@@ -257,9 +272,11 @@ See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). First steps: `npm run do
 ## Development
 
 ```bash
-npm ci --ignore-scripts && npm run lint && npm test && npm run build && npm run audit:prod
+npm ci --ignore-scripts
+npm run lint && npm run format:check && npm run typecheck && npm test && npm run build && npm run check:docs && npm run check:page-size && npm run test:built && npm run audit:prod
 ```
 
+The `&&` chain works in cmd, Git Bash and PowerShell 7; in Windows PowerShell 5.1 run the commands one per line.
 See [CONTRIBUTING.md](CONTRIBUTING.md), including the new-patch procedure. Security model: [SECURITY.md](SECURITY.md).
 
 ## Credits and notices
