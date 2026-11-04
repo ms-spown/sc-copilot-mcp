@@ -50,6 +50,7 @@ describe("Feature: the budget and the hold are read strictly", () => {
       args: { action: "search", objective: "speed", use_ship: true },
       priv: false,
       cargoSource: "inconnue",
+      positionSource: "",
     });
     const r = tradeBuildRequest(
       "safety",

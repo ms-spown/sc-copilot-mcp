@@ -367,6 +367,8 @@ export interface LedgerInput {
   losses?: readonly ShipLoss[] | undefined;
   /** Names of goods by lower-case resource GUID (commodityNames.ts), for display. Absent: none known. */
   commodityNames?: ReadonlyMap<string, string> | undefined;
+  /** The newest public place the game log named (words and time), for "Partir de ma position". Absent: none known. */
+  lastPlace?: { words: string; at: string; private?: true } | undefined;
   nowMs: number;
 }
 
@@ -533,6 +535,7 @@ export function buildLedgerPayload(input: LedgerInput): LedgerPayload {
       nowMs,
       losses: input.losses,
       commodityNames: input.commodityNames,
+      lastPlace: input.lastPlace,
     });
   }
   if (includeBalance && base.status === "ok") {

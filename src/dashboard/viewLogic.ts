@@ -1237,6 +1237,7 @@ export function cleanPlan(input: any): any {
     "note",
     "safety_note",
     "price_points_label",
+    "preamble",
   ]) {
     const v = input[k];
     if (typeof v === "string") {

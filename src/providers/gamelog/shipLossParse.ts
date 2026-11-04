@@ -66,6 +66,13 @@ const NPC_NAME = /^(PU_|AIModule_|NPC_|Unmanned_)|_\d{8,}$/i;
 
 const place = (s: string | undefined): string | null => (s && PLACE.test(s) ? s : null);
 
+/**
+ * A place token of the game log that may be used, shown or kept: one of the game's own place families, with no private segment
+ * (hangar, apartment, home, habitat, room: a place named after a player). null for anything else. The commerce parser accepts
+ * a wider token (an inventory location can be "Hangar_<a name>"): every consumer that USES a token goes through here first.
+ */
+export const publicPlaceToken = place;
+
 /** "DRAK_Dragonfly_123456789012" -> { cls: "DRAK_Dragonfly", id: "123456789012" } (null parts when it is not that shape). */
 function splitInstance(token: string): { cls: string | null; id: string | null } {
   const m = token.match(SUFFIX);

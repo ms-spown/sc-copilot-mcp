@@ -244,6 +244,8 @@ export function dashboardTools(
   };
   const suggestions = new TradeSuggestService({
     holds: knownHolds,
+    // The newest public place the game log named (the token stays on the server): "Partir de ma position".
+    lastPlace: () => ledger?.lastPlace(),
     plan:
       overrides.plan ??
       ((req) => {
@@ -520,7 +522,7 @@ export function dashboardTools(
     {
       name: "sc_trade_suggest",
       description:
-        "For the dashboard View only, not for the model: ranks trade routes for the commerce card's buttons (most profitable per hour, fastest, safest by a heuristic, or best per trip) with the UEX trade planner, or applies one of the options it returned as the dashboard's plan (action apply, by id), or checks before departure whether the plan in force still holds (action preflight: re-reads the current UEX prices of its goods at its two terminals, two cached GETs, no argument, unit prices and per-SCU margins only), or lists the hold sizes known for the player for the form's Soute list (action holds: quantities of his recent saved trade runs and the holds of his fleet-file ships, from local files, and, when there is something to name, UEX's public ship list, which may be fetched once (kept 5 minutes) when the full screen opens, before any click; no planner run, no throttle slot, no amount). Answers at most 5 options and 3 chains, throttled (one new planner run or price check per 8 seconds, identical requests served from a short cache), never the player's balance. Use uex_plan_trade instead.",
+        "For the dashboard View only, not for the model: ranks trade routes for the commerce card's buttons (most profitable per hour, fastest, safest by a heuristic, or best per trip) with the UEX trade planner, or applies one of the options it returned as the dashboard's plan (action apply, by id), or checks before departure whether the plan in force still holds (action preflight: re-reads the current UEX prices of its goods at its two terminals, two cached GETs, no argument, unit prices and per-SCU margins only), or lists the hold sizes known for the player for the form's Soute list (action holds: quantities of his recent saved trade runs and the holds of his fleet-file ships, from local files, and, when there is something to name, UEX's public ship list, which may be fetched once (kept 5 minutes) when the full screen opens, before any click; no planner run, no throttle slot, no amount). A search may start FROM A POSITION (position: the place the server last read in the game log; position_text: a place the player typed): each route is then reached from there, with an opening trade on the way when one pays, the repositioning shown apart and every figure an estimate; no chains in that mode. Answers at most 5 options and 3 chains, throttled (one new planner run or price check per 8 seconds, identical requests served from a short cache), never the player's balance. Use uex_plan_trade instead.",
       inputSchema: {
         type: "object",
         properties: {
@@ -560,6 +562,18 @@ export function dashboardTools(
           use_ship: {
             type: "boolean",
             description: "Use the flown ship's quantum speed and hold (search). Default true.",
+          },
+          position: {
+            type: "string",
+            enum: ["journal"],
+            description:
+              "Start from the place the SERVER last read in the game log (search): each route is reached from there, with an opening trade on the way when one pays. The View names the source, never a place token. Not with origin or position_text.",
+          },
+          position_text: {
+            type: "string",
+            maxLength: 80,
+            description:
+              "Start from a place the player typed or a plan holds, a UEX place name (search): same as position. Not with origin or position.",
           },
           next_run: {
             type: "string",

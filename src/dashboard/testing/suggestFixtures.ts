@@ -292,6 +292,53 @@ export interface SuggestFixtureOptions {
   batch?: string;
   /** What the pre-flight check answers (default: the plan still holds). */
   preflight?: PreflightVariant;
+  /** When the game log wrote the place of a search "from the journal" (ISO). Default: a made-up time. */
+  positionAt?: string;
+}
+
+/**
+ * The same options reached FROM A POSITION ("Partir de ma position"), as the server answers them: the first with an opening
+ * trade, the second with an empty flight, the third starting where the player already is. Invented figures. The route (`legs`)
+ * is unchanged; the first-cycle figures include step 1.
+ */
+function fromPosition(list: SuggestOption[], place: string): SuggestOption[] {
+  return list.map((o, i) => {
+    const first = o.legs[0]!;
+    const kind = i % 3;
+    const step =
+      kind === 0 ? leg("Medical Supplies", place, first.from, 1180, 1250, 120, { age: 1.2 }) : null;
+    const stepProfit = step ? step.profit_per_scu * step.scu : 0;
+    const hours = o.cycle_minutes === null ? null : (o.cycle_minutes + 25) / 60;
+    const plain = {
+      profit: o.profit_per_trip,
+      minutes: o.cycle_minutes === null ? null : o.cycle_minutes + 25,
+      per_hour: hours === null ? null : Math.round(o.profit_per_trip / hours),
+    };
+    return {
+      ...o,
+      opening: {
+        position: place,
+        at_position: kind === 2,
+        start: first.from,
+        step1: step,
+        reposition_minutes: kind === 2 ? null : 25,
+        first_cycle: {
+          profit: plain.profit + stepProfit,
+          minutes: kind === 2 ? o.cycle_minutes : plain.minutes,
+          per_hour:
+            hours === null
+              ? null
+              : Math.round(
+                  (plain.profit + stepProfit) / (kind === 2 ? (o.cycle_minutes ?? 1) / 60 : hours),
+                ),
+        },
+        without_step1:
+          kind === 2
+            ? { profit: o.profit_per_trip, minutes: o.cycle_minutes, per_hour: o.profit_per_hour }
+            : plain,
+      },
+    };
+  });
 }
 
 /** The structured answer of sc_trade_suggest for the given arguments. */
@@ -349,6 +396,14 @@ export function suggestAnswer(
   const key = KEY[String(args["objective"] ?? "profit_per_hour")] ?? KEY["profit_per_hour"]!;
   list.sort((a, b) => key(a) - key(b));
   markBetterChecked(list);
+  // From a position the open chains are not computed, and each option carries its opening step.
+  const fromHere = args["position"] === "journal" || typeof args["position_text"] === "string";
+  const place =
+    typeof args["position_text"] === "string" ? String(args["position_text"]) : "Lorville";
+  if (fromHere) {
+    list = fromPosition(list, place);
+    chainList = [];
+  }
   const all = [...list, ...chainList];
   const counts = { reported: 0, estimate: 0, unverified: 0 };
   for (const o of all) counts[o.report_status]++;
@@ -365,6 +420,19 @@ export function suggestAnswer(
       typeof args["cargo_scu"] === "number" && args["cargo_scu"] !== 696 ? "saisie" : "fiche",
     private: priv,
     ship: "Hull C",
+    ...(fromHere
+      ? {
+          position: {
+            label: place,
+            source: args["position"] === "journal" ? "journal" : "saisie",
+            at:
+              args["position"] === "journal"
+                ? (options.positionAt ?? "2026-11-03T17:45:00.000Z")
+                : null,
+            planet: "Hurston",
+          },
+        }
+      : {}),
     speed_known: speed,
     stop_minutes: 8,
     partial: false,

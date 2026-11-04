@@ -903,6 +903,54 @@ aucune recherche n'est lancée.
   ou saisie, et affiche la source sur sa carte ; elle ne cherche pas seule sur une soute de flotte ni quand aucune soute
   n'est connue. Une taille saisie est limitée à 100 000 SCU et ses espaces (« 4 608 ») sont ignorés.
 
+- **« Partir de ma position ».** Une case sous « Affiner », DÉCOCHÉE par défaut. Cochée, les routes sont rejointes DEPUIS
+  l'endroit où se trouve le joueur, et chaque carte dit deux étapes : l'**étape 1**, un trajet d'ouverture depuis le lieu
+  du joueur jusqu'au terminal où la route charge (marchandise, SCU, destination, gain estimé ; ou « aucun trajet rentable
+  trouvé, rejoins-le à vide »), puis l'**étape 2**, la route. Le planificateur (`src/providers/uex/opening.ts`) note chaque
+  route ET chacun de ses départs possibles (un aller-retour peut commencer à l'un ou l'autre bout ; un aller simple
+  seulement là où il charge) depuis le lieu du joueur : un arrêt là où le vol part, le vol, les arrêts propres de la
+  route. Le trajet d'ouverture est le meilleur trajet de prix depuis un terminal de ce lieu jusqu'au départ, dimensionné par
+  la soute et le budget, et ses marchandises passent la vérification des relevés comme celles de la route. Le classement et
+  le grand chiffre sont ceux du PREMIER cycle (le trajet jusqu'à la route plus un cycle, étape 1 comprise) ; les chiffres
+  de la route seule, en régime établi, restent sur la carte, étiquetés « Route seule ». La comparaison est honnête par
+  construction : la référence est la MÊME route rejointe à vide, et dans ce modèle l'étape 1 ne coûte pas de temps en plus
+  (un arrêt là où le vol part dans les deux cas, le temps de chargement d'une grosse soute n'est pas modélisé) : ce
+  qu'apporte l'étape 1, c'est son propre gain, et ce que le classement décide vraiment, c'est QUELLE route viser. Tout
+  chiffre est une estimation (prix UEX, peu de relevés de joueurs, modèle à arrêts fixes, carburant non déduit) et la carte
+  le dit. Les chaînes ouvertes A → B → C ne sont pas calculées dans ce mode. « Appliquer comme plan » ne règle le plan
+  qu'au clic, avec la route (l'étape 1 est nommée dans sa note). Un budget égal au solde du joueur fonctionne comme
+  partout ailleurs (les chiffres restent à l'écran, rien ne part vers l'agent).
+  **Où est le joueur : le jeu ne donne AUCUNE position en direct.** Le journal du jeu n'a pas de coordonnée, la télémétrie
+  seulement un repère de planète : la page n'en invente donc jamais. Trois sources existent, chacune affichée avec son
+  âge, et un lieu plus ancien est « trop ancien » et jamais utilisé (limite : deux heures, `positionFreshMs`) :
+  1. ce que le joueur a tapé dans « Départ » (sa parole, toujours en premier ; case cochée, c'est la position, pas le lieu
+     de chargement de la route, et aucun `origin` ne part avec) ;
+  2. le lieu PUBLIC le plus récent que le journal du jeu a nommé (une demande d'inventaire : « dernier lieu qu'il cite »,
+     pas une position en direct). Le serveur garde le jeton et la page ne reçoit que des mots et une heure ; seules les
+     familles de lieux du jeu comptent (un hangar, un appartement ou un domicile peut porter le nom d'un joueur : un tel
+     lieu n'est jamais utilisé, et un lieu public plus ancien n'est pas pris à sa place). Le serveur le traduit en lieu UEX
+     seulement si un segment du jeton nomme un lieu exactement (un nom de système ou un code n'est pas un lieu) ;
+  3. la fin du dernier trajet COMPLET, quand le plan en cours l'était PENDANT ce trajet (la règle de la carte Commerce :
+     daté, non reçu après le premier achat du trajet, non épuisé par un trajet plus ancien) : le terminal de vente du plan.
+     Un plan appliqué ensuite pour le trajet suivant dit où il va, pas où il est : il n'est jamais utilisé.
+  Un dernier lieu privé (hangar, appartement, domicile) n'est jamais utilisé et n'envoie que son heure : toute source plus
+  ancienne est alors trop ancienne (le serveur et la page appliquent la même limite de deux heures). Dans ce mode chaque
+  route et chacun de ses départs est noté (tous les aller-retour, par l'un ou l'autre bout, et chaque aller simple), et les
+  quatre boutons classent le PREMIER cycle de ce qui est montré (« 1er cycle depuis ta position »), pas le régime établi
+  de la route ; la même route par ses deux bouts n'est listée qu'une fois, avec le meilleur départ. Le plan appliqué depuis
+  une telle carte retient les marchandises de son étape 1 : le trajet de cette ouverture est sa préface et ne compte pas
+  comme un usage du plan. Une fois qu'une recherche a traduit les mots du journal en lieu UEX, le nom UEX est affiché. Les
+  noms sont comparés avec les espaces que les jetons du jeu omettent rouverts (« NewBabbage », « Area18 ») ; un nom de
+  niveau orbite (une lune, une planète) est l'orbite entière, étiquetée du nom de l'orbite.
+  Le lieu est la ville, la station ou l'avant-poste nommé : ses propres terminaux sont « ici » (ils portent l'étape 1, et
+  une route qui y charge n'a pas d'étape 1), et les autres lieux de la même orbite UEX (Everus Harbor à côté de Lorville)
+  sont à un court saut, qui peut porter une étape 1 (les distances sont à l'échelle de l'orbite). Un nom qui est celui de
+  l'orbite elle-même (une lune, une planète) désigne toute l'orbite. Le plus récent de 2 et 3 l'emporte. Sans rien, le joueur est interrogé (« Départ » s'ouvre, avec en suggestions les lieux
+  que la page connaît). Un lieu qu'UEX ne sait pas nommer (inconnu, ambigu, sans orbite) est refusé par une phrase, jamais
+  deviné. « Et ensuite ? » garde son propre départ et n'utilise jamais cette option. L'option est le `position` (le lieu du
+  journal que le serveur lit lui-même : un indicateur, jamais un jeton) ou le `position_text` (un nom UEX) de
+  `sc_trade_suggest`, réservé à la page, pas avec `origin`.
+
 - **Mesuré, estimé, heuristique.** Les prix sont ceux d'UEX, issus de la communauté ; aujourd'hui presque toutes les
   options portent *estimation UEX · aucun relevé de joueur* (UEX ne compte aucun relevé de joueur pour un prix) : la
   barre le dit et propose l'option des relevés. Les durées sont des ESTIMATIONS (vol quantique plus 8 minutes fixes par

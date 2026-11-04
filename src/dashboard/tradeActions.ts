@@ -45,6 +45,11 @@ export function tradeActionsConfig() {
      * guess for the hold (and the label says which one it is).
      */
     holdFreshMs: 3 * 24 * 3600 * 1000,
+    /**
+     * "Partir de ma position": a place the game log named, or where the last run ended, is used for at most this long. The game
+     * logs no live position: an older place is shown as "trop ancien" and the player is asked, never trusted.
+     */
+    positionFreshMs: 2 * 3600 * 1000,
   };
 }
 
@@ -268,6 +273,42 @@ export function tradeCleanOption(raw: any): any {
     },
     cost: cost === null ? null : Math.round(cost),
     reliability: tradeCleanReliability(raw.reliability),
+    opening: tradeCleanOpening(raw.opening),
+  };
+}
+
+/**
+ * "Partir de ma position": the way to the start of the route and what an opening trade adds, rebuilt field by field. null when
+ * absent or not usable (the option then simply has none). Every figure is an estimate (the card says so).
+ */
+export function tradeCleanOpening(raw: any): any {
+  if (!raw || typeof raw !== "object") return null;
+  const totals = (t: any): any => {
+    if (!t || typeof t !== "object") return null;
+    const profit = tradeNum(t.profit, -1e12, 1e12);
+    if (profit === null) return null;
+    const minutes = tradeNum(t.minutes, 0, 100000);
+    const perHour = tradeNum(t.per_hour, -1e12, 1e12);
+    return {
+      profit: Math.round(profit),
+      minutes: minutes === null ? null : Math.round(minutes),
+      per_hour: perHour === null ? null : Math.round(perHour),
+    };
+  };
+  const first = totals(raw.first_cycle);
+  const plain = totals(raw.without_step1);
+  const position = tradeText(raw.position, 60);
+  const start = tradeText(raw.start, 60);
+  if (!first || !plain || !position || !start) return null;
+  const rep = tradeNum(raw.reposition_minutes, 0, 100000);
+  return {
+    position,
+    at_position: raw.at_position === true,
+    start,
+    step1: tradeCleanLeg(raw.step1),
+    reposition_minutes: rep === null ? null : Math.round(rep),
+    first_cycle: first,
+    without_step1: plain,
   };
 }
 
@@ -290,6 +331,8 @@ export function tradeSuggestClean(L: any, raw: any): any {
         [
           "no_cargo",
           "bad_origin",
+          "position_unknown",
+          "position_unresolved",
           "armistice_unavailable",
           "upstream",
           "expired",
@@ -335,6 +378,19 @@ export function tradeSuggestClean(L: any, raw: any): any {
     cargo_source: raw.cargo_source === "saisie" ? "saisie" : "fiche",
     private: raw.private === true,
     ship: tradeText(raw.ship, 60) || null,
+    position: (() => {
+      const p = raw.position;
+      if (!p || typeof p !== "object") return null;
+      const label = tradeText(p.label, 60);
+      if (!label) return null;
+      const at = typeof p.at === "string" ? Date.parse(p.at) : NaN;
+      return {
+        label,
+        source: p.source === "journal" ? "journal" : "saisie",
+        at: Number.isFinite(at) ? at : null,
+        planet: tradeText(p.planet, 60) || null,
+      };
+    })(),
     speed_known: raw.speed_known === true,
     stop_minutes: tradeNum(raw.stop_minutes, 0, 1000) || 0,
     partial: raw.partial === true,
@@ -438,12 +494,30 @@ export function tradeBuildRequest(objective: string, st: any, ctx: any): any {
   } else if (ctx && typeof ctx.sheetCargo === "number" && ctx.sheetCargo >= 1) {
     cargoSource = "fiche";
   }
-  const origin = tradeText(st.originText, 80);
-  if (origin) args.origin = origin;
-  return { ok: true, args, priv, cargoSource };
+  // Where to start. "Départ" alone says where a route LOADS (the planner's origin). With "Partir de ma position" the place is
+  // WHERE THE PLAYER IS and the routes are reached from there: the place the page chose (tradePositionChoice) goes as
+  // `position` (the server's own journal place, never a token) or `position_text`, and no `origin` is sent with it.
+  let positionSource = "";
+  if (st.fromHere === true) {
+    const pos = ctx && ctx.position ? ctx.position : null;
+    if (!pos || pos.source === "aucune") return { ok: false, reason: "position" };
+    if (pos.source === "journal") args.position = "journal";
+    else {
+      const text = tradeText(pos.text, 80);
+      if (!text) return { ok: false, reason: "position" };
+      args.position_text = text;
+    }
+    positionSource = pos.source;
+  } else {
+    const origin = tradeText(st.originText, 80);
+    if (origin) args.origin = origin;
+  }
+  return { ok: true, args, priv, cargoSource, positionSource };
 }
 
 export function tradeInputProblem(reason: string): string {
+  if (reason === "position")
+    return "Je n’ai aucune position fiable : indique-la dans « Départ » (un lieu proposé, ou le tien), puis relance.";
   if (reason === "budget")
     return "Le budget n’est pas un nombre (exemples : 250000, 250 000, 2,5M).";
   if (reason === "cargo")
@@ -461,6 +535,14 @@ export function tradeErrorText(a: any): string {
     return "Je ne connais pas ta soute : ni fiche de vaisseau, ni trajet enregistré. Choisis-la dans « Affiner » (liste, ou « Autre taille… »), puis relance.";
   if (code === "bad_origin")
     return "Lieu de départ introuvable ou ambigu chez UEX" + (detail ? " : " + detail : ".");
+  if (code === "position_unknown")
+    return "Le journal du jeu ne nomme aucun lieu public récent : indique ta position dans « Départ », puis relance.";
+  if (code === "position_unresolved")
+    return (
+      "UEX ne reconnaît pas ce lieu comme une position" +
+      (detail ? " (" + detail + ")" : "") +
+      " : précise-le dans « Départ »."
+    );
   if (code === "armistice_unavailable")
     return "Les zones d’armistice ne sont pas disponibles chez UEX pour l’instant : décoche cette option.";
   if (code === "upstream")
@@ -742,6 +824,229 @@ export function tradeHoldSourceWords(source: string, ship: any): string {
 }
 
 // -------------------------------------------------------------------------------------------------
+// "Partir de ma position": where the player is, never invented
+// -------------------------------------------------------------------------------------------------
+
+/** "il y a 12 min" under an hour, then hours and days (tradeAgoText). "" when unknown. */
+export function tradeAgoFine(ms: any, now: number): string {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || !Number.isFinite(now)) return "";
+  const diff = now - ms;
+  if (diff < -3600000) return "";
+  if (diff < 60000) return "à l’instant";
+  if (diff < 3600000) return "il y a " + Math.floor(diff / 60000) + "\u00a0min";
+  return tradeAgoText(ms, now);
+}
+
+/**
+ * The place the search would start from, and where it comes from. The game gives NO live position (the log has no
+ * coordinate, the telemetry only a planet frame), so only three sources exist and each is labelled with its age:
+ *   saisie   what the player typed in "Départ": his own word, always first;
+ *   journal  the newest PUBLIC place the game log named (an inventory request; the server keeps the token, the page has words
+ *            and a time), when it is at most `positionFreshMs` old;
+ *   plan     where the plan in force says the last COMPLETE run ended (its selling terminal, a UEX name), same limit;
+ *   aucune   nothing fresh: the player is asked. An older place is reported as too old (`stale`), never used.
+ * The newest of journal and plan wins. ctx: { originText, lastPlace: {words, at}|null, plan, trade, now }
+ */
+export function tradePositionChoice(ctx: any): any {
+  const cfg = tradeActionsConfig();
+  const now = ctx && typeof ctx.now === "number" ? ctx.now : 0;
+  const typed = tradeText(ctx && ctx.originText, 80);
+  if (typed) return { source: "saisie", text: typed, label: typed, at: null, stale: null };
+  const found: any[] = [];
+  const lp = ctx && ctx.lastPlace && typeof ctx.lastPlace === "object" ? ctx.lastPlace : null;
+  const lpAt = lp && typeof lp.at === "string" ? Date.parse(lp.at) : NaN;
+  const lpWords = lp ? tradeText(lp.words, 60) : "";
+  // The newest place was a PRIVATE one (a hangar, an apartment, a home: the server sends its time only): he has been somewhere
+  // since that no source may name, so every source older than it is stale.
+  const privateAt = lp && lp.private === true && Number.isFinite(lpAt) ? lpAt : null;
+  if (privateAt === null && lpWords && Number.isFinite(lpAt)) {
+    // Once a search has resolved the place, UEX's own name is shown instead of the log's raw words.
+    const known =
+      ctx && ctx.labels && typeof ctx.labels === "object" ? tradeText(ctx.labels[lpWords], 60) : "";
+    found.push({
+      source: "journal",
+      text: "",
+      label: known || lpWords,
+      at: lpAt,
+      resolved: !!known,
+    });
+  }
+  const trade = ctx && ctx.trade;
+  const run = trade && Array.isArray(trade.runs) && trade.runs.length > 0 ? trade.runs[0] : null;
+  const end = run && run.stage === "complete" ? Date.parse(run.ended_at) : NaN;
+  const sell =
+    ctx && ctx.plan && ctx.plan.sell_terminal ? tradeText(ctx.plan.sell_terminal, 80) : "";
+  // The plan's end is a place only when the plan was IN FORCE during that run: one applied afterwards (for the next trip) names
+  // where he is going, not where he is. The plan must be dated (planAt) and attached to the run (the commerce card's own rule:
+  // not received after the run's first purchase, not spent by an earlier run, goods and shops not contradicting it).
+  if (
+    sell &&
+    Number.isFinite(end) &&
+    typeof ctx.attached === "function" &&
+    typeof ctx.planAt === "number" &&
+    ctx.attached(ctx.L, ctx.plan, run, ctx.planAt, trade.runs).ok
+  ) {
+    found.push({ source: "plan", text: sell, label: sell, at: end });
+  }
+  // A time in the future (a clock out of step) is not fresher than now.
+  const usable = found
+    .map((f: any) => ({ f, age: now - f.at }))
+    .filter((x: any) => x.age >= -300000 && (privateAt === null || x.f.at > privateAt));
+  usable.sort((a: any, b: any) => a.age - b.age);
+  const fresh = usable.filter((x: any) => x.age <= cfg.positionFreshMs)[0];
+  if (fresh) return Object.assign({ stale: null }, fresh.f);
+  const old = usable[0];
+  return {
+    source: "aucune",
+    text: "",
+    label: "",
+    at: null,
+    stale: old ? { source: old.f.source, label: old.f.label, at: old.f.at } : null,
+    privateAt: privateAt !== null && now - privateAt <= cfg.positionFreshMs ? privateAt : null,
+  };
+}
+
+/** The sentence under "Partir de ma position": the place, its source and its age, or why there is none. */
+export function tradePositionText(choice: any, now: number): string {
+  const how =
+    "Le jeu ne donne pas ta position en direct : si tu as bougé, indique-la dans « Départ ».";
+  if (!choice) return "";
+  if (choice.source === "saisie")
+    return "Départ : « " + choice.label + " », indiqué par toi dans « Départ ».";
+  if (choice.source === "journal" || choice.source === "plan") {
+    const ago = tradeAgoFine(choice.at, now);
+    return (
+      "Départ : " +
+      choice.label +
+      " · " +
+      (choice.source === "journal"
+        ? "d’après le journal du jeu (dernier lieu qu’il cite)"
+        : "d’après ton plan (fin du dernier trajet)") +
+      (ago ? ", " + ago : "") +
+      ". " +
+      how
+    );
+  }
+  if (choice.privateAt) {
+    return (
+      "Ton dernier lieu connu est privé (hangar, appartement ou domicile, " +
+      tradeAgoFine(choice.privateAt, now) +
+      ") : il n’est pas utilisé. Indique ta position dans « Départ »."
+    );
+  }
+  if (choice.stale) {
+    const ago = tradeAgoFine(choice.stale.at, now);
+    return (
+      "Dernier lieu connu trop ancien (" +
+      (choice.stale.source === "journal" ? "journal du jeu" : "ton plan") +
+      (ago ? ", " + ago : "") +
+      ") : indique ta position dans « Départ »."
+    );
+  }
+  return "Aucune position récente (ni journal, ni dernier trajet) : indique-la dans « Départ ».";
+}
+
+/** The UEX place names the page knows, for the suggestions of "Départ": the plan's terminals and those of the last results. */
+export function tradeKnownPlaces(ctx: any): string[] {
+  const out: string[] = [];
+  const add = (v: any) => {
+    const t = tradeText(v, 80);
+    if (t && out.indexOf(t) < 0 && out.length < 12) out.push(t);
+  };
+  const plan = ctx && ctx.plan;
+  if (plan) {
+    add(plan.sell_terminal);
+    add(plan.buy_terminal);
+  }
+  const res = ctx && ctx.result;
+  const options = res && Array.isArray(res.options) ? res.options : [];
+  for (let i = 0; i < options.length; i++) {
+    const legs = Array.isArray(options[i].legs) ? options[i].legs : [];
+    for (let j = 0; j < legs.length; j++) {
+      add(legs[j].from);
+      add(legs[j].to);
+    }
+  }
+  return out;
+}
+
+/**
+ * What the card shows for an option reached from a position: step 1 (the opening trade, or the empty flight), step 2 (the
+ * route) and the honest comparison. null for an option without it. ESTIMATES (UEX prices, fixed stops): the lines say so.
+ */
+export function tradeOpeningModel(L: any, o: any): any {
+  const p = o && o.opening;
+  if (!p) return null;
+  const gain = (v: number) => "≈ " + L.fmtAuec(v, true) + "\u00a0aUEC";
+  const s = p.step1;
+  let step1: string;
+  if (p.at_position) {
+    step1 =
+      "Étape 1 · aucune : la route commence à " +
+      p.start +
+      " (ta position indiquée : " +
+      p.position +
+      ").";
+  } else if (s) {
+    step1 =
+      "Étape 1 · depuis " +
+      p.position +
+      " : transporter " +
+      s.commodity +
+      " (" +
+      L.fmtNum(s.scu) +
+      "\u00a0SCU) de " +
+      s.from +
+      " vers " +
+      s.to +
+      " · " +
+      gain(s.profit_per_scu * s.scu) +
+      " estimés" +
+      (s.report_status === "reported"
+        ? ""
+        : s.report_status === "estimate"
+          ? " (prix UEX non relevés par des joueurs)"
+          : " (relevés des joueurs non vérifiés)") +
+      ".";
+  } else {
+    step1 =
+      "Étape 1 · depuis " +
+      p.position +
+      " : aucun trajet rentable trouvé vers " +
+      p.start +
+      ", rejoins-le à vide" +
+      (p.reposition_minutes !== null ? " (≈ " + tradeMinutesText(p.reposition_minutes) + ")" : "") +
+      ".";
+  }
+  const step2 = "Étape 2 · la route : " + o.route + ".";
+  const f = p.first_cycle;
+  const w = p.without_step1;
+  let compare: string;
+  if (f.per_hour !== null && w.per_hour !== null) {
+    compare =
+      "Premier cycle (trajet jusqu’à la route compris) : " +
+      gain(f.per_hour).replace("\u00a0aUEC", "") +
+      " aUEC par heure" +
+      (s && !p.at_position ? " avec l’étape 1" : "") +
+      ", contre " +
+      gain(w.per_hour).replace("\u00a0aUEC", "") +
+      " aUEC par heure en rejoignant la route à vide. Ensuite, la route seule : " +
+      (o.profit_per_hour === null ? "durée inconnue" : gain(o.profit_per_hour) + " par heure") +
+      ".";
+  } else {
+    compare =
+      "Premier cycle : " +
+      gain(f.profit) +
+      " (durée inconnue : pas de gain par heure), contre " +
+      gain(w.profit) +
+      " en rejoignant la route à vide.";
+  }
+  const caution =
+    "Estimations : prix UEX de la communauté, durées d’un modèle à arrêts fixes, carburant non déduit. L’étape 1 ne coûte pas de temps en plus du vol à vide (le chargement n’est pas modélisé).";
+  return { step1, step2, compare, caution, hasStep1: !!s && !p.at_position };
+}
+
+// -------------------------------------------------------------------------------------------------
 // The cards
 // -------------------------------------------------------------------------------------------------
 
@@ -785,7 +1090,28 @@ export function tradeCardModel(L: any, o: any, objective: string): any {
   const want = info ? info.big : "hour";
   const gain = (v: number) => "≈ " + L.fmtAuec(v, true);
   let big: any;
-  if (want === "time" && o.cycle_minutes !== null) {
+  const op = o.opening;
+  if (op && want === "time" && op.first_cycle.minutes !== null) {
+    // From a position the order is the FIRST cycle's (the way to the route plus one cycle): so is the big figure.
+    big = {
+      kind: "time",
+      value: tradeMinutesText(op.first_cycle.minutes),
+      unit: "1er cycle depuis ta position, estimé",
+    };
+  } else if (op && want === "hour" && op.first_cycle.per_hour !== null) {
+    big = {
+      kind: "hour",
+      value: gain(op.first_cycle.per_hour),
+      unit: "aUEC par heure, 1er cycle depuis ta position, estimé",
+    };
+  } else if (op) {
+    big = {
+      kind: "trip",
+      value: gain(op.first_cycle.profit),
+      unit:
+        "aUEC sur le 1er cycle depuis ta position" + (want === "trip" ? "" : " (durée inconnue)"),
+    };
+  } else if (want === "time" && o.cycle_minutes !== null) {
     big = { kind: "time", value: tradeMinutesText(o.cycle_minutes), unit: "par cycle, estimé" };
   } else if (want === "hour" && o.profit_per_hour !== null) {
     big = { kind: "hour", value: gain(o.profit_per_hour), unit: "aUEC par heure, estimé" };
@@ -815,6 +1141,11 @@ export function tradeCardModel(L: any, o: any, objective: string): any {
   facts.push({ label: "Cargaison", value: L.fmtNum(o.scu_moved) + "\u00a0SCU" });
   if (facts.length < 4 && o.profit_per_scu !== null)
     facts.push({ label: "Par SCU", value: L.fmtAuec(o.profit_per_scu, true) + "\u00a0aUEC" });
+  // From a position the big figure is the first cycle's: these are the route's own, once it is running.
+  if (op)
+    for (let i = 0; i < facts.length; i++)
+      if (facts[i].label !== "Cargaison")
+        facts[i].label = "Route seule \u00b7 " + facts[i].label.toLowerCase();
   const badges: any[] = [];
   badges.push(
     o.report_status === "reported"
@@ -947,6 +1278,10 @@ export function tradeRecipeArgs(view: any): any {
           ? "origin_system_name"
           : "origin_terminal_name";
     args[key] = tradeSafeName(og.name);
+  } else if (an.position && an.position.planet) {
+    // "Partir de ma position": the agent's own tool has no position argument. The planet UEX puts the place on is the closest key
+    // (routes that start there): it reproduces where the plan started, NOT step 1 and not the first-cycle ranking (the message says so).
+    args.origin_planet_name = tradeSafeName(an.position.planet);
   } else if (rq.origin) args.origin_terminal_name = tradeSafeName(rq.origin);
   if (rq.avoid_pyro === true) args.avoid_pyro = true;
   if (rq.armistice_only === true) args.armistice_only = true;
@@ -976,6 +1311,28 @@ export function tradeRecipeText(view: any): string {
       )
       .join(", ") +
     ")"
+  );
+}
+
+/**
+ * What the agent is told about a plan that started from a position: from which place, from which source and how old, and that the
+ * recipe below reproduces only the planet of departure (not step 1, not the first-cycle ranking). Words only, no token.
+ */
+export function tradePositionSentence(view: any): string {
+  const p = view && view.answer && view.answer.position ? view.answer.position : null;
+  const how =
+    "L’appel uex_plan_trade ci-dessous ne reproduit que la planète de départ, pas l’étape 1 ni le classement sur le premier cycle : compare avec cette réserve.";
+  if (!p) return how;
+  const ago = p.source === "journal" ? tradeAgoFine(p.at, view.now) : "";
+  return (
+    "Le plan est parti de ma dernière position " +
+    (p.source === "journal"
+      ? "d’après le journal du jeu (un dernier lieu cité, pas une position en direct" +
+        (ago ? ", " + ago : "") +
+        ")"
+      : "indiquée par moi") +
+    ". " +
+    how
   );
 }
 
@@ -1009,6 +1366,25 @@ export function tradeAgentMessage(L: any, o: any, view: any): string {
           : "") +
       ".",
   );
+  // From a position: the step before the route, with UEX names only (quoted as data), never a place token.
+  if (o.opening)
+    parts.push(
+      "Je pars de ma position (" +
+        q(o.opening.position) +
+        ")" +
+        (o.opening.step1
+          ? " avec une étape 1 : " +
+            q(o.opening.step1.commodity) +
+            " de " +
+            q(o.opening.step1.from) +
+            " vers " +
+            q(o.opening.step1.to)
+          : o.opening.at_position
+            ? ", la route commence là"
+            : ", route rejointe à vide") +
+        ". " +
+        tradePositionSentence(view),
+    );
   parts.push(
     "Marchandise : " +
       q(a.commodity) +
@@ -1242,6 +1618,10 @@ export function tradeActionsPanel(doc: any, L: any): any {
     applying: false,
     cleared: false,
     cargoTyped: false,
+    /** "Partir de ma position" is ticked. Memory only; off by default. */
+    fromHere: false,
+    /** The log's words of a place -> the UEX name a search resolved them to (memory only), shown instead of the raw words. */
+    placeLabels: {} as any,
     /** "" = the default decides; "other" = the player types a size; else the size he chose in the list. Memory only. */
     holdPick: "",
     /** How a typed or chosen hold got there: "liste" (chosen in the list), "autre" (typed), "" (none). */
@@ -1340,6 +1720,17 @@ export function tradeActionsPanel(doc: any, L: any): any {
     // Estimated / measured / ratio side by side (calibrationCompare in calibrationPanel.ts): the estimate is always there once
     // the block is shown; the measured and the ratio come from the player's own saved runs, so the whole block exists only
     // while the balance is shown and is emptied (not just hidden) when it is not.
+    // "Partir de ma position": step 1 (the opening trade or the empty flight), step 2 (the route) and the honest comparison.
+    // Shown only for an option reached from a position; its lines are plain text of fixed form.
+    c.opening = el("div", "ta-opening");
+    c.opening.setAttribute("role", "group");
+    c.opening.setAttribute("aria-label", "Depuis ta position : étape 1, étape 2, comparaison");
+    c.opStep1 = el("p", "ta-op-step", "");
+    c.opStep2 = el("p", "ta-op-step", "");
+    c.opCompare = el("p", "ta-op-compare", "");
+    c.opCaution = el("p", "ta-op-caution", "");
+    add(c.opening, c.opStep1, c.opStep2, c.opCompare, c.opCaution);
+    c.opening.setAttribute("data-hidden", "1");
     c.calib = el("div", "ta-calib");
     c.cmp = el("div", "ta-cmp");
     c.cmp.setAttribute("role", "group");
@@ -1400,7 +1791,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
       add(c.moreBody, p);
     }
     add(c.more, c.moreSum, c.moreBody);
-    add(c.root, top, facts, badges, c.rel, c.calib, actions, c.more);
+    add(c.root, top, c.opening, facts, badges, c.rel, c.calib, actions, c.more);
     return c;
   };
 
@@ -1519,11 +1910,34 @@ export function tradeActionsPanel(doc: any, L: any): any {
   const otherField = field("Autre taille (SCU)", cargoInput);
   otherField.className = "ta-field ta-field-other";
   otherField.setAttribute("data-hidden", "1");
-  add(fields, budgetField, field("Départ (terminal, planète ou système)", originInput));
+  // "Départ" with suggestions (the places the page knows: the plan's terminals and those of the last results; any text is
+  // still accepted). Its note is outside the label, like the hold's.
+  const originNote = el("span", "ta-field-note", "");
+  originNote.setAttribute("id", "ta-origin-note");
+  originInput.setAttribute("aria-describedby", "ta-origin-note");
+  const placesList = el("datalist", "");
+  placesList.setAttribute("id", "ta-places");
+  originInput.setAttribute("list", "ta-places");
+  const originField = el("div", "ta-field");
+  add(
+    originField,
+    field("Départ (terminal, planète ou système)", originInput),
+    originNote,
+    placesList,
+  );
+  let placesKey = "";
+  add(fields, budgetField, originField);
+  // "Partir de ma position": reach the routes from where the player is, with an opening trade on the way. Off by default: the
+  // game logs no live position, and a place that is stale or wrong must never constrain a search without the player's say.
+  const posBox = el("div", "ta-position");
+  const posNote = el("span", "ta-field-note", "");
+  posNote.setAttribute("id", "ta-position-note");
+  add(posBox, checkbox("fromHere", "Partir de ma position"), posNote);
+  checks.fromHere.input.setAttribute("aria-describedby", "ta-position-note");
   const autoRow = el("div", "ta-options");
   add(autoRow, checkbox("autoNext", "Proposer la suite à la fin d’un trajet"));
   checks.autoNext.input.checked = true;
-  add(refineBody, optionsRow, holdField, otherField, fields, balanceCheck, autoRow);
+  add(refineBody, optionsRow, posBox, holdField, otherField, fields, balanceCheck, autoRow);
   add(refine, refineSum, refineBody);
 
   // status and results
@@ -1573,6 +1987,8 @@ export function tradeActionsPanel(doc: any, L: any): any {
     S[key] = !!checks[key].input.checked;
     if (key === "autoNext") return;
     scheduleAuto();
+    // The sentence under "Partir de ma position" follows the box at once.
+    if (key === "fromHere") refresh();
   };
   for (const key of Object.keys(checks)) {
     checks[key].input.addEventListener("change", onCheck(key));
@@ -1645,6 +2061,8 @@ export function tradeActionsPanel(doc: any, L: any): any {
   originInput.addEventListener("change", () => {
     S.originText = String(originInput.value);
     scheduleAuto();
+    // The sentence under "Partir de ma position" depends on it.
+    refresh();
   });
 
   // ---- requests
@@ -1660,7 +2078,26 @@ export function tradeActionsPanel(doc: any, L: any): any {
       cargoTyped: S.cargoTyped,
       cargoPicked: S.cargoPicked,
       originText: S.originText,
+      fromHere: S.fromHere,
     };
+  }
+
+  /** The place a search from a position would start from (tradePositionChoice) and the page's own facts it is made of. */
+  function positionNow(ignoreTyped?: boolean): any {
+    const trade = H.trade;
+    return tradePositionChoice({
+      // With the box off, "Départ" is where a route LOADS, not a position: it is not offered as one.
+      originText: ignoreTyped ? "" : S.originText,
+      L,
+      // The commerce card's own rule for "this plan belongs to this run" (tradePanel.ts), handed in: this module imports nothing.
+      attached: L.tradePlanAttached,
+      labels: S.placeLabels,
+      planAt: H.planAt,
+      lastPlace: trade && trade.last_place ? trade.last_place : null,
+      plan: H.plan,
+      trade,
+      now: H.now,
+    });
   }
 
   /** The flown ship's sheet as the hold chooser takes it: null unless it gives a hold. */
@@ -1684,7 +2121,12 @@ export function tradeActionsPanel(doc: any, L: any): any {
 
   /** The context a search is built with: the balance (a number, only while shown), the sheet, the default hold. */
   function searchContext(): any {
-    return { balance: H.balance, sheetCargo: H.sheetCargo, defaultHold: holdChoicesNow().deflt };
+    return {
+      balance: H.balance,
+      sheetCargo: H.sheetCargo,
+      defaultHold: holdChoicesNow().deflt,
+      position: S.fromHere ? positionNow() : null,
+    };
   }
 
   /**
@@ -1768,11 +2210,13 @@ export function tradeActionsPanel(doc: any, L: any): any {
     S.objective = objective;
     if (!auto) S.waitRetries = 0;
     const built = tradeBuildRequest(objective, question(), searchContext());
+    const posWords = S.fromHere ? positionNow().label : "";
     if (!built.ok) {
       S.phase = "problem";
       S.problem = tradeInputProblem(built.reason);
       S.problemCode = built.reason;
       if (built.reason === "cargo" || built.reason === "cargo_empty") openHoldForm(true, auto);
+      if (built.reason === "position") openPositionForm(auto);
       refresh();
       return;
     }
@@ -1798,6 +2242,10 @@ export function tradeActionsPanel(doc: any, L: any): any {
         S.resultPriv = built.priv || a.private === true;
         S.resultRequest = built.args;
         S.resultHold = { source: built.cargoSource, scu: a.cargo_scu };
+        // The place the log's words stood for, as UEX names it: shown from now on instead of the raw words.
+        if (built.positionSource === "journal" && posWords && a.position) {
+          S.placeLabels[posWords] = a.position.label;
+        }
         S.appliedId = "";
         S.waitRetries = 0;
         S.cleared = false;
@@ -1819,6 +2267,10 @@ export function tradeActionsPanel(doc: any, L: any): any {
         S.problemCode = a.code;
         // Nothing is known about the hold: the way out is in "Affiner", so it is opened and the list gets the focus.
         if (a.code === "no_cargo") openHoldForm(false, auto);
+        // No usable place: "Départ" is where the player says it, so it is opened and gets the focus.
+        if (a.code === "position_unknown" || a.code === "position_unresolved") {
+          openPositionForm(auto);
+        }
       }
     } catch (err: any) {
       S.phase = "error";
@@ -1845,6 +2297,16 @@ export function tradeActionsPanel(doc: any, L: any): any {
     later(() => {
       const target = typing && S.holdPick === "other" ? cargoInput : cargoSelect;
       if (target.focus) target.focus();
+    }, 0);
+  }
+
+  /** Opens "Affiner" and puts the focus on "Départ" (never on an automatic search: it only says what is missing). */
+  function openPositionForm(auto: boolean) {
+    // An automatic search only says what is missing: it opens nothing (no shift of the page under the player's hands).
+    if (auto) return;
+    refine.open = true;
+    later(() => {
+      if (originInput.focus) originInput.focus();
     }, 0);
   }
 
@@ -1896,6 +2358,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
         ? stamp() - S.next.at + 1000 * ((S.next.result && S.next.result.age_s) || 0)
         : stamp() - S.resultAt + 1000 * ((S.result && S.result.age_s) || 0),
       from: fromNext ? S.next.origin : "",
+      now: H.now,
     });
     try {
       await H.say(text);
@@ -1913,7 +2376,12 @@ export function tradeActionsPanel(doc: any, L: any): any {
     if (!H.call || S.disposed || !H.enabled || H.follower) return;
     S.nextTried = want.runId;
     if (!want.fresh || !want.origin || !S.autoNext) return;
-    const built = tradeBuildRequest("profit_per_hour", question(), searchContext());
+    // "Et ensuite ?" starts from where the run ended (its own origin below): never from the position option.
+    const built = tradeBuildRequest(
+      "profit_per_hour",
+      Object.assign({}, question(), { fromHere: false }),
+      searchContext(),
+    );
     // No automatic search on a hold nobody confirmed: unknown, or a fleet ship's hold (weak). The flown ship, the last
     // complete run, the habit and what the player picked or typed may search by themselves, with the source on the card.
     if (!built.ok || built.cargoSource === "inconnue" || built.cargoSource === "flotte") return;
@@ -2060,6 +2528,13 @@ export function tradeActionsPanel(doc: any, L: any): any {
       return;
     }
     const m = tradeCardModel(L, o, objective);
+    const op = tradeOpeningModel(L, o);
+    show(c.opening, !!op);
+    setText(c.opStep1, op ? op.step1 : "");
+    setText(c.opStep2, op ? op.step2 : "");
+    setText(c.opCompare, op ? op.compare : "");
+    setText(c.opCaution, op ? op.caution : "");
+    setAttr(c.opening, "data-step1", op && op.hasStep1 ? "1" : "0");
     setAttr(c.root, "data-hero", hero ? "1" : "0");
     setAttr(c.root, "data-estimate", o.estimate ? "1" : "0");
     setText(c.rank, rank);
@@ -2117,6 +2592,18 @@ export function tradeActionsPanel(doc: any, L: any): any {
 
   function footNotes(res: any): string[] {
     const out: string[] = [];
+    // From a position: where the plans start, from which source and how old, and what is not computed in this mode.
+    if (res.position) {
+      const ago = res.position.source === "journal" ? tradeAgoFine(res.position.at, H.now) : "";
+      out.push(
+        "Départ : " +
+          res.position.label +
+          (res.position.source === "journal"
+            ? " (d’après le journal du jeu" + (ago ? ", " + ago : "") + ")"
+            : " (indiqué par toi ou pris dans ton plan)") +
+          ". Le jeu ne donne pas ta position en direct. Les chaînes A → B → C ne sont pas calculées depuis une position.",
+      );
+    }
     const total = res.counts.reported + res.counts.estimate + res.counts.unverified;
     if (total > 0 && res.counts.reported === 0) {
       out.push(
@@ -2213,6 +2700,38 @@ export function tradeActionsPanel(doc: any, L: any): any {
     setText(cargoNote, note);
   }
 
+  /** The sentence under "Partir de ma position", the note of "Départ" and its suggestions. */
+  function paintPosition(now: number) {
+    const choice = positionNow(!S.fromHere);
+    setText(
+      posNote,
+      S.fromHere
+        ? tradePositionText(choice, now)
+        : "Cherche les routes depuis là où tu es, avec un premier trajet rentable sur le chemin. " +
+            (choice.source === "aucune"
+              ? "Aucune position récente connue."
+              : "Position connue : " + choice.label + ".") +
+            " Rien n’est supposé tant que la case n’est pas cochée.",
+    );
+    setText(
+      originNote,
+      S.fromHere
+        ? "Ta position de départ (elle l’emporte sur le journal du jeu)."
+        : "Où la route commence (elle y charge). Pour partir de TA position, coche « Partir de ma position ».",
+    );
+    const places = tradeKnownPlaces({ plan: H.plan, result: S.result });
+    const key = places.join("|");
+    if (key !== placesKey) {
+      placesKey = key;
+      placesList.textContent = "";
+      for (let i = 0; i < places.length; i++) {
+        const o = el("option", "", "");
+        o.setAttribute("value", places[i]);
+        add(placesList, o);
+      }
+    }
+  }
+
   function paint() {
     const enabled = !!H.enabled;
     const full = !!H.fullscreen;
@@ -2258,6 +2777,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
     // (full screen): the compact view asks the server nothing.
     if (full) ensureHolds();
     paintHold(now);
+    paintPosition(now);
 
     // The objective buttons.
     for (let i = 0; i < objButtons.length; i++) {
@@ -2417,6 +2937,12 @@ export const TRADE_ACTIONS_VIEW_FUNCTIONS = [
   tradeInputProblem,
   tradeErrorText,
   tradeCleanHolds,
+  tradeCleanOpening,
+  tradeAgoFine,
+  tradePositionChoice,
+  tradePositionText,
+  tradeKnownPlaces,
+  tradeOpeningModel,
   tradeAgoText,
   tradeHoldChoices,
   tradeHoldLabel,
@@ -2431,6 +2957,7 @@ export const TRADE_ACTIONS_VIEW_FUNCTIONS = [
   tradeSafeName,
   tradeRecipeArgs,
   tradeRecipeText,
+  tradePositionSentence,
   tradeAgentMessage,
   tradeNextWanted,
   tradeActionsPanel,

@@ -68,6 +68,44 @@ versions follow [Semantic Versioning](https://semver.org/).
   plan sized from the balance the outlay is left out of the block.
 - **Tool surface:** no tool name or input schema changed (the golden file is untouched); the new fields are only in the answer of the dashboard's app-only tool.
 
+### Added (dashboard: "Partir de ma position" in "Trouver une route")
+- **Marc's request:** plan FROM where the player is, with a first trade on the way to the start of the profitable route ("we
+  optimise all the trips, even for 50 000 aUEC: autoload, no hauling labour"). A box under "Affiner", **off by default** (the
+  game logs no live position: a stale or wrong place must never constrain a search without the player's say). Ticked, each
+  card says **Étape 1** (an opening trade from your place to the terminal where the route loads, or an empty flight when
+  nothing pays), **Étape 2** (the route), and compares honestly: the first cycle (the way to the route included) per hour
+  with step 1, against the SAME route reached empty, then the route alone. The planner scores every route and every start
+  of it (a round trip from either end), sizes step 1 by the hold and the budget, and checks its goods for player reports.
+  In the model step 1 costs no extra time (one stop where the flight leaves either way; loading time is not modelled), so it
+  adds its own profit and the ranking decides which route to go for. All of it is an estimate and says so; open chains A → B → C
+  are not computed in this mode; "Appliquer comme plan" still sets the plan only on the click.
+- **Where you are, never invented.** The game has no live position, so only three labelled sources exist, each with its age: what
+  you typed in "Départ", the newest PUBLIC place the game log named (an inventory request: "dernier lieu qu'il cite"), and the
+  end of the last complete run when the plan in force was in force DURING that run (a plan applied afterwards for the next trip
+  names where you are going, not where you are, and is never used). The place is the named city, station or outpost: its own
+  terminals are "here", the other places of the same orbit are a short hop away and can carry a step 1. A place older than two hours is "trop ancien" and never used; with none the
+  page asks (and "Départ" suggests the places it knows). A place the log names through a hangar, apartment or home (it can carry a
+  player's name) is dropped by the same filter as the ship-loss place token, and the token never leaves the server: the page gets
+  words and a time, and names the source (`position: "journal"`), never a token. A place UEX cannot name (unknown, ambiguous,
+  without orbit) is refused with a sentence. "Et ensuite ?" keeps its own origin.
+- **After the audit of this change.** An orbit-level token ("OOC_Stanton_1_Hurston", a moon) is the whole orbit, labelled with the
+  orbit's own name, and the most specific segment wins ("Lorville_Hurston" is Lorville); the game's camel-case and digit names
+  ("NewBabbage", "Area18") resolve. The plan applied from a position card remembers its step-1 goods (`preamble`), so the opening
+  run does not make the plan look already used. Every route and every start is scored (not the global top N), the same route from
+  its two ends is listed once, and an option with a step 1 carries that step's evidence too (a route with reported prices and an
+  estimate-only step 1 is an estimate). A private newest place ships its time only and makes every older source stale; the server
+  applies the same two-hour limit as the page. "tu es déjà à X" became "la route commence à X (ta position indiquée)"; UEX's name
+  replaces the raw words once resolved; an automatic search that finds no position opens nothing.
+- **The agent's recipe.** "Demander à l'agent" on a card reached from a position writes the planet UEX puts the place on as
+  `origin_planet_name` in the `uex_plan_trade(...)` call (the model-facing tool has no position argument) and says in the message
+  that the plan started from the player's last indicated place, from which source and how old, and that the call reproduces only the
+  planet of departure, not step 1 nor the first-cycle ranking.
+- **Tool surface:** `sc_trade_suggest` `search` gains `position` (enum `journal`) and `position_text` (at most 80 characters),
+  exclusive with `origin` and with each other; the answer gains `position` and, per option, `opening`. The golden file and
+  `docs/TOOLS.md` were regenerated. No host, no new GET, no stored file; same throttle and guard.
+- **Page size:** 433.8 kB on the merged tree, under the unchanged 440 kB guardrail (`check:page-size` and the built
+  `pageBudget` test both pass); nothing was removed to fit it.
+
 ### Added (a Sessions view: the dedicated tab, with archive and delete per session)
 - **Marc's request:** "on a session line I must be able to click delete, archive, etc., and see the stats when I select it ...
   not many sessions inline, and a dedicated tab for the sessions view."

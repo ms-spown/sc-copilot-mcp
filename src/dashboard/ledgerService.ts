@@ -7,6 +7,7 @@ import {
   type Transaction,
 } from "../providers/gamelog/trade.js";
 import type { GameLog } from "../providers/gamelog/reader.js";
+import { publicPlaceToken } from "../providers/gamelog/shipLossParse.js";
 import {
   buildShipLosses,
   tidyShipRecords,
@@ -34,6 +35,13 @@ import type { MovementEvent } from "./balanceMovements.js";
  * - Reads are asynchronous and lock-free (the file is opened read-only). Nothing is written, nothing leaves the
  *   process. Parsing is synchronous work, proportional to what was read.
  */
+
+/**
+ * The newest place the log named: a public one (token for the server, words for a View) or a private one (a hangar, an apartment,
+ * a home: only the time, so that every older source can be told stale).
+ */
+export type LastPlace =
+  { token: string; words: string; at: string } | { private: true; at: string };
 
 /** Minimum time between two looks at the log file. */
 export const LEDGER_REFRESH_MS = 5000;
@@ -214,6 +222,33 @@ export class LedgerService {
   trades(): readonly Transaction[] | undefined {
     if (!this.source || !this.source.configured) return undefined;
     return this.current.status === "ok" ? this.journal : undefined;
+  }
+
+  /**
+   * The newest place the game logged for an inventory request (`RequestLocationInventory`), with its own time, or undefined.
+   * Only a PUBLIC place token counts (publicPlaceToken: the game's own place families, no hangar, apartment, home, habitat or
+   * room segment): an inventory can be requested for a place named after a player, and that is never a position. It is the
+   * last place the log named, NOT a live position (the game logs none): the caller says so and shows its age. The token
+   * stays on the server; `words` is what a View may show.
+   */
+  lastPlace(): LastPlace | undefined {
+    if (!this.source || !this.source.configured || this.current.status !== "ok") return undefined;
+    for (let i = this.commerce.length - 1; i >= 0; i--) {
+      const r = this.commerce[i]!;
+      if (r.kind !== "location") continue;
+      if (!Number.isFinite(Date.parse(r.time))) return undefined;
+      // The newest record decides: if it is private, an older public one is NOT used (the player has moved since). Only its
+      // TIME is shipped ({ private: true, at }): nothing of the token, and every other source older than it is stale.
+      const token = publicPlaceToken(r.token);
+      if (!token) return { private: true, at: new Date(Date.parse(r.time)).toISOString() };
+      const words = token
+        .split("_")
+        .filter((s) => s !== "" && !/^(OOC|PU|RS)$/i.test(s))
+        .join(" ")
+        .slice(0, 60);
+      return { token, words, at: new Date(Date.parse(r.time)).toISOString() };
+    }
+    return undefined;
   }
 
   /**

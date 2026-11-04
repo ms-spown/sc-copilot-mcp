@@ -384,10 +384,28 @@ export function tradePlanAttached(L: any, plan: any, run: any, planAt: any, runs
   if (typeof planAt === "number" && Number.isFinite(first)) {
     if (first < planAt) return no("plan reçu après le premier achat, non rattaché");
     const list = Array.isArray(runs) ? runs : [];
+    // A plan reached "from my position" carries the goods of its opening trade (`preamble`, step 1): the run of that trade is
+    // the plan's own preface, not a use of it. It is skipped when its goods (if the journal names them) are the opening goods
+    // and it sold at the plan's buying terminal (where step 1 ends and the route begins).
+    const pre = typeof plan.preamble === "string" ? plan.preamble.toLowerCase() : "";
+    const isPreface = (other: any): boolean => {
+      if (!pre) return false;
+      const sellShop = other.sell_shops && other.sell_shops.length > 0 ? other.sell_shops[0] : null;
+      if (!sellShop || tradeShopContradicts(L, plan.buy_terminal, sellShop)) return false;
+      const g = tradeRunNamed(other).toLowerCase();
+      return !g || g.indexOf(pre) === 0 || pre.indexOf(g) === 0;
+    };
+    let prefaces = 0;
     for (const other of list) {
       const at = other && other !== run && other.id !== run.id ? Date.parse(other.started_at) : NaN;
-      if (Number.isFinite(at) && at >= planAt && at < first)
+      if (Number.isFinite(at) && at >= planAt && at < first) {
+        // One run only: a second run in between is a real use of the plan.
+        if (prefaces === 0 && isPreface(other)) {
+          prefaces = 1;
+          continue;
+        }
         return no("plan déjà utilisé par un trajet précédent, non rattaché");
+      }
     }
   }
   return { ok: true, note: "" };
