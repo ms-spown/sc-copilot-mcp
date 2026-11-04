@@ -206,9 +206,14 @@ const oldest = (ages: (number | null)[]): number | null => {
 /** "8" or "2,5": minutes without a useless decimal. */
 const minutes = (n: number): string => fmtNum(n, Number.isInteger(n) ? 0 : 1);
 
-/** "Aller", "Retour", "Trajet 1"... : empty for a single leg. */
+/**
+ * "Aller", "Retour", "Trajet 1"... : empty for a single leg. From a position ("Partir de ma position") the opening trade is one more
+ * leg, "Étape 1", and the route's own legs are named so the two are never mixed ("Route" for a single leg).
+ */
 function legName(o: TripOption, i: number): string {
-  if (o.legs.length < 2) return "";
+  const step = o.opening?.step1 ?? null;
+  if (step && i === o.legs.length) return "Étape 1";
+  if (o.legs.length < 2) return step ? "Route" : "";
   if (o.mode === "round_trip") return i === 0 ? "Aller" : "Retour";
   return `Trajet ${i + 1}`;
 }
@@ -238,6 +243,12 @@ function trialOf(o: TripOption, ctx: ReliabilityContext): TrialTrip | null {
   lines.push(
     `Gain estimé pour cette quantité : environ ${fmtNum(profit)}\u00a0aUEC (estimation : prix UEX multipliés par la quantité, sans effet de tes achats ni de tes ventes sur le prix).`,
   );
+  // From a position: the test is the ROUTE's. Step 1 (the opening trade) stays a separate leg, at its own quantity and prices.
+  if (o.opening?.step1) {
+    lines.push(
+      "Ce test porte sur la route. L’étape 1 reste un trajet à part, avec sa propre quantité et ses propres prix : fais-la comme tu l’entends, ou rejoins le départ à vide.",
+    );
+  }
   lines.push(
     "Avant d’acheter, regarde au terminal le prix et le stock réels. Au retour, note le prix de vente réel et la durée réelle du cycle, puis augmente la quantité seulement ensuite.",
   );
@@ -249,7 +260,11 @@ function trialOf(o: TripOption, ctx: ReliabilityContext): TrialTrip | null {
  * `better_than_first` is left to the caller, who knows the other options.
  */
 export function assessReliability(o: TripOption, ctx: ReliabilityContext): Reliability {
-  const ends = endsOf(o.legs);
+  // The prices the option rests on: the route's and, from a position, its opening trade's (step 1 is a leg of its own: it is
+  // never the "test run", but its prices are evidence like the others and are read, reasoned and dated the same way).
+  const stepLeg = o.opening?.step1 ?? null;
+  const legsAll: readonly LegView[] = stepLeg ? [...o.legs, stepLeg] : o.legs;
+  const ends = endsOf(legsAll);
   const level = levelOf(ends);
   const found: ReliabilityReason[] = [];
   const add = (code: ReasonCode, text: string, source: string) =>
@@ -280,7 +295,7 @@ export function assessReliability(o: TripOption, ctx: ReliabilityContext): Relia
     );
   }
 
-  o.legs.forEach((l, i) => {
+  legsAll.forEach((l, i) => {
     const name = legName(o, i);
     const sell = ends[i * 2 + 1];
     const buy = ends[i * 2];
@@ -412,7 +427,7 @@ export function assessReliability(o: TripOption, ctx: ReliabilityContext): Relia
   const reasons = merged.slice(0, MAX_REASONS);
   const others = merged.slice(MAX_REASONS).map((r) => WHY[r.code]);
   // Market facts that were not read (a failed read, the cap on extra reads): said, so that no silence reads as reassurance.
-  if (o.legs.some((l) => !l.market)) others.push("marché non lu");
+  if (legsAll.some((l) => !l.market)) others.push("marché non lu");
   // What sits under the big figure: the top reason, in a few words. "Aucun relevé" only when EVERY price is at 0.
   const top = reasons[0]?.code;
   const why =

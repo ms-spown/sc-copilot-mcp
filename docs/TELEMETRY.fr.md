@@ -942,6 +942,10 @@ aucune recherche n'est lancée.
   comme un usage du plan. Une fois qu'une recherche a traduit les mots du journal en lieu UEX, le nom UEX est affiché. Les
   noms sont comparés avec les espaces que les jetons du jeu omettent rouverts (« NewBabbage », « Area18 ») ; un nom de
   niveau orbite (une lune, une planète) est l'orbite entière, étiquetée du nom de l'orbite.
+  Le bloc « Fiabilité » d'une telle carte compte les prix de l'étape 1 avec ceux de la route (le niveau, les raisons, les âges ;
+  une étape 1 sans relevé de joueur rend « partiellement relevée » une route relevée), nomme ses raisons « Étape 1 » et celles
+  de la route « Route », et le « premier trajet de test » est celui de la ROUTE : l'étape 1 reste un trajet à part, avec sa
+  propre quantité et ses propres prix (la carte le dit).
   Le lieu est la ville, la station ou l'avant-poste nommé : ses propres terminaux sont « ici » (ils portent l'étape 1, et
   une route qui y charge n'a pas d'étape 1), et les autres lieux de la même orbite UEX (Everus Harbor à côté de Lorville)
   sont à un court saut, qui peut porter une étape 1 (les distances sont à l'échelle de l'orbite). Un nom qui est celui de

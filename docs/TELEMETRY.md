@@ -886,6 +886,9 @@ searches again by itself after a short quiet time; before the first click no sea
   preface and does not count as a use of the plan. Once a search has resolved the log's words to a UEX place, UEX's name is
   shown. Names are matched with the spaces the game's tokens leave out opened ("NewBabbage", "Area18"); an orbit-level name
   (a moon, a planet) is the whole orbit and is labelled with the orbit's own name.
+  The "Fiabilité" block of such a card counts step 1's prices with the route's (the level, the reasons, the ages; a step 1 with
+  no player report makes a reported route "partially reported"), names its reasons "Étape 1" and the route's own "Route", and the
+  "premier trajet de test" is the ROUTE's: step 1 stays a separate leg with its own quantity and prices (the card says so).
   The place is the named city, station or outpost: its own terminals are "here" (they carry step 1, and a route that loads
   there has no step 1), and the other places of the same UEX orbit (Everus Harbor next to Lorville) are a short hop away,
   which can carry a step 1 (distances are orbit-level). A name that is the orbit's own (a moon, a planet) is the whole

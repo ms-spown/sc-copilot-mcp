@@ -1254,13 +1254,19 @@ async function fuelBlock(client: HttpClient, now: number): Promise<TripPlanResul
 export function forModelTool(result: TripPlanResult): TripPlanResult {
   const without = (value: object, key: string): Record<string, unknown> =>
     Object.fromEntries(Object.entries(value).filter(([k]) => k !== key));
-  const strip = (o: TripOption): TripOption => ({
-    ...o,
-    legs: o.legs.map((l) => ({
+  const lean = (l: LegView): LegView =>
+    ({
       ...without(l, "market"),
       from: without(l.from, "body"),
       to: without(l.to, "body"),
-    })) as unknown as LegView[],
+    }) as unknown as LegView;
+  const strip = (o: TripOption): TripOption => ({
+    ...o,
+    legs: o.legs.map(lean),
+    // From a position (never asked through the model tool, but never leaked either): the opening step is a leg like the others.
+    ...(o.opening
+      ? { opening: { ...o.opening, step1: o.opening.step1 ? lean(o.opening.step1) : null } }
+      : {}),
   });
   return { ...result, options: result.options.map(strip), chains: result.chains.map(strip) };
 }

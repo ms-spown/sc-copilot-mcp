@@ -96,6 +96,10 @@ versions follow [Semantic Versioning](https://semver.org/).
   estimate-only step 1 is an estimate). A private newest place ships its time only and makes every older source stale; the server
   applies the same two-hour limit as the page. "tu es déjà à X" became "la route commence à X (ta position indiquée)"; UEX's name
   replaces the raw words once resolved; an automatic search that finds no position opens nothing.
+- **With the route reliability block.** A card reached from a position keeps its "Fiabilité" block: step 1's prices count with the
+  route's (level, reasons, ages; one wording, in `routeReliability.ts`), its reasons are named "Étape 1" and the route's "Route", and
+  the "premier trajet de test" is the route's (step 1 stays a separate leg, the card says so). `forModelTool` still strips `market`
+  and `body`, on the opening step too.
 - **The agent's recipe.** "Demander à l'agent" on a card reached from a position writes the planet UEX puts the place on as
   `origin_planet_name` in the `uex_plan_trade(...)` call (the model-facing tool has no position argument) and says in the message
   that the plan started from the player's last indicated place, from which source and how old, and that the call reproduces only the

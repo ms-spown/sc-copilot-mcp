@@ -187,6 +187,15 @@ describe("Feature: from a fresh place, the search starts there and the card says
     expect(t).not.toContain("Chaînes A → B → C, sans retour");
   });
 
+  it("Given a card reached from a position, Then it keeps its 'Fiabilité' block (the level) next to its step 1 / step 2 block", async () => {
+    const w = await form({ placeAge: 12 * MIN });
+    await tick(w);
+    await click(w);
+    const t = text(w);
+    expect(t).toContain("Étape 1 · depuis Lorville");
+    expect(t).toContain("Fiabilité : ");
+  });
+
   it("Given the three kinds of option, Then each card says what it is: an opening trade, an empty flight, already there", async () => {
     const w = await form({ placeAge: 12 * MIN });
     await tick(w);
