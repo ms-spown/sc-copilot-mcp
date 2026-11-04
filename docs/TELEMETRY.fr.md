@@ -284,7 +284,7 @@ Ce que devient chaque champ du flux. `poll.` est la réponse de `sc_live_poll` (
 | `sc_live_events` | quand `SC_TELEMETRY=on` | Les événements dérivés récents, chacun marqué `confirmed` ou `unverified` |
 | `sc_live_dashboard` | quand `SC_TELEMETRY=on` et que le client sait afficher des Views | Ouvre le [tableau de bord en direct](#tableau-de-bord-en-direct) dans la conversation |
 | `sc_live_poll`, `sc_live_mark` | idem | Utilisés par le tableau de bord lui-même pour se rafraîchir et poser des repères de session. Claude a pour consigne de ne pas les appeler |
-| `sc_trade_suggest` | idem | Utilisé seulement par les boutons de commerce du tableau de bord ([barre d'actions](#actions-de-commerce--trouver-la-prochaine-route)) : le planificateur de commerce derrière un limiteur de débit. Claude a pour consigne de ne pas l'appeler ; il utilise `uex_plan_trade` |
+| `sc_trade_suggest` | idem | Utilisé seulement par les boutons de commerce du tableau de bord ([barre d'actions](#actions-de-commerce--trouver-la-prochaine-route)) : le planificateur de commerce, ou une relecture des prix pour le plan en cours ([vérification avant le départ](#avant-de-partir--la-vérification-du-plan-et-le-prix-qui-a-bougé)), derrière un limiteur de débit. Claude a pour consigne de ne pas l'appeler ; il utilise `uex_plan_trade` |
 
 États : `off` (interrupteur serveur non défini), `waiting` (pas de télémétrie pour l'instant : normal dans les menus, pendant un chargement, avant l'apparition du personnage, ou si le jeu a été lancé sans le réglage côté jeu ; ce serveur ne peut pas savoir si le jeu tourne), `game_without_telemetry` (le
 jeu tourne, `Game.log` n'a pas de ligne d'enregistrement : relancez le launcher), `connected` (la session HTTP/2 avec le jeu est ouverte, pas encore
@@ -750,6 +750,75 @@ calme ; avant le premier clic, rien n'est demandé.
 - **Non vérifié.** La limite de temps de l'hôte pour un appel d'outil (la page attend 32 s), le comportement des
   boutons dans Claude Desktop et la qualité de l'heuristique face à la piraterie réelle.
 
+#### Avant de partir : la vérification du plan, et le prix qui a bougé
+
+Un plan est une estimation faite plus tôt à partir de prix collectés par les joueurs. Deux choses disent au joueur s'il
+tient encore.
+
+**La vérification avant le départ.** Sur un plan (une route appliquée depuis la barre, ou un plan passé par Claude), le
+bloc « Avant de partir » a un bouton *Vérifier avant de partir*. Il appelle le même outil réservé à la View, action
+`preflight`, sans argument : le serveur vérifie le plan QU'IL tient (la View ne peut pas désigner un plan), et la réponse
+répète les noms et les prix unitaires du plan pour que la page n'affiche un verdict que pour le plan de sa carte. Le serveur
+relit les lignes UEX ACTUELLES de la marchandise du plan à ses deux terminaux avec UNE SEULE requête
+`GET /commodities_prices?commodity_name=...` (celle de `uex_get_commodity_prices`, donc le cache est partagé ; un garde
+refuse une quatrième requête ; aucun nouvel hôte, jamais de POST). Les lignes sont filtrées localement sur le nom exact de
+la marchandise et les noms exacts des terminaux (un nom que deux terminaux partagent est « ambigu », jamais deviné).
+
+| Verdict | Quand |
+| --- | --- |
+| **✓ Toujours valable** | Les deux étapes trouvées, prix actuels, lignes récentes, marge en baisse de moins de 15 % |
+| **⚠ À surveiller** | Marge en baisse de 15 % à 30 % ; ou une ligne relevée il y a plus de 7 jours (ou sans date) ; ou un stock bas ou presque saturé ; ou un mouvement favorable de 30 % ou plus (un relevé faux est aussi probable qu'une bonne surprise) |
+| **✕ Dérivé** | Marge en baisse de 30 % ou plus, ou qui n'est plus positive ; ou rien à acheter (rupture), plus de demande, ou plus de prix du tout à un terminal |
+| **? Impossible de vérifier** | UEX injoignable, copie ancienne du cache (jamais utilisée comme verdict), marchandise ou terminaux du plan introuvables, plan sans les deux terminaux et les deux prix unitaires. Jamais vert |
+
+Les seuils sont des CHOIX, pas des mesures (`PREFLIGHT_WATCH_MARGIN_LOSS` 0,15, `PREFLIGHT_DRIFTED_MARGIN_LOSS` 0,30,
+`PREFLIGHT_STALE_MS` 7 jours dans `src/providers/uex/preflight.ts`) ; ils sont envoyés avec chaque réponse et affichés sur
+la carte. La marge est la marge prévue par SCU (prix de vente moins prix d'achat) ; l'effet d'une étape est son mouvement
+de prix défavorable (un prix d'achat qui monte, un prix de vente qui baisse) rapporté à cette marge. Le verdict global est
+le pire des étapes et de la marge (dérivé, puis inconnu, puis à surveiller, puis valable). Chaque étape montre le prix du
+plan face au prix actuel et le pourcentage, l'âge de la ligne UEX, le nombre de relevés de joueurs (
+`estimation UEX · aucun relevé de joueur` quand UEX en compte 0 ; un compte absent est « inconnu », jamais 0), l'état du stock ou de la
+demande de la même ligne, et la suite à donner : *Tu peux partir*, *Vérifie au terminal avant d'acheter* (*Prix périmé :
+...* pour une ligne périmée), *Relance la recherche*, *Réessaie dans un instant*. La réponse ne contient que des prix
+unitaires, des marges par SCU et des pourcentages : ni quantité, ni total, ni profit ; un plan dimensionné par le solde et
+un plan tapé à la main ont donc la même forme et rien ne dépend de l'affichage du solde. Les phrases sont écrites par le
+serveur (`src/dashboard/preflightText.ts`, à partir de codes et de nombres, aucune phrase ne contient de nom) parce que la
+page a un budget de taille ; la page les nettoie et les borne à nouveau, les pose avec `textContent`, refuse un verdict
+vert qu'aucune étape ne soutient, et ignore une réponse faite pour un autre plan. *Demander à l'agent* poste un texte fixe
+(noms réduits à des lettres, chiffres et quelques signes, entre guillemets comme données UEX, prix unitaires, verdict, « Ne
+lis pas mon solde »). Même limitation de débit que la recherche (voir Limite de débit) : une vérification identique est
+servie depuis la mémoire de 2 minutes, des vérifications identiques simultanées partagent une lecture, une nouvelle lecture
+UEX démarre au plus toutes les 8 secondes pour toutes les Views et jamais pendant une recherche (et inversement) ; un échec
+compte dans l'intervalle et n'est pas gardé.
+
+Ce qu'elle ne voit pas : un prix que personne n'a relevé depuis le plan paraît « inchangé » même si le prix réel du
+terminal a beaucoup bougé, et le cache garde les lignes d'UEX jusqu'à 5 minutes. C'est pourquoi l'âge, le nombre de relevés
+et l'état du stock font partie du verdict, pourquoi la carte dit « le prix affiché au terminal prévaut », et pourquoi,
+après un refus au terminal (paragraphe suivant), une vérification faite AVANT le refus est contredite par une ligne qui
+demande de contrôler le prix sur place.
+
+**Le prix a bougé au terminal.** Le jeu refuse un achat ou une vente dont le prix affiché n'est plus celui du terminal
+(`TransactionCostMismatch`). Le journal de commerce (`providers/gamelog/trade.ts`) liste déjà une telle transaction comme
+échouée avec cette raison ; rien n'est analysé une seconde fois (`providers/gamelog/priceRefusals.ts` ne fait que lire le
+journal). Une ligne d'erreur qui suit plusieurs requêtes du même côté ne peut pas être attribuée à l'une d'elles : elle est
+comptée UNE fois, comme un événement ambigu (« une des transactions envoyées à ce moment a été refusée »). Chaque
+événement est une heure, un côté (achat ou vente), un genre (cargaison ou objet de boutique) et le degré de certitude du
+journal : aucun montant, aucune boutique, aucun objet, aucun identifiant ; il part donc avec ou sans le solde
+(`trade.price_refusals`, les 3 plus récents, aussi sur le canal entre Views, reconstruits champ par champ à la
+réception). Le tableau de bord affiche, pendant 10 minutes, « Le prix a changé pendant l'achat (ou la vente) :
+transaction refusée, le prix affiché n'est plus valable », avec l'heure et le temps écoulé, sur la carte de commerce et en
+une ligne dans la petite vue ; pour une cargaison il suggère de revérifier le plan (le bouton est mis en avant ; rien n'est
+demandé tout seul). La session les compte : `price_refusals` (additif, optionnel, le fichier reste en version 2 et les
+anciens fichiers se lisent à 0 ; un repère d'horodatage rend le comptage idempotent) dans le résumé de session,
+`sc_session_current`, `sc_session_list` et `sc_session_stats` (un total et par session ; c'est un nombre, donc non retenu
+sans `include_balance`).
+
+Mesuré sur les 95 journaux de l'installation de référence (mars 2025 à novembre 2026, lecture seule, comptes et durées
+uniquement) : 81 requêtes de cargaison (39 achats, 42 ventes) et 183 requêtes de boutique ; `TransactionCostMismatch`
+est apparu deux fois (un achat de cargaison, un achat en boutique), 162 et 247 ms après la requête, deux jours différents,
+tous deux rattachés à leur requête par le journal (échoué, confirmé). Trop peu de cas pour donner un taux. Non vérifié :
+le comportement en session réelle, et ce que fait le jeu du prix affiché après un refus.
+
 ## Sessions enregistrées
 
 Le tableau de bord fonctionne **par session**, et une session est enregistrée. Une session est une période de jeu :
@@ -846,7 +915,7 @@ minutes de temps actif), meilleur trajet, et efficacité face au plan quand Clau
 Entre sessions : totaux, moyenne par heure, tendance (les dernières sessions face aux précédentes, seuil de 10 %),
 meilleure et moins bonne session, meilleurs trajets et marchandises quand ils sont connus. Un chiffre qu'on ne peut pas
 établir vaut `null`, jamais zéro. Ce sont tous des mesures brutes : le solde bouge aussi avec les achats, les amendes
-et les réparations.
+et les réparations. Chaque session compte aussi les transactions que le jeu a refusées parce que le prix avait bougé (`price_refusals`, un nombre : ce n'est pas un montant en aUEC, il est donc donné sans `include_balance` ; voir [la vérification avant le départ](#avant-de-partir--la-vérification-du-plan-et-le-prix-qui-a-bougé)).
 
 ### Fiabilité des routes (calibration)
 

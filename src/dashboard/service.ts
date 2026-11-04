@@ -79,6 +79,11 @@ export class DashboardService {
     this.cache.clear();
   }
 
+  /** The plan in force (memory only): the pre-flight check reads its names and unit prices, nothing else. */
+  currentPlan(): PlanForLedger | undefined {
+    return this.plan;
+  }
+
   /** The answer for one View: the shared answer, cut to what that View still needs. */
   async poll(request: PollRequest): Promise<PollResult> {
     return tailorPoll(await this.shared(request.includeBalance), request);

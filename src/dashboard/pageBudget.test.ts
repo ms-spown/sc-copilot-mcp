@@ -10,7 +10,8 @@ import { compact, dashboardHtml, viewScript } from "./page.js";
 // functions that hold a template literal, kept), NOT what ships: the built page is smaller since page.ts drops the
 // indentation (about 331 kB). The real budget is `npm run check:page-size`, which measures `dashboardHtml()` from the
 // built dist and runs in CI after the build.
-const BUDGET_BYTES = 380_000;
+// 380 kB -> 395 kB with the pre-flight block (about 15 kB of source as vitest sees it, comments included).
+const BUDGET_BYTES = 395_000;
 
 describe("Feature: the generated page stays within its size budget", () => {
   it("Given function sources, Then compact drops the indentation, and leaves alone a function that holds a template literal", () => {

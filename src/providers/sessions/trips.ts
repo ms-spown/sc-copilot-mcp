@@ -14,6 +14,7 @@ import {
   type TradeRunView,
 } from "../../dashboard/tradeRun.js";
 import type { Transaction } from "../gamelog/trade.js";
+import { priceRefusalsOf, type PriceRefusal } from "../gamelog/priceRefusals.js";
 import type { BalancePoint } from "../telemetry/service.js";
 import type { TripInput } from "./types.js";
 
@@ -38,6 +39,8 @@ export interface TripCollection {
   trips: TripInput[];
   /** Trade runs a plan could be tied to, by trip key: how far each is from it (the closest one takes the plan). */
   plan_distance?: Record<string, number>;
+  /** The game's refusals for a moved price (a time, a side, a kind: no amount), oldest first. */
+  price_refusals?: PriceRefusal[];
   /** The last place and goods the log named, and when (estimate: the last step the log counted as done). */
   context: { location: string | null; commodity: string | null; at: string | null } | null;
 }
@@ -206,7 +209,12 @@ export class TradeRunTripSource implements TripSource {
         ...planFacts(link !== null ? plan : undefined),
       });
     }
-    return { trips, context: null, plan_distance: distance };
+    return {
+      trips,
+      context: null,
+      plan_distance: distance,
+      price_refusals: priceRefusalsOf(tx),
+    };
   }
 }
 
@@ -293,6 +301,7 @@ export class CompositeTripSource implements TripSource {
       context: parts.map((p) => p.context).find((c) => c !== null) ?? null,
       // Without this the manager sees no distance and the OLDEST candidate wins instead of the closest.
       plan_distance: Object.assign({}, ...parts.map((p) => p.plan_distance ?? {})),
+      price_refusals: parts.flatMap((p) => p.price_refusals ?? []),
     };
   }
 }

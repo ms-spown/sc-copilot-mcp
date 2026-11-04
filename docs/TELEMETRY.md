@@ -280,7 +280,7 @@ What becomes of every field of the stream. `poll.` is the answer of `sc_live_pol
 | `sc_live_events` | when `SC_TELEMETRY=on` | Recent derived events, each marked `confirmed` or `unverified` |
 | `sc_live_dashboard` | when `SC_TELEMETRY=on` and the client can show Views | Opens the [live dashboard](#live-dashboard) in the conversation |
 | `sc_live_poll`, `sc_live_mark` | same | Used by the dashboard itself to refresh and to set session markers. Claude is told not to call them |
-| `sc_trade_suggest` | same | Used by the dashboard's commerce buttons only (the [action bar](#trade-actions-find-the-next-route)): the trade planner behind a throttle. Claude is told not to call it; it uses `uex_plan_trade` |
+| `sc_trade_suggest` | same | Used by the dashboard's commerce buttons only (the [action bar](#trade-actions-find-the-next-route) and the [pre-flight check](#before-leaving-the-pre-flight-check-and-the-price-that-moved)): the trade planner, or one price re-read for the plan in force, behind a throttle. Claude is told not to call it; it uses `uex_plan_trade` |
 
 States: `off` (server switch not set), `waiting` (no telemetry for now: normal in menus, during loading, before the
 character has appeared, or if the game was started without the game-side setting; this server cannot tell whether
@@ -713,6 +713,68 @@ nothing is asked.
 - **Not verified.** The host's own time limit for a tool call (the page waits 32 s), the behaviour of the buttons in
   Claude Desktop, and the quality of the heuristic against real piracy.
 
+#### Before leaving: the pre-flight check, and the price that moved
+
+A plan is a guess made earlier from crowdsourced prices. Two things tell the player whether it still holds.
+
+**The pre-flight check.** On a plan (a route applied from the bar, or one Claude passed), the block "Avant de partir" has a
+button *Vérifier avant de partir*. It calls the same app-only tool, action `preflight`, with no argument: the server checks
+the plan IT holds (the View cannot name a plan), and the answer repeats the plan's names and unit prices so that the page
+shows a verdict only for the plan on its card. The server re-reads the CURRENT UEX rows of the plan's goods at its two
+terminals with ONE `GET /commodities_prices?commodity_name=...` (the request `uex_get_commodity_prices` makes, so the cache
+is shared; a hard guard refuses a fourth request; no new host, never a POST). Rows are filtered locally to the exact goods
+name and the exact terminal names (a name two terminals share is "ambigu", never guessed).
+
+| Verdict | When |
+| --- | --- |
+| **✓ Toujours valable** | Both legs found, current prices, fresh rows, margin down by less than 15 % |
+| **⚠ À surveiller** | Margin down by 15 % to 30 %; or a row last reported more than 7 days ago (or undated); or a low or saturating stock; or a favourable move of 30 % or more (a wrong report is as likely as a good surprise) |
+| **✕ Dérivé** | Margin down by 30 % or more, or no longer positive; or nothing to buy (out of stock), no demand, or no price any more at a terminal |
+| **? Impossible de vérifier** | UEX unreachable, a stale copy of the cache (never used as a verdict), goods or plan terminals not found, a plan without both terminals and both unit prices. Never green |
+
+The thresholds are CHOICES, not measures (`PREFLIGHT_WATCH_MARGIN_LOSS` 0.15, `PREFLIGHT_DRIFTED_MARGIN_LOSS` 0.30,
+`PREFLIGHT_STALE_MS` 7 days in `src/providers/uex/preflight.ts`); they are sent with every answer and shown on the card.
+The margin is the planned per-SCU margin (sell price minus buy price); each leg's effect is its adverse price move (a buy
+price that rose, a sell price that fell) over that margin. The overall verdict is the worst of the legs and the margin
+(drifted, then unknown, then watch, then valid). Each leg shows the plan's price against the current one and the
+percentage, the age of UEX's row, the number of player reports (`estimation UEX · aucun relevé de joueur` when UEX counts
+0; a missing count is "inconnu", never 0), the stock or demand status of the same row, and the next action: *Tu peux
+partir*, *Vérifie au terminal avant d'acheter* (*Prix périmé : ...* for a stale row), *Relance la recherche*, *Réessaie
+dans un instant*. The answer holds unit prices, per-SCU margins and percentages only: no quantity, no total, no profit, so
+a plan sized from the balance and a typed plan give the same shape and nothing depends on whether the balance is shown.
+The sentences are written by the server (`src/dashboard/preflightText.ts`, from codes and numbers, no sentence holds a
+name) because the page has a size budget; the page cleans and caps them again, sets them with `textContent`, refuses a
+green verdict that no leg backs, and ignores an answer made for another plan. *Demander à l'agent* posts a fixed text
+(names reduced to letters, digits and a few signs and quoted as UEX data, unit prices, the verdict, "Ne lis pas mon
+solde"). Same throttle as the search (see Rate limit): an identical check is answered from the 2-minute memory, identical
+simultaneous checks share one read, a new UEX read starts at most every 8 seconds for all Views and never while a search
+runs (and the other way round); a failure counts toward the interval and is not kept.
+
+What it cannot see: a price nobody re-reported since the plan looks "unchanged" however far the kiosk's real price has
+moved, and the cache keeps UEX's rows up to 5 minutes. That is why the age, the number of reports and the stock status are
+part of the verdict, why the card says "le prix affiché au terminal prévaut", and why, after a refusal at the kiosk (next
+paragraph), a check made BEFORE the refusal is overruled by a line telling the player to check the price on the spot.
+
+**The price moved at the kiosk.** The game refuses a purchase or a sale whose displayed price is no longer the kiosk's
+(`TransactionCostMismatch`). The trade journal (`providers/gamelog/trade.ts`) already lists such a transaction as failed
+with that reason; nothing is parsed a second time (`providers/gamelog/priceRefusals.ts` only reads the journal). An error
+line that follows several same-side requests cannot be attributed to one of them: it is counted ONCE, as an ambiguous
+event ("une des transactions envoyées à ce moment a été refusée"). Each event is a time, a side (buy or sell), a kind
+(cargo or shop item) and how sure the journal is: no amount, no shop, no item, no identifier, so it is sent with or without
+the balance (`trade.price_refusals`, the newest 3, also on the channel between Views, rebuilt field by field on reception).
+The dashboard shows, for 10 minutes, "Le prix a changé pendant l'achat (ou la vente) : transaction refusée, le prix
+affiché n'est plus valable", with the time and how long ago, on the commerce card, and as one line in the small view; for a
+cargo trade it suggests checking the plan again (the button is highlighted; nothing is asked by itself). The session
+counts them: `price_refusals` (additive, optional, the file stays version 2 and older files read as 0; a watermark makes
+the count idempotent) in the session summary, `sc_session_current`, `sc_session_list` and `sc_session_stats` (a total and
+per session, a count, so not withheld without `include_balance`).
+
+Measured on the reference install's 95 logs (March 2025 to November 2026, read-only, counts and timings only): 81 cargo
+requests (39 purchases, 42 sales) and 183 shop requests; `TransactionCostMismatch` appeared twice (one cargo purchase,
+one shop purchase), 162 and 247 ms after the request, on two different days, both attributed to their request by the
+journal (failed, confirmed). Too few cases to give a rate. Not verified: the behaviour in a live session, and what the game
+does with the price shown after a refusal.
+
 ## Saved sessions
 
 The dashboard works **by session**, and a session is saved. A session is a play period: when it began, the balance at
@@ -801,7 +863,7 @@ balance change that overlapped a cargo run is left out so that the run's sales a
 time), best trip, and efficiency against the plan when Claude passed one with the dashboard. Across sessions: totals,
 average per hour, trend (the last sessions against the ones before, 10 percent threshold), best and worst session, best
 routes and goods when known. A figure that cannot be worked out is `null`, never zero. All of them are raw measures: the
-balance also moves with purchases, fines and repairs.
+balance also moves with purchases, fines and repairs. Each session also counts the transactions the game refused because the price moved (`price_refusals`, a count: it is not an aUEC figure, so it is given without `include_balance`; see [the pre-flight check](#before-leaving-the-pre-flight-check-and-the-price-that-moved)).
 
 ### Route reliability (calibration)
 

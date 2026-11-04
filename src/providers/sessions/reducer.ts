@@ -51,6 +51,8 @@ export interface Observation {
   connection: { state: string; since: string | null } | null;
   game: { version: string | null; channel: "live" | "ptu" | "unknown" } | null;
   trips: readonly TripInput[];
+  /** The game's refusals for a moved price, as the trade journal lists them (providers/gamelog/priceRefusals.ts). */
+  priceRefusals?: readonly { at: string }[];
   context: { location: string | null; commodity: string | null; at: string | null } | null;
 }
 
@@ -102,6 +104,8 @@ function create(
     last_commodity: null,
     last_context_at: null,
     note: "",
+    price_refusals: 0,
+    price_refusal_last_at: null,
     updated_at: stamp,
   };
   state.next_number += 1;
@@ -197,6 +201,30 @@ function mergeTrips(state: StoreState, cur: Session, inputs: readonly TripInput[
     }
   }
   return changed;
+}
+
+/**
+ * Adds the refusals that are NEWER than the session's watermark and inside the session. Idempotent: the same list
+ * applied again (a second look, another server process) adds nothing. The list is bounded by the journal, so the count only
+ * ever grows (it is not recomputed from a list that rolls over).
+ */
+function countRefusals(cur: Session, list: readonly { at: string }[] | undefined): boolean {
+  if (!list || list.length === 0) return false;
+  const from = ms(cur.started_at) - 2000;
+  const to = cur.ended_at === null ? Infinity : ms(cur.ended_at) + 60_000;
+  const mark = cur.price_refusal_last_at === null ? -Infinity : ms(cur.price_refusal_last_at);
+  let added = 0;
+  let newest = mark;
+  for (const r of list) {
+    const at = Date.parse(r.at);
+    if (!Number.isFinite(at) || at < from || at > to || at <= mark) continue;
+    added += 1;
+    newest = Math.max(newest, at);
+  }
+  if (added === 0) return false;
+  cur.price_refusals = (cur.price_refusals ?? 0) + added;
+  cur.price_refusal_last_at = iso(newest);
+  return true;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -343,6 +371,7 @@ export function observe(state: StoreState, obs: Observation, cfg: ReduceConfig):
     changed = true;
     if (action === "none") action = "trips";
   }
+  if (countRefusals(cur, obs.priceRefusals)) changed = true;
   if (changed) cur.updated_at = iso(now);
   return { changed, current: cur, action };
 }

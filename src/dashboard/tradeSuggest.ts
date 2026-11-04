@@ -10,7 +10,15 @@ import type {
   TripRequest,
 } from "../providers/uex/tripPlanner.js";
 import { TripPlanError } from "../providers/uex/tripPlanner.js";
+import {
+  planIdentity,
+  unknownPreflight,
+  type PreflightPlan,
+  type PreflightPlanEcho,
+  type PreflightResult,
+} from "../providers/uex/preflight.js";
 import { parsePlan, type Plan } from "./plan.js";
+import { describePreflight } from "./preflightText.js";
 
 /**
  * The server side of the commerce action bar: `sc_trade_suggest`, an app-only tool the View calls without the model.
@@ -31,6 +39,11 @@ import { parsePlan, type Plan } from "./plan.js";
  *  - APPLY: "apply as plan" is an action on the same tool, by the id of an option this server produced. The plan is
  *    built here from the option, cleaned by `parsePlan`, and stored with `setPlan` so the commerce card's planned
  *    figures follow. The View can never send plan text.
+ *
+ *  - PRE-FLIGHT: "preflight" re-reads the CURRENT UEX prices of the plan the server holds (the one the card follows) and
+ *    answers whether it still holds (providers/uex/preflight.ts). It takes no plan text and no quantity from the View, uses
+ *    and returns nothing derived from the balance (unit prices and per-SCU margins only), and shares the planner's throttle:
+ *    a check and a search never run at once, and a new UEX read starts at most once per interval for everybody.
  *
  * No network, no clock and no planner are imported here: all are injected (tests use fakes; nothing here opens a socket).
  */
@@ -90,7 +103,14 @@ const applySchema = z
   })
   .strict();
 
-export const suggestInputSchema = z.discriminatedUnion("action", [searchSchema, applySchema]);
+/** No argument: the plan checked is the one this server holds, never one the View describes. */
+const preflightSchema = z.object({ action: z.literal("preflight") }).strict();
+
+export const suggestInputSchema = z.discriminatedUnion("action", [
+  searchSchema,
+  applySchema,
+  preflightSchema,
+]);
 export type SuggestInput = z.infer<typeof suggestInputSchema>;
 type SearchInput = z.infer<typeof searchSchema>;
 
@@ -204,7 +224,8 @@ export interface SuggestApplied {
   private: boolean;
 }
 
-export type SuggestAnswer = SuggestOk | SuggestThrottled | SuggestError | SuggestApplied;
+export type SuggestAnswer =
+  SuggestOk | SuggestThrottled | SuggestError | SuggestApplied | PreflightResult;
 
 // -------------------------------------------------------------------------------------------------
 // Injected parts
@@ -229,6 +250,13 @@ export interface SuggestDeps {
    * private and the balance is not shown.
    */
   applyPlan: (plan: Plan, info: { private: boolean; withBalance: boolean }) => void;
+  /**
+   * The plan the dashboard holds (the commerce card's). The pre-flight check reads it here: the View never names it.
+   * Only names and unit prices are used.
+   */
+  currentPlan?: () => PreflightPlan | undefined;
+  /** Reads UEX and judges the plan (providers/uex/preflight.ts runPreflight with the client bound). Must not throw. */
+  preflight?: (plan: PreflightPlanEcho) => Promise<PreflightResult>;
   now?: () => number;
   minIntervalMs?: number;
   cacheTtlMs?: number;
@@ -260,6 +288,11 @@ interface CacheEntry {
   ok: SuggestOk;
 }
 
+interface PreflightEntry {
+  at: number;
+  result: PreflightResult;
+}
+
 interface StoredPlan {
   plan: Plan;
   priv: boolean;
@@ -270,6 +303,8 @@ export class TradeSuggestService {
   private readonly cache = new Map<string, CacheEntry>();
   private readonly inFlight = new Map<string, Promise<SuggestAnswer>>();
   private readonly plans = new Map<string, StoredPlan>();
+  /** Pre-flight answers by plan identity (bounded, memory only, same lifetime as the search cache). */
+  private readonly preflights = new Map<string, PreflightEntry>();
   /** Runs an "Et ensuite ?" suggestion was already computed for (bounded, memory only). */
   private readonly nextRuns = new Set<string>();
   private lastStartAt = Number.NEGATIVE_INFINITY;
@@ -289,6 +324,7 @@ export class TradeSuggestService {
   async handle(input: SuggestInput): Promise<SuggestAnswer> {
     this.prune();
     if (input.action === "apply") return this.apply(input.id, input.with_balance === true);
+    if (input.action === "preflight") return this.preflight();
     return this.search(input);
   }
 
@@ -305,6 +341,61 @@ export class TradeSuggestService {
     if (!held) return { v: 1, state: "error", code: "expired" };
     this.deps.applyPlan(held.plan, { private: held.priv, withBalance });
     return { v: 1, state: "applied", plan: held.plan, private: held.priv };
+  }
+
+  /**
+   * The pre-flight check of the plan in force. A plan the check cannot use (none, no terminals, no unit prices) is answered
+   * at once and costs nothing. Otherwise, in order: the short memory; a check already running is joined; at most one new
+   * UEX read per interval, none while a search runs (a state, not an error). A failed read counts toward the interval and
+   * is never kept.
+   */
+  private preflight(): Promise<SuggestAnswer> | SuggestAnswer {
+    const held = this.deps.currentPlan?.();
+    if (!held) return describePreflight(unknownPreflight("no_plan", null));
+    const echo = planIdentity(held);
+    if (!echo || !this.deps.preflight)
+      return describePreflight(unknownPreflight("plan_incomplete", null));
+    const key =
+      "preflight|" + JSON.stringify(Object.values(echo).map((v) => String(v).toLowerCase()));
+    const t = this.now();
+    const kept = this.preflights.get(key);
+    if (kept && t - kept.at >= 0 && t - kept.at < this.ttl) {
+      return { ...kept.result, cached: true, age_s: Math.round((t - kept.at) / 1000) };
+    }
+    if (kept) this.preflights.delete(key);
+    const running = this.inFlight.get(key);
+    if (running) return running;
+    const sinceStart = t - this.lastStartAt;
+    const busy = this.inFlight.size > 0;
+    if (busy || (sinceStart >= 0 && sinceStart < this.minInterval)) {
+      const wait = Math.ceil((this.minInterval - Math.max(0, sinceStart)) / 1000);
+      return { v: 1, state: "throttled", retry_after_s: Math.max(busy ? 3 : 1, wait) };
+    }
+    this.lastStartAt = t;
+    const check = this.deps.preflight;
+    const job: Promise<SuggestAnswer> = Promise.resolve()
+      .then(() => check(echo))
+      .then((raw) => {
+        const result = describePreflight(raw);
+        // Only a real verdict is kept: "impossible de vérifier" (UEX down, a stale copy) is asked again.
+        if (result.verdict !== "unknown") this.rememberPreflight(key, result, this.now());
+        return result;
+      })
+      .catch((error: unknown) => failure(error))
+      .finally(() => {
+        this.inFlight.delete(key);
+      });
+    this.inFlight.set(key, job);
+    return job;
+  }
+
+  private rememberPreflight(key: string, result: PreflightResult, at: number): void {
+    this.preflights.set(key, { at, result });
+    while (this.preflights.size > MAX_CACHE_ENTRIES) {
+      const oldest = this.preflights.keys().next().value;
+      if (oldest === undefined) break;
+      this.preflights.delete(oldest);
+    }
   }
 
   private markNext(runId: string | undefined): void {

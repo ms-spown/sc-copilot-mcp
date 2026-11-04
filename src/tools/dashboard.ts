@@ -17,6 +17,7 @@ import type { HttpClient } from "../core/http.js";
 import { loadPlaces } from "../providers/uex/places.js";
 import { fetchShipSheet } from "../providers/uex/shipSheet.js";
 import { planTrips, type TripPlanResult, type TripRequest } from "../providers/uex/tripPlanner.js";
+import { runPreflight } from "../providers/uex/preflight.js";
 import {
   failure,
   resolveOriginHint,
@@ -176,6 +177,15 @@ export function dashboardTools(
     applyPlan: (plan, info) => {
       service.setPlan(plan);
       if (!info.private || info.withBalance) sessions?.setPlan(plan);
+    },
+    // The pre-flight check reads the plan the card follows (server state) and re-reads its prices at UEX (one GET).
+    currentPlan: () => service.currentPlan(),
+    preflight: async (plan) => {
+      if (!uexClient) throw new Error("UEX is not available.");
+      return runPreflight(
+        { client: uexClient, ...(overrides.now ? { now: overrides.now } : {}) },
+        plan,
+      );
     },
     ...(overrides.now ? { now: overrides.now } : {}),
     ...(overrides.minIntervalMs !== undefined ? { minIntervalMs: overrides.minIntervalMs } : {}),
@@ -364,14 +374,15 @@ export function dashboardTools(
     {
       name: "sc_trade_suggest",
       description:
-        "For the dashboard View only, not for the model: ranks trade routes for the commerce card's buttons (most profitable per hour, fastest, safest by a heuristic, or best per trip) with the UEX trade planner, or applies one of the options it returned as the dashboard's plan (action apply, by id). Answers at most 5 options and 3 chains, throttled (one new planner run per 8 seconds, identical requests served from a short cache), never the player's balance. Use uex_plan_trade instead.",
+        "For the dashboard View only, not for the model: ranks trade routes for the commerce card's buttons (most profitable per hour, fastest, safest by a heuristic, or best per trip) with the UEX trade planner, or applies one of the options it returned as the dashboard's plan (action apply, by id), or checks before departure whether the plan in force still holds (action preflight: re-reads the current UEX prices of its goods at its two terminals, one request, no argument, unit prices and per-SCU margins only). Answers at most 5 options and 3 chains, throttled (one new planner run or price check per 8 seconds, identical requests served from a short cache), never the player's balance. Use uex_plan_trade instead.",
       inputSchema: {
         type: "object",
         properties: {
           action: {
             type: "string",
-            enum: ["search", "apply"],
-            description: "search for routes, or apply an option of a previous answer as the plan.",
+            enum: ["search", "apply", "preflight"],
+            description:
+              "search for routes, apply an option of a previous answer as the plan, or check that the plan in force still holds (preflight, no other argument).",
           },
           objective: {
             type: "string",

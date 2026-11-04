@@ -13,6 +13,8 @@ import { SPECS_VIEW_FUNCTIONS } from "./specsView.js";
 import { SPECS_CSS } from "./specsStyles.js";
 import { TRADE_ACTIONS_VIEW_FUNCTIONS } from "./tradeActions.js";
 import { TRADE_ACTIONS_CSS } from "./tradeActionsStyles.js";
+import { TRADE_PREFLIGHT_VIEW_FUNCTIONS } from "./tradePreflight.js";
+import { TRADE_PREFLIGHT_CSS } from "./tradePreflightStyles.js";
 import { TRADE_VIEW_FUNCTIONS } from "./tradePanel.js";
 import { TRADE_CSS } from "./tradeStyles.js";
 import { VIEW_FUNCTIONS } from "./viewLogic.js";
@@ -45,6 +47,7 @@ export function viewScript(): string {
     ...LEDGER_VIEW_FUNCTIONS,
     ...TRADE_VIEW_FUNCTIONS,
     ...TRADE_ACTIONS_VIEW_FUNCTIONS,
+    ...TRADE_PREFLIGHT_VIEW_FUNCTIONS,
     ...SESSION_VIEW_FUNCTIONS,
     ...MOVEMENTS_VIEW_FUNCTIONS,
     ...CALIBRATION_VIEW_FUNCTIONS,
@@ -76,7 +79,7 @@ export function dashboardHtml(): string {
     '<meta name="color-scheme" content="light dark">',
     `<meta http-equiv="Content-Security-Policy" content="${CSP}">`,
     "<title>Tableau de bord en direct</title>",
-    `<style>${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}${TRADE_CSS}${TRADE_ACTIONS_CSS}${SESSION_CSS}${MOVEMENTS_CSS}${HEALTH_CSS}${CALIBRATION_CSS}</style>`,
+    `<style>${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}${TRADE_CSS}${TRADE_ACTIONS_CSS}${TRADE_PREFLIGHT_CSS}${SESSION_CSS}${MOVEMENTS_CSS}${HEALTH_CSS}${CALIBRATION_CSS}</style>`,
     "</head>",
     "<body>",
     '<div id="app" data-stream="init" data-mode="inline" data-grey="1"></div>',

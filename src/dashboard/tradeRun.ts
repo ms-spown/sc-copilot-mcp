@@ -1,6 +1,7 @@
 import { cleanLabel } from "../core/untrusted.js";
 import type { BalancePoint } from "../providers/telemetry/service.js";
 import { pairCargoRuns, type Transaction } from "../providers/gamelog/trade.js";
+import { priceRefusalsOf, type PriceRefusal } from "../providers/gamelog/priceRefusals.js";
 import type { RunDecomposition } from "./balanceMovements.js";
 
 /**
@@ -43,6 +44,8 @@ export type TradeSource = () => readonly Transaction[] | undefined;
 export const TRADE_MAX_TRANSACTIONS = 400;
 /** Runs returned in the payload (newest first). */
 export const TRADE_MAX_RUNS = 4;
+/** Price refusals (the game refused a transaction because the price moved) returned in the payload, newest last. */
+export const TRADE_MAX_REFUSALS = 3;
 /** Labels (commodity, shop) taken from the log. */
 export const TRADE_LABEL_MAX = 60;
 /** More than this between two transactions: another run. */
@@ -257,6 +260,11 @@ export interface TradeSection {
   runs: TradeRunView[];
   /** Runs found before the payload kept the newest ones. */
   runs_total: number;
+  /**
+   * Transactions the game refused because the price moved (TransactionCostMismatch), newest last. A time, a side and a
+   * kind: NO amount, so they are sent with or without the balance. Absent when there is none.
+   */
+  price_refusals?: PriceRefusal[];
 }
 
 export const EMPTY_TRADE: TradeSection = { v: 1, source: "none", runs: [], runs_total: 0 };
@@ -957,5 +965,12 @@ export function buildTradeSection(input: TradeInput): TradeSection {
   }
   const views = runs.map((f, i) => viewOf(f, prep, moneys[i]));
   const newest = views.slice(-TRADE_MAX_RUNS).reverse();
-  return { v: 1, source: "journal", runs: newest, runs_total: views.length };
+  const refusals = priceRefusalsOf(input.transactions).slice(-TRADE_MAX_REFUSALS);
+  return {
+    v: 1,
+    source: "journal",
+    runs: newest,
+    runs_total: views.length,
+    ...(refusals.length > 0 ? { price_refusals: refusals } : {}),
+  };
 }
