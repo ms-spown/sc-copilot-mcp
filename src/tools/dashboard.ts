@@ -23,6 +23,10 @@ import { sessionsSwitchedOff } from "../providers/sessions/config.js";
 import { logConfigFacts } from "../dashboard/health.js";
 import { ShipSpecsResolver } from "../dashboard/specs.js";
 import type { HttpClient } from "../core/http.js";
+import { fetchWithCache } from "../core/cache.js";
+import { buildKnownHolds, HOLDS_MAX_TRIPS, type KnownHold } from "../dashboard/holds.js";
+import type { VehicleRow } from "../providers/fleet/resolve.js";
+import type { FleetStore } from "../providers/fleet/store.js";
 import { loadPlaces } from "../providers/uex/places.js";
 import { fetchShipSheet } from "../providers/uex/shipSheet.js";
 import { planTrips, type TripPlanResult, type TripRequest } from "../providers/uex/tripPlanner.js";
@@ -103,6 +107,7 @@ export interface DashboardOverrides {
 }
 
 const SHIP_MEMO_MS = 10 * 60_000;
+const HOLDS_MEMO_MS = 15_000;
 
 export function dashboardTools(
   {
@@ -113,6 +118,7 @@ export function dashboardTools(
     gameLog,
     sessions,
     balance,
+    fleet,
   }: {
     telemetry?: Telemetry;
     scwClient?: HttpClient;
@@ -121,6 +127,8 @@ export function dashboardTools(
     gameLog?: GameLog;
     sessions?: SessionManager;
     balance?: BalancePolicy;
+    /** The player's fleet file (names only): offered as hold sizes when UEX gives the ship a hold. */
+    fleet?: FleetStore;
   },
   overrides: DashboardOverrides = {},
 ): ToolDefinition[] {
@@ -186,7 +194,45 @@ export function dashboardTools(
     shipMemo.set(name, { at: Date.now(), ship: lookup });
     return lookup;
   };
+  // The hold sizes the form offers (dashboard/holds.ts): recent trade trips of the saved sessions, ships of the fleet file
+  // with the hold UEX gives them. Local reads plus UEX's public ship list: a live GET /vehicles when the 5-minute memory
+  // cache is cold (the first full-screen opening, before any click); a failure just leaves the names out.
+  // Remembered for a few seconds: N Views asking at once make one read. A failure of any part leaves that part out.
+  let holdsMemo: { at: number; list: Promise<KnownHold[]> } | null = null;
+  const knownHolds = (): Promise<KnownHold[]> => {
+    const nowMs = (overrides.now ?? Date.now)();
+    if (holdsMemo && nowMs - holdsMemo.at >= 0 && nowMs - holdsMemo.at < HOLDS_MEMO_MS) {
+      return holdsMemo.list;
+    }
+    const list = (async (): Promise<KnownHold[]> => {
+      const trips = await (sessions?.tradeTripSizes(HOLDS_MAX_TRIPS) ?? Promise.resolve([])).catch(
+        () => [],
+      );
+      const fleetNames = fleet
+        ? await fleet
+            .list()
+            .then((ships) => ships.map((s) => s.name))
+            .catch(() => [])
+        : [];
+      // UEX's ship list is only needed to give a size a ship's name or to read the fleet's holds.
+      let vehicles: VehicleRow[] | null = null;
+      if (uexClient && trips.length + fleetNames.length > 0) {
+        try {
+          // record:false, like the ship sheet lookups of the poll: an app-only read must not write into a provenance.
+          const rows = (await fetchWithCache(uexClient, "/vehicles", undefined, { record: false }))
+            .data?.data;
+          vehicles = Array.isArray(rows) ? (rows as VehicleRow[]) : null;
+        } catch {
+          vehicles = null;
+        }
+      }
+      return buildKnownHolds({ trips, fleet: fleetNames, vehicles, nowMs });
+    })().catch(() => []);
+    holdsMemo = { at: nowMs, list };
+    return list;
+  };
   const suggestions = new TradeSuggestService({
+    holds: knownHolds,
     plan:
       overrides.plan ??
       ((req) => {
@@ -463,15 +509,15 @@ export function dashboardTools(
     {
       name: "sc_trade_suggest",
       description:
-        "For the dashboard View only, not for the model: ranks trade routes for the commerce card's buttons (most profitable per hour, fastest, safest by a heuristic, or best per trip) with the UEX trade planner, or applies one of the options it returned as the dashboard's plan (action apply, by id), or checks before departure whether the plan in force still holds (action preflight: re-reads the current UEX prices of its goods at its two terminals, two cached GETs, no argument, unit prices and per-SCU margins only). Answers at most 5 options and 3 chains, throttled (one new planner run or price check per 8 seconds, identical requests served from a short cache), never the player's balance. Use uex_plan_trade instead.",
+        "For the dashboard View only, not for the model: ranks trade routes for the commerce card's buttons (most profitable per hour, fastest, safest by a heuristic, or best per trip) with the UEX trade planner, or applies one of the options it returned as the dashboard's plan (action apply, by id), or checks before departure whether the plan in force still holds (action preflight: re-reads the current UEX prices of its goods at its two terminals, two cached GETs, no argument, unit prices and per-SCU margins only), or lists the hold sizes known for the player for the form's Soute list (action holds: quantities of his recent saved trade runs and the holds of his fleet-file ships, from local files, and, when there is something to name, UEX's public ship list, which may be fetched once (kept 5 minutes) when the full screen opens, before any click; no planner run, no throttle slot, no amount). Answers at most 5 options and 3 chains, throttled (one new planner run or price check per 8 seconds, identical requests served from a short cache), never the player's balance. Use uex_plan_trade instead.",
       inputSchema: {
         type: "object",
         properties: {
           action: {
             type: "string",
-            enum: ["search", "apply", "preflight"],
+            enum: ["search", "apply", "preflight", "holds"],
             description:
-              "search for routes, apply an option of a previous answer as the plan, or check that the plan in force still holds (preflight, no other argument).",
+              "search for routes, apply an option of a previous answer as the plan, check that the plan in force still holds (preflight, no other argument), or list the hold sizes known for the player (holds, no other argument).",
           },
           objective: {
             type: "string",

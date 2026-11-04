@@ -382,7 +382,12 @@ describe("Feature: the tool, as the registry lists and runs it", () => {
     );
     const registry = asView(createRegistry(tools));
     const listed: any = registry.list({ ui: true }).find((t) => t.name === "sc_trade_suggest");
-    expect(listed.inputSchema.properties.action.enum).toEqual(["search", "apply", "preflight"]);
+    expect(listed.inputSchema.properties.action.enum).toEqual([
+      "search",
+      "apply",
+      "preflight",
+      "holds",
+    ]);
     expect(registry.list({ ui: false }).map((t) => t.name)).not.toContain("sc_trade_suggest");
 
     // No plan yet.

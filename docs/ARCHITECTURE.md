@@ -79,7 +79,8 @@ The session file is the only place a derived balance is written. Frames and raw 
 and that talks to the host with JSON-RPC over `postMessage` (hand-written, no package). The page calls tools
 that only it may call (`visibility: ["app"]`): `sc_live_poll` (state, events, session counters as
 `structuredContent`), `sc_live_mark` (session markers, in memory), `sc_trade_suggest` (the commerce action bar: the
-trade planner behind a throttle and a short cache, see `src/dashboard/tradeSuggest.ts`) and `sc_session_export` (the
+trade planner behind a throttle and a short cache, see `src/dashboard/tradeSuggest.ts`; its `holds` action lists the
+hold sizes known for the player, see `src/dashboard/holds.ts`) and `sc_session_export` (the
 session report, when sessions are on).
 
 - **Conditional surface.** `ToolDefinition.requiresUi` and `registry.list(context)`: the dashboard tools are listed only

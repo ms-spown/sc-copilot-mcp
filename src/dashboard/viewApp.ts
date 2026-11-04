@@ -1931,6 +1931,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
         specs && specs.status === "ready" && typeof specs.cargo_scu === "number"
           ? specs.cargo_scu
           : null,
+      // The wiki's name of the flown ship (a text the bar cleans again), for the label of its hold in the list.
+      sheetName:
+        specs && specs.status === "ready" && typeof specs.name === "string" ? specs.name : null,
       trade,
       calibration,
       plan: view.plan,

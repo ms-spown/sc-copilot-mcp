@@ -783,7 +783,10 @@ same thing. Each figure now has one meaning:
 
 The bar asks the server, with no help from the model, for the routes that fit what the player wants. It is the
 `uex_plan_trade` planner behind an app-only tool (`sc_trade_suggest`, `visibility: ["app"]`, listed only with
-telemetry on and a client that shows Views). Nothing is asked until a click.
+telemetry on and a client that shows Views). No route is asked for before a click. The one thing read earlier is the list of
+known hold sizes (below), once the bar is on screen in full screen: local files, and, when there is a saved size or a fleet
+ship to name, UEX's public ship list, which the server may fetch once (cached 5 minutes) when the full screen opens. No
+planner runs.
 
 | Button | What it asks | Order of the cards |
 | --- | --- | --- |
@@ -795,10 +798,40 @@ telemetry on and a client that shows Views). Nothing is asked until a click.
 Under "Affiner" (folded): *Éviter Pyro*, *Zones d'armistice seulement* (UEX's armistice flag; unknown counts as no),
 *Relevés de joueurs exigés* (`min_reports` 1: keeps only options with a player report at every end), *Aller-retour
 seulement* (hides the open A>B>C chains; it is not `max_legs`: that one needs an origin and returns one-way routes
-only), a budget (a number: `250000`, `2,5M`), the hold in SCU (prefilled from the ship sheet, with its source shown),
-an origin (a terminal, planet or system name, resolved by the server), and *Proposer la suite à la fin d'un trajet*.
-Once a search exists, changing an option searches again by itself after a short quiet time; before the first click
-nothing is asked.
+only), a budget (a number: `250000`, `2,5M`), the hold (a list, see below), an origin (a terminal, planet or system
+name, resolved by the server), and *Proposer la suite à la fin d'un trajet*. Once a search exists, changing an option
+searches again by itself after a short quiet time; before the first click no search is made.
+
+- **The hold ("Soute (SCU)").** A real list, not a blank field, with a default already chosen so a click on a button
+  searches at once, without opening "Affiner". The default is taken from what the server already knows, in this order,
+  and its source is always written under the list:
+  1. the **flown ship's hold** (its wiki sheet; not sent, the server uses the ship's own and says so);
+  2. the **last run**: the newest COMPLETE run of the trade journal being read (or of the saved sessions) when it ended
+     less than 3 days ago ("D'après ton dernier trajet : 696 SCU transportés"). A run under way or partial is listed
+     ("trajet en cours", "trajet partiel") but is never the default nor part of the habit: a first lot of 120 SCU is not
+     the hold of a 696 SCU ship;
+  3. otherwise the size **most used by the complete trade runs** (the newest of a tie), said to be a habit (the age is
+     given when it is a single run);
+  4. otherwise the **only hold of the fleet file** (`sc_fleet_add`), flagged as weak (nothing says it is used);
+  5. otherwise nothing: the list holds only "Choisis ta soute…" and "Autre taille…", and the status asks.
+
+  The list offers each known size once: the flown ship, the recent runs ("696 SCU · dernier trajet il y a 2 j", "120 SCU ·
+  3 trajets, le dernier il y a 5 j") and the fleet ships ("Name · 3 200 SCU · dans ta flotte"), then **Autre taille…**,
+  which shows a labelled number field. What the player picks or types wins over the flown ship and the default, and the
+  note under the results says where the hold came from ("choisie dans ta liste", "d'après ton dernier trajet", "saisie").
+  Two things are NOT claimed. A **run's SCU is the quantity moved, not the capacity**: it can only be at most the hold, so
+  the wording is "transportés", and it says the hold may be larger. And **the game log does not name the ship of a run**
+  (the cargo kiosk line only carries an entity id, which this project never keeps), so a run never gets a ship name from
+  history. A name next to a size means one of three things, and the label says which: the flown ship; a ship of the
+  fleet file; or "même taille que le X" when X is the one ship UEX gives exactly that hold (a statement about the size,
+  not proof that X was used). There is no list of "typical" haulers: nothing known means the player picks "Autre
+  taille…". The sizes come from the app-only action `holds` of `sc_trade_suggest` (saved trade runs, the fleet file, and
+  UEX's public ship list for the fleet's holds and the unique-size names: the server may fetch it once, cached 5 minutes,
+  when the full screen opens, before any click and outside the planner's throttle; no planner run, no amount sent); the
+  choice itself stays in the page's memory. The note under the results says where the hold came from, and a fleet-file
+  hold is called "non vérifiée" there. "Et ensuite ?" searches by itself with the flown ship's hold, the last complete
+  run, the habit or a size the player picked or typed, and shows the source on its card; it does not search by itself on
+  a fleet-file hold or when no hold is known. A typed size is cut at 100 000 SCU and its spaces ("4 608") are ignored.
 
 - **Measured, estimated, heuristic.** Prices are UEX's, crowdsourced; today almost every option is tagged
   *estimation UEX · aucun relevé de joueur* (UEX counts no player report for a price), and the bar says so and offers

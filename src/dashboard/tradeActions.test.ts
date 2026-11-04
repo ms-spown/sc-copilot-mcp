@@ -302,7 +302,8 @@ describe("Feature: 'Et ensuite ?' is triggered once per completed run", () => {
 
 describe("Feature: errors are said in plain French", () => {
   it("Given each code, Then a sentence tells what to do", () => {
-    expect(tradeErrorText({ code: "no_cargo" })).toContain("taille de ta soute");
+    expect(tradeErrorText({ code: "no_cargo" })).toContain("Je ne connais pas ta soute");
+    expect(tradeErrorText({ code: "no_cargo" })).toContain("Autre taille");
     expect(tradeErrorText({ code: "bad_origin", detail: "No UEX terminal matches" })).toContain(
       "introuvable",
     );

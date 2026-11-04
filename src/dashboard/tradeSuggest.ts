@@ -18,6 +18,7 @@ import {
   type PreflightPlanEcho,
   type PreflightResult,
 } from "../providers/uex/preflight.js";
+import type { KnownHold } from "./holds.js";
 import { parsePlan, type Plan } from "./plan.js";
 import { describePreflight } from "./preflightText.js";
 
@@ -45,6 +46,11 @@ import { describePreflight } from "./preflightText.js";
  *    answers whether it still holds (providers/uex/preflight.ts). It takes no plan text and no quantity from the View, uses
  *    and returns nothing derived from the balance (unit prices and per-SCU margins only), and shares the planner's throttle:
  *    a check and a search never run at once, and a new UEX read starts at most once per interval for everybody.
+ *
+ *  - HOLDS: "holds" lists the hold sizes known for the player (recent trade trips of the saved sessions, ships of his fleet
+ *    file) for the form's "Soute" list. Local reads plus, when there is something to name, UEX's public ship list (which may
+ *    be fetched once, cached 5 minutes, when the full screen opens). No argument, no planner run, no throttle slot, no balance; a size is
+ *    a quantity moved or a fleet ship's hold, never a claim about the ship flown (dashboard/holds.ts says how it is worded).
  *
  * No network, no clock and no planner are imported here: all are injected (tests use fakes; nothing here opens a socket).
  */
@@ -107,10 +113,14 @@ const applySchema = z
 /** No argument: the plan checked is the one this server holds, never one the View describes. */
 const preflightSchema = z.object({ action: z.literal("preflight") }).strict();
 
+/** No argument: the hold sizes this server knows for the player (saved trade trips, fleet file). Never a planner run. */
+const holdsSchema = z.object({ action: z.literal("holds") }).strict();
+
 export const suggestInputSchema = z.discriminatedUnion("action", [
   searchSchema,
   applySchema,
   preflightSchema,
+  holdsSchema,
 ]);
 export type SuggestInput = z.infer<typeof suggestInputSchema>;
 type SearchInput = z.infer<typeof searchSchema>;
@@ -225,8 +235,18 @@ export interface SuggestApplied {
   private: boolean;
 }
 
+/**
+ * The hold sizes known for the player (dashboard/holds.ts), newest first. A size is a quantity moved by recent runs or a
+ * fleet ship's hold: never a claim about the ship flown now. No amount of any kind.
+ */
+export interface SuggestHolds {
+  v: 1;
+  state: "holds";
+  holds: KnownHold[];
+}
+
 export type SuggestAnswer =
-  SuggestOk | SuggestThrottled | SuggestError | SuggestApplied | PreflightResult;
+  SuggestOk | SuggestThrottled | SuggestError | SuggestApplied | SuggestHolds | PreflightResult;
 
 // -------------------------------------------------------------------------------------------------
 // Injected parts
@@ -263,6 +283,11 @@ export interface SuggestDeps {
   currentPlanIds?: () => PreflightIds | undefined;
   /** Reads UEX and judges the plan (providers/uex/preflight.ts runPreflight with the client bound). Must not throw. */
   preflight?: (plan: PreflightPlanEcho, ids?: PreflightIds) => Promise<PreflightResult>;
+  /**
+   * The hold sizes of the player's recent trade trips and fleet (dashboard/holds.ts). Must not throw (a failure is an
+   * empty list). Absent: nothing is known.
+   */
+  holds?: () => Promise<KnownHold[]>;
   now?: () => number;
   minIntervalMs?: number;
   cacheTtlMs?: number;
@@ -333,7 +358,18 @@ export class TradeSuggestService {
     this.prune();
     if (input.action === "apply") return this.apply(input.id, input.with_balance === true);
     if (input.action === "preflight") return this.preflight();
+    if (input.action === "holds") return this.holds();
     return this.search(input);
+  }
+
+  /**
+   * The known hold sizes: saved sessions, the fleet file and UEX's public ship list (a live GET when its 5-minute memory is
+   * cold: this is asked when the full screen opens, before any click). It takes no slot of the planner's throttle and never
+   * waits for a search. Never throws.
+   */
+  private async holds(): Promise<SuggestAnswer> {
+    const list = await (this.deps.holds?.() ?? Promise.resolve([])).catch(() => []);
+    return { v: 1, state: "holds", holds: list };
   }
 
   /** Plans live as long as the cached answers they come from. */

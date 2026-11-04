@@ -39,6 +39,36 @@ versions follow [Semantic Versioning](https://semver.org/).
   format is unchanged (no new `end_reason`), so an older server still reads it.
 - The page is 379.6 kB, under the unchanged 392 kB guardrail.
 
+### Changed (dashboard: "Trouver une route" takes your own hold by default)
+- **The "Soute (SCU)" field is a list, with a default already chosen.** With the game closed and a last run of 696 SCU, "Plus
+  rentable" used to show a red "Indique la taille de la soute" and ask for a blank field. The hold now defaults to what the
+  server knows, in this order, and writes the source under the list: the flown ship's hold (its wiki sheet); the last run
+  ("D'après ton dernier trajet : 696 SCU transportés", when it ended less than 3 days ago); otherwise the size most used by
+  the saved trade runs; otherwise the one hold of the fleet file (flagged weak); otherwise nothing, and the list holds only
+  "Choisis ta soute…" and **"Autre taille…"** (which shows a labelled number field). A click on a button searches at once
+  with the default, without opening "Affiner", and the red message is gone as long as a hold is known; with none known the
+  answer is a question (not a red error) that opens "Affiner" on the list. A size picked in the list or typed still wins over
+  the flown ship and the default (`cargoTyped`), a change after a first search searches again, and no search is made before
+  the first click (only the list of known sizes is read, once the bar is on screen in full screen, never in the compact view). The note under the results says where the hold came from ("choisie dans ta liste", "d'après ton dernier
+  trajet", "saisie"), where it used to call every sent hold "saisie".
+- **Only complete runs make a default.** A run under way or partial is listed ("trajet en cours" / "trajet partiel") but is never the
+  last-run default nor part of the habit. "Et ensuite ?" shows the hold and its source on its card and does not search by itself on
+  a fleet-file hold (flagged "non vérifiée" in the note under the results) or when no hold is known. A typed size ignores spaces
+  ("4 608") and is cut at 100 000 SCU with its own sentence; an automatic re-search never moves the keyboard focus.
+- **What a size means, said plainly.** A run's SCU is the quantity moved, not the capacity (it can be less than the hold), and
+  the game log does not name a run's ship, so a run never gets a ship name from history. A name next to a size is the flown ship,
+  a ship of the fleet file (its UEX hold), or "même taille que le X" when X is the one ship UEX gives exactly that hold. No list of
+  "typical" haulers is invented. The choice stays in the page's memory only; a hold size is not derived from the balance and
+  is shown with the balance hidden too.
+- **Tool surface:** `sc_trade_suggest` gains the action `holds` (no other argument; app-only, like the rest of the tool): it
+  lists up to 12 hold sizes from the saved trade runs (`SessionManager.tradeTripSizes`: SCU and end time only), the fleet file and
+  UEX's public ship list. It reads local files and **may fetch UEX's ship list once (`GET /vehicles`, kept 5 minutes) when the full
+  screen opens**, before any click, when there is a saved size or a fleet ship to name; it is outside the planner's throttle, runs
+  no planner and sends no player data; sources that fail give an empty list. `src/tools/tools-surface.golden.json` and `docs/TOOLS.md` were regenerated (the `action` enum and the
+  description changed). No host, variable or stored file was added.
+- **Page size:** 391.6 kB on the merged tree (373.0 kB in 2.7.0, 379.6 kB with the sessions fix); the internal budget of `check:page-size` is raised from 392 kB to 411 kB (measured
+  size plus about 5 %; our own guard, not a proven host limit, and nothing was removed to fit it).
+
 ## [2.7.0] - 2026-11-04
 
 This release is the dashboard's UX pass, almost all in the page and its tests: **a ship loss is now the gravest event of the page** (a

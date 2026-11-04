@@ -37,6 +37,14 @@ export function tradeActionsConfig() {
     /** "Et ensuite ?" only for a run that ended less than this long ago. */
     nextWithinMs: 30 * 60 * 1000,
     nameMax: 60,
+    /** The known hold sizes are asked again after this long (and when a new run appears). */
+    holdsRefreshMs: 5 * 60 * 1000,
+    maxHolds: 12,
+    /**
+     * A last run older than this may have been made in another ship: the habit over the recent runs is then the better
+     * guess for the hold (and the label says which one it is).
+     */
+    holdFreshMs: 3 * 24 * 3600 * 1000,
   };
 }
 
@@ -257,6 +265,7 @@ export function tradeSuggestClean(L: any, raw: any): any {
     const plan = L.cleanPlan(raw.plan);
     return plan ? { state: "applied", plan, private: raw.private === true } : null;
   }
+  if (raw.state === "holds") return { state: "holds", holds: tradeCleanHolds(raw.holds) };
   if (raw.state !== "ok") return null;
   const options = (Array.isArray(raw.options) ? raw.options : [])
     .slice(0, cfg.maxOptions)
@@ -349,15 +358,35 @@ export function tradeBuildRequest(objective: string, st: any, ctx: any): any {
     if (!b.ok) return { ok: false, reason: "budget" };
     if (b.value !== null) args.budget = b.value;
   }
-  // The hold is sent only when the player typed one: otherwise the server uses the flown ship's (it knows it too, and
-  // says where it comes from). The sheet's figure in the field is a prefill, not an input.
-  const cargoText = String(st.cargoText === undefined ? "" : st.cargoText).trim();
+  // The hold, in the order of what wins:
+  //   1. what the player chose in the list or typed ("Autre taille") wins over everything;
+  //   2. else the default the page worked out (tradeHoldChoices): the flown ship's hold is NOT sent (the server knows the
+  //      ship too and says where its figure comes from), a hold taken from the runs or the fleet IS sent, because the
+  //      server has no ship to take it from (the game is closed);
+  //   3. else the ship sheet's figure (a caller that passes no default), else nothing: the server then answers no_cargo.
+  // The source goes back to the caller so the page can say where the figure comes from (never "saisie" for a default).
+  // Every space (also the non-breaking ones: a size is displayed as "4 608") is dropped before the digits are read.
+  const cargoText = String(st.cargoText === undefined ? "" : st.cargoText).replace(/\s/g, "");
   let cargoSource = "inconnue";
-  if (cargoText !== "" && st.cargoTyped === true) {
-    if (!/^\d{1,6}$/.test(cargoText) || Number(cargoText) < 1)
+  const dflt = ctx && ctx.defaultHold ? ctx.defaultHold : null;
+  if (st.cargoTyped === true && (cargoText !== "" || st.cargoPicked === "autre")) {
+    if (cargoText === "") return { ok: false, reason: "cargo_empty" };
+    // At most 100 000 SCU, the server's own bound: a larger figure is refused here with its own sentence.
+    if (!/^\d{1,6}$/.test(cargoText) || Number(cargoText) < 1 || Number(cargoText) > 100000)
       return { ok: false, reason: "cargo" };
     args.cargo_scu = Number(cargoText);
-    cargoSource = "saisie";
+    cargoSource = st.cargoPicked === "liste" ? "liste" : "saisie";
+  } else if (
+    dflt &&
+    typeof dflt.scu === "number" &&
+    dflt.scu >= 1 &&
+    typeof dflt.source === "string"
+  ) {
+    if (dflt.source === "vaisseau") cargoSource = "fiche";
+    else {
+      args.cargo_scu = Math.floor(dflt.scu);
+      cargoSource = dflt.source;
+    }
   } else if (ctx && typeof ctx.sheetCargo === "number" && ctx.sheetCargo >= 1) {
     cargoSource = "fiche";
   }
@@ -369,7 +398,10 @@ export function tradeBuildRequest(objective: string, st: any, ctx: any): any {
 export function tradeInputProblem(reason: string): string {
   if (reason === "budget")
     return "Le budget n’est pas un nombre (exemples : 250000, 250 000, 2,5M).";
-  if (reason === "cargo") return "La soute doit être un nombre entier de SCU, au moins 1.";
+  if (reason === "cargo")
+    return "La soute doit être un nombre entier de SCU, entre 1 et 100\u00a0000.";
+  if (reason === "cargo_empty")
+    return "Indique la taille de ta soute (SCU) dans « Autre taille », ou choisis-en une dans la liste.";
   return "Question incomplète.";
 }
 
@@ -378,7 +410,7 @@ export function tradeErrorText(a: any): string {
   const code = a && a.code;
   const detail = a && a.detail ? a.detail : "";
   if (code === "no_cargo")
-    return "Indique la taille de ta soute (SCU) dans Affiner : la fiche du vaisseau n’en donne pas.";
+    return "Je ne connais pas ta soute : ni fiche de vaisseau, ni trajet enregistré. Choisis-la dans « Affiner » (liste, ou « Autre taille… »), puis relance.";
   if (code === "bad_origin")
     return "Lieu de départ introuvable ou ambigu chez UEX" + (detail ? " : " + detail : ".");
   if (code === "armistice_unavailable")
@@ -393,6 +425,272 @@ export function tradeErrorText(a: any): string {
   if (code === "host")
     return "Le serveur n’a pas répondu" + (detail ? " : " + detail : ".") + " Réessaie.";
   return "Recherche impossible" + (detail ? " : " + detail : ".");
+}
+
+// -------------------------------------------------------------------------------------------------
+// The hold: what is known, what is chosen by default, how it is worded
+// -------------------------------------------------------------------------------------------------
+
+/**
+ * The hold sizes the tool listed (action `holds`), rebuilt field by field. At most `maxHolds`. A size is a whole number of
+ * SCU between 1 and 100 000; the ship name is cleaned text; the basis says why a name is next to the size ("flotte": the
+ * player listed that ship; "taille": the only ship UEX gives that exact hold), else null.
+ */
+export function tradeCleanHolds(raw: any): any[] {
+  const cfg = tradeActionsConfig();
+  const out: any[] = [];
+  const list = Array.isArray(raw) ? raw : [];
+  for (let i = 0; i < list.length && out.length < cfg.maxHolds; i++) {
+    const h = list[i];
+    if (!h || typeof h !== "object") continue;
+    const scu = tradeNum(h.scu, 1, 100000);
+    if (scu === null) continue;
+    const at = typeof h.last_at === "string" ? Date.parse(h.last_at) : NaN;
+    const ship = tradeText(h.ship, cfg.nameMax) || null;
+    out.push({
+      scu: Math.round(scu),
+      trips: Math.round(tradeNum(h.trips, 0, 1000000) || 0),
+      lastAt: Number.isFinite(at) ? at : null,
+      ship,
+      basis: ship && (h.basis === "flotte" || h.basis === "taille") ? h.basis : null,
+    });
+  }
+  return out;
+}
+
+/** "il y a moins d’une heure", "il y a 5 h", "hier", "il y a 12 j", "il y a 3 mois". Coarse on purpose. "" when unknown. */
+export function tradeAgoText(ms: any, now: number): string {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || !Number.isFinite(now)) return "";
+  const diff = now - ms;
+  if (diff < -3600000) return "";
+  const hours = Math.floor(diff / 3600000);
+  if (hours < 1) return "il y a moins d’une heure";
+  if (hours < 24) return "il y a " + hours + "\u00a0h";
+  const days = Math.floor(hours / 24);
+  if (days < 2) return "hier";
+  if (days < 90) return "il y a " + days + "\u00a0j";
+  return "il y a " + Math.floor(days / 30) + "\u00a0mois";
+}
+
+/**
+ * Every hold size the page can offer, and the default among them. PURE.
+ * ctx: { flown: {scu, name}|null (the flown ship's sheet), runs: the journal's runs, newest first (the commerce section),
+ *        known: tradeCleanHolds(...) (saved runs, fleet), picked: a size the player chose (kept in the list), now }
+ *
+ * A size from a run is the quantity MOVED by that run: it is at most the hold, never proof of the ship. A name is next to a
+ * size only for the flown ship, a ship of the player's fleet list, or the one ship UEX gives exactly that hold (said so).
+ *
+ * The default, in this order, and never a value made up:
+ *   vaisseau       the flown ship's hold (its wiki sheet);
+ *   dernier_trajet the newest COMPLETE run known (the journal being read, or a saved one), when it ended less than
+ *                  `holdFreshMs` ago;
+ *   habituelle     the size most used by the recent COMPLETE runs (ties: the newest), when the last run is older or absent;
+ * A run under way or partial is listed ("en cours", "partiel") but is never a default nor part of the habit.
+ *   flotte         the one hold of the fleet list, when it has a single size and no run is known;
+ *   null           nothing known: the player chooses.
+ */
+export function tradeHoldChoices(ctx: any): any {
+  const cfg = tradeActionsConfig();
+  const now = ctx && typeof ctx.now === "number" ? ctx.now : 0;
+  const bySize: any = {};
+  const get = (scu: number): any => {
+    const k = String(scu);
+    if (!bySize[k]) {
+      bySize[k] = {
+        scu,
+        ship: null,
+        basis: null,
+        flown: false,
+        trips: 0,
+        lastAt: null,
+        picked: false,
+      };
+    }
+    return bySize[k];
+  };
+  const newest = (a: number | null, b: number | null): number | null =>
+    a === null ? b : b === null ? a : Math.max(a, b);
+
+  const known = ctx && Array.isArray(ctx.known) ? ctx.known : [];
+  for (let i = 0; i < known.length; i++) {
+    const k = known[i];
+    const it = get(k.scu);
+    it.trips = Math.max(it.trips, k.trips);
+    it.lastAt = newest(it.lastAt, k.lastAt);
+    if (k.ship && !it.ship) {
+      it.ship = k.ship;
+      it.basis = k.basis;
+    }
+  }
+  // The journal being read: newest first. Its runs are usually saved ones too, so the counts are not added up.
+  const runs = ctx && Array.isArray(ctx.runs) ? ctx.runs : [];
+  const seen: any = {};
+  let journalScu: number | null = null;
+  let journalAt: number | null = null;
+  for (let i = 0; i < runs.length; i++) {
+    const r = runs[i];
+    // The same quantity the session keeps for a complete run (its SCU sold, else bought), so a run that is also a saved one
+    // is one size, not two; a run under way has only what was bought.
+    const moved =
+      r && r.stage === "complete" && typeof r.scu_sold === "number"
+        ? r.scu_sold
+        : r && r.scu_bought;
+    const q = typeof moved === "number" ? Math.round(moved) : 0;
+    if (!(q >= 1 && q <= 100000)) continue;
+    const at = Date.parse(r.ended_at);
+    const it = get(q);
+    // A run that is not complete (a first lot bought, a partial sale) is only a line of the list, labelled as such: it is
+    // never the last run and never counts toward the habit (a first lot of 120 SCU is not the hold of a 696 SCU ship).
+    if (r.stage !== "complete") {
+      if (!it.underway) it.underway = r.stage === "partial" ? "partiel" : "en cours";
+      continue;
+    }
+    seen[String(q)] = (seen[String(q)] || 0) + 1;
+    it.lastAt = newest(it.lastAt, Number.isFinite(at) ? at : null);
+    if (journalScu === null) {
+      journalScu = q;
+      journalAt = Number.isFinite(at) ? at : null;
+    }
+  }
+  for (const k of Object.keys(seen)) {
+    const it = bySize[k];
+    it.trips = Math.max(it.trips, seen[k]);
+  }
+  const flown =
+    ctx && ctx.flown && typeof ctx.flown.scu === "number" && ctx.flown.scu >= 1
+      ? { scu: Math.floor(ctx.flown.scu), name: tradeText(ctx.flown.name, cfg.nameMax) || null }
+      : null;
+  if (flown) {
+    const it = get(flown.scu);
+    it.flown = true;
+    it.ship = flown.name;
+    it.basis = null;
+  }
+  if (ctx && typeof ctx.picked === "number" && ctx.picked >= 1)
+    get(Math.floor(ctx.picked)).picked = true;
+
+  const items: any[] = Object.keys(bySize).map((k) => bySize[k]);
+  items.sort((a: any, b: any) => {
+    if (a.flown !== b.flown) return a.flown ? -1 : 1;
+    const x = a.lastAt === null ? -Infinity : a.lastAt;
+    const y = b.lastAt === null ? -Infinity : b.lastAt;
+    if (x !== y) return y > x ? 1 : -1;
+    return b.scu - a.scu;
+  });
+
+  // The newest run of any source.
+  let lastScu: number | null = null;
+  let lastAt: number | null = null;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it.lastAt !== null && (lastAt === null || it.lastAt > lastAt)) {
+      lastAt = it.lastAt;
+      lastScu = it.scu;
+    }
+  }
+  if (journalScu !== null && (lastAt === null || journalAt === null || journalAt >= lastAt)) {
+    lastScu = journalScu;
+    lastAt = journalAt === null ? lastAt : journalAt;
+  }
+  for (let i = 0; i < items.length; i++)
+    items[i].isLast = lastScu !== null && items[i].scu === lastScu;
+
+  let total = 0;
+  let habit: any = null;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    total += it.trips;
+    if (it.trips > 0 && (!habit || it.trips > habit.trips)) habit = it;
+  }
+  const fresh = lastAt !== null && now - lastAt <= cfg.holdFreshMs;
+  const fleetOnly = items.filter((it: any) => it.trips === 0 && it.basis === "flotte" && !it.flown);
+  let deflt: any = null;
+  if (flown) deflt = { scu: flown.scu, source: "vaisseau", ship: flown.name };
+  else if (lastScu !== null && (fresh || !habit))
+    deflt = { scu: lastScu, source: "dernier_trajet", lastAt };
+  else if (habit)
+    deflt = {
+      scu: habit.scu,
+      source: "habituelle",
+      trips: habit.trips,
+      of: total,
+      lastAt: habit.lastAt,
+    };
+  else if (fleetOnly.length === 1)
+    deflt = { scu: fleetOnly[0].scu, source: "flotte", ship: fleetOnly[0].ship };
+  return { items, deflt, lastAt };
+}
+
+/** One entry of the list: "Hull C · 4 608 SCU · vaisseau en vol", "696 SCU · dernier trajet il y a 2 j". */
+export function tradeHoldLabel(L: any, it: any, now: number): string {
+  const size = L.fmtNum(it.scu) + "\u00a0SCU";
+  const parts: string[] = [];
+  parts.push(it.ship && (it.flown || it.basis === "flotte") ? it.ship + " · " + size : size);
+  if (it.flown) parts.push("vaisseau en vol");
+  else if (it.basis === "flotte") parts.push("dans ta flotte");
+  else if (it.basis === "taille" && it.ship) parts.push("même taille que le " + it.ship);
+  if (it.trips === 0 && it.underway) {
+    parts.push("trajet " + it.underway);
+  } else if (it.trips > 0) {
+    const ago = tradeAgoText(it.lastAt, now);
+    parts.push(
+      it.isLast
+        ? "dernier trajet" + (ago ? " " + ago : "")
+        : it.trips + (it.trips > 1 ? " trajets" : " trajet") + (ago ? ", le dernier " + ago : ""),
+    );
+  } else if (it.picked && !it.flown && it.basis === null) {
+    parts.push("ton choix");
+  }
+  return parts.join(" · ");
+}
+
+/** Where the default comes from, as a sentence for under the list (a weak source says so). */
+export function tradeHoldSourceText(L: any, d: any, now?: number): string {
+  if (!d) return "";
+  const size = L.fmtNum(d.scu) + "\u00a0SCU";
+  if (d.source === "vaisseau")
+    return (
+      "Soute du vaisseau en vol" +
+      (d.ship ? " (" + d.ship + ")" : "") +
+      ", d’après sa fiche du wiki. Change-la si ta soute est différente."
+    );
+  if (d.source === "dernier_trajet")
+    return (
+      "D’après ton dernier trajet : " +
+      size +
+      " transportés. Une quantité transportée peut être inférieure à ta soute : change-la si besoin."
+    );
+  if (d.source === "habituelle") {
+    // A habit made of one old run is that run: its age is said.
+    const ago = d.trips === 1 && typeof now === "number" ? tradeAgoText(d.lastAt, now) : "";
+    return (
+      "Faute de trajet récent : la taille la plus fréquente de tes trajets enregistrés (" +
+      size +
+      ", " +
+      d.trips +
+      " sur " +
+      d.of +
+      (ago ? ", " + ago : "") +
+      "). Quantité transportée, pas forcément ta soute pleine."
+    );
+  }
+  if (d.source === "flotte")
+    return (
+      "Seule soute de ta liste de vaisseaux" +
+      (d.ship ? " (" + d.ship + ")" : "") +
+      " : à vérifier, rien n’indique que tu l’utilises."
+    );
+  return "";
+}
+
+/** Where the hold of a search came from, for the note under the results. */
+export function tradeHoldSourceWords(source: string, ship: any): string {
+  if (source === "fiche") return "fiche du vaisseau" + (ship ? ", " + ship : "");
+  if (source === "dernier_trajet") return "d’après ton dernier trajet";
+  if (source === "habituelle") return "taille la plus fréquente de tes trajets";
+  if (source === "flotte") return "vaisseau de ta liste, soute non vérifiée";
+  if (source === "liste") return "choisie dans ta liste";
+  return "saisie";
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -691,6 +989,17 @@ export function tradeActionsPanel(doc: any, L: any): any {
     applying: false,
     cleared: false,
     cargoTyped: false,
+    /** "" = the default decides; "other" = the player types a size; else the size he chose in the list. Memory only. */
+    holdPick: "",
+    /** How a typed or chosen hold got there: "liste" (chosen in the list), "autre" (typed), "" (none). */
+    cargoPicked: "",
+    /** What the live region says about the last change of the hold, until the next search speaks. */
+    holdSpoken: "",
+    /** The hold sizes the server listed (memory only), when they were asked for, and for which latest run. */
+    holds: { list: [] as any[], at: 0, run: "", busy: false },
+    /** The hold behind the results on screen, for the note under them. */
+    resultHold: null as any,
+    problemCode: "",
     disposed: false,
     timers: [],
     nextTried: "",
@@ -895,12 +1204,21 @@ export function tradeActionsPanel(doc: any, L: any): any {
   budgetInput.value = "";
   const balanceCheck = checkbox("budgetBalance", "Budget = mon solde", "");
   const budgetNote = el("span", "ta-field-note", "");
+  // The hold: a real <select> of the sizes the page knows (the flown ship, the runs, the fleet list), the default already
+  // chosen, and "Autre taille…" which reveals the number field. The options are rebuilt only when the SET of sizes changes
+  // (never on a repaint: that would close an open list and lose the keyboard's place).
+  const cargoSelect = el("select", "ta-input ta-select");
+  cargoSelect.setAttribute("autocomplete", "off");
+  const cargoNote = el("span", "ta-field-note", "");
+  cargoNote.setAttribute("id", "ta-hold-note");
+  cargoSelect.setAttribute("aria-describedby", "ta-hold-note");
+  const holdOptions: any[] = [];
+  let holdKey = "";
   const cargoInput = el("input", "ta-input");
   cargoInput.setAttribute("type", "text");
   cargoInput.setAttribute("inputmode", "numeric");
   cargoInput.setAttribute("autocomplete", "off");
   cargoInput.value = "";
-  const cargoNote = el("span", "ta-field-note", "");
   const originInput = el("input", "ta-input");
   originInput.setAttribute("type", "text");
   originInput.setAttribute("placeholder", "n’importe où");
@@ -909,16 +1227,19 @@ export function tradeActionsPanel(doc: any, L: any): any {
   originInput.value = "";
   const fields = el("div", "ta-fields");
   const budgetField = field("Budget (aUEC)", budgetInput, budgetNote);
-  add(
-    fields,
-    budgetField,
-    field("Soute (SCU)", cargoInput, cargoNote),
-    field("Départ (terminal, planète ou système)", originInput),
-  );
+  // The number field has its own label (two controls never share one), shown only for "Autre taille…".
+  // The hold list has a row of its own, above the other fields: its labels (ship, size, source, age) are long.
+  // The note is NOT inside the label (it would be read twice: as part of the name and as the description).
+  const holdField = el("div", "ta-field ta-field-hold");
+  add(holdField, field("Soute (SCU)", cargoSelect), cargoNote);
+  const otherField = field("Autre taille (SCU)", cargoInput);
+  otherField.className = "ta-field ta-field-other";
+  otherField.setAttribute("data-hidden", "1");
+  add(fields, budgetField, field("Départ (terminal, planète ou système)", originInput));
   const autoRow = el("div", "ta-options");
   add(autoRow, checkbox("autoNext", "Proposer la suite à la fin d’un trajet"));
   checks.autoNext.input.checked = true;
-  add(refineBody, optionsRow, fields, balanceCheck, autoRow);
+  add(refineBody, optionsRow, holdField, otherField, fields, balanceCheck, autoRow);
   add(refine, refineSum, refineBody);
 
   // status and results
@@ -979,14 +1300,60 @@ export function tradeActionsPanel(doc: any, L: any): any {
     S.budgetText = String(budgetInput.value);
     scheduleAuto();
   });
+  // A hold typed under "Autre taille…" (the field is shown only then).
   cargoInput.addEventListener("input", () => {
     S.cargoText = String(cargoInput.value);
     S.cargoTyped = true;
+    S.cargoPicked = "autre";
+    S.holdPick = "other";
   });
   cargoInput.addEventListener("change", () => {
     S.cargoText = String(cargoInput.value);
     S.cargoTyped = true;
+    S.cargoPicked = "autre";
+    S.holdPick = "other";
+    S.holdSpoken = "Soute saisie : " + S.cargoText.trim() + "\u00a0SCU.";
     scheduleAuto();
+  });
+  // A choice in the list. Chosen by the player = typed: it wins over the ship sheet, the flown ship and the default.
+  cargoSelect.addEventListener("change", () => {
+    const v = String(cargoSelect.value);
+    if (v === "other") {
+      S.holdPick = "other";
+      S.cargoPicked = "autre";
+      S.cargoTyped = true;
+      S.cargoText = String(cargoInput.value);
+      S.holdSpoken = "Autre taille : saisis ta soute en SCU.";
+      refresh();
+      later(() => {
+        if (cargoInput.focus) cargoInput.focus();
+      }, 0);
+      return;
+    }
+    if (/^\d{1,6}$/.test(v) && Number(v) >= 1) {
+      S.holdPick = v;
+      S.cargoPicked = "liste";
+      S.cargoTyped = true;
+      S.cargoText = v;
+      const spoken = holdChoicesNow().items.filter((it: any) => String(it.scu) === v)[0];
+      S.holdSpoken =
+        "Soute choisie : " +
+        L.fmtNum(Number(v)) +
+        "\u00a0SCU" +
+        (spoken && spoken.ship ? ", " + spoken.ship : "") +
+        ".";
+      scheduleAuto();
+      refresh();
+      return;
+    }
+    // The placeholder: back to the default.
+    S.holdPick = "";
+    S.cargoPicked = "";
+    S.cargoTyped = false;
+    S.cargoText = "";
+    S.holdSpoken = "Soute : retour au choix par défaut.";
+    scheduleAuto();
+    refresh();
   });
   originInput.addEventListener("input", () => {
     S.originText = String(originInput.value);
@@ -1007,8 +1374,62 @@ export function tradeActionsPanel(doc: any, L: any): any {
       budgetBalance: S.budgetBalance,
       cargoText: S.cargoText,
       cargoTyped: S.cargoTyped,
+      cargoPicked: S.cargoPicked,
       originText: S.originText,
     };
+  }
+
+  /** The flown ship's sheet as the hold chooser takes it: null unless it gives a hold. */
+  function flownNow(): any {
+    const scu =
+      typeof H.sheetCargo === "number" && H.sheetCargo >= 1 ? Math.floor(H.sheetCargo) : null;
+    return scu === null ? null : { scu, name: H.sheetName || null };
+  }
+
+  /** Every hold the page can offer now, and the default (see tradeHoldChoices). */
+  function holdChoicesNow(): any {
+    const trade = H.trade;
+    return tradeHoldChoices({
+      flown: flownNow(),
+      runs: trade && trade.source === "journal" && Array.isArray(trade.runs) ? trade.runs : [],
+      known: S.holds.list,
+      picked: /^\d+$/.test(S.holdPick) ? Number(S.holdPick) : null,
+      now: H.now,
+    });
+  }
+
+  /** The context a search is built with: the balance (a number, only while shown), the sheet, the default hold. */
+  function searchContext(): any {
+    return { balance: H.balance, sheetCargo: H.sheetCargo, defaultHold: holdChoicesNow().deflt };
+  }
+
+  /**
+   * The sizes the server knows (saved runs, fleet list): asked once the bar is on screen, again when a new run appears or
+   * after a few minutes. A read of local files, never a planner run: nothing is throttled and no figure is a price.
+   */
+  function ensureHolds() {
+    if (!H.call || S.disposed || !H.enabled || H.follower || S.holds.busy) return;
+    const runs = H.trade && Array.isArray(H.trade.runs) ? H.trade.runs : [];
+    const run = runs.length > 0 && runs[0] && typeof runs[0].id === "string" ? runs[0].id : "";
+    const t = stamp();
+    // A new run asks again; a moment with no run in the payload (a section that is not there yet) does not.
+    const newRun = run !== "" && run !== S.holds.run;
+    if (S.holds.at !== 0 && !newRun && t - S.holds.at < cfg.holdsRefreshMs) return;
+    S.holds.busy = true;
+    if (run !== "") S.holds.run = run;
+    S.holds.at = t === 0 ? 1 : t;
+    const ask = async () => {
+      try {
+        const r = await H.call("sc_trade_suggest", { action: "holds" }, cfg.applyTimeoutMs);
+        const a = r && !r.isError ? tradeSuggestClean(L, r.structuredContent) : null;
+        if (a && a.state === "holds") S.holds.list = a.holds;
+      } catch {
+        // The list is a convenience: without it the runs of the journal and the free size still work.
+      }
+      S.holds.busy = false;
+      if (!S.disposed) refresh();
+    };
+    void ask();
   }
 
   /** A timer of this component: every one is cancelled by dispose(). */
@@ -1062,13 +1483,12 @@ export function tradeActionsPanel(doc: any, L: any): any {
     }
     S.objective = objective;
     if (!auto) S.waitRetries = 0;
-    const built = tradeBuildRequest(objective, question(), {
-      balance: H.balance,
-      sheetCargo: H.sheetCargo,
-    });
+    const built = tradeBuildRequest(objective, question(), searchContext());
     if (!built.ok) {
       S.phase = "problem";
       S.problem = tradeInputProblem(built.reason);
+      S.problemCode = built.reason;
+      if (built.reason === "cargo" || built.reason === "cargo_empty") openHoldForm(true, auto);
       refresh();
       return;
     }
@@ -1077,6 +1497,8 @@ export function tradeActionsPanel(doc: any, L: any): any {
     S.busy = true;
     S.phase = "loading";
     S.problem = "";
+    S.problemCode = "";
+    S.holdSpoken = "";
     refresh();
     try {
       const r = await H.call("sc_trade_suggest", built.args, cfg.searchTimeoutMs);
@@ -1090,6 +1512,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
         S.resultAt = stamp();
         S.resultObjective = objective;
         S.resultPriv = built.priv || a.private === true;
+        S.resultHold = { source: built.cargoSource, scu: a.cargo_scu };
         S.appliedId = "";
         S.waitRetries = 0;
         S.cleared = false;
@@ -1108,6 +1531,9 @@ export function tradeActionsPanel(doc: any, L: any): any {
       } else {
         S.phase = "error";
         S.problem = tradeErrorText(a);
+        S.problemCode = a.code;
+        // Nothing is known about the hold: the way out is in "Affiner", so it is opened and the list gets the focus.
+        if (a.code === "no_cargo") openHoldForm(false, auto);
       }
     } catch (err: any) {
       S.phase = "error";
@@ -1122,6 +1548,19 @@ export function tradeActionsPanel(doc: any, L: any): any {
       scheduleAuto();
     }
     refresh();
+  }
+
+  /**
+   * Opens "Affiner" and puts the focus on the hold list (or on the number field when the player is typing a size). A search
+   * the player did not just ask for (`auto`: an option changed) never takes the focus: it only says what is wrong.
+   */
+  function openHoldForm(typing: boolean, auto: boolean) {
+    refine.open = true;
+    if (auto) return;
+    later(() => {
+      const target = typing && S.holdPick === "other" ? cargoInput : cargoSelect;
+      if (target.focus) target.focus();
+    }, 0);
   }
 
   async function applyOption(o: any) {
@@ -1183,11 +1622,10 @@ export function tradeActionsPanel(doc: any, L: any): any {
     if (!H.call || S.disposed || !H.enabled || H.follower) return;
     S.nextTried = want.runId;
     if (!want.fresh || !want.origin || !S.autoNext) return;
-    const built = tradeBuildRequest("profit_per_hour", question(), {
-      balance: H.balance,
-      sheetCargo: H.sheetCargo,
-    });
-    if (!built.ok || built.cargoSource === "inconnue") return;
+    const built = tradeBuildRequest("profit_per_hour", question(), searchContext());
+    // No automatic search on a hold nobody confirmed: unknown, or a fleet ship's hold (weak). The flown ship, the last
+    // complete run, the habit and what the player picked or typed may search by themselves, with the source on the card.
+    if (!built.ok || built.cargoSource === "inconnue" || built.cargoSource === "flotte") return;
     built.args.origin = want.origin;
     // The server remembers the run: a View mounted again does not search a second time for it.
     if (/^[0-9A-Za-z:.+-]{1,40}$/.test(want.runId)) built.args.next_run = want.runId;
@@ -1198,6 +1636,8 @@ export function tradeActionsPanel(doc: any, L: any): any {
       priv: built.priv,
       problem: "",
       retries: 0,
+      source: built.cargoSource,
+      hold: "",
     };
     // Not a render inside a render: the next one (or this timer) shows it.
     later(refresh, 0);
@@ -1208,6 +1648,13 @@ export function tradeActionsPanel(doc: any, L: any): any {
         if (a && a.state === "ok") {
           S.next.phase = "ok";
           S.next.result = a;
+          // The hold this suggestion was computed with, and where it came from (what the server answers, what the page asked).
+          S.next.hold =
+            "Soute " +
+            L.fmtNum(a.cargo_scu) +
+            "\u00a0SCU (" +
+            tradeHoldSourceWords(S.next.source, a.ship) +
+            ").";
         } else if (a && a.state === "throttled" && S.next.retries < 1 && H.later) {
           S.next.retries++;
           later(
@@ -1373,14 +1820,75 @@ export function tradeActionsPanel(doc: any, L: any): any {
         "\u00a0min), carburant non déduit. Soute " +
         res.cargo_scu +
         "\u00a0SCU (" +
-        (res.cargo_source === "saisie" ? "saisie" : "fiche du vaisseau") +
-        (res.ship ? ", " + res.ship : "") +
+        tradeHoldSourceWords(
+          S.resultHold && S.resultHold.source
+            ? S.resultHold.source
+            : res.cargo_source === "saisie"
+              ? "saisie"
+              : "fiche",
+          res.ship,
+        ) +
+        // Where the hold came from is what the page asked with (the server only knows "typed" or "the ship's"): a hold
+        // taken from the runs is never called "saisie".
         ").",
     );
     out.push(
       "La prudence est une heuristique sur les données de lieux UEX : aucune route n’est sûre. Prix de la communauté : confirme-les au terminal.",
     );
     return out.slice(0, 7);
+  }
+
+  /** The hold list and the sentence under it. Options are rebuilt only when the set of sizes (or the placeholder) changes. */
+  function paintHold(now: number) {
+    const model = holdChoicesNow();
+    const items = model.items;
+    const dflt = model.deflt;
+    const other = S.holdPick === "other";
+    const chosen = /^\d+$/.test(S.holdPick) ? S.holdPick : "";
+    const wanted = other ? "other" : chosen !== "" ? chosen : dflt ? String(dflt.scu) : "";
+    const key = items.map((it: any) => it.scu).join(",") + "|" + (items.length === 0 ? "p" : "");
+    if (key !== holdKey) {
+      holdKey = key;
+      cargoSelect.textContent = "";
+      holdOptions.length = 0;
+      if (items.length === 0) {
+        const none = el("option", "", "Choisis ta soute…");
+        none.setAttribute("value", "");
+        none.setAttribute("disabled", "disabled");
+        add(cargoSelect, none);
+        holdOptions.push({ scu: 0, node: none });
+      }
+      for (let i = 0; i < items.length; i++) {
+        const o = el("option", "", "");
+        o.setAttribute("value", String(items[i].scu));
+        add(cargoSelect, o);
+        holdOptions.push({ scu: items[i].scu, node: o });
+      }
+      const more = el("option", "", "Autre taille…");
+      more.setAttribute("value", "other");
+      add(cargoSelect, more);
+      holdOptions.push({ scu: -1, node: more });
+    }
+    // Labels follow the ages in place (a coarse text: hours and days), the nodes stay.
+    for (let i = 0; i < items.length; i++) {
+      const slot = holdOptions.filter((h: any) => h.scu === items[i].scu)[0];
+      if (slot) setText(slot.node, tradeHoldLabel(L, items[i], now));
+    }
+    if (String(cargoSelect.value) !== wanted) cargoSelect.value = wanted;
+    show(otherField, other);
+    const typed = S.cargoTyped === true && S.cargoText.trim() !== "";
+    let note: string;
+    if (other) {
+      note = typed ? "Saisie par toi." : "Saisis ta soute en SCU dans « Autre taille ».";
+    } else if (chosen !== "") {
+      note = "Choisie par toi dans la liste.";
+    } else if (dflt) {
+      note = tradeHoldSourceText(L, dflt, now);
+    } else {
+      note =
+        "Soute inconnue : ni vaisseau en vol ni trajet enregistré. Choisis « Autre taille… » pour l’indiquer.";
+    }
+    setText(cargoNote, note);
   }
 
   function paint() {
@@ -1423,23 +1931,11 @@ export function tradeActionsPanel(doc: any, L: any): any {
         : "Un nombre : 250000, 2,5M. Vide : pas de limite.",
     );
 
-    // The hold: prefilled from the ship sheet until the player types his own.
-    const sheet =
-      typeof H.sheetCargo === "number" && H.sheetCargo >= 1 ? Math.floor(H.sheetCargo) : null;
-    if (!S.cargoTyped) {
-      const wanted = sheet === null ? "" : String(sheet);
-      if (cargoInput.value !== wanted) cargoInput.value = wanted;
-      S.cargoText = wanted;
-    }
-    const typed = S.cargoTyped === true && S.cargoText.trim() !== "";
-    setText(
-      cargoNote,
-      typed
-        ? "Saisie par toi."
-        : sheet !== null
-          ? "Prérempli depuis la fiche du vaisseau (wiki). Change-le si ta soute est différente."
-          : "Inconnue : indique ta soute.",
-    );
+    // The hold: the default chosen from what is known (flown ship > last run > habit > fleet), labelled with its source,
+    // until the player picks a size in the list or types his own. The sizes are read only while the form is on screen
+    // (full screen): the compact view asks the server nothing.
+    if (full) ensureHolds();
+    paintHold(now);
 
     // The objective buttons.
     for (let i = 0; i < objButtons.length; i++) {
@@ -1460,7 +1956,8 @@ export function tradeActionsPanel(doc: any, L: any): any {
       text = "Recherche en cours… (jusqu’à 20\u00a0s, UEX est lent à froid)";
     } else if (S.phase === "problem" || S.phase === "error") {
       text = S.problem;
-      tone = "bad";
+      // "I do not know your hold" is a question to the player, not a failure.
+      tone = S.problemCode === "no_cargo" ? "warn" : "bad";
     } else if (S.phase === "wait") {
       const left = Math.max(0, Math.ceil((S.waitUntil - now) / 1000));
       text =
@@ -1493,6 +1990,8 @@ export function tradeActionsPanel(doc: any, L: any): any {
       spoken =
         tradeObjectiveLabel(S.resultObjective) + " : " + n + (n > 1 ? " routes." : " route.");
     }
+    // A change of the hold is announced once, in the same region, until the next search speaks.
+    if (S.holdSpoken !== "" && S.phase !== "loading") spoken = S.holdSpoken;
     setText(announce, spoken);
     setAttr(status, "data-tone", tone);
     show(status, text !== "");
@@ -1543,7 +2042,9 @@ export function tradeActionsPanel(doc: any, L: any): any {
           : nx.phase === "none"
             ? nx.problem
             : first
-              ? "Meilleure route par heure depuis là, avec tes options actuelles. Rien n’est appliqué sans ton clic."
+              ? "Meilleure route par heure depuis là, avec tes options actuelles. " +
+                (nx.hold ? nx.hold + " " : "") +
+                "Rien n’est appliqué sans ton clic."
               : "Aucune route ne part de là avec tes options actuelles.",
       );
       show(nextNote, true);
@@ -1586,6 +2087,12 @@ export const TRADE_ACTIONS_VIEW_FUNCTIONS = [
   tradeBuildRequest,
   tradeInputProblem,
   tradeErrorText,
+  tradeCleanHolds,
+  tradeAgoText,
+  tradeHoldChoices,
+  tradeHoldLabel,
+  tradeHoldSourceText,
+  tradeHoldSourceWords,
   tradeMinutesText,
   tradeAgeText,
   tradeExposureWord,
