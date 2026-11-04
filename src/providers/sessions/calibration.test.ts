@@ -66,6 +66,34 @@ const commodity = (r: ReturnType<typeof calibrate>, name = "Laranite") =>
   r.groups.find((g) => g.kind === "commodity" && g.commodity === name);
 const route = (r: ReturnType<typeof calibrate>) => r.groups.find((g) => g.kind === "route");
 
+describe("Feature: fees deduced from the balance are not a fee rate (found by the end-to-end replay)", () => {
+  it("Given runs whose fees were deduced (the stream was cut around the sales), Then they give no fee rate, measured ones do", () => {
+    const deduced = { fees_method: "estime" as const, fees_auec: 30_000 };
+    const r = calibrate([sessionWith(1, [run(deduced), run(deduced)])]);
+    const g = commodity(r)!;
+    expect(g.n).toBe(2);
+    expect(g.fee_n).toBe(0);
+    expect(g.fee_rate).toBeNull();
+    // the gross ratio, which needs no fee, is unaffected
+    expect(g.gross_ratio).toBe(0.8);
+    // one measured run among deduced ones: only the measured one counts, and a single one gives no rate
+    const mixed = calibrate([sessionWith(1, [run(deduced), run()])]);
+    expect(commodity(mixed)!.fee_n).toBe(1);
+    expect(commodity(mixed)!.fee_rate).toBeNull();
+    const two = calibrate([sessionWith(1, [run(deduced), run(), run()])]);
+    expect(commodity(two)!.fee_n).toBe(2);
+    expect(commodity(two)!.fee_rate).toBe(0.014);
+  });
+
+  it("Given a run whose fees were measured before a restart and that grew since, Then its fees are not in the fee rate", () => {
+    // fees of the first part divided by the revenue of the grown run would understate the rate
+    const grown = { figures_from_before: true, revenue_auec: 900_000 };
+    const r = calibrate([sessionWith(1, [run(grown), run(), run()])]);
+    expect(commodity(r)!.fee_n).toBe(2);
+    expect(commodity(r)!.fee_rate).toBe(0.014);
+  });
+});
+
 describe("Feature: honest small samples", () => {
   it("Given a single run, Then the group exists with n = 1 but no figure at all", () => {
     const r = calibrate([sessionWith(1, [run()])]);

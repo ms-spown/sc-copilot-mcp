@@ -331,8 +331,15 @@ function samplesOf(
         gross: { num: t.gross_margin_auec, den: plannedAdj },
         net: netClean ? { num: t.net_auec as number, den: plannedAdj } : null,
         netPolluted: hasNet && !netClean,
+        // Fees DEDUCED from the balance (gross margin minus net: the stream was cut, or the window unreadable) may hold a
+        // reward or a purchase made elsewhere: they are not a fee rate and never enter one.
         fee:
-          t.fees_auec !== null && t.revenue_auec !== null && t.revenue_auec > 0
+          t.fees_auec !== null &&
+          t.fees_method !== "estime" &&
+          // fees measured before a restart, over the revenue of a run that grew since, would understate the rate
+          t.figures_from_before !== true &&
+          t.revenue_auec !== null &&
+          t.revenue_auec > 0
             ? { num: t.fees_auec, den: t.revenue_auec, measured: t.fees_method === "mesure" }
             : null,
         adjusted,

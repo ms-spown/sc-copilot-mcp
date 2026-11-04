@@ -640,6 +640,10 @@ const stripTripMoney = (t: Session["trips"][number]) => ({
   gross_margin_auec: null,
   net_auec: null,
   net_kind: null,
+  // Whether the fees were measured against the balance or deduced from it says what the balance did (a cut stream, a
+  // reward): it goes with the other labels that come from it.
+  fees_method: null,
+  figures_from_before: null,
   planned_profit_auec: null,
   // The plan's quantity can be sized by the balance (a route built from "Budget = mon solde"): it goes with the money.
   planned_scu: null,

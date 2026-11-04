@@ -73,7 +73,7 @@ export function dashboardResources({ telemetry }: { telemetry?: Telemetry }): Re
   ];
 }
 
-/** Parts of the trade suggestions that tests replace (the planner, the clock). Production passes nothing. */
+/** Parts of the dashboard that tests replace (the planner, the clock of the poll and of the suggestions). Production passes nothing. */
 export interface DashboardOverrides {
   plan?: (req: TripRequest) => Promise<TripPlanResult>;
   now?: () => number;
@@ -108,7 +108,8 @@ export function dashboardTools(
   const specsResolver = scwClient ? new ShipSpecsResolver(scwClient) : undefined;
   const service = new DashboardService(
     telemetry,
-    Date.now,
+    // Tests pass their clock: the poll cache (half a second) and the commerce model's "pending or settled" follow it.
+    overrides.now ?? Date.now,
     specsResolver,
     connection,
     ledger,

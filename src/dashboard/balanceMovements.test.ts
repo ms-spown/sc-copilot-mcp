@@ -265,6 +265,39 @@ describe("Feature: rewards and costs are probable, never certain", () => {
     expect(m.ref).toBeUndefined();
   });
 
+  it("Given a reward paid inside the window of a cargo sale, Then the sale's own changes are not read as rewards: one cause per variation (found by the end-to-end replay)", () => {
+    // The sale (292 480 + 25 592, fees 21 800 + 2 300) is settled by two changes; a 60 000 reward lands 1.6 s after them
+    // and spoils the fee reconciliation. The three changes could each be the sale or the reward: none is chosen.
+    const txs = tradeTransactions(BASE);
+    const hist = historyFrom(
+      BASE,
+      [
+        [1, 320_000],
+        [20.7, 320_000 - 120_923 - 17_900],
+        [22.9, 320_000 - 131_504 - 19_468],
+        [200.1, 320_000 - 131_504 - 19_468 + 292_480 - 21_800],
+        [202.4, 320_000 - 131_504 - 19_468 + 318_072 - 24_100],
+        [204, 320_000 - 131_504 - 19_468 + 318_072 - 24_100 + 60_000],
+      ],
+      NOW,
+    );
+    const contracts: ContractEnd[] = [{ state: "completed", endedMs: sec(201), title: "A" }];
+    const { e, net } = explainRun(txs, hist, contracts);
+    expect(sum(e)).toBe(net.auec);
+    // the purchases are explained as usual; no reward is claimed for the sale's changes
+    expect(e.totals.probable_contract_reward.count).toBe(0);
+    const sale = e.movements.filter((m) => m.at >= sec(200));
+    expect(sale.map((m) => m.amount).sort((a, b) => a - b)).toEqual([23_292, 60_000, 270_680]);
+    for (const m of sale) {
+      expect(m).toMatchObject({ category: "unexplained", confidence: "ambiguous" });
+      expect(m.candidates).toEqual(["explained_by_transaction", "probable_contract_reward"]);
+    }
+    // A reward far from any sale is still a probable reward.
+    const far = explainRun(txs, hist, [{ state: "completed", endedMs: sec(100), title: "B" }]);
+    expect(far.e.totals.probable_contract_reward.count).toBe(0); // 100 s is nowhere near the 204 s rise either
+    expect(sum(far.e)).toBe(far.net.auec);
+  });
+
   it("Given a reward window, Then it starts 3 s before the contract end and ends 20 s after it", () => {
     const hist = historyFrom(
       BASE,

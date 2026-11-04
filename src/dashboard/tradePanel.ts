@@ -721,7 +721,9 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           true,
           m.planned_net
             ? "bénéfice prévu − frais au taux " +
-                (m.fees.rate_from === "trajet_precedent" ? "du trajet précédent" : "observé") +
+                (m.planned_net.rate_from === "trajet_precedent"
+                  ? "du trajet précédent"
+                  : "observé") +
                 " (" +
                 tradePct(L, m.planned_net.fee_rate) +
                 ")"
@@ -856,7 +858,7 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           feeRows[2].sub,
           fm.method === "mesure"
             ? "mesuré contre ton solde, côté par côté"
-            : "estimé : marge brute − bénéfice net, sans détail par côté",
+            : "estimé, flux interrompu ou fenêtre illisible : marge brute − bénéfice net, sans détail par côté. Ce chiffre peut contenir une autre dépense : il ne sert ni au calibrage ni au taux du trajet suivant",
         );
         setAttr(feeRows[2].root, "data-estimate", tradeIsEstimate(fm.method) ? "1" : "0");
       }

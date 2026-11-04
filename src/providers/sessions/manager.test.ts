@@ -387,6 +387,113 @@ describe("Feature: trips are recorded once with their result", () => {
     expect(s.trips[0].revenue_auec).toBe(170_000);
     expect(s.trips[0].cost_auec).toBe(120_000);
   });
+
+  it("Given a restarted server that offers a stored run again without the figures it cannot know, Then the measured ones are kept (found by the end-to-end replay)", async () => {
+    // A server that starts again re-reads the whole log: every run in it is offered again, but the balance history of
+    // those runs is gone (it lives in memory), so their net and their fees come out unknown. The stored trip is the
+    // frozen, measured one: it must not be replaced by that.
+    const r = rig();
+    r.log.running = true;
+    const stored1 = {
+      ...trip(1, T0 + 2 * MIN, 50_000),
+      kind: "trade" as const,
+      source: "trade_journal" as const,
+      revenue_auec: 150_000,
+      cost_auec: 100_000,
+      gross_margin_auec: 50_000,
+      fees_auec: 9_000,
+      fees_method: "mesure" as const,
+    };
+    r.trips.list = [stored1];
+    await playMinutes(r, 2, () => 100);
+    r.trips.list = [
+      { ...stored1, net_auec: null, net_kind: null, fees_auec: null, fees_method: null },
+    ];
+    await playMinutes(r, 2, () => 100);
+    let [s] = await stored(r);
+    expect(s.trips).toHaveLength(1);
+    expect(s.trips[0]).toMatchObject({
+      net_auec: 50_000,
+      net_kind: "balance_delta",
+      fees_auec: 9_000,
+      fees_method: "mesure",
+    });
+    // A late sale (the run's last line is later) still replaces it: its figures describe more than the stored ones.
+    r.trips.list = [
+      {
+        ...stored1,
+        ended_at: new Date(T0 + 3 * MIN).toISOString(),
+        revenue_auec: 170_000,
+        net_auec: null,
+        net_kind: null,
+        fees_auec: null,
+        fees_method: null,
+      },
+    ];
+    await playMinutes(r, 2, () => 100);
+    [s] = await stored(r);
+    expect(s.trips).toHaveLength(1);
+    // The run grew and the server cannot measure it again: what was measured is kept, tagged, its net flagged doubtful.
+    expect(s.trips[0]).toMatchObject({
+      revenue_auec: 170_000,
+      net_auec: 50_000,
+      fees_auec: 9_000,
+      net_doubtful: true,
+      figures_from_before: true,
+    });
+  });
+
+  it("Given a run that grew and whose net is measured again, Then the new figures stand as they are: nothing from before is mixed in or tagged", async () => {
+    const r = rig();
+    r.log.running = true;
+    const base = {
+      ...trip(1, T0 + 2 * MIN, 50_000),
+      kind: "trade" as const,
+      source: "trade_journal" as const,
+      revenue_auec: 150_000,
+      cost_auec: 100_000,
+      gross_margin_auec: 50_000,
+      fees_auec: 9_000,
+      fees_method: "mesure" as const,
+    };
+    r.trips.list = [base];
+    await playMinutes(r, 2, () => 100);
+    r.trips.list = [
+      {
+        ...base,
+        ended_at: new Date(T0 + 3 * MIN).toISOString(),
+        revenue_auec: 170_000,
+        net_auec: 61_000,
+        fees_auec: null,
+        fees_method: null,
+      },
+    ];
+    await playMinutes(r, 2, () => 100);
+    const [s] = await stored(r);
+    expect(s.trips[0]).toMatchObject({ net_auec: 61_000, fees_auec: null, fees_method: null });
+    expect(s.trips[0].figures_from_before).toBeFalsy();
+    expect(s.trips[0].net_doubtful).not.toBe(true);
+  });
+
+  it("Given a run stored while its result was still settling, Then the result replaces the unknown one when it is known", async () => {
+    const r = rig();
+    r.log.running = true;
+    const open = {
+      ...trip(1, T0 + 2 * MIN, null),
+      kind: "trade" as const,
+      source: "trade_journal" as const,
+      revenue_auec: 150_000,
+      cost_auec: 100_000,
+      gross_margin_auec: 50_000,
+    };
+    r.trips.list = [open];
+    await playMinutes(r, 2, () => 100);
+    r.trips.list = [{ ...open, net_auec: 41_000, net_kind: "balance_delta" as const }];
+    await playMinutes(r, 2, () => 100);
+    const [s] = await stored(r);
+    expect(s.trips).toHaveLength(1);
+    expect(s.trips[0].net_auec).toBe(41_000);
+  });
 });
 
 describe("Feature: 'Nouvelle session' and 'Terminer' from the View or a tool", () => {

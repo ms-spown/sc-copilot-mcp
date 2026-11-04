@@ -110,6 +110,32 @@ describe("Feature: one session", () => {
     });
   });
 
+  it("Given a planned trip whose net the commerce model flagged doubtful, Then it is not compared with its plan (found by the end-to-end replay)", () => {
+    // A reward or a purchase made elsewhere is in that net: 13 000 of "result" over a plan of 10 000 is not the run's.
+    const clean = trip({ net_auec: 9000, planned_profit_auec: 10_000, net_doubtful: false });
+    const doubtful = trip({ net_auec: 13_000, planned_profit_auec: 10_000, net_doubtful: true });
+    const s = summarizeSession(played(1, { trips: [clean, doubtful] }));
+    expect(s.money.plan).toEqual({
+      planned_auec: 10_000,
+      measured_auec: 9000,
+      efficiency: 0.9,
+      trips: 1,
+      price_linked_trips: 0,
+    });
+    // The session total stays the raw measure of the balance: the doubtful net is in it, and flagged on its trip.
+    expect(s.money.net_auec).toBe(22_000);
+    // Only doubtful planned trips: nothing to compare, and no invented figure.
+    expect(summarizeSession(played(2, { trips: [doubtful] })).money.plan).toBeNull();
+    // Across sessions the same rule.
+    const a = aggregate([
+      played(1, { trips: [clean, doubtful] }),
+      played(2, { trips: [doubtful] }),
+    ]);
+    expect(a.money).not.toBe("withheld");
+    expect(a.money.plan).toEqual({ efficiency: 0.9, trips: 1, price_linked_trips: 0 });
+    expect(aggregate([played(3, { trips: [doubtful] })]).money.plan).toBeNull();
+  });
+
   it("Given other contracts, Then they are not counted as trips but their result counts in the net", () => {
     const s = summarizeSession(
       played(1, { trips: [trip({ kind: "contract", net_auec: 700 }), trip({ net_auec: 300 })] }),
