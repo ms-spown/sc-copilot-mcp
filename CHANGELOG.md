@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-04
+
 ### Changed
 - The page's style sheet is shipped compacted (`compactCss` in `src/dashboard/page.ts`: comments, indentation and the blanks
   around `{ } ; , :` out, strings untouched; a test has a CSS parser read both sheets and compares them): about 6.7 kB less
