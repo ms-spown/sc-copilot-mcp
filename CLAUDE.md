@@ -53,15 +53,17 @@ For Claude as a _user_ of the tools, see `docs/USING_WITH_CLAUDE.md` (the block 
 
 ```
 src/core/       http (host allowlist, guarded clients), cache (memory + disk, stale only on outage),
-                provenance (AsyncLocalStorage), untrusted (cleaning/fencing), config, paths, errors, format
+                provenance (AsyncLocalStorage), untrusted (cleaning/fencing), config, paths, errors, format,
+                balance (the one BalancePolicy: shown by default, hidden by SC_BALANCE or the player's click)
 src/providers/  sessions (saved play sessions: store, reducer, stats, manager, trip sources) ·
-                uex, wiki, sctools (clients) · scmdb (store + queries) · gamelog (parser + reader)
+                uex, wiki, sctools (clients) · scmdb (store + queries) · gamelog (parser + reader, shipLoss*)
                 fleet (store + name resolver) · dumps (patch-dump repo) · local (user's game-*.json) · probes
                 telemetry (opt-in live stream: wire decoder, schema table, reader on node:http2, handler, service)
 src/tools/      one file per group (definition + handler together), catalog.ts (provenance + profiles),
                 registry.ts (envelope, scoping), status.ts (sc_data_status)
 src/dashboard/  the live dashboard (MCP App): poll, service, ledger, trade and pre-flight, health strip, session bar,
-                viewApp/viewLogic/page (the one HTML page, size-budgeted), testing/ (fake host)
+                viewApp/viewLogic/page (the one HTML page, size-budgeted), shortcuts* (context shortcuts and
+                the sources of their keys), commodityNames (names of goods, wiki lookup), testing/ (fake host)
 src/instructions.ts, src/prompts.ts   what Claude is told by the server (manual, length-bounded; the prompts)
 src/testing/    shared test helpers (replay harness, waitFor)
 src/install/    mergeConfig (pure planning of the Claude Desktop config merge), telemetrySwitch + jsonEdit

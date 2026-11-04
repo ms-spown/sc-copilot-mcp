@@ -6,6 +6,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-11-04
+
+Behaviour change first: **the aUEC balance and every amount derived from it are now SHOWN by default**; hiding them is the opt-in
+(the dashboard's "Masquer le solde", `SC_BALANCE=hidden`, or `include_balance: false` for one call). **If you pasted the Claude
+block of an earlier release into a Claude project, recopy the block of `docs/USING_WITH_CLAUDE.md` (or `.fr.md`)**: the old one
+tells Claude to ask before reading amounts, which is no longer how the server behaves. Then: the ship loss tracker, the
+"Raccourcis" zone (context reminders, four default keys only), accessibility fixes, UX wave A (a truthful trade line, names of
+goods, no journal id) and two environment variables, `SC_BALANCE` and `SC_COMMODITY_NAMES`.
+
 ### Changed (BEHAVIOUR CHANGE: the aUEC balance and the amounts derived from it are now SHOWN by default)
 - **Default flipped, by the owner's decision of 2026-11-04.** Until now the balance and every figure derived from it (results,
   rates, route reliability, balance movements, aUEC paid for lost cargo, the trade journal's amounts, session reports) reached the
@@ -43,52 +52,31 @@ versions follow [Semantic Versioning](https://semver.org/).
   test goes click, tool without argument, tool with `include_balance: true`, then "Afficher". New tests pin the shown default,
   the page's two starts, the follower that leads again, a lost click, the wiring of `SC_BALANCE` in `src/index.ts`.
 
-### Changed (dashboard, UX wave A: the trade line and quick wins)
-- The compact line of a run under way says what the data gives and nothing else: "Trajet en cours · 696 SCU achetés · en
-  route depuis 6 min · d’après ton plan : Laranite, Port Tressler → Area18 TDD, estimé 25 min, vente visée 457/SCU". The SCU
-  and the time since the first purchase come from the journal; the goods (until the server has their name), the route, the
-  estimated time and the target price come from the plan, are grouped after "d’après ton plan" (the plan is not checked
-  against the journal) and each appears only if the plan has it. The target price is the plan's market price, not the
-  balance: it shows in both balance modes (a plan sized by the balance is dropped by the page while the balance is hidden,
-  as before). With part of it sold: "640 / 696 SCU vendus · premier achat il y a 36 min".
-- The plan is left out when something contradicts it: the run's goods are named and the plan names other goods; the
-  journal's buying (or selling) shop has no SPECIFIC word in common with the plan's place for it (generic words such as
-  shop, cargo, port, station, hub, centre, admin do not count: "SCShop_Cargo_Tressler" against "Lorville Hub"); the plan
-  is spent (a run, finished or not, began after it and before this one: it belongs to the first run after it, the later
-  run says "plan déjà utilisé par un trajet précédent, non rattaché"); or this View received the plan after the run's first purchase (the line then says "plan reçu après le premier
-  achat, non rattaché"; a plan the View cannot date is attached as it is, labelled).
-- A run whose first purchase is more than 3 hours old, or while Game.log says the game is closed, in the menus or
-  disconnected, is "Trajet non terminé · … · premier achat il y a 5 h" (days from 48 h): no "en route", no plan. An
-  unknown connection does not make a run idle.
-- The 8-character id of the journal (a fragment of the game's GUID) is never shown any more, in the line, the card, the
-  history or the balance movements: a good without a name is "marchandise inconnue". Shops the journal names by class name
-  ("SCShop_Cargo_Tressler") are shown as words ("Tressler"), by one function (`shopWords`) for the card and the movements.
-- Names of goods: the server now looks them up in the background in the wiki's public commodity list (the lookup
-  `sc_trade_journal` makes: one request for everyone, matched locally on the full GUID, nothing from the log is sent; at
-  most every 5 minutes per GUID, 16 GUIDs at a time, 64 names kept, the oldest dropped first; never awaited by the poll; only with
-  telemetry on; `SC_COMMODITY_NAMES=off` (or `0`, `false`, `no`) switches it off, any other value changes nothing). The
-  run then carries `commodity_name` and the line says "Laranite" even without a plan. `src/dashboard/commodityNames.ts`.
-- Full screen: the header (route, "trajet estimé", the plan's note and safety note) says the plan only under the same
-  conditions, and the run's own goods name comes before the plan's. A run under way shows "en cours depuis N min" (since its first purchase) instead of "durée 2 s", which was the
-  span between its first and last purchase; the final duration is shown once the run is complete, and never for a run a
-  destroyed ship interrupted.
-- Session card: the store's notices are said in French by the page (a fixed sentence per case, the server's English text is
-  never printed); the folded pill says "inactive depuis 3 h" (not "inactive") and names its notes ("enregistrement
-  impossible", "fichier en lecture seule", "solde de départ approximatif") instead of "note".
-- The export hint now says that the EXPORTED report holds no start and final balances unless asked, and that the session
-  detail drawn on the screen does show them while the balance is shown (they were read as one: the report itself was
-  already tested against its announcement, `sessionExport.test.ts`).
-- Health limits, one set for all (a choice, not a measure): the dial is red under 30 % (the server's `health_low` alert
-  fires under 30 %) and amber under 50 % (it read green at 35 % just after a fight); the marks of the two dials (0-30 %
-  red, 30-50 % amber) and the band told to the model (low under 30 %, medium under 50 %) follow. Written in
-  `docs/TELEMETRY.md` and `docs/TELEMETRY.fr.md`.
-- Page budget (`scripts/check-page-size.mjs`, `pageBudget.test.ts`): raised to the size measured with this change plus
-  about 5 % (our guardrail, not a host limit; no feature is dropped to fit it).
-- Verification (no change): a ship lost with cargo is not in the session's "Résultat des trajets" (a run it cuts never
-  completes, so it is never a trip), so a "dont cargaisons perdues" sub-line would be false in that mode; the amount paid
-  stays in the existing note. Pinned by a test in `stats.test.ts`.
+### Added (ship loss tracker)
+- Loss tracker. When a ship is destroyed with the player aboard (build 4.10: `[ActorState] Dead ... destroyed
+  vehicle`; the 2025 `Actor Death` of the player inside the ship as a legacy path), the dashboard says so in the alert slot
+  (header verdict, compact line, commerce card box, ahead of a refused price), the commerce card marks the run it
+  interrupted, the saved session keeps it and the session debrief lists it. The cause is a collision only when a
+  `FatalCollision ... PlayerPilot: 1` of the same ship precedes by at most 1 s (or the 2025 `Vehicle Destruction` line says
+  so), else "not logged". The cargo is PRESUMED lost: successful purchases bound to that ship by the cargo kiosk and not
+  sold, in SCU and aUEC PAID (the purchase price, not the value; failed purchases ignored, unconfirmed ones counted apart).
+  Value lost, insurance and killer are shown as "non journalisés"; the cargo attribution is labelled as verified on 2025-build
+  logs only. Suicides, routine insurance claims, other actors' deaths and AI vehicles the player destroyed are not counted.
+- Sessions file: a new additive `ship_losses` list per session (format version stays 2; an older file reads as empty).
+  It keeps only the time, the ship model, the cause, the kind of causer, the place and the cargo presumed lost; nothing
+  derived from a ship's identifier is written (the hash that links a purchase to its ship stays in memory), and a loss is
+  de-duplicated by time, model and place. The aUEC paid is a balance figure: withheld from the bar, the list, the stats,
+  the poll, the channel between Views and the debrief unless the balance is allowed. The reviewed privacy sentence
+  (README, SECURITY, CAPABILITIES, TELEMETRY, ARCHITECTURE and the block for Claude, English and French) adds "ship
+  losses: time, model, cause, place, presumed cargo".
+- Known limit of the additive field: the session file stays at format version 2, so a server of an older release that
+  rewrites the file drops `ship_losses` (as it drops `price_refusals`). Update every running server together.
+- The saved-session card holds up to 12 notes (it dropped any beyond 4 in silence); the compact line counts every loss and
+  uses no-break spaces; an invalid loss in the file is set aside alone, not the whole session.
+- A loss with cargo ends the run in the commerce model and in the journal's cargo runs, so a later sale of the same goods
+  is not paired with the lost cargo.
 
-### Added (dashboard)
+### Added (dashboard, the Raccourcis zone)
 - A "Raccourcis" zone under the ship banner: reminders of the actions that fit the moment, chosen from states the stream
   and Game.log already carry (landing gear out and not landed, on foot, EVA, ground vehicle, powerplant off, quantum mode,
   hostile lock, shields cut). Three in the compact view (nothing at all when the context is unknown), six in full screen
@@ -135,29 +123,50 @@ versions follow [Semantic Versioning](https://semver.org/).
   test deletes its temporary folder. The tests now close their managers (which waits for that look) before removing the
   folder. Test support only.
 
-### Added
-- Loss tracker. When a ship is destroyed with the player aboard (build 4.10: `[ActorState] Dead ... destroyed
-  vehicle`; the 2025 `Actor Death` of the player inside the ship as a legacy path), the dashboard says so in the alert slot
-  (header verdict, compact line, commerce card box, ahead of a refused price), the commerce card marks the run it
-  interrupted, the saved session keeps it and the session debrief lists it. The cause is a collision only when a
-  `FatalCollision ... PlayerPilot: 1` of the same ship precedes by at most 1 s (or the 2025 `Vehicle Destruction` line says
-  so), else "not logged". The cargo is PRESUMED lost: successful purchases bound to that ship by the cargo kiosk and not
-  sold, in SCU and aUEC PAID (the purchase price, not the value; failed purchases ignored, unconfirmed ones counted apart).
-  Value lost, insurance and killer are shown as "non journalisés"; the cargo attribution is labelled as verified on 2025-build
-  logs only. Suicides, routine insurance claims, other actors' deaths and AI vehicles the player destroyed are not counted.
-- Sessions file: a new additive `ship_losses` list per session (format version stays 2; an older file reads as empty).
-  It keeps only the time, the ship model, the cause, the kind of causer, the place and the cargo presumed lost; nothing
-  derived from a ship's identifier is written (the hash that links a purchase to its ship stays in memory), and a loss is
-  de-duplicated by time, model and place. The aUEC paid is a balance figure: withheld from the bar, the list, the stats,
-  the poll, the channel between Views and the debrief unless the balance is allowed. The reviewed privacy sentence
-  (README, SECURITY, CAPABILITIES, TELEMETRY, ARCHITECTURE and the block for Claude, English and French) adds "ship
-  losses: time, model, cause, place, presumed cargo".
-- Known limit of the additive field: the session file stays at format version 2, so a server of an older release that
-  rewrites the file drops `ship_losses` (as it drops `price_refusals`). Update every running server together.
-- The saved-session card holds up to 12 notes (it dropped any beyond 4 in silence); the compact line counts every loss and
-  uses no-break spaces; an invalid loss in the file is set aside alone, not the whole session.
-- A loss with cargo ends the run in the commerce model and in the journal's cargo runs, so a later sale of the same goods
-  is not paired with the lost cargo.
+### Changed (dashboard, UX wave A: the trade line and quick wins)
+- The compact line of a run under way says what the data gives and nothing else: "Trajet en cours · 696 SCU achetés · en
+  route depuis 6 min · d’après ton plan : Laranite, Port Tressler → Area18 TDD, estimé 25 min, vente visée 457/SCU". The SCU
+  and the time since the first purchase come from the journal; the goods (until the server has their name), the route, the
+  estimated time and the target price come from the plan, are grouped after "d’après ton plan" (the plan is not checked
+  against the journal) and each appears only if the plan has it. The target price is the plan's market price, not the
+  balance: it shows in both balance modes (a plan sized by the balance is dropped by the page while the balance is hidden,
+  as before). With part of it sold: "640 / 696 SCU vendus · premier achat il y a 36 min".
+- The plan is left out when something contradicts it: the run's goods are named and the plan names other goods; the
+  journal's buying (or selling) shop has no SPECIFIC word in common with the plan's place for it (generic words such as
+  shop, cargo, port, station, hub, centre, admin do not count: "SCShop_Cargo_Tressler" against "Lorville Hub"); the plan
+  is spent (a run, finished or not, began after it and before this one: it belongs to the first run after it, the later
+  run says "plan déjà utilisé par un trajet précédent, non rattaché"); or this View received the plan after the run's first purchase (the line then says "plan reçu après le premier
+  achat, non rattaché"; a plan the View cannot date is attached as it is, labelled).
+- A run whose first purchase is more than 3 hours old, or while Game.log says the game is closed, in the menus or
+  disconnected, is "Trajet non terminé · … · premier achat il y a 5 h" (days from 48 h): no "en route", no plan. An
+  unknown connection does not make a run idle.
+- The 8-character id of the journal (a fragment of the game's GUID) is never shown any more, in the line, the card, the
+  history or the balance movements: a good without a name is "marchandise inconnue". Shops the journal names by class name
+  ("SCShop_Cargo_Tressler") are shown as words ("Tressler"), by one function (`shopWords`) for the card and the movements.
+- Names of goods: the server now looks them up in the background in the wiki's public commodity list (the lookup
+  `sc_trade_journal` makes: one request for everyone, matched locally on the full GUID, nothing from the log is sent; at
+  most every 5 minutes per GUID, 16 GUIDs at a time, 64 names kept, the oldest dropped first; never awaited by the poll; only with
+  telemetry on; `SC_COMMODITY_NAMES=off` (or `0`, `false`, `no`) switches it off, any other value changes nothing). The
+  run then carries `commodity_name` and the line says "Laranite" even without a plan. `src/dashboard/commodityNames.ts`.
+- Full screen: the header (route, "trajet estimé", the plan's note and safety note) says the plan only under the same
+  conditions, and the run's own goods name comes before the plan's. A run under way shows "en cours depuis N min" (since its first purchase) instead of "durée 2 s", which was the
+  span between its first and last purchase; the final duration is shown once the run is complete, and never for a run a
+  destroyed ship interrupted.
+- Session card: the store's notices are said in French by the page (a fixed sentence per case, the server's English text is
+  never printed); the folded pill says "inactive depuis 3 h" (not "inactive") and names its notes ("enregistrement
+  impossible", "fichier en lecture seule", "solde de départ approximatif") instead of "note".
+- The export hint now says that the EXPORTED report holds no start and final balances unless asked, and that the session
+  detail drawn on the screen does show them while the balance is shown (they were read as one: the report itself was
+  already tested against its announcement, `sessionExport.test.ts`).
+- Health limits, one set for all (a choice, not a measure): the dial is red under 30 % (the server's `health_low` alert
+  fires under 30 %) and amber under 50 % (it read green at 35 % just after a fight); the marks of the two dials (0-30 %
+  red, 30-50 % amber) and the band told to the model (low under 30 %, medium under 50 %) follow. Written in
+  `docs/TELEMETRY.md` and `docs/TELEMETRY.fr.md`.
+- Page budget (`scripts/check-page-size.mjs`, `pageBudget.test.ts`): raised to the size measured with this change plus
+  about 5 % (our guardrail, not a host limit; no feature is dropped to fit it).
+- Verification (no change): a ship lost with cargo is not in the session's "Résultat des trajets" (a run it cuts never
+  completes, so it is never a trip), so a "dont cargaisons perdues" sub-line would be false in that mode; the amount paid
+  stays in the existing note. Pinned by a test in `stats.test.ts`.
 
 ## [2.5.0] - 2026-11-04
 
