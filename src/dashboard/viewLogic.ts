@@ -1001,8 +1001,8 @@ export function timelineItems(events: any[], markers: any[], limit: number): any
     }
   }
   const marks: any = {
-    start: "Début de session",
-    end: "Fin de session",
+    start: "Début des compteurs",
+    end: "Fin des compteurs",
     reset_delta: "Solde remis à zéro",
   };
   for (const m of markers || []) {
@@ -2053,8 +2053,8 @@ export function chronology(events: any[], markers: any[], filter: string, limit:
   }
   if (filter !== "alerts") {
     const marks: any = {
-      start: "Début de session",
-      end: "Fin de session",
+      start: "Début des compteurs",
+      end: "Fin des compteurs",
       reset_delta: "Solde remis à zéro",
     };
     for (const m of markers || []) {

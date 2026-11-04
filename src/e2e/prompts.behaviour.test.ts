@@ -45,6 +45,7 @@ describe("Feature: prompts the user can pick in Claude", () => {
           "mining_prep",
           "patch_briefing",
           "session_debrief",
+          "trade_copilot",
           "trade_review",
         ].sort(),
       );
@@ -122,6 +123,22 @@ describe("Feature: prompts the user can pick in Claude", () => {
       expect(text).toMatch(/GROSS/);
       expect(text).toMatch(/never net/);
       expect(text).toMatch(/only after I agree/);
+      expect(text).toMatch(/next action/);
+    });
+
+    it("Then trade_copilot reads the session first, asks before money, plans, verifies, and labels estimates", async () => {
+      const text = await render("trade_copilot", { budget: "500000" });
+      expect(text).toContain("Budget in aUEC: 500000.");
+      inOrder(text, [
+        "sc_session_current",
+        "include_balance",
+        "uex_plan_trade",
+        "uex_get_market_status",
+        "uex_get_price_history",
+      ]);
+      expect(text).toMatch(/Never read them without asking/);
+      expect(text).toMatch(/ESTIMATES/);
+      expect(text).toMatch(/never call a route safe/);
       expect(text).toMatch(/next action/);
     });
 

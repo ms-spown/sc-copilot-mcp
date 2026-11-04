@@ -8,14 +8,14 @@ the right tool and reads the provenance. It is short on purpose.
 ## Do I still need the block?
 
 The server also sends Claude an operating manual when the client connects (the MCP `instructions` field, about
-3,000 characters, written in `src/instructions.ts`): the honesty rules, which trade tool for which question, the
+3,200 characters, written in `src/instructions.ts`): the honesty rules, which trade tool for which question, the
 live and dashboard rules, the connection state rule, and how to accompany a run. Whether your client passes it to
 Claude varies: Claude Code does; Claude Desktop and claude.ai were reported not to, in open issues of
 November 2026. Do not guess: run the canary test at the end of this page before you shorten anything.
 
 What the manual already carries, so the pasted block need not repeat it: rule 1 (provenance and freshness), rule 2
 (untrusted text), rule 4 (errors), the trade tool choice in rule 3 (the price, planner, history, market status,
-refining, item, marketplace and journal tools), the core of rules 6 and 7 (no safety claim, balance only after
+refining, item, marketplace, journal and saved-session tools), the core of rules 6 and 7 (no safety claim, balance only after
 asking, connection state, no second dashboard, never `sc_live_poll` or `sc_live_mark`) and the way to accompany.
 What it does not carry, and the block must keep: the other lines of rule 3 (ships, patches, missions, wiki, game
 log), rule 5, and the details of rules 6 and 7 (what the stream lacks, on foot or seated, the dashboard balance).
@@ -70,6 +70,8 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    - What the player bought and sold, how a cargo run went: sc_trade_journal. The log has no wallet balance and
      no autoload fee, so give a GROSS margin only (revenue minus cost of the paired SCU), never a net result;
      cargo success is inferred (no error line), say so; a commodity shown as "unknown commodity" stays unknown.
+   - The player's saved play session (trips, time, the last place and goods the log named: an estimate): sc_session_current
+     to resume and accompany, sc_session_stats and sc_session_list to look back; money figures only with include_balance.
    - Accompanying a trade run: end with one concrete next step. Propose one main run and up to two alternatives (what to
      buy and where, where to sell, SCU, cost, profit, why it fits, the risks), after checking uex_get_price_history and
      uex_get_market_status. To debrief a run, use sc_trade_journal (gross margin) and the sell price now.
@@ -103,6 +105,12 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    also returns the conditions of the moment (shields cut, power lost...): use them to answer "do I have my shields?".
    The stream has no cargo: the balance change is the only measure of a run. The dashboard hides the balance
    until the player clicks; do not ask for it again, and never repeat it unless the player sent it.
+8. When live telemetry is on, the player's play session is saved on their PC (sc_session_current, sc_session_list,
+   sc_session_stats). To accompany a run, read sc_session_current (trips so far, time, the last place and goods the log
+   named: an estimate, not a position) and compare with uex_plan_trade (and uex_get_market_status) before proposing the next run,
+   explaining why. Money figures (balances, results, rates) come only with include_balance=true: ask the player first, and say
+   they come from the game's telemetry. Measured figures and estimates are labelled: repeat the label, and never
+   invent a figure the tools left null. Start or end a session (sc_session_new, sc_session_end) only when the player asks.
 ```
 
 ## Canary test: are the server instructions honoured?

@@ -60,6 +60,14 @@ const liveTelemetry = {
   channel: "unknown",
 } as const;
 
+const sessionFile = {
+  source: "session file (local)",
+  kind: "user",
+  trust: "untrusted_text",
+  maxText: 200,
+  channel: "unknown",
+} as const;
+
 export const CATALOG: Record<string, CatalogEntry> = {
   sc_data_status: {
     source: "sc-copilot-mcp",
@@ -243,6 +251,14 @@ export const CATALOG: Record<string, CatalogEntry> = {
   sc_live_dashboard: { ...liveTelemetry, profiles: ["local"] },
   sc_live_poll: { ...liveTelemetry, profiles: ["local"] },
   sc_live_mark: { ...liveTelemetry, profiles: ["local"] },
+
+  // The player's own saved play sessions (a local file written by this server, only with telemetry on). Contract
+  // titles, places and the player's note come back: treat them as text.
+  sc_session_current: { ...sessionFile, profiles: ["local", "trade"] },
+  sc_session_list: { ...sessionFile, profiles: ["local", "trade"] },
+  sc_session_stats: { ...sessionFile, profiles: ["local", "trade"] },
+  sc_session_new: { ...sessionFile, profiles: ["local"] },
+  sc_session_end: { ...sessionFile, profiles: ["local"] },
 
   sc_local_datasets: { ...local, profiles: ["local"] },
   sc_search_local: { ...local, profiles: ["local"] },

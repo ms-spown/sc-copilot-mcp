@@ -3,6 +3,7 @@ import type { FleetStore } from "../providers/fleet/store.js";
 import type { ConnectionTracker } from "../providers/gamelog/connection.js";
 import type { GameLog } from "../providers/gamelog/reader.js";
 import type { Scmdb } from "../providers/scmdb/store.js";
+import type { SessionManager } from "../providers/sessions/manager.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
 import type { HttpClient } from "../core/http.js";
 import {
@@ -30,6 +31,7 @@ import { gameLogTools } from "./gamelog.js";
 import { tradeJournalTools } from "./tradejournal.js";
 import { sctTools } from "./sctools.js";
 import { statusTools, type StatusProbe } from "./status.js";
+import { sessionTools } from "./sessions.js";
 import { telemetryTools } from "./telemetry.js";
 import type {
   ClientContext,
@@ -55,6 +57,8 @@ export interface ToolClients {
   telemetry?: Telemetry;
   /** Follows the end of Game.log for the player's connection to the servers. Absent: it is simply not reported. */
   connection?: ConnectionTracker;
+  /** Saved play sessions (SC_TELEMETRY=on and SC_SESSIONS not off). Absent: their tools say they are off. */
+  sessions?: SessionManager;
 }
 
 /** Every tool this server implements, before any scoping. */
@@ -73,6 +77,7 @@ export function allTools(clients: ToolClients, probes: StatusProbe[] = []): Tool
     ...tradeJournalTools(clients),
     ...telemetryTools(clients),
     ...dashboardTools(clients),
+    ...sessionTools(clients),
     ...fleetTools(clients),
     ...localTools(),
     ...vocabularyTools(clients),
@@ -119,6 +124,9 @@ function withDashboardSet(names: Set<string>): Set<string> {
   if (names.has("sc_live_dashboard")) {
     names.add("sc_live_poll");
     names.add("sc_live_mark");
+    // The session bar of the View reads and writes sessions through these.
+    for (const n of ["sc_session_current", "sc_session_list", "sc_session_new", "sc_session_end"])
+      names.add(n);
   }
   return names;
 }

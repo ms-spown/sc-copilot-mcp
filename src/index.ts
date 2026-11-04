@@ -9,6 +9,15 @@ import { GameLog, gameLogConfigFromEnv } from "./providers/gamelog/reader.js";
 import { createGameLogHint } from "./providers/telemetry/gamelogHint.js";
 import { createTelemetry } from "./providers/telemetry/index.js";
 import { createScmdb } from "./providers/scmdb/client.js";
+import { sessionsConfig } from "./providers/sessions/config.js";
+import { createGameInfo, createGameRunning, SessionManager } from "./providers/sessions/manager.js";
+import { SessionStore } from "./providers/sessions/store.js";
+import {
+  CompositeTripSource,
+  LedgerTripSource,
+  TradeRunTripSource,
+} from "./providers/sessions/trips.js";
+import { ledgerLogFrom, LedgerService } from "./dashboard/ledgerService.js";
 import { createSctClient } from "./providers/sctools/client.js";
 import { createUexClient } from "./providers/uex/client.js";
 import { createScwClient } from "./providers/wiki/client.js";
@@ -27,20 +36,58 @@ if (!config.uexToken) {
 
 const gameLog = new GameLog(gameLogConfigFromEnv());
 
+const connection = new ConnectionTracker(gameLog);
+// Off unless SC_TELEMETRY=on. When off this loads nothing and never connects.
+const telemetry = createTelemetry({
+  enabled: config.telemetry,
+  options: { gameLogHint: createGameLogHint(gameLog) },
+});
+
+const scwClient = createScwClient(config.scwBaseUrl);
+
+// Saved play sessions: only with SC_TELEMETRY=on and SC_SESSIONS not off. Otherwise nothing is created, read or watched.
+const sessionSettings = sessionsConfig(process.env, config.telemetry);
+let sessions: SessionManager | undefined;
+if (sessionSettings.enabled) {
+  const ledger = new LedgerService(ledgerLogFrom(gameLog));
+  const history = async () => (await telemetry.balanceHistory?.()) ?? [];
+  sessions = new SessionManager({
+    telemetry,
+    store: new SessionStore(sessionSettings.file),
+    config: sessionSettings,
+    ledger,
+    // Trips: completed contracts of the transport ledger, and completed trade runs of the dashboard's commerce model
+    // (one pairing, read incrementally by the same ledger service). No request to any host.
+    trips: new CompositeTripSource([
+      new LedgerTripSource(ledger, history),
+      new TradeRunTripSource(
+        () => ledger.trades(),
+        history,
+        () => sessions?.currentPlan,
+      ),
+    ]),
+    gameHint: createGameRunning(gameLog),
+    connection,
+    gameInfo: createGameInfo(gameLog),
+  });
+  sessions.start();
+  // The last trip is not lost when the host closes the server: one last look, saved, before the process ends.
+  process.stdin.once("end", () => {
+    void sessions?.close();
+  });
+}
+
 const clients = {
   uexClient: createUexClient(config.uexBaseUrl, config.uexToken),
-  scwClient: createScwClient(config.scwBaseUrl),
+  scwClient,
   sctClient: createSctClient(config.sctBaseUrl),
   scmdb: createScmdb(),
   gameLog,
   // Lazy: nothing is read until a live tool or the dashboard asks.
-  connection: new ConnectionTracker(gameLog),
+  connection,
   fleet: new FleetStore(fleetFilePath()),
-  // Off unless SC_TELEMETRY=on. When off this loads nothing and never connects.
-  telemetry: createTelemetry({
-    enabled: config.telemetry,
-    options: { gameLogHint: createGameLogHint(gameLog) },
-  }),
+  telemetry,
+  ...(sessions ? { sessions } : {}),
 };
 
 // A bad SCMCP_TOOLS or SCMCP_PROFILES throws here, at startup, rather than listing nothing.

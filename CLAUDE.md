@@ -13,8 +13,16 @@ For Claude as a _user_ of the tools, see `docs/USING_WITH_CLAUDE.md` (the block 
   switched on without an explicit action by the user (`SC_TELEMETRY=on` in the server's entry, and the game-side
   variable set by a command the user runs). The address `127.0.0.1:2942` is fixed in code, never from the
   environment; the only thing sent to the game is the empty `TelemetryStream` request; frames are never logged,
-  written to disk or sent over a network (the UEC balance stays on the machine). Never call it safe,
+  written to disk or sent over a network (the UEC balance stays on the machine, except for the session summaries below).
+  Never call it safe,
   undetectable or approved by CIG. Without `SC_TELEMETRY=on` no gRPC/HTTP2 code is loaded and nothing connects.
+- **Saved sessions (amendment, by the user's explicit decision).** Session SUMMARIES may be stored in the server's own
+  local file (`sessions.json`, `providers/sessions`): the starting balance, the last/end balance and per-trip results,
+  because the player asked to find a session again after a crash, a reboot or in another conversation. FRAMES, raw log
+  lines, the handle, the account id, IPs and GUIDs of players or game sessions are NEVER stored, and no session data is ever
+  sent over a network (session tracking makes no request). It exists only with `SC_TELEMETRY=on`; `SC_SESSIONS=off` switches it off (no file created or read).
+  The balance and every figure derived from it still reach the model, the poll and the channel between Views ONLY with
+  `include_balance` / the player's "show balance" choice (tests enforce it); the file itself is on the user's machine.
 - No `Data.p4k` extraction and no extraction code or instructions in this repository. Whether it is safe for an
   account is unverified (see `SECURITY.md`).
 - No remote write tool, including UEX `data_submit`; never use UEX's submission key.
@@ -29,7 +37,8 @@ For Claude as a _user_ of the tools, see `docs/USING_WITH_CLAUDE.md` (the block 
 ```
 src/core/       http (host allowlist, guarded clients), cache (memory + disk, stale only on outage),
                 provenance (AsyncLocalStorage), untrusted (cleaning/fencing), config, paths, errors, format
-src/providers/  uex, wiki, sctools (clients) · scmdb (store + queries) · gamelog (parser + reader)
+src/providers/  sessions (saved play sessions: store, reducer, stats, manager, trip sources) ·
+                uex, wiki, sctools (clients) · scmdb (store + queries) · gamelog (parser + reader)
                 fleet (store + name resolver) · dumps (patch-dump repo) · local (user's game-*.json) · probes
                 telemetry (opt-in live stream: wire decoder, schema table, reader on node:http2, handler, service)
 src/tools/      one file per group (definition + handler together), catalog.ts (provenance + profiles),

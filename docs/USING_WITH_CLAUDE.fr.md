@@ -8,7 +8,7 @@ afin que Claude choisisse le bon outil et lise la provenance des données. Il es
 ## Ai-je encore besoin du bloc ?
 
 Le serveur envoie aussi à Claude un mode d'emploi à la connexion du client (le champ MCP `instructions`, environ
-3 000 caractères, écrit dans `src/instructions.ts`) : les règles d'honnêteté, quel outil de commerce pour quelle
+3 200 caractères, écrit dans `src/instructions.ts`) : les règles d'honnêteté, quel outil de commerce pour quelle
 question, les règles du direct et du tableau de bord, la règle sur l'état de connexion, et la manière
 d'accompagner une tournée. Que votre client le transmette à Claude varie : Claude Code le fait ; Claude Desktop et
 claude.ai ne le feraient pas, d'après des tickets ouverts en novembre 2026. Ne devinez pas : faites le test canari en fin
@@ -16,7 +16,7 @@ de page avant de raccourcir quoi que ce soit.
 
 Ce que le mode d'emploi porte déjà, donc inutile de le répéter dans le bloc : la règle 1 (provenance et
 fraîcheur), la règle 2 (texte non fiable), la règle 4 (erreurs), le choix des outils de commerce dans la règle 3
-(prix, planificateur, historique, état du marché, raffinage, objets, marché des joueurs et journal), l'essentiel des
+(prix, planificateur, historique, état du marché, raffinage, objets, marché des joueurs, journal et sessions enregistrées), l'essentiel des
 règles 6 et 7 (aucune affirmation de sûreté, solde seulement après demande, état de connexion, pas de second tableau
 de bord, jamais `sc_live_poll` ni `sc_live_mark`) et la manière d'accompagner. Ce qu'il ne porte pas, et que le bloc
 doit garder : les autres lignes de la règle 3 (vaisseaux, patchs, missions, wiki, journal de jeu), la règle 5, et les
@@ -79,6 +79,9 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
      n'a ni solde du portefeuille ni frais d'autochargement : donnez une marge BRUTE seulement (recette moins coût
      des SCU appariés), jamais un résultat net ; le succès d'un achat ou d'une vente de fret est déduit (aucune
      ligne d'erreur), dites-le ; une marchandise « unknown commodity » reste inconnue.
+   - La session de jeu enregistrée du joueur (trajets, temps, dernier lieu et dernières marchandises nommés par le journal :
+     une estimation) : sc_session_current pour reprendre et accompagner, sc_session_stats et sc_session_list pour regarder
+     en arrière ; chiffres d'argent seulement avec include_balance.
    - Accompagner une tournée de commerce : finissez par une prochaine étape concrète. Proposez une option principale et au
      plus deux alternatives (quoi acheter et où, où vendre, SCU, coût, profit, pourquoi elle convient, les risques), après
      avoir vérifié uex_get_price_history et uex_get_market_status. Pour le bilan d'une tournée, utilisez sc_trade_journal
@@ -117,6 +120,14 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
    conditions du moment (boucliers coupés, énergie perdue...) : servez-vous-en pour répondre à « ai-je mes boucliers ? ». Le flux ne contient pas la cargaison : la variation du solde
    est la seule mesure d'une tournée. Le tableau de bord masque le solde tant que le joueur ne clique pas ; ne le
    redemandez pas, et ne le répétez jamais sauf si le joueur l'a envoyé.
+8. Quand la télémétrie en direct est activée, la session de jeu du joueur est enregistrée sur son PC (sc_session_current,
+   sc_session_list, sc_session_stats). Pour accompagner une tournée, lisez sc_session_current (trajets faits, temps, le
+   dernier lieu et les dernières marchandises nommés par le journal : une estimation, pas une position) et comparez avec
+   uex_plan_trade (et uex_get_market_status) avant de proposer la prochaine route, en expliquant pourquoi. Les chiffres d'argent (soldes,
+   résultats, rythmes) ne viennent qu'avec include_balance=true : demandez d'abord au joueur, et dites qu'ils viennent
+   de la télémétrie du jeu. Mesures et estimations sont étiquetées : reprenez l'étiquette, et n'inventez jamais un
+   chiffre que les outils ont laissé null. Ne démarrez ou ne terminez une session (sc_session_new, sc_session_end) que si
+   le joueur le demande.
 ```
 
 ## Test canari : les instructions du serveur sont-elles respectées ?

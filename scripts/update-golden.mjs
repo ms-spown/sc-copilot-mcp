@@ -25,6 +25,8 @@ const registry = createRegistry(
     fleet: new FleetStore("unused.json"),
     // Enabled only so that the optional tools are part of the frozen surface; it never connects.
     telemetry: createTelemetry({ enabled: true }),
+    // A stub manager so that the five session tools are part of the frozen surface; it is never called.
+    sessions: { enabled: true },
   }),
   {},
 );

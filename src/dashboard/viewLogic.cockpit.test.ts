@@ -302,13 +302,13 @@ describe("Feature: one chronology, the unverified values and what the stream lac
       "Posé",
       "Touché",
       "Décollage",
-      "Début de session",
+      "Début des compteurs",
     ]);
     expect(L.chronology(events, markers, "alerts", 10).map((i: any) => i.label)).toEqual([
       "Touché",
     ]);
     expect(L.chronology(events, markers, "markers", 10).map((i: any) => i.label)).toEqual([
-      "Début de session",
+      "Début des compteurs",
     ]);
     expect(L.chronology(events, markers, "all", 2)).toHaveLength(2);
   });
