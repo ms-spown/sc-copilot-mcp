@@ -684,6 +684,32 @@ describe("Feature: session management with the game closed (every click has a du
     expect((await second.bar(false)).current?.status).toBe("ended");
   });
 
+  it("Given the game wrote its quit line, Then the open session says so until the game is seen again", async () => {
+    const r = rig();
+    r.log.running = true;
+    await playMinutes(r, 3, () => 1000);
+    r.log.running = false;
+    const since = new Date(r.clock.t).toISOString();
+    r.conn.info = { state: "closed", since, code: null, reason: null };
+    r.clock.t += MIN;
+    await r.manager.tick();
+    const closed = (await r.manager.bar(false)).current;
+    expect(closed?.status).toBe("open");
+    expect(closed?.game_closed_at).toBe(since);
+    // The game is back within the resume gap: the old quit line no longer says the game is closed.
+    r.log.running = true;
+    r.conn.info = {
+      state: "online",
+      since: new Date(r.clock.t).toISOString(),
+      code: null,
+      reason: null,
+    };
+    await playMinutes(r, 2, () => 1001);
+    const back = (await r.manager.bar(false)).current;
+    expect(back?.number).toBe(1);
+    expect(back?.game_closed_at).toBeNull();
+  });
+
   it("Given an ended session, When the game is started again, Then a new session starts by itself", async () => {
     const r = rig();
     r.log.running = true;

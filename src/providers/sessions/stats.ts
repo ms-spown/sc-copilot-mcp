@@ -217,7 +217,11 @@ export function summarizeSession(s: Session): SessionSummary {
     ended_at: s.ended_at,
     last_activity_at: s.last_activity_at,
     empty: isEmpty(s),
-    game_closed_at: s.ended_at === null ? s.quit_at : null,
+    // The quit line counts only while nothing was seen after it (a game back within the resume gap keeps the old line).
+    game_closed_at:
+      s.ended_at === null && s.quit_at !== null && ms(s.quit_at) >= ms(s.last_activity_at) - 5000
+        ? s.quit_at
+        : null,
     duration_ms: Math.max(0, end - ms(s.started_at)),
     active_ms: s.active_ms,
     interruptions: s.interruptions.length,

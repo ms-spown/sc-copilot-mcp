@@ -332,8 +332,12 @@ describe("Feature: new and end write only the server's own file", () => {
     await t.play(10);
     const n = await t.call("sc_session_new");
     expect(n.data.data.message).toContain("Session 2 started");
+    // The session in progress that this click closed is named, as a number, in the structured copy the View reads.
+    expect((n.r.structuredContent as Record<string, unknown>).closed_session).toBe(1);
+    expect((n.r.structuredContent as Record<string, unknown>).started).toBe(true);
     const e = await t.call("sc_session_end");
     expect(e.data.data.ok).toBe(true);
+    expect((e.r.structuredContent as Record<string, unknown>).reason).toBe("ended");
     const again = await t.call("sc_session_end");
     expect(again.data.data.ok).toBe(false);
     const doc = JSON.parse(fs.readFileSync(path.join(dir, "sessions.json"), "utf8"));
@@ -356,6 +360,16 @@ describe("Feature: new and end write only the server's own file", () => {
     expect(n.data.data.message).toMatch(/Nothing started.*empty.*already is the next session/);
     expect(n.data.data.message).not.toMatch(/was closed/);
     expect(n.data.data.session.number).toBe(1);
+    // The View reads `structuredContent` (cleaned by the tool), not the text: a `false` or a code lost there would make the
+    // card say "Session démarrée." after a click that changed nothing.
+    const sc = (x: typeof e) => (x.r.structuredContent ?? {}) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(sc(e).ok).toBe(false);
+    expect(sc(e).reason).toBe("empty");
+    expect(sc(e).session.empty).toBe(true);
+    expect(sc(n).ok).toBe(true);
+    expect(sc(n).started).toBe(false);
+    expect(sc(n).closed_session).toBeNull();
+    expect(sc(n).session.empty).toBe(true);
     const doc = JSON.parse(fs.readFileSync(path.join(dir, "sessions.json"), "utf8"));
     expect(doc.sessions.map((s: { number: number }) => s.number)).toEqual([1]);
   });
