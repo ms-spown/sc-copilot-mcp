@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-04
+
 ### Added
 - **Route reliability: what your own saved runs say about the planner's profit.** UEX prices are crowdsourced estimates,
   so a planned profit is a guess; the completed trade runs that carry a planned profit now say how the realised result
