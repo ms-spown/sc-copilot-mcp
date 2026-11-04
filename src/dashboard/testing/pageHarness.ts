@@ -287,6 +287,8 @@ export interface WorldOptions {
   storage?: "throws" | Map<string, string>;
   /** The clipboard: omitted = none, "refuses" = writeText rejects, an array = a working one that collects the texts. */
   clipboard?: "refuses" | string[];
+  /** Files: omitted = the page cannot make one (no Blob), an array = it can, and every link clicked is collected here. */
+  downloads?: { name: string; mime: string; text: string }[];
 }
 
 /**
@@ -409,6 +411,28 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
       },
     });
   }
+  const files = options.downloads;
+  const blobs = new Map<string, { parts: string; type: string }>();
+  if (files) {
+    Object.assign(win, {
+      Blob: class {
+        parts: string;
+        type: string;
+        constructor(parts: unknown[], init: { type?: string } = {}) {
+          this.parts = parts.join("");
+          this.type = init.type ?? "";
+        }
+      },
+      URL: {
+        createObjectURL: (b: { parts: string; type: string }) => {
+          const url = "blob:fake/" + blobs.size;
+          blobs.set(url, b);
+          return url;
+        },
+        revokeObjectURL: (url: string) => void blobs.delete(url),
+      },
+    });
+  }
   let selected: FakeNode | null = null;
   Object.assign(win, {
     getSelection: () => ({
@@ -429,7 +453,20 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     }),
     documentElement: new FakeNode("html"),
     body,
-    createElement: (tag: string) => new FakeNode(tag),
+    createElement: (tag: string) => {
+      const node = new FakeNode(tag);
+      if (tag === "a" && files) {
+        node.click = () => {
+          const b = blobs.get(node.attrs["href"] ?? "");
+          files.push({
+            name: node.attrs["download"] ?? "",
+            mime: (b?.type ?? "").split(";")[0] ?? "",
+            text: b?.parts ?? "",
+          });
+        };
+      }
+      return node;
+    },
     createElementNS: (_ns: string, tag: string) => new FakeNode(tag),
     getElementById: (id: string) => (id === "app" ? root : null),
     addEventListener(type: string, fn: () => void) {

@@ -77,6 +77,29 @@ describe("Feature: hostile text in the log", () => {
     await w.call("sc_session_current", { include_balance: true });
     await w.call("sc_session_list", { include_balance: true });
     await w.call("sc_session_stats", { include_balance: true });
+    // The reports of the session, for the model and for the dashboard, in both texts, with and without the balance and
+    // with the start balance asked for: hostile text must come out cleaned (every call is recorded and swept below).
+    const sid = w.sessionsJson().sessions[0]!.id;
+    for (const kind of ["md", "csv"]) {
+      for (const include_balance of [false, true]) {
+        const r = await w.call("sc_session_export", {
+          id: sid,
+          kind,
+          include_balance,
+          include_start_balance: include_balance,
+        });
+        expect(
+          r.isError,
+          "the dashboard's report is available to a client with the UI extension",
+        ).toBeFalsy();
+      }
+    }
+    await w.call("sc_session_debrief", { include_balance: true, include_start_balance: true });
+    await w.call("sc_session_debrief", {
+      include_balance: true,
+      format: "csv",
+      csv_delimiter: ";",
+    });
     const poll = JSON.stringify(await w.poll(true));
     const recorded = w.outputs.map((o) => `${o.text}\n${o.structured}`).join("\n");
     const file = w.sessionsBytes();

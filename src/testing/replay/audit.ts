@@ -23,6 +23,9 @@ const MODEL_TOOLS: [string, Record<string, unknown>][] = [
   ["sc_session_current", {}],
   ["sc_session_list", {}],
   ["sc_session_stats", {}],
+  // The shareable report, in both formats: without the balance it must carry none of what comes from it.
+  ["sc_session_debrief", {}],
+  ["sc_session_debrief", { format: "csv" }],
   ["sc_live_state", {}],
   ["sc_live_events", {}],
   ["sc_live_status", {}],

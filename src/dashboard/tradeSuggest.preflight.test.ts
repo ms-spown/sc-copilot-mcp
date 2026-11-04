@@ -13,6 +13,12 @@ import type { TripPlanResult } from "../providers/uex/tripPlanner.js";
 import { dashboardTools } from "../tools/dashboard.js";
 import { DashboardService } from "./service.js";
 import { createRegistry } from "../tools/registry.js";
+
+/** The View's own calls: a client that declared the UI extension (an app-only tool is refused to any other). */
+const asView = (r: ReturnType<typeof createRegistry>) => ({
+  ...r,
+  call: (name: string, args: unknown) => r.call(name, args, { ui: true }),
+});
 import {
   suggestInputSchema,
   SUGGEST_CACHE_TTL_MS,
@@ -374,7 +380,7 @@ describe("Feature: the tool, as the registry lists and runs it", () => {
       { telemetry, uexClient: uex, scwClient: empty },
       { plan: search, now: () => 1_700_000_000_000, minIntervalMs: 0 },
     );
-    const registry = createRegistry(tools);
+    const registry = asView(createRegistry(tools));
     const listed: any = registry.list({ ui: true }).find((t) => t.name === "sc_trade_suggest");
     expect(listed.inputSchema.properties.action.enum).toEqual(["search", "apply", "preflight"]);
     expect(registry.list({ ui: false }).map((t) => t.name)).not.toContain("sc_trade_suggest");
@@ -421,7 +427,7 @@ describe("Feature: the tool, as the registry lists and runs it", () => {
       { telemetry, uexClient: { defaults: {}, get } as unknown as HttpClient, scwClient: empty },
       { now: () => 1_700_000_000_000 },
     );
-    const r: any = await createRegistry(tools).call("sc_trade_suggest", {
+    const r: any = await asView(createRegistry(tools)).call("sc_trade_suggest", {
       action: "preflight",
       commodity: "Gold",
     });
@@ -435,7 +441,9 @@ describe("Feature: the tool, as the registry lists and runs it", () => {
       uexClient: empty,
       scwClient: empty,
     });
-    const r: any = await createRegistry(tools).call("sc_trade_suggest", { action: "preflight" });
+    const r: any = await asView(createRegistry(tools)).call("sc_trade_suggest", {
+      action: "preflight",
+    });
     expect(r.isError).toBe(true);
   });
 });

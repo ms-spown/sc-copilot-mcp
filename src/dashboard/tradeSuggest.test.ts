@@ -700,12 +700,17 @@ describe("Feature: failures are states with a code", () => {
 describe("Feature: the tool, as the registry lists and runs it", () => {
   const empty = { defaults: {}, get: async () => ({ data: {} }) } as unknown as HttpClient;
   const telemetry = (enabled: boolean) => ({ ...createTelemetry({ enabled: false }), enabled });
+  /** The View's own calls: a client that declared the UI extension (an app-only tool is refused to any other). */
+  const asView = (r: ReturnType<typeof createRegistry>) => ({
+    ...r,
+    call: (name: string, args: unknown) => r.call(name, args, { ui: true }),
+  });
   const build = (enabled: boolean, plan = vi.fn(async () => fakeResult())) => {
     const tools = dashboardTools(
       { telemetry: telemetry(enabled), uexClient: empty, scwClient: empty },
       { plan, now: () => 5_000_000 },
     );
-    return { registry: createRegistry(tools), plan };
+    return { registry: asView(createRegistry(tools)), plan };
   };
 
   it("Given telemetry on, Then it is listed to a client with Views only, as an app-only tool", () => {
@@ -746,7 +751,7 @@ describe("Feature: the tool, as the registry lists and runs it", () => {
       },
       { plan: vi.fn(async () => fakeResult()), now: () => 5_000_000 },
     );
-    const registry = createRegistry(tools);
+    const registry = asView(createRegistry(tools));
     const found: any = await registry.call("sc_trade_suggest", {
       action: "search",
       cargo_scu: 100,
@@ -770,7 +775,7 @@ describe("Feature: the tool, as the registry lists and runs it", () => {
       },
       { plan: vi.fn(async () => fakeResult()), now: () => 5_000_000, minIntervalMs: 0 },
     );
-    const registry = createRegistry(tools);
+    const registry = asView(createRegistry(tools));
     const search = async (extra: Record<string, unknown>) =>
       (
         (await registry.call("sc_trade_suggest", {

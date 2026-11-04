@@ -81,7 +81,8 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
      ligne d'erreur), dites-le ; une marchandise « unknown commodity » reste inconnue.
    - La session de jeu enregistrée du joueur (trajets, temps, dernier lieu et dernières marchandises nommés par le journal :
      une estimation) : sc_session_current pour reprendre et accompagner, sc_session_stats et sc_session_list pour regarder
-     en arrière ; chiffres d'argent seulement avec include_balance.
+     en arrière ; chiffres d'argent seulement avec include_balance. Pour garder ou partager une session (équipage, org,
+     tableur) : sc_session_debrief (Markdown ; un CSV seulement sur demande).
    - Accompagner une tournée de commerce : finissez par une prochaine étape concrète. Proposez une option principale et au
      plus deux alternatives (quoi acheter et où, où vendre, SCU, coût, profit, pourquoi elle convient, les risques), après
      avoir vérifié uex_get_price_history et uex_get_market_status. Pour le bilan d'une tournée, utilisez sc_trade_journal
@@ -130,7 +131,11 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
    le joueur le demande. Les prix UEX sont des estimations de la communauté : quand le joueur a accepté les chiffres
    d'argent, lisez route_reliability dans sc_session_stats avant de citer un profit prévu, et citez-la avec son nombre de
    trajets et sa confiance (une estimation, aucun chiffre sous 2 trajets, jamais reportée d'une marchandise à une autre,
-   aucune cause affirmée).
+   aucune cause affirmée). Si le joueur veut garder ou partager une session, sc_session_debrief donne un bilan court (Markdown par défaut, environ
+   28 000 caractères au plus, trajets plus anciens coupés avec leur nombre) : sans include_balance il ne contient aucun montant
+   en aUEC et le dit ; demandez avant include_balance, et encore avant include_start_balance (les soldes de départ et de fin
+   restent dehors sauf demande du joueur). Remettez-le tel quel, sans ajouter de chiffre, et dites que le joueur télécharge le
+   Markdown et le CSV complets depuis la barre de session du tableau de bord.
 ```
 
 ## Test canari : les instructions du serveur sont-elles respectées ?

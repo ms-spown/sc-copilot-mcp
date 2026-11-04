@@ -31,6 +31,7 @@ import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { HttpClient } from "../../core/http.js";
+import { UI_EXTENSION_ID, UI_MIME_TYPE } from "../../dashboard/constants.js";
 import type { LedgerService } from "../../dashboard/ledgerService.js";
 import { ConnectionTracker } from "../../providers/gamelog/connection.js";
 import { GameLog } from "../../providers/gamelog/reader.js";
@@ -49,6 +50,7 @@ import { startFakeGame, type FakeGame } from "../../providers/telemetry/testing/
 import { createMcpServer } from "../../server.js";
 import { dashboardTools } from "../../tools/dashboard.js";
 import { createRegistry } from "../../tools/registry.js";
+import { sessionDebriefTools } from "../../tools/sessionDebrief.js";
 import { sessionTools } from "../../tools/sessions.js";
 import { telemetryTools } from "../../tools/telemetry.js";
 import { tradeJournalTools } from "../../tools/tradejournal.js";
@@ -393,11 +395,21 @@ export class ReplayWorld {
         },
       ),
       ...sessionTools({ sessions: this.manager }),
+      ...sessionDebriefTools({ sessions: this.manager }),
       ...tradeJournalTools({ gameLog: this.gameLog, scwClient: unusedClient }),
     ];
     const registry = createRegistry(tools, {}, { now: this.clock.now });
     const server = createMcpServer(registry);
-    this.client = new Client({ name: "replay", version: "1" });
+    // The replay plays the dashboard View too (it polls and asks for reports): the client declares the UI extension, as
+    // Claude Desktop does; the server refuses the app-only tools to a client that does not.
+    this.client = new Client(
+      { name: "replay", version: "1" },
+      {
+        capabilities: {
+          extensions: { [UI_EXTENSION_ID]: { mimeTypes: [UI_MIME_TYPE] } },
+        } as Record<string, unknown>,
+      },
+    );
     const [a, b] = InMemoryTransport.createLinkedPair();
     await Promise.all([server.connect(a), this.client.connect(b)]);
     const client = this.client;

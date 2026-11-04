@@ -284,6 +284,44 @@ export function sessionToolAnswer(name: string, args: Record<string, any>, nowMs
         : [],
     };
   }
+  if (name === "sc_session_export") {
+    // A made-up report with the same shape as the server's (the real text is built by providers/sessions/debrief.ts and
+    // tested there): amounts only with include_balance, the balances only with include_start_balance on top.
+    const balances = include && args["include_start_balance"] === true;
+    const markdown = [
+      "# Bilan de la session 2",
+      "",
+      "- Trajets : 9 · 2,8 par heure",
+      include
+        ? "- Résultat des trajets : 310 500 aUEC (mesure brute)"
+        : "- Montants : masqués. Ils viennent du solde du joueur.",
+      ...(balances ? ["- Solde : 216 000 aUEC au départ → 526 500 aUEC au dernier relevé"] : []),
+      "",
+      "| Fin (UTC) | Trajet | SCU |",
+      "| --- | --- | ---: |",
+      "| 2026-11-03 19:10 | Cargaison · Waste Disposal \\| Easy | 96 |",
+    ].join("\n");
+    const d = args["csv_delimiter"] === ";" ? ";" : ",";
+    const csv =
+      ["session", "ended_at", "kind", "label", "scu", ...(include ? ["net_auec"] : [])].join(d) +
+      "\r\n" +
+      ["2", "2026-11-03T19:10:00Z", "trade", '"Waste Disposal | Easy"', d === ";" ? "96,5" : "96.5"]
+        .concat(include ? ["84000"] : [])
+        .join(d) +
+      "\r\n";
+    return {
+      sessions: [2],
+      trips_total: 9,
+      markdown_omitted: 0,
+      csv_omitted: 0,
+      truncated: false,
+      money_included: include,
+      balances_included: balances,
+      csv_delimiter: d,
+      // only the text asked for (kind), like the server
+      ...(args["kind"] === "csv" ? { csv } : { markdown }),
+    };
+  }
   if (name === "sc_session_new")
     return { ok: true, message: "Session 5 started. Session 4 was closed." };
   if (name === "sc_session_end") return { ok: true, message: "Session 4 ended." };

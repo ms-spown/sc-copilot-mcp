@@ -64,7 +64,7 @@ export function createMcpServer(registry: ToolRegistry): Server {
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
-    return registry.call(name, args);
+    return registry.call(name, args, { ui: clientRendersViews() });
   });
 
   server.setRequestHandler(ListPromptsRequestSchema, async () => ({

@@ -13,6 +13,30 @@ versions follow [Semantic Versioning](https://semver.org/).
   (the `action` enum of `sc_trade_suggest` gains `preflight`, and its description and the one of `sc_session_stats` say more).
 
 ### Added
+- **Session report: take a session out of the server.** The stats were in `sc_session_stats` and the session bar, with no
+  clean way to share them with a crew or an org, keep a log or paste the trips into a spreadsheet. New pure formatter
+  `src/providers/sessions/debrief.ts`; new tool `sc_session_debrief` for the model (small on purpose, because a tool result is part
+  of the conversation: Markdown by default, about 28 000 characters at most, 20 table rows per session, a CSV only on request with
+  100 rows, never both, the text not duplicated in `structuredContent`, `csv_delimiter`, `id` or `last`, `include_balance`,
+  `include_start_balance`); new app-only tool `sc_session_export` for the dashboard (the whole session, strict input); and, in the
+  detail of a session, **Copier le bilan** (clipboard, with a selectable block when the host refuses it), **Télécharger .md**, **.csv**
+  and **.csv (Excel FR)** (semicolon, decimal comma; only where the page can make a file, never required). The Markdown report
+  (French, UTC, deterministic) has the header (times, active time, game version and channel, breaks and why), the key numbers
+  (trips, per hour, gross margin, fees, best trip, efficiency against the plan, route reliability with its runs, confidence and the
+  "marchandise non vérifiée (lien par prix)" caveat), a trips table with mesuré / calculé / estimé / inconnu tags, what is
+  unexplained, and a footer on what is measured and what is estimated. The CSV (English columns, RFC 4180) has one row per trip;
+  a text cell that could start a formula in a spreadsheet is prefixed with an apostrophe (a mitigation for Excel and LibreOffice,
+  not a guarantee for every program). Amounts exist only when the balance is shown / `include_balance`; the start and last balance
+  only with the separate `include_start_balance` (their difference can show with amounts); unknown stays unknown, never 0; no trend
+  is invented. Labels and the note are cleaned, capped and escaped but their content is not checked: the report says to read it
+  before sharing. A closed menu, a hidden balance, a left detail or a page that goes away now EMPTY the report and the session
+  detail from the page (they were only hidden). A run stored twice in an older file now counts once in the session bar and the
+  statistics, as in the report. App-only tools (`sc_live_poll`, `sc_live_mark`, `sc_trade_suggest`, `sc_session_export`) are now
+  refused by name, as unknown tools, to a client that did not declare the UI extension (listing them only to Views was not
+  enough). The CSV puts an apostrophe after every separator that precedes a formula starter, not only at the start of a cell. The prompt `session_debrief` and the server instructions tell Claude it can produce it. Docs EN/FR,
+  SECURITY.
+
+
 - **Pre-flight check: does the plan still hold, before leaving?** On the commerce card, *Vérifier avant de partir* asks the
   app-only tool `sc_trade_suggest` (new action `preflight`, no argument, same strict input, throttle, short memory and
   in-flight sharing as the search; no new listed tool) to re-read the CURRENT UEX prices of the plan in force at its buy and

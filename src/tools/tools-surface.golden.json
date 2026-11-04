@@ -594,6 +594,47 @@
     }
   },
   {
+    "name": "sc_session_debrief",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "markdown",
+            "csv"
+          ],
+          "description": "Default markdown. csv is the trips only."
+        },
+        "include_balance": {
+          "type": "boolean",
+          "description": "Include aUEC figures (results, margins, fees, rate). Default false. Ask the player first: the answer goes into the conversation."
+        },
+        "include_start_balance": {
+          "type": "boolean",
+          "description": "With include_balance only: also the balance at the start and at the last sighting. Default false. The player must ask for it."
+        },
+        "csv_delimiter": {
+          "type": "string",
+          "enum": [
+            ",",
+            ";"
+          ],
+          "description": "CSV separator: \",\" (default) or \";\" (Excel in French opens it in columns; decimal comma)."
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 48,
+          "description": "A session id from sc_session_list."
+        },
+        "last": {
+          "type": "number",
+          "description": "The newest N sessions that hold something (1 to 10). Default 1. Not with id."
+        }
+      }
+    }
+  },
+  {
     "name": "sc_session_end",
     "inputSchema": {
       "type": "object",
@@ -602,6 +643,55 @@
           "type": "string",
           "maxLength": 500
         }
+      }
+    }
+  },
+  {
+    "name": "sc_session_export",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 48,
+          "description": "A session id."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "md",
+            "csv"
+          ],
+          "description": "The text wanted."
+        },
+        "include_balance": {
+          "type": "boolean",
+          "description": "Include aUEC figures (results, margins, fees, rate). Default false. Ask the player first: the answer goes into the conversation."
+        },
+        "include_start_balance": {
+          "type": "boolean",
+          "description": "With include_balance only: also the balance at the start and at the last sighting. Default false. The player must ask for it."
+        },
+        "csv_delimiter": {
+          "type": "string",
+          "enum": [
+            ",",
+            ";"
+          ],
+          "description": "CSV separator: \",\" (default) or \";\" (Excel in French opens it in columns; decimal comma)."
+        }
+      },
+      "required": [
+        "id",
+        "kind"
+      ]
+    },
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://sc-copilot/live-dashboard.html",
+        "visibility": [
+          "app"
+        ]
       }
     }
   },
