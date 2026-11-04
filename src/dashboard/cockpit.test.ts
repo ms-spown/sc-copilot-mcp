@@ -218,9 +218,10 @@ describe("Feature: the keyboard reaches every control", () => {
       expect(p.attrs["aria-label"]).toMatch(/^Épingler : /);
       expect(["true", "false"]).toContain(p.attrs["aria-pressed"]);
     }
-    // Only one polite live region carries the stream state, one the confirmation: no per-second announcement.
+    // Only one polite live region carries the stream state, one the confirmation, one the commerce search (written
+    // only when its situation changes): no per-second announcement.
     const live = findAll(w.root, (n) => n.attrs["aria-live"] !== undefined);
-    expect(live.length).toBeLessThanOrEqual(2);
+    expect(live.length).toBeLessThanOrEqual(3);
     expect(isShown(findButton(w.root, "Réduire"))).toBe(true);
   });
 });

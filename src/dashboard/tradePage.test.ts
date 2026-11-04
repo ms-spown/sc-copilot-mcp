@@ -130,7 +130,7 @@ describe("Feature: the commerce card says which figure is which", () => {
     expect(t).toContain("Prix visé par le plan : 457 aUEC/SCU");
     expect(t).toContain("Prix obtenu en moyenne (mesuré) : 457 aUEC/SCU");
     expect(t).toContain("12 relevés");
-    expect(t).toContain("le tableau de bord n’appelle jamais UEX");
+    expect(t).toContain("la courbe ne vient jamais d’un appel du tableau de bord à UEX");
   });
 });
 
@@ -268,13 +268,16 @@ describe("Feature: honest when it does not know", () => {
     expect(t).not.toMatch(/Bénéfice net\s*(mesuré|estimé|calculé)/);
   });
 
-  it("Given neither a plan nor a journal, Then there is no card at all", async () => {
+  it("Given neither a plan nor a journal, Then the card holds only the action bar: no figure, no tile", async () => {
     const w = await page("none", null);
     await w.advance(20 * SECOND);
     await fullscreen(w);
-    expect(findAll(w.root, (n) => n.className === "card trade").every((n) => !isShown(n))).toBe(
-      true,
-    );
+    const cards = findAll(w.root, (n) => n.className === "card trade").filter((n) => isShown(n));
+    expect(cards).toHaveLength(1);
+    const t = NBSP_FREE(visibleText(cards[0]!));
+    expect(t).toContain("Trouver une route");
+    expect(t).not.toContain("Bénéfice net");
+    expect(t).not.toContain("Chiffre d’affaires");
   });
 });
 

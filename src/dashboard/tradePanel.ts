@@ -12,7 +12,7 @@
  * measurement carries "mesuré". Amounts exist only while the player has chosen to show the balance.
  *
  * Information order (value first): the headline numbers and the next trip, then the waterfall, then the details.
- * The top of the card holds a slot for an action bar (tradeActions.ts), hidden until that module fills it.
+ * The card holds a slot for an action bar (tradeActions.ts) right under the headline numbers: the player's own figures come first, then the search for the next route.
  */
 
 export function tradeConfig() {
@@ -551,12 +551,13 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
   add(moreBody, assumptionsTitle, assumptions, defsTitle, defs, historyTitle, history);
   add(more, moreSum, moreBody);
 
-  add(root, head, slot, message, warn, hero, flow, duo, courseBox, more);
+  add(root, head, message, warn, hero, slot, flow, duo, courseBox, more);
 
   function render(ctx: any) {
     const trade = ctx && ctx.trade ? ctx.trade : null;
-    const plan = ctx && ctx.plan ? ctx.plan : null;
     const showBalance = !!(ctx && ctx.showBalance);
+    // A plan built from the player's balance shows its quantity and profit only while the balance is shown.
+    const plan = ctx && ctx.plan && !(ctx.plan.private === true && !showBalance) ? ctx.plan : null;
     const full = !!(ctx && ctx.fullscreen);
     const run = trade && trade.runs && trade.runs.length > 0 ? trade.runs[0] : null;
     const m = run && showBalance ? run.money : null;
@@ -565,8 +566,11 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     setText(line, inline);
     show(line, inline !== "");
 
-    const visible = full && (!!run || !!plan);
+    // The action bar (tradeActions.ts) needs the card even before there is a run or a plan to show.
+    const bare = !run && !plan;
+    const visible = full && (!bare || !!(ctx && ctx.actionsEnabled));
     show(root, visible);
+    show(slot, visible && !!(ctx && ctx.actionsEnabled));
     if (!visible) return;
 
     // ---- header
@@ -588,7 +592,8 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     if (plan && plan.safety_note) metaParts.push(plan.safety_note);
     if (plan && plan.note) metaParts.push(plan.note);
     setText(meta, metaParts.join(" · "));
-    setText(stage, run ? tradeStageLabel(run.stage) : "Plan seul");
+    setText(stage, run ? tradeStageLabel(run.stage) : plan ? "Plan seul" : "");
+    show(stage, !bare);
     setAttr(stage, "data-stage", run ? run.stage : "plan");
 
     // ---- what is missing, said once and plainly
@@ -609,6 +614,8 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       msg =
         "Le solde est masqué : les montants du bilan (chiffre d’affaires, frais, bénéfice net) apparaissent quand tu affiches le solde.";
     }
+    // With the action bar alone (no run, no plan) there is no bilan to explain: the bar comes first and alone.
+    if (bare) msg = "";
     setText(message, msg);
     show(message, msg !== "");
 
@@ -711,7 +718,7 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       tileValue(tiles.fees, "—", "", "", false, hidden);
       tileValue(tiles.next, "—", "", "", false, hidden);
     }
-    show(hero, true);
+    show(hero, !bare);
 
     // ---- waterfall
     const layout = tradeWaterfallLayout(tradeWaterfall(m));
@@ -995,7 +1002,7 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
         setText(legendItems[i].text, it[1] as string);
       }
       let cn =
-        "Relevés fournis par Claude à partir des prix UEX (le tableau de bord n’appelle jamais UEX) ; ils peuvent dater.";
+        "Relevés fournis par Claude à partir des prix UEX (la courbe ne vient jamais d’un appel du tableau de bord à UEX) ; ils peuvent dater.";
       if (course.targetVsMean !== null)
         cn =
           "Le prix visé est " +

@@ -251,6 +251,15 @@ export const CATALOG: Record<string, CatalogEntry> = {
   sc_live_dashboard: { ...liveTelemetry, profiles: ["local"] },
   sc_live_poll: { ...liveTelemetry, profiles: ["local"] },
   sc_live_mark: { ...liveTelemetry, profiles: ["local"] },
+  // The commerce action bar of the View: UEX planner answers (names are cleaned and capped, never the balance), so it is
+  // declared like uex_plan_trade. App-only, listed with the dashboard.
+  sc_trade_suggest: {
+    ...uex,
+    kind: "computed",
+    trust: "untrusted_text",
+    maxText: 200,
+    profiles: ["local"],
+  },
 
   // The player's own saved play sessions (a local file written by this server, only with telemetry on). Contract
   // titles, places and the player's note come back: treat them as text.

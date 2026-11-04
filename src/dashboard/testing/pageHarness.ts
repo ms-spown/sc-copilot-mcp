@@ -270,6 +270,9 @@ export interface WorldOptions {
   bus?: FakeBus | null;
   /** The host answers every poll in full (the behaviour before the delta answers), for measuring. */
   legacyFullPolls?: boolean;
+  /** What the fake host answers to sc_trade_suggest (see fakeHost.ts). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  suggest?: (args: any) => unknown | Promise<unknown>;
 }
 
 /**
@@ -388,6 +391,7 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     theme: options.theme,
     availableDisplayModes: options.modes,
     legacyFullPolls: options.legacyFullPolls,
+    ...(options.suggest ? { suggest: options.suggest } : {}),
     deliver: (message) => fireMessage(message, parent),
   });
 

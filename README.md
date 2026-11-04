@@ -100,11 +100,11 @@ npm run build
    `npm run check:sources` asks every data source for its version and verifies the files and fields the tools rely
    on. In Claude, ask for `sc_data_status`.
 
-## Tools (62)
+## Tools (63)
 
-Claude sees 52 of them by default: `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll` and
-`sc_live_mark` are listed only when live telemetry is on (the last three also need a client that can show them, such
-as Claude Desktop), and the five `sc_session_*` tools only when it is on and `SC_SESSIONS` is not `off`.
+Claude sees 52 of them by default: `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll`,
+`sc_live_mark` and `sc_trade_suggest` are listed only when live telemetry is on (the last four also need a client that
+can show them, such as Claude Desktop), and the five `sc_session_*` tools only when it is on and `SC_SESSIONS` is not `off`.
 
 Full parameter reference: **[docs/TOOLS.md](docs/TOOLS.md)** (generated from the code). By theme:
 
@@ -116,7 +116,7 @@ Full parameter reference: **[docs/TOOLS.md](docs/TOOLS.md)** (generated from the
 | **Missions, crafting, mining** (SCMDB) | `scmdb_search_missions`, `scmdb_search_crafting`, `scmdb_search_mining`, `scmdb_changes`, `scmdb_rank_hauling` (hauling contract families ranked for your ship, or the offers you read in the mobiGlas priced in time: estimates, never live availability)                                                                                                                                                                                                                                                                                                        |
 | **Patches and lore**                   | `sc_patch_notes` (notes of an update, by section or keyword), `sct_search`, `sct_get_article`, `sc_list_builds`, `sc_diff_versions`                                                                                                                                                                                                                                                             |
 | **Your game log** (off by default)     | `sc_log_context` (what you are doing now), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`, `sc_trade_journal` (what you bought and sold, cargo runs)                                                                                                                                                                                                                                                                                           |
-| **Live telemetry** (off by default)    | `sc_live_status` (always listed: state and how to enable), `sc_live_state`, `sc_live_events` (listed only when `SC_TELEMETRY=on`), `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark` (the live dashboard, in Claude Desktop only)                                                                                                                                                                                                                                                               |
+| **Live telemetry** (off by default)    | `sc_live_status` (always listed: state and how to enable), `sc_live_state`, `sc_live_events` (listed only when `SC_TELEMETRY=on`), `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark`, `sc_trade_suggest` (the live dashboard, in Claude Desktop only)                                                                                                                                                                                                                                                               |
 | **Saved play sessions** (with telemetry) | `sc_session_current` (the session so far, to accompany you and propose the next run), `sc_session_list`, `sc_session_stats` (efficiency, rate per hour, trend, best routes), `sc_session_new`, `sc_session_end`; the dashboard has a session bar. Kept in a local file, see [docs/TELEMETRY.md](docs/TELEMETRY.md#saved-sessions) |
 | **Your fleet**                         | `sc_fleet_get`, `sc_fleet_upsert`, `sc_fleet_remove`                                                                                                                                                                                                                                                                                                                                            |
 | **Your own data files**                | `sc_local_datasets`, `sc_search_local`, `sc_read_local_collection`                                                                                                                                                                                                                                                                                                                              |

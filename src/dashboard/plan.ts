@@ -23,7 +23,7 @@ export interface Plan {
   safety_note?: string;
   /**
    * Recent prices per SCU for the "cours" curve, oldest first, at most PLAN_PRICE_POINTS_MAX. Claude fills them from
-   * the UEX price tools; the dashboard server never calls UEX. `price_points_for` says which price they are (the
+   * the UEX price tools; the price curve never comes from a dashboard call to UEX (the route buttons call the planner only on a click, see tradeSuggest.ts). `price_points_for` says which price they are (the
    * selling price when absent), `price_points_label` the period in words ("7 derniers jours").
    */
   price_points?: number[];

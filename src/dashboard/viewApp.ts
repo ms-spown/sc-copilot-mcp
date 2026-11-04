@@ -58,13 +58,13 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     win.parent.postMessage(Object.assign({ jsonrpc: "2.0" }, message), "*");
   };
   const notify = (method: string, params?: any) => send({ method, params });
-  const request = (method: string, params?: any): Promise<any> =>
+  const request = (method: string, params?: any, timeoutMs?: number): Promise<any> =>
     new Promise((resolve, reject) => {
       const id = nextId++;
       const t = win.setTimeout(() => {
         pending.delete(id);
         reject(new Error("délai dépassé : " + method));
-      }, cfg.requestTimeoutMs);
+      }, timeoutMs || cfg.requestTimeoutMs);
       pending.set(id, {
         resolve: (v) => {
           win.clearTimeout(t);
@@ -904,7 +904,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     });
 
     // Commerce card (tradePanel.ts): full width at the top of the cockpit, a compact line under the small view.
-    // Its action bar (tradeActions.ts) is a separate component in a slot of the card, hidden until it is built.
+    // Its action bar (tradeActions.ts) is a separate component in a slot of the card; in the small view only a
+    // button that opens the full screen is shown.
     R.trade = L.tradePanel(doc, L, SVG_NS);
     R.tradeActions = L.tradeActionsPanel(doc, L);
     add(R.trade.slot, R.tradeActions.root);
@@ -929,6 +930,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.inline,
       R.ledger.line,
       R.trade.line,
+      R.tradeActions.opener,
       R.full,
       R.sr,
     );
@@ -1417,6 +1419,11 @@ export function dashboardMain(win: any, doc: any, L: any): any {
 
   function render() {
     const now = clock();
+    // A route plan built from the balance (its quantity and profit give the budget away) does not outlive the balance
+    // being shown: hidden again, it is dropped here, whichever way the balance was hidden.
+    if (view.plan && view.plan.private === true && !showBalance) {
+      view = Object.assign({}, view, { plan: null });
+    }
     // The ship banner already says "mode quantique" and "saut quantique": no second chip for them.
     const conds = L.conditionItems(view.poll, now, view.receivedAt, 12)
       .filter((c: any) => c.id !== "in_quantum" && c.id !== "in_jump")
@@ -1434,8 +1441,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     // The commerce card: the plan from the model, the commerce section of the ledger, and the balance change only
     // as a labelled fallback while no trade journal feeds the dashboard.
     const tradeLedger = L.ledgerNormalize(view.poll && view.poll.ledger);
-    R.tradeActions.render({ enabled: false });
-    show(R.trade.slot, false);
+    // The action bar asks the server for routes; it needs a server that answers, not a live stream.
+    const actionsOn =
+      initialised && !tornDown && !retired && !!view.poll && view.poll.state !== "off";
     R.trade.render({
       trade: tradeLedger?.trade ?? null,
       ledgerStatus: tradeLedger ? tradeLedger.status : null,
@@ -1444,7 +1452,11 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       fullscreen: displayMode === "fullscreen",
       balance: showBalance && view.poll ? view.poll.balance : null,
       baseline: L.baselineLabel(view.poll),
+      actionsEnabled: actionsOn,
     });
+    R.tradeActions.render(
+      tradeActionsContext(actionsOn, tradeLedger ? tradeLedger.trade : null, now),
+    );
     const I = L.instrumentInfo(view.poll, view);
     const sheetIns = view.poll && view.poll.ship && view.poll.ship.instruments;
     I.speed = L.speedWithSheet(
@@ -1463,6 +1475,41 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     if (displayMode === "fullscreen") renderFull(I, V, now);
     else renderInline(I, V, now);
     reportSize();
+  }
+
+  /** What the commerce action bar may use: the balance only while it is shown, and only as a number for its own screen. */
+  function tradeActionsContext(on: boolean, trade: any, now: number): any {
+    const specs = view.poll && view.poll.specs;
+    const bal = balanceInfo(view.poll);
+    return {
+      enabled: on,
+      fullscreen: displayMode === "fullscreen",
+      follower: isFollower(),
+      now,
+      clock,
+      balance: bal ? bal.uec : null,
+      sheetCargo:
+        specs && specs.status === "ready" && typeof specs.cargo_scu === "number"
+          ? specs.cargo_scu
+          : null,
+      trade,
+      plan: view.plan,
+      call: async (name: string, args: any, timeoutMs: number) =>
+        request("tools/call", { name, arguments: args }, timeoutMs),
+      say: (text: string) =>
+        request("ui/message", { role: "user", content: [{ type: "text", text }] }),
+      setPlan: (plan: any) => {
+        view = Object.assign({}, view, { plan });
+        render();
+      },
+      feedback,
+      takeLead,
+      // Without a full-screen mode the bar has no room: the compact view offers no way in.
+      openFull: availableModes.indexOf("fullscreen") >= 0 ? () => requestMode("fullscreen") : null,
+      later: (fn: () => void, ms: number) => win.setTimeout(fn, ms),
+      cancel: (id: any) => win.clearTimeout(id),
+      changed: render,
+    };
   }
 
   function reportSize() {
@@ -1949,6 +1996,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   function dispose() {
     tornDown = true;
     stopTimers();
+    // The action bar's own timers (a re-search after an option changed, a wait) must not fire in a dead View.
+    if (R.tradeActions) R.tradeActions.dispose();
     if (timer !== null) win.clearTimeout(timer);
     timer = null;
     closeChannel();

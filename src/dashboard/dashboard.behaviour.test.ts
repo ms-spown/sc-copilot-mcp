@@ -75,7 +75,7 @@ async function connect(
   return { client, names, call, registry };
 }
 
-const DASHBOARD_TOOLS = ["sc_live_dashboard", "sc_live_poll", "sc_live_mark"];
+const DASHBOARD_TOOLS = ["sc_live_dashboard", "sc_live_poll", "sc_live_mark", "sc_trade_suggest"];
 
 const spyTelemetry = (enabled: boolean) => {
   const base = createTelemetry({ enabled: false });

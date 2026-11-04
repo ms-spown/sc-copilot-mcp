@@ -284,6 +284,7 @@ Ce que devient chaque champ du flux. `poll.` est la réponse de `sc_live_poll` (
 | `sc_live_events` | quand `SC_TELEMETRY=on` | Les événements dérivés récents, chacun marqué `confirmed` ou `unverified` |
 | `sc_live_dashboard` | quand `SC_TELEMETRY=on` et que le client sait afficher des Views | Ouvre le [tableau de bord en direct](#tableau-de-bord-en-direct) dans la conversation |
 | `sc_live_poll`, `sc_live_mark` | idem | Utilisés par le tableau de bord lui-même pour se rafraîchir et poser des repères de session. Claude a pour consigne de ne pas les appeler |
+| `sc_trade_suggest` | idem | Utilisé seulement par les boutons de commerce du tableau de bord ([barre d'actions](#actions-de-commerce--trouver-la-prochaine-route)) : le planificateur de commerce derrière un limiteur de débit. Claude a pour consigne de ne pas l'appeler ; il utilise `uex_plan_trade` |
 
 États : `off` (interrupteur serveur non défini), `waiting` (pas de télémétrie pour l'instant : normal dans les menus, pendant un chargement, avant l'apparition du personnage, ou si le jeu a été lancé sans le réglage côté jeu ; ce serveur ne peut pas savoir si le jeu tourne), `game_without_telemetry` (le
 jeu tourne, `Game.log` n'a pas de ligne d'enregistrement : relancez le launcher), `connected` (la session HTTP/2 avec le jeu est ouverte, pas encore
@@ -384,11 +385,10 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   avant frais, pas un chiffre d'affaires), prix unitaires d'achat et de vente, durée estimée du trajet en minutes,
   une remarque de sécurité, une courte note et jusqu'à 30 prix récents (`price_points`, du plus ancien au plus
   récent, avec `price_points_for` et `price_points_label`) qui dessinent la courbe des cours. Claude remplit les prix
-  avec les outils de prix UEX ; le tableau de bord n'appelle jamais UEX. Les textes sont nettoyés et plafonnés (60
+  avec les outils de prix UEX ; la courbe ne vient jamais d'un appel du tableau de bord à UEX. Les textes sont nettoyés et plafonnés (60
   caractères) et affichés en texte brut ; les nombres sont bornés ; moins de deux prix utilisables ne donnent pas de
-  courbe. Le plan alimente la carte Commerce ci-dessous. Une route suggérée a la forme d'un plan : l'appliquer comme
-  plan actif reviendra à la repasser dans le même nettoyage (la barre d'actions qui proposera des suggestions n'existe
-  pas encore ; son emplacement est dans la carte).
+  courbe. Le plan alimente la carte Commerce ci-dessous. Une route suggérée a la forme d'un plan : la barre d'actions
+  (voir Actions de commerce) l'applique en la repassant dans le même nettoyage.
 - **Confidentialité du solde.** Le solde est masqué dans la page tant que vous ne cliquez pas sur « Afficher le
   solde ». C'est seulement alors que la page le demande au serveur (`include_balance`). Le solde n'est jamais mis
   dans le résumé automatique que la page peut envoyer au modèle, ni dans les messages fixes des boutons, ni sur le
@@ -470,7 +470,7 @@ ne prétendons pas qu'il soit approuvé par Cloud Imperium Games.
 Un aperçu pour les personnes qui travaillent sur la page : `npm run build`, puis `node scripts/dashboard-preview.mjs`,
 puis ouvrez l'adresse locale qu'il affiche (boucle locale, port 4173 par défaut). Il joue un vol fictif, saut
 quantique complet compris, face à un hôte factice ; ni jeu ni Claude n'interviennent. Paramètres : `t`, `theme`,
-`w`, `mode`, `scroll`, `forced`, `cut`, `plan`, `trade` (la carte Commerce avec un journal de commerce inventé : `story`, `estimated`, `unknown`, `partial`, `second`, `none`), `fw` (largeur du cadre en plein écran).
+`w`, `mode`, `scroll`, `forced`, `cut`, `plan`, `trade` (la carte Commerce avec un journal de commerce inventé : `story`, `estimated`, `unknown`, `partial`, `second`, `none`), `fw` (largeur du cadre en plein écran), `suggest` (ce que répond l'outil de la barre d'actions de commerce, avec des routes inventées et sans UEX : `ok`, `wait`, `error`, `empty`, `nospeed`, `reported`, `slow`), `click` (le libellé d'un bouton à presser) et `refine=1` (ouvre « Affiner »).
 
 ### Carnet de transport
 
@@ -588,8 +588,72 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
 - **Plusieurs trajets.** Un achat après une vente commence un nouveau trajet (deux heures de silence aussi) ; la carte
   montre le dernier et liste les précédents. Le plan s'applique au dernier trajet seulement ; si la marchandise ne
   correspond pas, elle dit que le plan n'est pas vérifié.
-- **Emplacement de la barre d'actions.** Le haut de la carte a un composant séparé et masqué (`tradeActions.ts`)
-  réservé aux boutons et options qui demanderont des routes à Claude. Il ne fait rien pour l'instant.
+- **Barre d'actions.** Juste sous les chiffres principaux se trouve la barre décrite dans la section suivante (elle est
+  aussi accessible avant tout trajet ou plan).
+
+#### Actions de commerce : trouver la prochaine route
+
+La barre demande au serveur, sans passer par le modèle, les routes qui correspondent à ce que veut le joueur. C'est le
+planificateur de `uex_plan_trade` derrière un outil réservé à la page (`sc_trade_suggest`, `visibility: ["app"]`,
+listé seulement quand la télémétrie est activée et que le client affiche des Views). Rien n'est demandé avant un clic.
+
+| Bouton | Ce qu'il demande | Ordre des cartes |
+| --- | --- | --- |
+| **Plus rentable** | `profit_per_hour` | aUEC par heure estimée ; le grand chiffre est le gain par heure |
+| **Plus rapide** | `speed` | cycle estimé le plus court ; le grand chiffre est la durée |
+| **Plus sûre** | `safety` | le moins de facteurs de risque de l'heuristique du planificateur, puis le gain par heure. Elle ne dit jamais « sûre » |
+| **Gros gain** | `profit` | aUEC par trajet, durée mise de côté |
+
+Sous « Affiner » (replié) : *Éviter Pyro*, *Zones d'armistice seulement* (l'indicateur d'armistice d'UEX ; inconnu compte
+pour non), *Relevés de joueurs exigés* (`min_reports` 1 : ne garde que les options avec un relevé de joueur à chaque
+bout), *Aller-retour seulement* (masque les chaînes ouvertes A>B>C ; ce n'est pas `max_legs`, qui exige un départ et ne
+rend que des routes aller simple), un budget (un nombre : `250000`, `2,5M`), la soute en SCU (préremplie depuis la fiche
+du vaisseau, avec sa source), un départ (un terminal, une planète ou un système, résolu par le serveur) et *Proposer la
+suite à la fin d'un trajet*. Quand une recherche existe, changer une option la relance seule après un court temps de
+calme ; avant le premier clic, rien n'est demandé.
+
+- **Mesuré, estimé, heuristique.** Les prix sont ceux d'UEX, issus de la communauté ; aujourd'hui presque toutes les
+  options portent *estimation UEX · aucun relevé de joueur* (UEX ne compte aucun relevé de joueur pour un prix) : la
+  barre le dit et propose l'option des relevés. Les durées sont des ESTIMATIONS (vol quantique plus 8 minutes fixes par
+  arrêt) ; sans vitesse quantique (pas de fiche du vaisseau), le gain par heure et l'ordre « le plus rapide » sont
+  indisponibles et les cartes disent « durée inconnue ». Le carburant n'est pas déduit. Le badge de prudence est
+  l'heuristique du planificateur sur les données de lieux d'UEX (armistice, juridiction, système, type de lieu, nombre
+  de vols), toujours étiquetée « (heuristique) » ; UEX n'a aucune donnée de piraterie. Les prix de plus de 7 jours sont
+  marqués « périmés ». La vitesse quantique du vaisseau vient de l'état du serveur (la fiche wiki du vaisseau piloté,
+  puis la même recherche que `uex_plan_trade`), jamais de la page.
+- **Cartes.** La première est la tête de liste (grand chiffre, contour) ; les autres sont des lignes discrètes ; les
+  chaînes (A>B>C, sans retour chiffré) sont à part et non comparables. Chaque carte a *Appliquer comme plan* (le
+  serveur construit le plan à partir de sa propre option, par identifiant : l'aller, le retour nommé dans la note ; la
+  carte Commerce suit alors cette route : bénéfice prévu, prix attendus, durée estimée) et *Demander à l'agent* (un
+  texte fixe construit depuis la carte, envoyé comme message : la route, les prix, le statut d'estimation, les
+  contraintes choisies et la demande de vérifier avec `uex_get_trade_routes` et `uex_plan_trade`).
+- **Et ensuite ?** Quand un trajet se termine (il y a moins de 30 minutes), une suggestion est calculée depuis l'endroit
+  où il s'est terminé : le terminal de vente du plan en vigueur (les noms de boutique du journal sont des identifiants
+  du jeu qu'UEX ne connaît pas : sans plan, rien n'est demandé, appliquez une route comme plan pour obtenir la suite ;
+  un terminal inconnu d'UEX échoue en silence), une fois par trajet (le serveur retient le trajet : un tableau de bord remonté ne relance pas la recherche sans
+  clic), jamais appliquée toute seule. Elle peut être
+  désactivée.
+- **Limite de débit.** UEX est un service partagé. Le serveur répond à une question identique depuis une mémoire de 2
+  minutes, partage un seul calcul entre des appels identiques simultanés, et sinon ne lance qu'UN nouveau calcul toutes
+  les 8 secondes pour toutes les Views : une demande dans l'intervalle reçoit « attends N s » (un état, pas une erreur ;
+  une recherche automatique réessaie seule au plus deux fois), et aucun calcul ne démarre tant qu'un autre tourne. Le
+  planificateur a sa propre échéance de 20 s, plus courte que l'attente de la page (32 s). Seule la View qui mène appelle le serveur (une View qui suit prend la main quand on
+  appuie sur son bouton). Aucun sondage du planificateur.
+- **Le solde.** *Budget = mon solde* n'existe que tant que le solde est affiché et seulement si vous le cochez. La page
+  envoie alors le nombre comme budget, avec un indicateur privé, dans l'appel d'outil : il passe par l'hôte jusqu'au
+  serveur local, qui ne s'en sert que pour dimensionner les quantités (il n'est jamais envoyé à UEX, et ce tableau de
+  bord ne l'écrit pas dans la conversation). La réponse ne contient jamais le solde ni le budget ; avec l'indicateur, pas
+  de coût, aucune étape ne dit qu'elle est limitée par le budget, et une route appliquée comme plan est marquée privée.
+  Les quantités dimensionnées par le budget restent sur votre écran : le message à l'agent ne contient alors ni
+  quantité, ni total, ni gain par heure (il dit que le budget est votre solde, non communiqué), rien ne part sur le
+  canal entre Views ni dans le résumé automatique, les résultats et un plan privé sont abandonnés quand vous masquez le
+  solde, et un plan privé n'arrive dans la session enregistrée que tant que le solde est affiché. Les identifiants des
+  options sont aléatoires (128 bits) et valables tant que la réponse est gardée (2 minutes).
+- **La soute.** La page n'envoie une soute que si vous en avez tapé une ; sinon le serveur prend celle du vaisseau piloté
+  et la réponse dit d'où elle vient.
+- **Non vérifié.** La limite de temps de l'hôte pour un appel d'outil (la page attend 32 s), le comportement des
+  boutons dans Claude Desktop et la qualité de l'heuristique face à la piraterie réelle.
+
 ## Sessions enregistrées
 
 Le tableau de bord fonctionne **par session**, et une session est enregistrée. Une session est une période de jeu :

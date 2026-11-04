@@ -12,6 +12,17 @@ import { DashboardService } from "../dashboard/service.js";
 import type { GameLog } from "../providers/gamelog/reader.js";
 import { ShipSpecsResolver } from "../dashboard/specs.js";
 import type { HttpClient } from "../core/http.js";
+import { loadPlaces } from "../providers/uex/places.js";
+import { fetchShipSheet } from "../providers/uex/shipSheet.js";
+import { planTrips, type TripPlanResult, type TripRequest } from "../providers/uex/tripPlanner.js";
+import {
+  failure,
+  resolveOriginHint,
+  suggestInputSchema,
+  SUGGEST_DEADLINE_MS,
+  TradeSuggestService,
+  type FlownShip,
+} from "../dashboard/tradeSuggest.js";
 import type { ConnectionTracker } from "../providers/gamelog/connection.js";
 import type { SessionManager } from "../providers/sessions/manager.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
@@ -60,28 +71,43 @@ export function dashboardResources({ telemetry }: { telemetry?: Telemetry }): Re
   ];
 }
 
-export function dashboardTools({
-  telemetry,
-  scwClient,
-  connection,
-  gameLog,
-  sessions,
-}: {
-  telemetry?: Telemetry;
-  scwClient?: HttpClient;
-  connection?: ConnectionTracker;
-  gameLog?: GameLog;
-  sessions?: SessionManager;
-}): ToolDefinition[] {
+/** Parts of the trade suggestions that tests replace (the planner, the clock). Production passes nothing. */
+export interface DashboardOverrides {
+  plan?: (req: TripRequest) => Promise<TripPlanResult>;
+  now?: () => number;
+  minIntervalMs?: number;
+}
+
+const SHIP_MEMO_MS = 10 * 60_000;
+
+export function dashboardTools(
+  {
+    telemetry,
+    scwClient,
+    uexClient,
+    connection,
+    gameLog,
+    sessions,
+  }: {
+    telemetry?: Telemetry;
+    scwClient?: HttpClient;
+    uexClient?: HttpClient;
+    connection?: ConnectionTracker;
+    gameLog?: GameLog;
+    sessions?: SessionManager;
+  },
+  overrides: DashboardOverrides = {},
+): ToolDefinition[] {
   // The game log only serves the transport ledger: read-only, opt-in, refreshed at most every 5 s in the background.
   // With saved sessions on, the session manager owns the ONE ledger reader and the dashboard shares it.
   const ledger =
     sessions?.ledger ?? (gameLog ? new LedgerService(ledgerLogFrom(gameLog)) : undefined);
   // The wiki client only serves the ship sheet lookup (background, one search per ship, never while telemetry is off).
+  const specsResolver = scwClient ? new ShipSpecsResolver(scwClient) : undefined;
   const service = new DashboardService(
     telemetry,
     Date.now,
-    scwClient ? new ShipSpecsResolver(scwClient) : undefined,
+    specsResolver,
     connection,
     ledger,
     // The trade journal of the same log reads (providers/gamelog/trade.ts), for the commerce card.
@@ -89,6 +115,64 @@ export function dashboardTools({
     sessions,
   );
   const enabled = () => telemetry?.enabled === true;
+
+  // The flown ship for the trade suggestions: its class comes from the stream, its wiki sheet from the resolver the
+  // poll already uses, its quantum speed and hold from the same lookup uex_plan_trade makes. Server state only: the
+  // View never names a ship. Memoised, because the answer for one ship does not change within minutes.
+  // The promise is what is remembered: N simultaneous calls make one lookup, not N.
+  const shipMemo = new Map<string, { at: number; ship: Promise<FlownShip | null> }>();
+  const flownShip = async (): Promise<FlownShip | null> => {
+    const snapshot = await telemetry?.snapshot();
+    const className = snapshot?.state.ship?.class_name;
+    if (!className || !specsResolver || !uexClient || !scwClient) return null;
+    const sheet = specsResolver.current(className);
+    if (!sheet || sheet.status !== "ready" || !sheet.name) return null;
+    const held = shipMemo.get(sheet.name);
+    if (held && Date.now() - held.at < SHIP_MEMO_MS) return held.ship;
+    const name = sheet.name;
+    const wikiCargo = sheet.cargo_scu ?? null;
+    const lookup = (async (): Promise<FlownShip | null> => {
+      try {
+        const found = await fetchShipSheet(uexClient, scwClient, name);
+        return {
+          name,
+          cargoScu: found.cargo_scu ?? wikiCargo,
+          quantumSpeedMs: found.quantum_speed_ms,
+        };
+      } catch {
+        // A sheet that cannot be matched in UEX still gives a hold; the planner then says the speed is unknown.
+        return { name, cargoScu: wikiCargo, quantumSpeedMs: null };
+      }
+    })();
+    shipMemo.set(name, { at: Date.now(), ship: lookup });
+    return lookup;
+  };
+  const suggestions = new TradeSuggestService({
+    plan:
+      overrides.plan ??
+      ((req) => {
+        if (!uexClient || !scwClient) throw new Error("UEX is not available.");
+        return planTrips({ uexClient, scwClient, deadlineMs: SUGGEST_DEADLINE_MS }, req);
+      }),
+    ship: flownShip,
+    resolveOrigin: async (text) => {
+      try {
+        if (!uexClient) return { terminalName: text.trim() };
+        return resolveOriginHint(await loadPlaces(uexClient), text);
+      } catch {
+        return { terminalName: text.trim() };
+      }
+    },
+    // The same two places as the plan Claude passes when it opens the dashboard: the commerce card's figures and the
+    // persistent session, which marks the trip that follows with the planned profit. A plan built from the player's
+    // balance (its quantity and profit give the budget away) reaches the saved session only while the balance is shown.
+    applyPlan: (plan, info) => {
+      service.setPlan(plan);
+      if (!info.private || info.withBalance) sessions?.setPlan(plan);
+    },
+    ...(overrides.now ? { now: overrides.now } : {}),
+    ...(overrides.minIntervalMs !== undefined ? { minIntervalMs: overrides.minIntervalMs } : {}),
+  });
 
   return [
     {
@@ -130,7 +214,7 @@ export function dashboardTools({
                 maxItems: PLAN_PRICE_POINTS_MAX,
                 items: { type: "number" },
                 description:
-                  "Recent prices per SCU, oldest first (at most 30), taken from the UEX price tools, for the price curve. The dashboard never calls UEX.",
+                  "Recent prices per SCU, oldest first (at most 30), taken from the UEX price tools, for the price curve. The price curve never comes from a dashboard call to UEX.",
               },
               price_points_for: {
                 type: "string",
@@ -267,6 +351,99 @@ export function dashboardTools({
         return {
           content: [{ type: "text", text: result.message }],
           structuredContent: result as unknown as Record<string, unknown>,
+        };
+      },
+    },
+    {
+      name: "sc_trade_suggest",
+      description:
+        "For the dashboard View only, not for the model: ranks trade routes for the commerce card's buttons (most profitable per hour, fastest, safest by a heuristic, or best per trip) with the UEX trade planner, or applies one of the options it returned as the dashboard's plan (action apply, by id). Answers at most 5 options and 3 chains, throttled (one new planner run per 8 seconds, identical requests served from a short cache), never the player's balance. Use uex_plan_trade instead.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            enum: ["search", "apply"],
+            description: "search for routes, or apply an option of a previous answer as the plan.",
+          },
+          objective: {
+            type: "string",
+            enum: ["profit_per_hour", "profit", "speed", "safety"],
+            description: "What best means (search). Default profit_per_hour.",
+          },
+          avoid_pyro: { type: "boolean", description: "Leave every Pyro terminal out (search)." },
+          armistice_only: {
+            type: "boolean",
+            description: "Only stops UEX flags as armistice zones (search).",
+          },
+          min_reports: {
+            type: "number",
+            description: "Require at least this many player reports at every end (search).",
+          },
+          round_trip_only: { type: "boolean", description: "Hide the open A>B>C chains (search)." },
+          budget: { type: "number", description: "aUEC available for one purchase (search)." },
+          budget_private: {
+            type: "boolean",
+            description:
+              "The budget comes from the player's balance: no cost in the answer (search).",
+          },
+          cargo_scu: { type: "number", description: "Hold size in SCU (search)." },
+          origin: {
+            type: "string",
+            maxLength: 80,
+            description: "Where to start: a terminal, planet or system name (search).",
+          },
+          use_ship: {
+            type: "boolean",
+            description: "Use the flown ship's quantum speed and hold (search). Default true.",
+          },
+          next_run: {
+            type: "string",
+            maxLength: 40,
+            description:
+              "The id of the completed run this suggestion is for: computed once per run (search).",
+          },
+          id: {
+            type: "string",
+            description: "The random id of an option, to apply as the plan (apply).",
+          },
+          with_balance: {
+            type: "boolean",
+            description:
+              "The balance is shown: a plan built from it may reach the saved session (apply).",
+          },
+        },
+        required: ["action"],
+      },
+      advertised: enabled,
+      requiresUi: true,
+      meta: APP_ONLY_META,
+      handler: async (args: unknown): Promise<ToolResult> => {
+        const parsed = suggestInputSchema.safeParse(args ?? {});
+        if (!parsed.success) {
+          // A rejected input is a plain error result (the View checks isError), never a thrown exception.
+          return {
+            content: [{ type: "text", text: "sc_trade_suggest: invalid input." }],
+            isError: true,
+          };
+        }
+        if (!enabled()) {
+          return {
+            content: [{ type: "text", text: "sc_trade_suggest: telemetry is off." }],
+            isError: true,
+          };
+        }
+        let answer;
+        try {
+          answer = await suggestions.handle(parsed.data);
+        } catch (error) {
+          answer = failure(error);
+        }
+        return {
+          // Fixed text on purpose, like the poll: the data is in structuredContent and nothing derived from the
+          // balance can reach the conversation through the text.
+          content: [{ type: "text", text: `trade suggestion: ${answer.state}` }],
+          structuredContent: answer as unknown as Record<string, unknown>,
         };
       },
     },

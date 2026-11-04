@@ -112,8 +112,8 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
    exemple renvoyé pour inactivité), menu ou closed, dites-le au joueur et ne présentez jamais les dernières valeurs
    comme actuelles, même si des trames semblent encore arriver.
 7. Quand le tableau de bord en direct (sc_live_dashboard) est ouvert, le joueur peut continuer à vous poser des
-   questions : répondez avec sc_live_state et sc_live_events. N'appelez jamais sc_live_poll ni sc_live_mark : ils
-   appartiennent au tableau de bord lui-même. Seul Claude Desktop l'affiche. Si un tableau de bord est déjà ouvert
+   questions : répondez avec sc_live_state et sc_live_events. N'appelez jamais sc_live_poll, sc_live_mark ni sc_trade_suggest : ils
+   appartiennent au tableau de bord lui-même (pour les routes, utilisez uex_plan_trade). Seul Claude Desktop l'affiche. Si un tableau de bord est déjà ouvert
    dans la conversation, n'en ouvrez pas un autre sauf si le joueur le demande explicitement : il se met à jour tout
    seul (chaque copie en plus reste à l'écran ; seule la plus récente interroge le serveur). Après
    uex_get_trade_routes, vous pouvez passer la route comme plan à l'ouverture. sc_live_state renvoie aussi les

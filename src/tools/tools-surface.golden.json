@@ -233,7 +233,7 @@
               "items": {
                 "type": "number"
               },
-              "description": "Recent prices per SCU, oldest first (at most 30), taken from the UEX price tools, for the price curve. The dashboard never calls UEX."
+              "description": "Recent prices per SCU, oldest first (at most 30), taken from the UEX price tools, for the price curve. The price curve never comes from a dashboard call to UEX."
             },
             "price_points_for": {
               "type": "string",
@@ -666,6 +666,93 @@
           "type": "boolean",
           "description": "Look commodity names up in the wiki's public commodity list (default true). The list is the same for everyone: nothing from the log is sent. False keeps it fully local."
         }
+      }
+    }
+  },
+  {
+    "name": "sc_trade_suggest",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "search",
+            "apply"
+          ],
+          "description": "search for routes, or apply an option of a previous answer as the plan."
+        },
+        "objective": {
+          "type": "string",
+          "enum": [
+            "profit_per_hour",
+            "profit",
+            "speed",
+            "safety"
+          ],
+          "description": "What best means (search). Default profit_per_hour."
+        },
+        "avoid_pyro": {
+          "type": "boolean",
+          "description": "Leave every Pyro terminal out (search)."
+        },
+        "armistice_only": {
+          "type": "boolean",
+          "description": "Only stops UEX flags as armistice zones (search)."
+        },
+        "min_reports": {
+          "type": "number",
+          "description": "Require at least this many player reports at every end (search)."
+        },
+        "round_trip_only": {
+          "type": "boolean",
+          "description": "Hide the open A>B>C chains (search)."
+        },
+        "budget": {
+          "type": "number",
+          "description": "aUEC available for one purchase (search)."
+        },
+        "budget_private": {
+          "type": "boolean",
+          "description": "The budget comes from the player's balance: no cost in the answer (search)."
+        },
+        "cargo_scu": {
+          "type": "number",
+          "description": "Hold size in SCU (search)."
+        },
+        "origin": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Where to start: a terminal, planet or system name (search)."
+        },
+        "use_ship": {
+          "type": "boolean",
+          "description": "Use the flown ship's quantum speed and hold (search). Default true."
+        },
+        "next_run": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "The id of the completed run this suggestion is for: computed once per run (search)."
+        },
+        "id": {
+          "type": "string",
+          "description": "The random id of an option, to apply as the plan (apply)."
+        },
+        "with_balance": {
+          "type": "boolean",
+          "description": "The balance is shown: a plan built from it may reach the saved session (apply)."
+        }
+      },
+      "required": [
+        "action"
+      ]
+    },
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://sc-copilot/live-dashboard.html",
+        "visibility": [
+          "app"
+        ]
       }
     }
   },

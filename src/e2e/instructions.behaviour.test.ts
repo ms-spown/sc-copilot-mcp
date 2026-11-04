@@ -81,11 +81,12 @@ describe("Feature: the server tells Claude how to be a trade copilot", () => {
       }
     });
 
-    it("Then the two dashboard-only tools are named only to be forbidden", () => {
+    it("Then the three dashboard-only tools are named only to be forbidden", () => {
       const line = SERVER_INSTRUCTIONS.split("\n").find((l) => l.includes("sc_live_poll")) ?? "";
-      expect(line).toMatch(/^- Never call sc_live_poll or sc_live_mark/);
+      expect(line).toMatch(/^- Never call sc_live_poll, sc_live_mark or sc_trade_suggest/);
       expect(SERVER_INSTRUCTIONS.match(/sc_live_poll/g)).toHaveLength(1);
       expect(SERVER_INSTRUCTIONS.match(/sc_live_mark/g)).toHaveLength(1);
+      expect(SERVER_INSTRUCTIONS.match(/sc_trade_suggest/g)).toHaveLength(1);
     });
   });
 
@@ -106,7 +107,10 @@ describe("Feature: the server tells Claude how to be a trade copilot", () => {
       ["never invents a number", /Never invent/],
       ["never calls telemetry safe", /Never call telemetry safe, undetectable or approved/],
       ["asks before the balance", /include_balance, and only after asking the player/],
-      ["never calls the dashboard's tools", /Never call sc_live_poll or sc_live_mark/],
+      [
+        "never calls the dashboard's tools",
+        /Never call sc_live_poll, sc_live_mark or sc_trade_suggest/,
+      ],
       ["does not open a second dashboard", /never a second one unless the player asks/],
       ["never says the game is not running", /Never say the game is not running/],
       ["connection state", /connection .*disconnected, menu or closed/],
