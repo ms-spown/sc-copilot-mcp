@@ -77,9 +77,11 @@ h2, h3 { margin: 0; }
 .top-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-left: auto; }
 .age { color: var(--sc-text3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 
+[data-tip] { cursor: help; }
+.tip { position: fixed; z-index: 20; max-width: min(320px, calc(100vw - 16px)); padding: 6px 9px; border-radius: var(--r-s); font-size: var(--fs-s); line-height: 1.35; background: var(--sc-inv-bg); color: var(--sc-inv-text); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); pointer-events: none; }
 .btn { background: transparent; border: 1px solid var(--sc-border); border-radius: var(--r-s); padding: 5px 11px; cursor: pointer; line-height: 1.2; }
 .btn:hover { background: var(--sc-bg3); }
-.btn:focus-visible, .pin:focus-visible, .missing-summary:focus-visible { outline: 2px solid var(--sc-ring); outline-offset: 2px; }
+.btn:focus-visible, .pin:focus-visible, .missing-summary:focus-visible, [data-tip]:focus-visible { outline: 2px solid var(--sc-ring); outline-offset: 2px; }
 .btn.primary { background: var(--sc-inv-bg); color: var(--sc-inv-text); border-color: var(--sc-inv-bg); font-weight: 600; }
 .btn.primary:hover { opacity: 0.88; }
 .btn.small { font-size: var(--fs-s); padding: 4px 9px; }

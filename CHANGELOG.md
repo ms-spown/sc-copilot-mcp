@@ -6,6 +6,21 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed (accessibility of the dashboard)
+- The short readings that were hover-only native tooltips ("Données de 0,8 s", the reason of the verdict, the scale under the
+  speed dial, the confidence tag of a calibrated figure) are now reachable without a mouse: the label is a focusable button
+  (in the tab order only while it has a text), the bubble opens on focus, on hover, on Enter, Space or a tap, and closes with
+  Escape, on leaving the label or on a tap elsewhere; `aria-describedby` and `aria-expanded` follow it. One shared bubble
+  (not a live region, it never takes the pointer). The names of the lamps and power nodes use it for the pointer and the
+  finger only, to avoid 19 extra tab stops (their text already says label and state).
+- "Détail ▸" on the commerce warning: the arrow is an `aria-hidden` decoration, so the accessible name is "Détail", and
+  `aria-expanded` is set from the start.
+- The unfolded session card of the compact view no longer shows its title twice (the fold button and the card both said
+  "Session N").
+- Test `tools/sessions.calibration`: every tool call starts a background look at the session file (`poke`) that was still
+  running when the test deleted its temporary folder (measured: 19 calls out of 20). The test now closes its managers
+  (which waits for that look) before removing the folder. Test support only.
+
 ## [2.5.0] - 2026-11-04
 
 ### Fixed (documentation)

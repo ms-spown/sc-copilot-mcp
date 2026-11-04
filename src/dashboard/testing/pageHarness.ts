@@ -79,6 +79,9 @@ export class FakeNode {
   removeEventListener(type: string, fn: (event: unknown) => void): void {
     this.listeners[type] = (this.listeners[type] ?? []).filter((l) => l !== fn);
   }
+  getBoundingClientRect(): { left: number; top: number; right: number; bottom: number } {
+    return { left: 0, top: 0, right: 0, bottom: 0 };
+  }
   /** The node that last received the focus (the keyboard tests read it). */
   static focused: FakeNode | null = null;
   focus(): void {

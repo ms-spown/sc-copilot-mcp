@@ -330,7 +330,7 @@ export function tradeInlineText(L: any, trade: any, showBalance: boolean): strin
 export function tradePanel(doc: any, L: any, svgNs: string): any {
   const cfg = tradeConfig();
   const SVG = svgNs;
-  const { el, add, setText, setAttr, setVar, show } = L.domKit(doc);
+  const { el, add, setText, setAttr, setVar, show, setTip } = L.domKit(doc);
   const svg = (tag: string, attrs: any): any => {
     const n = doc.createElementNS(SVG, tag);
     for (const k of Object.keys(attrs)) n.setAttribute(k, String(attrs[k]));
@@ -364,14 +364,19 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
   const warn = el("div", "tr-warn");
   const warnText = el("p", "tr-warn-text", "");
   // The account of the balance movements is one fold away: this opens it.
-  const warnMore = el("button", "btn mini", "Détail ▸");
+  // The arrow is a decoration (aria-hidden): the accessible name is "Détail" and aria-expanded says the rest.
+  const warnMore = el("button", "btn mini", "");
+  const warnCaret = el("span", "", " ▸");
+  warnCaret.setAttribute("aria-hidden", "true");
+  add(warnMore, el("span", "", "Détail"), warnCaret);
   warnMore.setAttribute("type", "button");
   warnMore.setAttribute("aria-controls", "mv");
+  warnMore.setAttribute("aria-expanded", "false");
   let mvBlock: any = null;
   // The label and aria-expanded follow the block, whoever opened it (this button or the summary of the block).
   const syncMore = () => {
     const on = !!mvBlock && mvBlock.isOpen();
-    setText(warnMore, on ? "Détail ▴" : "Détail ▸");
+    setText(warnCaret, on ? " ▴" : " ▸");
     setAttr(warnMore, "aria-expanded", on ? "true" : "false");
   };
   warnMore.addEventListener("click", () => {
@@ -700,9 +705,9 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           true,
           calibrated.sub,
         );
-        setAttr(tiles.next.tag, "title", calibrated.hint);
+        setTip(tiles.next.tag, calibrated.hint, true);
       } else if (next !== null && next !== undefined) {
-        setAttr(tiles.next.tag, "title", "");
+        setTip(tiles.next.tag, "", true);
         tileValue(
           tiles.next,
           "≈ " + tradeAmount(L, next, true),

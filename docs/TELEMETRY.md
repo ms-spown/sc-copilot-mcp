@@ -354,6 +354,10 @@ that this server provides and that the client renders next to the chat.
   temperature, atmosphere, body position, role. One chronology of events and your own markers, with filters, a
   session card, the route plan, and two foldable lines: the unverified values and what the stream does not contain.
   Every datum can be pinned (a pin icon on hover or focus): it then appears in a bar under the header in both modes.
+  The short readings that explain a label (the age of the data, the reason of the verdict, the scale of the speed dial, the
+  confidence tag of a calibrated figure) are reachable by keyboard and touch, not only by hover: Tab to the label, or tap it;
+  Enter or a tap keeps the bubble open, Escape or a tap elsewhere closes it. The names of the lamps and power nodes open on
+  hover or tap.
 - **A ship that is off.** When the powerplant is reported off, the page shows "Vaisseau éteint", dashes instead of
   zeros, and adds nothing to the curves. Nothing is coloured red just because it is absent.
 - **Alerts of the moment (conditions).** `sc_live_poll` (and `sc_live_state`) carry a `conditions` array computed

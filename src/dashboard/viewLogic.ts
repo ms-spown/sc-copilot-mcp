@@ -2181,7 +2181,16 @@ export function domKit(doc: any): any {
     }
   };
   const show = (n: any, on: boolean) => setAttr(n, "data-hidden", on ? "0" : "1");
-  return { el, add, setText, setAttr, setVar, show };
+  // A tip is the long reading of a short label. Its text sits in data-tip and the View's one bubble shows it (hover, tap,
+  // focus; Escape closes). With `focus` the node is a button (Enter opens it), in the tab order only while it has text.
+  const setTip = (n: any, text: string, focus?: boolean) => {
+    setAttr(n, "data-tip", text || "");
+    if (!focus) return;
+    setAttr(n, "tabindex", text ? "0" : "-1");
+    setAttr(n, "role", text ? "button" : "");
+    if (text && n["_a_aria-expanded"] === undefined) setAttr(n, "aria-expanded", "false");
+  };
+  return { el, add, setText, setAttr, setVar, show, setTip };
 }
 
 /** The names the page needs, in the order they are serialised. */

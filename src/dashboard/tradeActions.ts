@@ -662,7 +662,7 @@ export function tradeNextWanted(trade: any, plan: any, tried: string, now: numbe
 export function tradeActionsPanel(doc: any, L: any): any {
   const cfg = tradeActionsConfig();
   const objectives = tradeObjectives();
-  const { el, add, setText, setAttr, show } = L.domKit(doc);
+  const { el, add, setText, setAttr, show, setTip } = L.domKit(doc);
 
   // ---- the state
   const S: any = {
@@ -1247,7 +1247,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
       setText(c.calibText, cal.text);
       setText(c.calibTag, cal.tag);
       setAttr(c.calibTag, "data-estimate", "1");
-      setAttr(c.calibTag, "title", cal.hint);
+      setTip(c.calibTag, cal.hint, true);
       setText(c.calibMoreText, cal.more);
     }
     const applied = S.appliedId === o.id;

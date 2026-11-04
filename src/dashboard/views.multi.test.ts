@@ -342,7 +342,7 @@ describe("Feature: several dashboards call the server as one", () => {
     const text = visibleText(a.root);
     expect(text).toContain("En direct");
     expect(text).toContain("Cutter");
-    expect(findAll(a.root, (n) => n.className === "age")[0]!.attrs["title"]).toMatch(
+    expect(findAll(a.root, (n) => n.className === "age")[0]!.attrs["data-tip"]).toMatch(
       /^Données de \d/,
     );
     const seen = a.root.textContent;

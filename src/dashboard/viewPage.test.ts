@@ -560,7 +560,7 @@ describe("Feature: nothing is invented, and what the stream lacks is said", () =
     // The compact header keeps to one line: the age alone, "Données de ..." is its tooltip.
     const age = findAll(w.root, (n) => n.className === "age")[0]!;
     expect(age.textContent).toMatch(/^\d+(,\d)? s$/);
-    expect(age.attrs["title"]).toMatch(/^Données de \d+(,\d)? s$/);
+    expect(age.attrs["data-tip"]).toMatch(/^Données de \d+(,\d)? s$/);
   });
 
   it("Given a game started without telemetry, Then the View says to quit the launcher completely", async () => {

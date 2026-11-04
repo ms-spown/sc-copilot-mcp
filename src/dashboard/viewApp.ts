@@ -81,7 +81,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   // ---------------------------------------------------------------------------------------------
   // DOM helpers: text only goes through textContent
   // ---------------------------------------------------------------------------------------------
-  const { el, add, setText, setAttr, setVar, show } = L.domKit(doc);
+  const { el, add, setText, setAttr, setVar, show, setTip } = L.domKit(doc);
   const button = (label: string, onClick: () => void, cls?: string): any => {
     const b = el("button", "btn" + (cls ? " " + cls : ""), label);
     b.setAttribute("type", "button");
@@ -904,6 +904,10 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.sr = el("div", "sr-only", "");
     R.sr.setAttribute("role", "status");
     R.sr.setAttribute("aria-live", "polite");
+    R.tip = el("div", "tip", "");
+    R.tip.setAttribute("id", "sc-tip");
+    R.tip.setAttribute("role", "tooltip");
+    show(R.tip, false);
 
     add(
       root,
@@ -924,7 +928,89 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.tradeActions.opener,
       R.full,
       R.sr,
+      R.tip,
     );
+    buildTips();
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Tips: the long reading of a short label (data-tip, see domKit.setTip). One shared bubble, no native title, which only
+  // a hovering mouse reaches. It opens on hover, on focus and on a tap or Enter (a second one, or any click elsewhere,
+  // closes it); Escape closes it. The bubble never takes the pointer (it may cover a button) and is no live region.
+  // ---------------------------------------------------------------------------------------------
+  let tipOn: any = null;
+  let tipPin = false;
+  const tipOf = (n: any): any => {
+    for (; n; n = n.parentNode) if (n.getAttribute && n.getAttribute("data-tip")) return n;
+    return null;
+  };
+  const tipMark = (n: any, on: boolean) => {
+    setAttr(n, "aria-describedby", on ? "sc-tip" : "");
+    if (n.getAttribute("role")) setAttr(n, "aria-expanded", on ? "true" : "false");
+  };
+  function tipHide() {
+    if (tipOn) tipMark(tipOn, false);
+    tipOn = null;
+    tipPin = false;
+    show(R.tip, false);
+  }
+  function tipShow(n: any) {
+    if (tipOn !== n) {
+      if (tipOn) tipMark(tipOn, false);
+      tipPin = false;
+    }
+    tipOn = n;
+    tipMark(n, true);
+    setText(R.tip, n.getAttribute("data-tip"));
+    show(R.tip, true);
+    // Under the label, or above it when there is no room; never outside the frame.
+    const r = n.getBoundingClientRect();
+    const h = R.tip.offsetHeight || 0;
+    const below = r.bottom + h + 8 <= (win.innerHeight || 0) || r.top - h - 8 < 0;
+    const left = Math.max(
+      8,
+      Math.min(r.left, (win.innerWidth || 0) - (R.tip.offsetWidth || 0) - 8),
+    );
+    R.tip.style.setProperty("left", Math.round(left) + "px");
+    R.tip.style.setProperty("top", Math.round(below ? r.bottom + 4 : r.top - h - 4) + "px");
+  }
+  function tipToggle(n: any) {
+    if (tipOn === n && tipPin) tipHide();
+    else {
+      tipShow(n);
+      tipPin = true;
+    }
+  }
+  function buildTips() {
+    const body = doc.body;
+    body.addEventListener("mouseover", (e: any) => {
+      const n = tipOf(e.target);
+      if (n && !tipPin) tipShow(n);
+    });
+    body.addEventListener("mouseout", (e: any) => {
+      if (tipOn && !tipPin && tipOf(e.relatedTarget) !== tipOn && doc.activeElement !== tipOn) {
+        tipHide();
+      }
+    });
+    body.addEventListener("focusin", (e: any) => {
+      const n = tipOf(e.target);
+      if (n) tipShow(n);
+      else tipHide();
+    });
+    body.addEventListener("focusout", () => tipHide());
+    body.addEventListener("click", (e: any) => {
+      const n = tipOf(e.target);
+      if (n) tipToggle(n);
+      else tipHide();
+    });
+    body.addEventListener("keydown", (e: any) => {
+      const n = tipOf(e.target);
+      if (e.key === "Escape") tipHide();
+      else if (n && n.getAttribute("role") && (e.key === "Enter" || e.key === " ")) {
+        e.preventDefault();
+        tipToggle(n);
+      }
+    });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -943,7 +1029,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     // The compact header keeps to one line: only the age there, the words are its tooltip.
     const ageText = live ? L.formatAge(L.frameAge(view, now)) : "";
     setText(R.age, ageText && (displayMode === "fullscreen" ? "Données de " : "") + ageText);
-    setAttr(R.age, "title", ageText && "Données de " + ageText);
+    // (Full screen says it in the text itself.)
+    setTip(R.age, ageText && displayMode !== "fullscreen" ? "Données de " + ageText : "", true);
     if (displayMode === "fullscreen") {
       for (const c of R.cards) setText(c.age, live ? L.formatAge(L.frameAge(view, now)) : "");
     }
@@ -975,9 +1062,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     show(R.verdict, !!verdict);
     if (verdict) {
       setAttr(R.verdict, "data-tone", verdict.tone);
-      setAttr(R.verdict, "title", verdict.title || "");
+      setTip(R.verdict, verdict.title || "", true);
       setText(R.verdict, verdict.label);
-    }
+    } else setTip(R.verdict, "", true);
     return info;
   }
 
@@ -1066,7 +1153,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   function renderInline(I: any, V: any, now: number) {
     setDial(R.iSpeed, Object.assign({}, I.speed, { sub: I.speed.subShort || I.speed.sub }));
     // The short line is one line; the source and the scale ("d'après la fiche (wiki)") are its tooltip.
-    setAttr(R.iSpeed.sub, "title", I.speed.sub || "");
+    setTip(R.iSpeed.sub, I.speed.sub || "", true);
     setDial(R.iHydrogen, {
       text: I.hydrogen.text.replace("\u00a0%", ""),
       unit: I.hydrogen.known ? "%" : "",
@@ -1192,7 +1279,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       setText(n.label, c.label);
       setText(n.state, !c.known ? "?" : c.on ? "alimenté" : "coupé");
       setAttr(n, "data-on", !c.known ? "na" : c.on ? "1" : "0");
-      setAttr(n, "title", c.title + " : " + (!c.known ? "inconnu" : c.on ? "alimenté" : "coupé"));
+      setTip(n, c.title + " : " + (!c.known ? "inconnu" : c.on ? "alimenté" : "coupé"));
     }
     const modes = L.flightModesInfo(ship && ship.flight_modes);
     for (let i = 0; i < R.modeChips.length; i++) {
@@ -1210,7 +1297,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       setText(slot.state, ship ? l.text : "—");
       setAttr(slot, "data-tone", ship ? l.tone : "off");
       setAttr(slot, "data-verified", l.verified ? "1" : "0");
-      setAttr(slot, "title", l.title + " : " + (ship ? l.text : "pas de données"));
+      setTip(slot, l.title + " : " + (ship ? l.text : "pas de données"));
     }
 
     // Weapons
@@ -1479,6 +1566,12 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       showBalance,
       fullscreen: displayMode === "fullscreen",
     });
+    // An open tip follows its label (the age changes every second) and goes with a label that lost its text.
+    if (tipOn) {
+      const t = tipOn.getAttribute("data-tip");
+      if (t) setText(R.tip, t);
+      else tipHide();
+    }
     R.tradeActions.render(
       tradeActionsContext(actionsOn, tradeLedger ? tradeLedger.trade : null, now, calibration),
     );

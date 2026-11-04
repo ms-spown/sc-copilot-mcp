@@ -291,6 +291,9 @@ describe("Feature: the block in the card's details", () => {
     expect(isShown(detail)).toBe(true);
     expect(detail.attrs["aria-expanded"]).toBe("false");
     expect(detail.attrs["aria-controls"]).toBe(mv.attrs["id"]);
+    // the accessible name is the word alone: the arrow is a separate aria-hidden node
+    expect(detail.children[0]!.textContent).toBe("Détail");
+    expect(detail.children[1]!.attrs["aria-hidden"]).toBe("true");
     detail.click();
     expect((more as any).open).toBe(true);
     expect((mv as any).open).toBe(true);

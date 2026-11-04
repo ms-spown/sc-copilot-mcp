@@ -361,7 +361,11 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   température extérieure, atmosphère, position du corps, rôle. Une seule chronologie des événements et de vos repères,
   avec des filtres, une carte de session, le plan de route, et deux lignes repliables : les valeurs non vérifiées et
   ce que le flux ne contient pas. Chaque donnée peut être épinglée (icône d'épingle au survol ou au focus) : elle
-  apparaît alors dans une barre sous l'en-tête, dans les deux modes.
+  apparaît alors dans une barre sous l'en-tête, dans les deux modes. Les courtes explications d'une étiquette (l'âge des
+  données, la raison du verdict, l'échelle du cadran de vitesse, l'étiquette de confiance d'un chiffre calibré) s'atteignent
+  aussi au clavier et au toucher, pas seulement au survol : Tab jusqu'à l'étiquette, ou un appui ; Entrée ou un appui garde la
+  bulle ouverte, Échap ou un appui ailleurs la ferme. Les noms des voyants et des éléments d'alimentation s'ouvrent au survol
+  ou à l'appui.
 - **Un vaisseau éteint.** Quand la centrale est signalée hors service, la page affiche « Vaisseau éteint », des
   tirets à la place des zéros, et n'ajoute rien aux courbes. Rien n'est coloré en rouge simplement parce que c'est
   absent.
