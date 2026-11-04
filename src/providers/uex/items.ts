@@ -14,8 +14,8 @@ import { ageDays, placeOf, toNumber, toPrice, type Row } from "./rows.js";
 /** A shop price older than this is flagged stale. Item prices are slow-moving, so this is generous. */
 export const ITEM_STALE_DAYS = 30;
 
-/** Most categories one query may open (each is a 100-300 KB catalogue). */
-export const MAX_CATEGORIES = 4;
+/** Most categories one query may open (each is a 100-300 KB catalogue and one request). */
+export const MAX_CATEGORIES = 3;
 
 export type CategoryMatch =
   | { kind: "ok"; categories: Row[] }
@@ -205,10 +205,12 @@ export interface AttributeComparison {
   attribute: string;
   a: { value: string | number | null; unit: string | null } | null;
   b: { value: string | number | null; unit: string | null } | null;
-  /** b minus a, only when both are numbers in the same unit. */
+  /** b minus a (3 decimals), only when both are numbers in the same unit. */
   difference: number | null;
-  /** The difference as a percent of a, only when a is not 0. */
+  /** The ROUNDED difference as a percent of |a| (1 decimal), only when a is not 0: the two always agree. */
   difference_percent: number | null;
+  /** Which item lists this attribute more than once. Only the first value is shown and nothing is compared. */
+  repeated_in: ("a" | "b")[];
 }
 
 /** Side by side, in the order of the first item's attributes then the second's extras. No "better": UEX does not say which direction is better. */
@@ -216,20 +218,34 @@ export function compareAttributes(a: AttributeView[], b: AttributeView[]): Attri
   const key = (x: AttributeView) => fold(x.attribute);
   const names = [...a, ...b].map(key).filter((k, i, arr) => arr.indexOf(k) === i);
   return names.map((k) => {
-    const x = a.find((v) => key(v) === k);
-    const y = b.find((v) => key(v) === k);
+    const xs = a.filter((v) => key(v) === k);
+    const ys = b.filter((v) => key(v) === k);
+    const x = xs[0];
+    const y = ys[0];
+    const repeated_in: ("a" | "b")[] = [
+      ...(xs.length > 1 ? (["a"] as const) : []),
+      ...(ys.length > 1 ? (["b"] as const) : []),
+    ];
     const comparable =
-      x && y && typeof x.value === "number" && typeof y.value === "number" && x.unit === y.unit;
-    const diff = comparable ? (y.value as number) - (x.value as number) : null;
+      repeated_in.length === 0 &&
+      x &&
+      y &&
+      typeof x.value === "number" &&
+      typeof y.value === "number" &&
+      x.unit === y.unit;
+    const diff = comparable
+      ? Math.round(((y.value as number) - (x.value as number)) * 1000) / 1000
+      : null;
     return {
       attribute: (x ?? y)!.attribute,
       a: x ? { value: x.value, unit: x.unit } : null,
       b: y ? { value: y.value, unit: y.unit } : null,
-      difference: diff === null ? null : Math.round(diff * 1000) / 1000,
+      difference: diff,
       difference_percent:
-        diff !== null && (x!.value as number) !== 0
-          ? Math.round((diff / (x!.value as number)) * 1000) / 10
+        diff !== null && (x.value as number) !== 0
+          ? Math.round((diff / Math.abs(x.value as number)) * 1000) / 10
           : null,
+      repeated_in,
     };
   });
 }

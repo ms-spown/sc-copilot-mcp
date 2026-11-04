@@ -15,6 +15,7 @@ import {
   REFINING_STALE_DAYS,
 } from "../providers/uex/refining.js";
 import { asRows, boundedLimit, median } from "../providers/uex/rows.js";
+import { fitSteps, halvings } from "./uexBounds.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
 // Every string of an untrusted_text answer is cut at 200 characters (maxText in the catalog), our own notes
@@ -24,11 +25,6 @@ const NOT_IN_UEX = [
   "It has no refining cost in aUEC and no processing time in minutes.",
   "So NO aUEC profit is computed here: this is a ranking from the yield bonus players reported.",
 ];
-
-const json = (payload: unknown): ToolResult => ({
-  // Not formatOutput: a yield bonus of 0 or a rank of 1 is information, not noise.
-  content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
-});
 
 /**
  * Refining margins, from UEX only. The yield data is a bonus per (ore, refinery) reported by players;
@@ -97,8 +93,13 @@ export function uexRefiningTools({ uexClient }: { uexClient: HttpClient }): Tool
             ores.filter((o) => usedOres.has(o.name)).flatMap((o) => o.yields),
             "refinery yield reports",
           );
-          return json({
+          return fitSteps(halvings(shown.length), (n, i) => ({
             mode: "ores_ranked_by_index",
+            ...(i > 0
+              ? {
+                  truncated: `Cut to fit the output size: ${n} of the ${shown.length} ores asked for.`,
+                }
+              : {}),
             index_meaning: [
               "Refined product's reference sell price x (1 + best yield bonus / 100), scaled so the best ore is 100.",
               "It compares ores; it is NOT aUEC and NOT a margin.",
@@ -106,14 +107,14 @@ export function uexRefiningTools({ uexClient }: { uexClient: HttpClient }): Tool
             ],
             system_filter: star_system_name ?? "all systems",
             total_ranked: ranked.length,
-            shown: shown.length,
-            ores: shown,
-            not_ranked,
+            shown: Math.min(n, shown.length),
+            ores: shown.slice(0, n),
+            not_ranked: not_ranked.slice(0, Math.max(n, 5)),
             what_uex_does_not_have: NOT_IN_UEX,
             refined_reference_price:
               "From UEX's commodity list: an average sell price across terminals, undated. For real sell terminals use uex_get_commodity_prices.",
             stale_after_days: REFINING_STALE_DAYS,
-          });
+          }));
         }
 
         const found = matchOre(ores, ore);
@@ -141,8 +142,13 @@ export function uexRefiningTools({ uexClient }: { uexClient: HttpClient }): Tool
 
         const bonuses = rows.map((r) => r.yield_bonus_percent);
         const refinedPrice = refinedReferencePrice(chosen.refined);
-        return json({
+        return fitSteps(halvings(shown.length), (n, i) => ({
           mode: "refineries_ranked_for_one_ore",
+          ...(i > 0
+            ? {
+                truncated: `Cut to fit the output size: ${n} of the ${shown.length} refineries asked for.`,
+              }
+            : {}),
           ore: chosen.name,
           ...(found.loose
             ? { note: `No exact match for "${ore}": showing the closest ore, ${chosen.name}.` }
@@ -158,7 +164,7 @@ export function uexRefiningTools({ uexClient }: { uexClient: HttpClient }): Tool
             : "UEX does not link this ore to a refined product.",
           refineries: {
             total: rows.length,
-            shown: shown.length,
+            shown: Math.min(n, shown.length),
             sorted_by: "yield_bonus_percent, highest first; equal bonuses share a rank.",
             yield_bonus_note:
               "A bonus relative to the game's base yield, reported by players (percent per UEX).",
@@ -167,7 +173,7 @@ export function uexRefiningTools({ uexClient }: { uexClient: HttpClient }): Tool
             yield_bonus_spread: rows.length
               ? { best: Math.max(...bonuses), median: median(bonuses), worst: Math.min(...bonuses) }
               : null,
-            rows: shown,
+            rows: shown.slice(0, n),
           },
           ore_sale_prices_at_refineries: oreSalePrices(rawPrices, chosen.id, now),
           ore_sale_prices_note:
@@ -182,7 +188,7 @@ export function uexRefiningTools({ uexClient }: { uexClient: HttpClient }): Tool
             : {}),
           what_uex_does_not_have: NOT_IN_UEX,
           stale_after_days: REFINING_STALE_DAYS,
-        });
+        }));
       },
     },
   ];

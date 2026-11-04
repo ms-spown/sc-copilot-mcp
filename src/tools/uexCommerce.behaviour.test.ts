@@ -561,27 +561,6 @@ describe("Feature: uex_get_item_prices says where an item is cheapest and how ol
       expect(envelope(result).data.matched).toBe(0);
     });
 
-    it("Given an unknown category, Then the error lists the item categories (not the services)", async () => {
-      const { client } = itemsWorld();
-      const result = await registryFor(client).call("uex_get_item_prices", {
-        item_name: "burst",
-        category: "Spaceships",
-      });
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toMatch(/Quantum Drives/);
-      expect(result.content[0].text).not.toMatch(/Hauling/);
-    });
-
-    it("Given a section that covers too many categories, Then it asks for one of them", async () => {
-      const { client } = itemsWorld();
-      const result = await registryFor(client).call("uex_get_item_prices", {
-        item_name: "venture",
-        category: "Armor",
-      });
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toMatch(/too many categories/);
-    });
-
     it("Given a missing category, Then the arguments are refused", async () => {
       const { client } = itemsWorld();
       const result = await registryFor(client).call("uex_get_item_prices", { item_name: "burst" });

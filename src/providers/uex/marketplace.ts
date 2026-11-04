@@ -12,11 +12,18 @@ import { ageDays, median, toNumber, toPrice, type Row } from "./rows.js";
 
 export const HISTORY_CAP = 1000;
 
-/** "unit" is a price per item; any other unit is a bundle of an unstated number of items. */
-export const isBundle = (unit: unknown) => typeof unit === "string" && unit !== "unit";
+/**
+ * "unit" is a price per item; any other stated unit is a bundle of an unstated number of items; a missing
+ * or empty unit is UNKNOWN (null): neither a per-unit price nor a bundle, and never compared.
+ */
+export const isBundle = (unit: unknown): boolean | null =>
+  typeof unit === "string" && unit.trim() !== "" ? unit.trim() !== "unit" : null;
+
+/** Sort key: per-unit first, unknown next, bundles last. */
+const unitRank = (bundle: boolean | null) => (bundle === false ? 0 : bundle === null ? 1 : 2);
 
 const unitText = (unit: unknown) =>
-  typeof unit === "string" && unit ? unit : "unit (not stated by UEX)";
+  typeof unit === "string" && unit.trim() ? unit.trim() : "not stated by UEX";
 
 /**
  * What an `operation` means. UEX names the side of the advert: a "sell" advert is a player
@@ -30,7 +37,7 @@ export interface AverageView {
   operation: unknown;
   quality_tier: number | null;
   unit: string;
-  bundle: boolean;
+  bundle: boolean | null;
   currency: unknown;
   price_avg: number | null;
   price_avg_last_week: number | null;
@@ -64,7 +71,7 @@ export function averageViews(rows: Row[], now: number): AverageView[] {
     })
     .sort(
       (a, b) =>
-        Number(a.bundle) - Number(b.bundle) ||
+        unitRank(a.bundle) - unitRank(b.bundle) ||
         String(a.operation).localeCompare(String(b.operation)) ||
         (a.quality_tier ?? 0) - (b.quality_tier ?? 0),
     );
@@ -137,7 +144,7 @@ export function pickTrendItem(rows: Row[], name: string): ItemMatch {
 export interface HistoryGroup {
   operation: unknown;
   unit: string;
-  bundle: boolean;
+  bundle: boolean | null;
   quality_tier: number | null;
   adverts: number;
   price_lowest: number;
@@ -164,7 +171,7 @@ export function summariseHistory(rows: Row[], received: number = rows.length): H
     const price = toPrice(r.price);
     if (price === null) continue;
     const t = parseUexDate(r.date_added);
-    const key = `${String(r.operation)}|${String(r.unit)}|${String(r.quality_tier)}`;
+    const key = `${String(r.operation)}|${unitText(r.unit)}|${String(r.quality_tier)}`;
     const g = groups.get(key) ?? { sample: r, prices: [], times: [] };
     g.prices.push(price);
     if (t !== null) {
@@ -187,7 +194,7 @@ export function summariseHistory(rows: Row[], received: number = rows.length): H
   }));
   views.sort(
     (a, b) =>
-      Number(a.bundle) - Number(b.bundle) ||
+      unitRank(a.bundle) - unitRank(b.bundle) ||
       String(a.operation).localeCompare(String(b.operation)) ||
       (a.quality_tier ?? 0) - (b.quality_tier ?? 0),
   );
@@ -200,43 +207,70 @@ export function summariseHistory(rows: Row[], received: number = rows.length): H
   };
 }
 
-/** Where a price stands against the item's month average for one side and quality, per unit only. */
+/** A marketplace average older than this is called old in a price check. */
+export const AVERAGE_OLD_DAYS = 30;
+
+export type PriceCheck =
+  | {
+      /** Which UEX figure the price was placed against: the month average, or the current average when UEX gave no month figure. */
+      against: "price_avg_last_month" | "price_avg";
+      average: number;
+      difference_percent: number;
+      reading: string;
+      /** Cautions to read with the figure: no listing now, an old average, a fallback figure. Each one is a sentence under 200 characters (the sanitizer cap). */
+      warnings: string[];
+    }
+  | { unavailable: string };
+
+/**
+ * Where a price stands against the item's average for one side and quality tier. Only rows whose unit is
+ * stated as "unit" count: a bundle or a line with no stated unit is never a per-unit price.
+ */
 export function priceCheck(
   averages: AverageView[],
   price: number,
   operation: string,
   qualityTier: number,
-):
-  | {
-      against: "price_avg_last_month";
-      average: number;
-      difference_percent: number;
-      reading: string;
-    }
-  | { unavailable: string } {
-  const row = averages.find(
+): PriceCheck {
+  const candidates = averages.filter(
     (a) =>
-      !a.bundle &&
+      a.bundle === false &&
       a.operation === operation &&
       (a.quality_tier ?? 0) === qualityTier &&
       (a.price_avg_last_month ?? a.price_avg) !== null,
   );
+  // A line with adverts now is preferred to one that only keeps an old average.
+  const row = candidates.find((a) => !a.no_listing_now) ?? candidates[0];
   if (!row) {
     return {
-      unavailable: `UEX has no per-unit average for ${operation} adverts at quality tier ${qualityTier}, so the price cannot be placed.`,
+      unavailable: `UEX has no average stated per unit for ${operation} adverts at quality tier ${qualityTier}, so the price cannot be placed.`,
     };
   }
-  const average = (row.price_avg_last_month ?? row.price_avg) as number;
+  const monthly = row.price_avg_last_month;
+  const average = (monthly ?? row.price_avg) as number;
   const diff = Math.round(((price - average) / average) * 1000) / 10;
+  const warnings: string[] = [];
+  if (monthly === null) {
+    warnings.push("UEX gave no month average here: the current average was used instead.");
+  }
+  if (row.no_listing_now) {
+    warnings.push(
+      "No advert is listed now on this line: the average is history, not an offer you can take.",
+    );
+  }
+  if (row.data_age_days !== null && row.data_age_days > AVERAGE_OLD_DAYS) {
+    warnings.push(`This average was last updated ${row.data_age_days} days ago.`);
+  }
   return {
-    against: "price_avg_last_month",
+    against: monthly === null ? "price_avg" : "price_avg_last_month",
     average,
     difference_percent: diff,
     reading:
       Math.abs(diff) < 5
-        ? "close to the recent average"
+        ? "close to the average"
         : diff < 0
-          ? `${Math.abs(diff)}% below the recent average`
-          : `${diff}% above the recent average`,
+          ? `${Math.abs(diff)}% below the average`
+          : `${diff}% above the average`,
+    warnings,
   };
 }

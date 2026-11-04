@@ -8,6 +8,7 @@ import {
   averageViews,
   byNegotiations,
   HISTORY_CAP,
+  type HistoryGroup,
   OPERATION_NOTE,
   pickTrendItem,
   priceCheck,
@@ -15,11 +16,11 @@ import {
   trendViews,
 } from "../providers/uex/marketplace.js";
 import { asRows, boundedLimit, toNumber, type Row } from "../providers/uex/rows.js";
+import { fitSteps, halvings } from "./uexBounds.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
-const json = (payload: unknown): ToolResult => ({
-  content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
-});
+// Every string of an untrusted_text answer is cut at 200 characters (maxText in the catalog), our own notes
+// and warnings included: keep each one under 200 characters (a test fails on any "[truncated" marker).
 
 /**
  * The player marketplace price guide. The text of adverts is never returned (that is
@@ -99,14 +100,20 @@ export function uexMarketplaceTools({ uexClient }: { uexClient: HttpClient }): T
           setDataAgeUnknown(
             "UEX's marketplace_trends has no date field; cache_age only says when this server fetched it",
           );
-          return json({
+          const views = trendViews(shown);
+          return fitSteps(halvings(views.length), (n, i) => ({
             mode: "most_traded_items",
             total_in_trends: rows.length,
-            shown: shown.length,
-            note: "UEX caps its trend list at 500 items. Trend prices carry no unit: an item sold in bundles can show a bundle price. Look an item up by name for the per-unit detail.",
+            shown: Math.min(n, views.length),
+            ...(i > 0
+              ? {
+                  truncated: `Cut to fit the output size: ${n} of the ${views.length} items asked for.`,
+                }
+              : {}),
+            note: "UEX caps its trend list at 500 items. Trend prices carry no unit: an item sold in bundles can show a bundle price.",
             operation_note: OPERATION_NOTE,
-            items: trendViews(shown),
-          });
+            items: views.slice(0, n),
+          }));
         }
 
         // Find the item: by id, or by name in UEX's trend list (the name filter is a substring match).
@@ -163,7 +170,15 @@ export function uexMarketplaceTools({ uexClient }: { uexClient: HttpClient }): T
         const averages = averageViews(averagesRows, now);
         reportRowDates(averagesRows, "marketplace average rows");
 
-        let history: unknown = undefined;
+        let history:
+          | {
+              rows_received: number;
+              truncated: boolean;
+              truncated_note?: string;
+              window: string;
+              groups: HistoryGroup[];
+            }
+          | undefined = undefined;
         if (include_history) {
           const received = asRows(
             (
@@ -195,13 +210,20 @@ export function uexMarketplaceTools({ uexClient }: { uexClient: HttpClient }): T
         }
 
         const trend = trendViews(trendRows);
-        return json({
+        const groups = history?.groups ?? [];
+        // A category-wide average list or a history with many groups can be long: cut both together, say so.
+        return fitSteps(halvings(Math.max(averages.length, groups.length, 1)), (n, i) => ({
           item: trend[0]?.item ?? averagesRows[0]?.item_name ?? null,
           id_item: itemId,
           operation_note: OPERATION_NOTE,
           unit_note:
             "unit = price per item. Any other unit (set, pack, stack, crate) is a bundle of an unstated number of items: never compare it with a per-unit price.",
-          averages,
+          ...(i > 0
+            ? {
+                truncated: `Cut to fit the output size: ${Math.min(n, averages.length)} of ${averages.length} average lines${history ? ` and ${Math.min(n, groups.length)} of ${groups.length} history groups` : ""} shown. Add operation or quality_tier to narrow it.`,
+              }
+            : {}),
+          averages: averages.slice(0, n),
           ...(averages.length === 0
             ? { note: "UEX has no average for this item with those filters." }
             : {}),
@@ -209,8 +231,8 @@ export function uexMarketplaceTools({ uexClient }: { uexClient: HttpClient }): T
           ...(check_price !== undefined && operation
             ? { price_check: priceCheck(averages, check_price, operation, quality_tier ?? 0) }
             : {}),
-          ...(history ? { history } : {}),
-        });
+          ...(history ? { history: { ...history, groups: groups.slice(0, n) } } : {}),
+        }));
       },
     },
   ];

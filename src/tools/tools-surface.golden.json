@@ -1107,7 +1107,7 @@
         },
         "category": {
           "type": "string",
-          "description": "UEX item category or section (e.g. 'Quantum Drives', 'Guns', 'Foods'). At most four categories are opened; a wrong name returns the list."
+          "description": "UEX item category or section (e.g. 'Quantum Drives', 'Guns', 'Foods'). At most three categories are opened. An unknown or too wide name returns the list of categories in `categories`."
         },
         "company": {
           "type": "string",
@@ -1123,11 +1123,11 @@
         },
         "limit": {
           "type": "number",
-          "description": "Items to price when several match (default 3, max 8)."
+          "description": "Items to price when several match (default 3, max 4)."
         },
         "locations": {
           "type": "number",
-          "description": "Rows per side, buy and sell, per item (default 8, max 25)."
+          "description": "Rows per side, buy and sell, per item (default 8, max 15). The answer is cut, and says so, if it would be too large."
         },
         "with_attributes": {
           "type": "boolean",

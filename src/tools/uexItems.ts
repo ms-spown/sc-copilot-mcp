@@ -7,12 +7,15 @@ import {
   attributeViews,
   compareAttributes,
   ITEM_STALE_DAYS,
+  itemCategories,
   itemView,
+  MAX_CATEGORIES,
   matchCategories,
   matchItems,
   summarisePrices,
 } from "../providers/uex/items.js";
 import { asRows, boundedLimit, type Row } from "../providers/uex/rows.js";
+import { fitSteps, halvings } from "./uexBounds.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
 /*
@@ -23,12 +26,18 @@ import type { ToolDefinition, ToolResult } from "./types.js";
  *
  * `items` itself refuses a call without a filter, hence the category: the catalogue of one
  * category is 30 to 300 KB, filtered here by name.
+ *
+ * Requests per call (UEX allows 100 a minute to the whole server, shared with every other UEX tool):
+ * uex_get_item_prices at most 1 (categories) + 3 (one catalogue per category) + 1 (game versions) + 4 items
+ * x 2 (prices, attributes) = 13, usually 5 to 8; uex_compare_items at most 1 + 3 + 3 + 1 + 4 = 12. All of
+ * them are cached for 5 minutes, so a second question on the same category costs only the item calls.
+ *
+ * Every string of an untrusted_text answer is cut at 200 characters (maxText in the catalog), our own notes
+ * and warnings included: keep each one under 200 characters (a test fails on any "[truncated" marker).
  */
 
-const json = (payload: unknown): ToolResult => ({
-  // Not formatOutput: ids, zero and stale=false are information here.
-  content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
-});
+const MAX_ITEMS_PRICED = 4;
+const MAX_LOCATIONS = 15;
 
 /** UEX's LIVE game version, or null when it cannot say (then no row is called older than LIVE). */
 async function liveVersion(uexClient: HttpClient): Promise<unknown> {
@@ -42,26 +51,42 @@ async function liveVersion(uexClient: HttpClient): Promise<unknown> {
   }
 }
 
-/** The catalogue rows of the categories a typed category name stands for. */
-async function categoryRows(uexClient: HttpClient, category: string): Promise<Row[]> {
+type CategoryResult =
+  { ok: true; rows: Row[] } | { ok: false; problem: "unknown" | "too_many"; names: string[] };
+
+/** The catalogue rows of the categories a typed category name stands for, or the category names to choose from. */
+async function categoryRows(uexClient: HttpClient, category: string): Promise<CategoryResult> {
   const categories = asRows((await fetchWithCache(uexClient, "/categories")).data.data);
   const match = matchCategories(categories, category);
   if (match.kind === "none") {
-    throw new Error(
-      `No UEX item category matches "${category}". Categories: ${remoteText(match.suggestions.join("; "), "uex")}.`,
-    );
+    return {
+      ok: false,
+      problem: "unknown",
+      names: itemCategories(categories).map((c) => String(c.name)),
+    };
   }
   if (match.kind === "too_many") {
-    throw new Error(
-      `"${category}" covers too many categories (${remoteText(match.categories.map((c) => String(c.name)).join("; "), "uex")}). Name one of them.`,
-    );
+    return { ok: false, problem: "too_many", names: match.categories.map((c) => String(c.name)) };
   }
   const lists = await Promise.all(
     match.categories.map((c) =>
       fetchWithCache(uexClient, "/items", { params: { id_category: c.id } }),
     ),
   );
-  return lists.flatMap((l) => asRows(l.data.data));
+  return { ok: true, rows: lists.flatMap((l) => asRows(l.data.data)) };
+}
+
+/** A category problem as a sentence for an error: a few names, and how many are left out. */
+function categoryError(category: string, problem: Extract<CategoryResult, { ok: false }>): Error {
+  const shown = problem.names.slice(0, 10);
+  const more = problem.names.length - shown.length;
+  const head =
+    problem.problem === "unknown"
+      ? `No UEX item category matches "${category}". Some categories`
+      : `"${category}" covers more than ${MAX_CATEGORIES} categories. They are`;
+  return new Error(
+    `${head}: ${remoteText(shown.join("; "), "uex")}${more > 0 ? ` and ${more} more` : ""}. Name one category.`,
+  );
 }
 
 const describeItem = (i: Row) =>
@@ -84,7 +109,7 @@ export function uexItemTools({ uexClient }: { uexClient: HttpClient }): ToolDefi
           category: {
             type: "string",
             description:
-              "UEX item category or section (e.g. 'Quantum Drives', 'Guns', 'Foods'). At most four categories are opened; a wrong name returns the list.",
+              "UEX item category or section (e.g. 'Quantum Drives', 'Guns', 'Foods'). At most three categories are opened. An unknown or too wide name returns the list of categories in `categories`.",
           },
           company: { type: "string", description: "Optional: maker name (e.g. 'ArcCorp')." },
           size: { type: "number", description: "Optional: item size (e.g. 1, 2, 3)." },
@@ -94,11 +119,11 @@ export function uexItemTools({ uexClient }: { uexClient: HttpClient }): ToolDefi
           },
           limit: {
             type: "number",
-            description: "Items to price when several match (default 3, max 8).",
+            description: `Items to price when several match (default 3, max ${MAX_ITEMS_PRICED}).`,
           },
           locations: {
             type: "number",
-            description: "Rows per side, buy and sell, per item (default 8, max 25).",
+            description: `Rows per side, buy and sell, per item (default 8, max ${MAX_LOCATIONS}). The answer is cut, and says so, if it would be too large.`,
           },
           with_attributes: {
             type: "boolean",
@@ -131,20 +156,36 @@ export function uexItemTools({ uexClient }: { uexClient: HttpClient }): ToolDefi
           })
           .parse(args);
         const now = Date.now();
-        const items = await categoryRows(uexClient, category);
-        const { hits, loose } = matchItems(items, item_name, { company, size });
+        const catalogue = await categoryRows(uexClient, category);
+        if (!catalogue.ok) {
+          // A bounded list of its own (strings of a few words), not an error text cut by the sanitizer.
+          return fitSteps([0], () => ({
+            query: { item_name, category },
+            matched: 0,
+            category_problem:
+              catalogue.problem === "unknown"
+                ? "No UEX item category matches that name. Pick one from `categories`."
+                : `That name covers more than ${MAX_CATEGORIES} categories. Pick one from \`categories\`.`,
+            categories: catalogue.names,
+          }));
+        }
+        const { hits, loose } = matchItems(catalogue.rows, item_name, { company, size });
         if (hits.length === 0) {
-          return json({
+          return fitSteps([0], () => ({
             query: { item_name, category },
             matched: 0,
             note: `No item named "${item_name}" in "${category}"${company ? ` from "${company}"` : ""}${size !== undefined ? ` of size ${size}` : ""}, even allowing for typos. Check the category, or search with fewer words.`,
-          });
+          }));
         }
         const live = await liveVersion(uexClient);
-        const priced = hits.slice(0, boundedLimit(limit, 3, 8));
-        const top = boundedLimit(locations, 8, 25);
+        const priced = hits.slice(0, boundedLimit(limit, 3, MAX_ITEMS_PRICED));
+        const top = boundedLimit(locations, 8, MAX_LOCATIONS);
         const used: Row[] = [];
-        const out: unknown[] = [];
+        const full: {
+          item: ReturnType<typeof itemView>;
+          summary: ReturnType<typeof summarisePrices>["summary"];
+          attributes?: ReturnType<typeof attributeViews>;
+        }[] = [];
         for (const item of priced) {
           const priceRows = asRows(
             (await fetchWithCache(uexClient, "/items_prices", { params: { id_item: item.id } }))
@@ -158,37 +199,40 @@ export function uexItemTools({ uexClient }: { uexClient: HttpClient }): ToolDefi
             star_system_name,
           );
           used.push(...shown);
-          let attributes: unknown = undefined;
-          if (with_attributes) {
-            const attrRows = asRows(
-              (
-                await fetchWithCache(uexClient, "/items_attributes", {
-                  params: { id_item: item.id },
-                })
-              ).data.data,
-            );
-            attributes = attributeViews(attrRows);
-          }
-          out.push({
-            item: itemView(item),
-            ...summary,
-            ...(attributes ? { attributes } : {}),
-            ...(summary.buy_locations_total === 0
-              ? {
-                  note: "No terminal in UEX sells this item (it may be a reward, a loot item or sold only for real money).",
-                }
-              : {}),
-          });
+          const attributes = with_attributes
+            ? attributeViews(
+                asRows(
+                  (
+                    await fetchWithCache(uexClient, "/items_attributes", {
+                      params: { id_item: item.id },
+                    })
+                  ).data.data,
+                ),
+              )
+            : undefined;
+          full.push({ item: itemView(item), summary, attributes });
         }
         reportRowDates(used, "item price rows");
         const rest = hits.slice(priced.length);
-        return json({
+
+        // Fullest first; then fewer places per side, then no attributes, then one item: the first that fits.
+        const steps = [
+          ...halvings(top).map((rows) => ({ rows, attrs: true, items: full.length })),
+          { rows: 1, attrs: false, items: full.length },
+          ...(full.length > 1 ? [{ rows: 1, attrs: false, items: 1 }] : []),
+        ];
+        return fitSteps(steps, (step, i) => ({
           query: { item_name, category, company, size, star_system_name },
           ...(loose
             ? { note: `No exact match for "${item_name}": these are the closest names.` }
             : {}),
           matched: hits.length,
           priced: priced.length,
+          ...(i > 0
+            ? {
+                truncated: `Cut to fit the output size: ${step.rows} places per side, ${step.items} of ${full.length} items${step.attrs ? "" : ", no attributes"}. Ask for fewer items or locations, or name a star system.`,
+              }
+            : {}),
           ...(rest.length
             ? {
                 other_matches: rest.slice(0, 15).map(describeItem),
@@ -198,8 +242,19 @@ export function uexItemTools({ uexClient }: { uexClient: HttpClient }): ToolDefi
           stale_after_days: ITEM_STALE_DAYS,
           price_note:
             "Shop prices from players' reports: stable between patches but not live. stale = older than 30 days; older_than_live = the row's game version is older than UEX's LIVE version.",
-          items: out,
-        });
+          items: full.slice(0, step.items).map(({ item, summary, attributes }) => ({
+            item,
+            ...summary,
+            buy_locations: summary.buy_locations.slice(0, step.rows),
+            sell_locations: summary.sell_locations.slice(0, step.rows),
+            ...(step.attrs && attributes ? { attributes } : {}),
+            ...(summary.buy_locations_total === 0
+              ? {
+                  note: "No terminal in UEX sells this item (it may be a reward, a loot item or sold only for real money).",
+                }
+              : {}),
+          })),
+        }));
       },
     },
     {
@@ -247,9 +302,15 @@ export function uexItemTools({ uexClient }: { uexClient: HttpClient }): ToolDefi
             `"${name}" fits several items (${remoteText(hits.slice(0, 8).map(describeItem).join("; "), "uex")}). Say which one (size_a / size_b, or the full name).`,
           );
         };
-        const rowsA = await categoryRows(uexClient, category);
-        const rowsB = category_b ? await categoryRows(uexClient, category_b) : rowsA;
-        const a = resolve(rowsA, item_a, size_a, "the first item");
+        const catA = await categoryRows(uexClient, category);
+        if (!catA.ok) throw categoryError(category, catA);
+        let rowsB = catA.rows;
+        if (category_b) {
+          const catB = await categoryRows(uexClient, category_b);
+          if (!catB.ok) throw categoryError(category_b, catB);
+          rowsB = catB.rows;
+        }
+        const a = resolve(catA.rows, item_a, size_a, "the first item");
         const b = resolve(rowsB, item_b, size_b, "the second item");
         if (a.id === b.id)
           throw new Error("Both names point to the same item. Give two different items.");
@@ -273,16 +334,28 @@ export function uexItemTools({ uexClient }: { uexClient: HttpClient }): ToolDefi
 
         const pa = la.summary.cheapest;
         const pb = lb.summary.cheapest;
-        return json({
+        const attributes = compareAttributes(la.attrs, lb.attrs);
+        return fitSteps(halvings(Math.max(attributes.length, 1)), (n, i) => ({
           items: { a: itemView(a), b: itemView(b) },
           ...(a.id_category !== b.id_category
             ? {
                 note: "The two items are in different categories: only attributes with the same name are compared.",
               }
             : {}),
-          attributes: compareAttributes(la.attrs, lb.attrs),
+          ...(i > 0
+            ? {
+                truncated: `Cut to fit the output size: ${n} of ${attributes.length} attributes shown.`,
+              }
+            : {}),
+          attributes: attributes.slice(0, n),
           attributes_note:
             "difference = b minus a, only for numbers in the same unit. UEX does not say whether a higher value is better; read each stat for what it means.",
+          ...(attributes.some((x) => x.repeated_in.length > 0)
+            ? {
+                repeated_note:
+                  "An attribute listed more than once on an item (repeated_in) shows its first value and is not compared.",
+              }
+            : {}),
           prices: {
             a: {
               cheapest: pa,
@@ -298,7 +371,7 @@ export function uexItemTools({ uexClient }: { uexClient: HttpClient }): ToolDefi
             stale_after_days: ITEM_STALE_DAYS,
             note: "Prices are shop prices from players' reports; check stale and older_than_live before relying on a difference.",
           },
-        });
+        }));
       },
     },
   ];

@@ -16,6 +16,9 @@ import { ageDays, median, placeOf, toNumber, toPrice, type Row } from "./rows.js
 /** A report older than this is flagged stale. Yield reports are 10 to 18 days old when UEX is healthy. */
 export const REFINING_STALE_DAYS = 30;
 
+/** Names listed per ore for the refineries tied at the best bonus (the answer must stay bounded). */
+export const MAX_BEST_REFINERIES = 5;
+
 export interface Ore {
   id: number;
   name: string;
@@ -230,12 +233,18 @@ export interface OreRankRow {
   refined_product: string;
   refined_reference_sell_price: number;
   best_yield_bonus_percent: number;
+  /** At most MAX_BEST_REFINERIES names; best_refineries_total says how many share the best bonus. */
   best_refineries: string[];
+  best_refineries_total: number;
   value_index_best_is_100: number;
   ore_sale_median_unit_unverified: number | null;
   refineries_reporting: number;
   /** Fewer than 5 refineries reported this ore: its best yield rests on very few reports. */
   thin_data: boolean;
+  /** The best bonus decides the rank, so the age of the report behind it is shown: the freshest one at that bonus. */
+  best_report_updated_at: string | null;
+  best_report_age_days: number | null;
+  stale: boolean;
 }
 
 /**
@@ -272,18 +281,28 @@ export function rankOres(
     }
     const best = Math.max(...rows.map((r) => toNumber(r.value) as number));
     const sales = oreSalePrices(rawPrices, ore.id, now).median;
+    // The report(s) that decide the rank: the freshest among those at the best bonus.
+    const deciding = rows
+      .filter((r) => toNumber(r.value) === best)
+      .sort((a, b) => (toNumber(b.date_modified) ?? 0) - (toNumber(a.date_modified) ?? 0))[0];
+    const age = ageDays(deciding.date_modified, now);
+    const atBest = rows
+      .filter((r) => toNumber(r.value) === best)
+      .map((r) => String(r.terminal_name))
+      .sort();
     scored.push({
       ore: ore.name,
       refined_product: String(ore.refined?.name ?? ""),
       refined_reference_sell_price: price,
       best_yield_bonus_percent: best,
-      best_refineries: rows
-        .filter((r) => toNumber(r.value) === best)
-        .map((r) => String(r.terminal_name))
-        .sort(),
+      best_refineries: atBest.slice(0, MAX_BEST_REFINERIES),
+      best_refineries_total: atBest.length,
       ore_sale_median_unit_unverified: sales,
       refineries_reporting: rows.length,
       thin_data: rows.length < 5,
+      best_report_updated_at: rowUpdatedAt(deciding),
+      best_report_age_days: age,
+      stale: age === null || age > REFINING_STALE_DAYS,
       value: price * (1 + best / 100),
     });
   }

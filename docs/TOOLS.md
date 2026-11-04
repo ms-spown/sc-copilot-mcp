@@ -232,12 +232,12 @@ Find a ship component, weapon, armor piece or food in UEX and say where to buy i
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `item_name` | string | yes | Words of the item name (e.g. 'Burst', 'FR-66', 'P4-AR'). A close spelling is tried when nothing matches exactly. |
-| `category` | string | yes | UEX item category or section (e.g. 'Quantum Drives', 'Guns', 'Foods'). At most four categories are opened; a wrong name returns the list. |
+| `category` | string | yes | UEX item category or section (e.g. 'Quantum Drives', 'Guns', 'Foods'). At most three categories are opened. An unknown or too wide name returns the list of categories in `categories`. |
 | `company` | string | no | Optional: maker name (e.g. 'ArcCorp'). |
 | `size` | number | no | Optional: item size (e.g. 1, 2, 3). |
 | `star_system_name` | string | no | Optional: only terminals in this system (exact, e.g. 'Stanton'). |
-| `limit` | number | no | Items to price when several match (default 3, max 8). |
-| `locations` | number | no | Rows per side, buy and sell, per item (default 8, max 25). |
+| `limit` | number | no | Items to price when several match (default 3, max 4). |
+| `locations` | number | no | Rows per side, buy and sell, per item (default 8, max 15). The answer is cut, and says so, if it would be too large. |
 | `with_attributes` | boolean | no | Add the item's stats from UEX (one more request per item). Default false. |
 
 ### uex_compare_items
