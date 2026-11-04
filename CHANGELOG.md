@@ -24,8 +24,18 @@ versions follow [Semantic Versioning](https://semver.org/).
 - **A restarted server no longer replaces a measured trip by an unknown one.** After a restart the server re-reads the
   whole log and offers every trade run again, but the balance history of the runs it did not watch is gone (memory only):
   their net and fees came out unknown, and the stored trip (the frozen, measured one) was overwritten with `null` net and
-  `null` fees, dropping it out of the session total and the calibration. A trade trip is now replaced only when the run
-  grew (a later sale) or when the new version loses nothing the stored one measured.
+  `null` fees. The session total silently fell back to the run's gross margin (186 568 instead of 143 000 in the replay),
+  and the run left the net ratio of the route calibration. A trade trip is now replaced only when the run grew (a later
+  sale) or when the new version loses nothing the stored one measured.
+- **The session's efficiency against the plan no longer counts a net the commerce model flagged doubtful.** A reward paid
+  during the run, or fuel bought elsewhere, is in the balance variation; the calibration already left such a net out, but
+  `money.plan` of `sc_session_current`, `sc_session_list` and `sc_session_stats` (and the session bar) still compared it with
+  the plan: 113 % of the plan for a run that made 79 % of it, or a negative efficiency after 500 000 of fuel. Such a trip is
+  now left out of the plan comparison (the session total stays the raw measure of the balance, flagged on the trip).
+- **`fees_method` leaked what the balance did, without the balance.** `sc_session_current` (the text the model reads and the
+  structured copy the View reads) gave `fees_method` (`mesure`, `estime` or null) with no `include_balance`: it tells that the stream was cut around the
+  sales, or that the balance moved for another reason, which the neighbouring `net_doubtful` and `net_kind` already hid. It
+  is withheld with them.
 - **The commerce card now counts a rejected sale of zero as failed**, as the trade journal does (the card dropped any line
   without a positive amount, so it said 1 failed line where the journal listed 2).
 

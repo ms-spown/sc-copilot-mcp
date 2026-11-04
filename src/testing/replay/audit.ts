@@ -59,6 +59,9 @@ export async function sweepWithoutBalance(world: ReplayWorld): Promise<Sweep> {
   // The View that shows the balance still shares nothing derived from it.
   const channel = JSON.stringify(channelOf(await world.poll(true)));
   const tools = parts.join("\n");
+  expectNoBalanceLabels(poll, "the poll without the balance");
+  expectNoBalanceLabels(tools, "the tools without the balance");
+  expectNoBalanceLabels(channel, "the channel between Views");
   return { poll, tools, channel, all: [poll, tools, channel].join("\n") };
 }
 
@@ -70,6 +73,33 @@ export async function sweepWithBalance(world: ReplayWorld): Promise<string> {
     parts.push(r.text, JSON.stringify(r.structured ?? null));
   }
   return parts.join("\n");
+}
+
+/**
+ * What the balance did, said in words and not in numbers: how the fees were obtained, why a net is doubtful, a
+ * contract's gain, the movements, the calibration. A figure scan cannot see these (a label such as "estime" says the stream
+ * was cut around the sales, "solde_autre_raison" that the balance moved for another reason), so they are looked for by name.
+ * Every sweep without the balance checks them.
+ */
+export const BALANCE_LABELS = new RegExp(
+  [
+    '"fees_method"\\s*:\\s*"(?:mesure|estime)"',
+    '"net_doubtful"\\s*:\\s*(?:true|false)',
+    '"net_kind"\\s*:\\s*"',
+    '"unexplained_auec"\\s*:\\s*-?\\d',
+    "solde_autre_raison|lignes_non_confirmees|stock_anterieur|solde_avant_inconnu|solde_apres_inconnu",
+    '"(?:plan_compare|movements|decomposition|calibration|gain|uec_session)"',
+    '"money"\\s*:\\s*\\{',
+    '"balance"\\s*:\\s*\\{',
+    '"uec_balance"\\s*:\\s*\\d',
+    "probable_contract_reward|fee_on_transaction|mesure_brute",
+  ].join("|"),
+);
+
+export function expectNoBalanceLabels(text: string, where: string): void {
+  const hit = BALANCE_LABELS.exec(text);
+  const around = hit ? text.slice(Math.max(0, hit.index - 60), hit.index + 60) : "";
+  expect(hit, `a label that comes from the balance is in ${where}: ...${around}...`).toBeNull();
 }
 
 export function expectAbsent(text: string, figures: readonly number[], where: string): void {

@@ -859,8 +859,10 @@ compares what the plan promised with what you really got (`src/providers/session
   for the balance, from the channel between Views, from `ui/update-model-context` and from the message of "Demander à l'agent".
   The View ignores it while the balance is hidden, even if a server sent it.
 - **Stored (file version 2).** For a trade trip: the plan's quantity, the plan's two terminals (UEX names: the plan's, not
-  observed places), `plan_link`, how the fees were obtained, and what the balance holds beyond the run (`unexplained_auec`,
-  `net_doubtful`: both come from the balance and are withheld like the money). Never frames, raw lines, handle or identifiers.
+  observed places), `plan_link`, how the fees were obtained (`fees_method`), and what the balance holds beyond the run
+  (`unexplained_auec`, `net_doubtful`: all of them come from the balance and are withheld like the money, and a trip whose
+  net is `net_doubtful` is not compared with its plan in the session's efficiency). A restarted server never replaces a stored
+  trade trip by a version that has lost a figure the stored one measured. Never frames, raw lines, handle or identifiers.
   A version 1 file is read as is (the new fields are unknown, so those trips count by goods, without scaling, and with no
   net); the format number moved so that an older build leaves a version 2 file alone: it opens it read-only, in memory,
   with a notice, and the data is not lost. Before the first write in the new format the server copies the version 1 file once

@@ -271,6 +271,10 @@ describe("Feature: the player's run, from the first frame to the saved session",
     const without = await sweepWithoutBalance(w);
     expectAbsent(without.all, MONEY, "the answers without the balance (end of the run)");
     const withAll = await sweepWithBalance(w);
+    // Positive control for the labels the sweeps look for by name: with the balance they are there.
+    expect(withAll).toMatch(/"fees_method":\s*"mesure"/);
+    expect(withAll).toMatch(/"net_doubtful":\s*false/);
+    expect(withAll).toMatch(/"decomposition"/);
     expectPresent(
       withAll,
       [PLAYER_RUN.start, PLAYER_RUN.end, F.net, F.fees, F.gross],

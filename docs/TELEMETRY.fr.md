@@ -912,9 +912,11 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   empreinte) d'une vue qui n'a pas demandé le solde, du canal entre vues, de `ui/update-model-context` et du message de
   « Demander à l'agent ». La vue l'ignore tant que le solde est masqué, même si un serveur l'avait envoyée.
 - **Enregistré (version 2 du fichier).** Pour un trajet de commerce : la quantité du plan, les deux terminaux du plan (noms
-  UEX : ceux du plan, pas des lieux observés), `plan_link`, comment les frais ont été obtenus, et ce que le solde contient en
-  plus de la cargaison (`unexplained_auec`, `net_doubtful` : tous deux viennent du solde et sont retenus comme l'argent).
-  Jamais de trames, de lignes brutes, de pseudo ni d'identifiants. Un fichier de version 1 est lu tel quel (les nouveaux
+  UEX : ceux du plan, pas des lieux observés), `plan_link`, comment les frais ont été obtenus (`fees_method`), et ce que le
+  solde contient en plus de la cargaison (`unexplained_auec`, `net_doubtful` : tous viennent du solde et sont retenus comme
+  l'argent, et un trajet dont le net est `net_doubtful` n'est pas comparé à son plan dans l'efficacité de la session). Un
+  serveur redémarré ne remplace jamais un trajet de commerce enregistré par une version qui a perdu un chiffre que
+  l'enregistré avait mesuré. Jamais de trames, de lignes brutes, de pseudo ni d'identifiants. Un fichier de version 1 est lu tel quel (les nouveaux
   champs sont inconnus : ces trajets comptent par marchandise, sans mise à l'échelle et sans net) ; le numéro de format a
   bougé pour qu'un ancien build laisse un fichier de version 2 tranquille : il l'ouvre en lecture seule, en mémoire, avec un
   avis, et les données ne sont pas perdues. Avant la première écriture dans le nouveau format, le serveur copie une fois le

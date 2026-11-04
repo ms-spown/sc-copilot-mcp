@@ -181,6 +181,21 @@ describe("Feature: route reliability from the player's own runs", () => {
     const cur = (await w.call("sc_session_current", { include_balance: true })).data;
     expect(cur.session.money.net_auec).toBe(2 * F.net + (F.net - FUEL));
     expect(cur.session.money.balance_change_auec).toBe(variation);
+    // The efficiency against the plans compares the runs that are the runs' own, as the calibration does: the third run's
+    // net holds the fuel and is left out (it used to count against its plan: -357 000 over 180 000).
+    expect(cur.session.money.plan).toMatchObject({
+      planned_auec: 2 * PLAYER_RUN.planned,
+      measured_auec: 2 * F.net,
+      trips: 2,
+    });
+    expect(cur.session.money.plan.efficiency).toBeCloseTo(
+      (2 * F.net) / (2 * PLAYER_RUN.planned),
+      3,
+    );
+    // The same across sessions.
+    const all = (await w.call("sc_session_stats", { include_balance: true })).data;
+    expect(all.money.plan).toMatchObject({ trips: 2 });
+    expect(all.money.plan.efficiency).toBeCloseTo(F.net / PLAYER_RUN.planned, 3);
 
     without = await sweepWithoutBalance(w);
     expectAbsent(

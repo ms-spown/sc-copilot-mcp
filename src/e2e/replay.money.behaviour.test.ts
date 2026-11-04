@@ -162,6 +162,9 @@ describe("Feature: a reward paid inside the window of a cargo sale", () => {
       balance_change_auec: variation,
     });
     expect(cur.session.money.net_auec).toBe(cur.session.money.balance_change_auec);
+    // The only planned trip is the run whose net holds the reward: it is not compared with its plan (it used to show 113 %
+    // of the plan for a run that made 79 % of it).
+    expect(cur.session.money.plan).toBeNull();
 
     // ---- Privacy: none of it without the balance, all of it with.
     const without = await sweepWithoutBalance(w);
@@ -178,10 +181,10 @@ describe("Feature: a reward paid inside the window of a cargo sale", () => {
       "the answers without the balance",
     );
     expect(without.all).not.toMatch(/probable_contract_reward|récompense|"gain"/);
-    expectPresent(
-      await sweepWithBalance(w),
-      [REWARD_NEAR, REWARD_FAR, variation],
-      "the answers with the balance",
-    );
+    const withB = await sweepWithBalance(w);
+    expectPresent(withB, [REWARD_NEAR, REWARD_FAR, variation], "the answers with the balance");
+    // Positive control for the labels: with the balance they are there.
+    expect(withB).toMatch(/probable_contract_reward/);
+    expect(withB).toMatch(/solde_autre_raison/);
   });
 });
