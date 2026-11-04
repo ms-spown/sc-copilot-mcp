@@ -499,6 +499,64 @@ describe("Feature: sc_session_manage, the Sessions view's own actions (archive, 
     expect(data(await manage(t, { id: oldest, action: "unarchive" })).reason).toBe("unchanged");
   });
 
+  it("Given an archived session, Then the figures across sessions leave it out and say how many; include_archived counts it; the card's session skips it", async () => {
+    const { t, oldest } = await two();
+    const before = (await t.call("sc_session_stats")).data.data;
+    expect(before.sessions).toBe(2);
+    expect(before.archived_not_counted).toBe(0);
+    await manage(t, { id: oldest, action: "archive" });
+    const after = (await t.call("sc_session_stats")).data.data;
+    expect([after.sessions, after.archived_not_counted]).toEqual([1, 1]);
+    expect(after.trips).toBeLessThan(before.trips);
+    const all = (await t.call("sc_session_stats", { include_archived: true })).data.data;
+    expect([all.sessions, all.archived_not_counted, all.trips]).toEqual([2, 0, before.trips]);
+    // Without an id, sc_session_current is the card's session: the last one, or none when it was archived.
+    expect((await t.call("sc_session_current")).data.data.session.number).toBe(2);
+    await t.call("sc_session_end");
+    const last = (await t.call("sc_session_list", { include_archived: true })).data.data
+      .sessions[0];
+    await manage(t, { id: last.id, action: "archive" });
+    expect((await t.call("sc_session_current")).data.data.session).toBeNull();
+    expect((await t.call("sc_session_current", { id: last.id })).data.data.session.number).toBe(2);
+  });
+
+  it("Given an archived session, Then what the server learns from it is NOT dropped: route calibration, the hold sizes and the saved balance still read it", async () => {
+    const tradeTrip: TripInput = {
+      key: "00000000000000bb",
+      kind: "trade",
+      source: "trade_journal",
+      ended_at: new Date(T0 + 3 * MIN).toISOString(),
+      label: "Cargo Gold",
+      commodity: "Gold",
+      scu: 96,
+      net_auec: 12_345,
+      net_kind: "balance_delta",
+    };
+    const t = rig(true, tradeTrip);
+    await t.play(10);
+    await t.call("sc_session_new");
+    const ids = (await t.call("sc_session_list")).data.data.sessions.map(
+      (s: { id: string }) => s.id,
+    );
+    const calibration = async () =>
+      JSON.stringify(
+        (await t.call("sc_session_stats", { include_archived: true })).data.data.route_reliability,
+      );
+    const sizes = JSON.stringify(await t.manager.tradeTripSizes(10));
+    const balance = JSON.stringify(await t.manager.savedBalance());
+    const cal = await calibration();
+    expect(sizes).toContain("96");
+    expect(balance).not.toBe("null");
+    expect(data(await manage(t, { id: ids[1]!, action: "archive" })).ok).toBe(true);
+    expect(await calibration()).toBe(cal);
+    expect(JSON.stringify(await t.manager.tradeTripSizes(10))).toBe(sizes);
+    expect(JSON.stringify(await t.manager.savedBalance())).toBe(balance);
+    // The route calibration is the same without include_archived too: only the displayed figures leave archived ones out.
+    expect(JSON.stringify((await t.call("sc_session_stats")).data.data.route_reliability)).toBe(
+      cal,
+    );
+  });
+
   it("Given 'delete', Then the session is REMOVED from the file for good (its number is not reused), and an unknown id says so", async () => {
     const { t, oldest } = await two();
     const d = data(await manage(t, { id: oldest, action: "delete" }));

@@ -714,7 +714,7 @@ For the dashboard View only, not for the model: ranks trade routes for the comme
 
 ### sc_session_current
 
-The player's current play session, saved on this PC: start time, active time, trips made, last known place and goods (from Game.log, an estimate), the latest trips and, unless include_balance is false, balance at start and now, result so far, rate per hour and efficiency against the planned route. Use it to ACCOMPANY and PROPOSE the next run (then compare with uex_get_trade_routes). It survives a game crash or a PC reboot and is found again from any conversation. Pass id to open a past session (read-only). Counts and durations are always given; aUEC figures are given too unless the player hid them (include_balance=false). Needs SC_TELEMETRY=on.
+The player's current play session, saved on this PC: start time, active time, trips made, last known place and goods (from Game.log, an estimate), the latest trips and, unless include_balance is false, balance at start and now, result so far, rate per hour and efficiency against the planned route. Use it to ACCOMPANY and PROPOSE the next run (then compare with uex_get_trade_routes). It survives a game crash or a PC reboot and is found again from any conversation. Pass id to open a past session (read-only; an archived one opens too). Without id it is the dashboard's session: the last one, or none when the player archived it. Counts and durations are always given; aUEC figures are given too unless the player hid them (include_balance=false). Needs SC_TELEMETRY=on.
 
 *Source:* session file (local) · *Kind:* user · *Trust:* untrusted_text · *Profiles:* local, trade
 
@@ -737,13 +737,14 @@ The player's saved play sessions, newest first, with their key numbers: start, a
 
 ### sc_session_stats
 
-Statistics across the player's saved sessions: totals, average rate per hour, trend, best and worst session, best routes and goods (when known), efficiency against planned routes, and how many transactions the game refused because the price moved (price_refusals, a count). Estimates and measures are labelled, an unknown figure is null, never zero. Sessions with too little active time give no rate. route_reliability (not with include_balance=false): per goods and route, realised against planned margin and fee rate from the player's own saved runs, always with the number of runs and a confidence label; few runs means low confidence; an estimate that claims no cause. aUEC figures are given unless the player hid them (include_balance=false); counts and times are always given. Use last to limit to the newest N sessions. Needs SC_TELEMETRY=on.
+Statistics across the player's saved sessions: totals, average rate per hour, trend, best and worst session, best routes and goods (when known), efficiency against planned routes, and how many transactions the game refused because the price moved (price_refusals, a count). Estimates and measures are labelled, an unknown figure is null, never zero. Too little active time gives no rate. route_reliability (not with include_balance=false): per goods and route, realised against planned margin and fee rate from the player's own saved runs, always with the number of runs and a confidence label; few runs means low confidence; an estimate that claims no cause. aUEC figures are given unless the player hid them (include_balance=false); counts and times are always given. last: the newest N only. Archived sessions are not counted unless include_archived (archived_not_counted). Needs SC_TELEMETRY=on.
 
 *Source:* session file (local) · *Kind:* user · *Trust:* untrusted_text · *Profiles:* local, trade
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `last` | number | no | Only the newest N sessions (1 to 200). Default: all. |
+| `include_archived` | boolean | no | Also count the sessions the player archived (left out by default; archived_not_counted says how many). Default false. |
 | `include_balance` | boolean | no | Include aUEC figures (balances, results, turnover, rate per hour). Default true; false hides them (the player's choice). |
 
 ### sc_session_new

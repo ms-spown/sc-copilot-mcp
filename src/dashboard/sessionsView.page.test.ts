@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from "vitest";
 import {
+  sessionArchivedNote,
   sessionDeleteAsk,
   sessionFilterCounts,
   sessionFilterMatch,
@@ -108,8 +109,14 @@ describe("Feature: the pure parts of the view", () => {
 
   it("Given the questions and the answers, Then they are French, name the session, and hold no amount", () => {
     expect(sessionDeleteAsk({ number: 7, trips: 6 })).toBe(
-      "Supprimer la session 7 (6 trajets) ? Elle est retirée du fichier pour de bon : ni archive, ni retour possible.",
+      "Supprimer la session 7 (6 trajets) ? Elle est retirée du fichier pour de bon : ni archive, ni retour possible ; ses trajets ne comptent plus dans les statistiques ni l’étalonnage des routes.",
     );
+    expect(sessionDeleteAsk({ number: 7, trips: 6 }, true)).toMatch(
+      /étalonnage des routes\. Le jeu tourne : une nouvelle session va démarrer tout de suite\.$/,
+    );
+    expect(sessionArchivedNote(0)).toBe("0 session archivée non comptée");
+    expect(sessionArchivedNote(1)).toBe("1 session archivée non comptée");
+    expect(sessionArchivedNote(3)).toBe("3 sessions archivées non comptées");
     const session = {
       number: 7,
       started_at: "2026-12-01T10:00:00Z",
@@ -118,6 +125,13 @@ describe("Feature: the pure parts of the view", () => {
     };
     const t = (action: string, r: any) => sessionManageText(action, { session, ...r });
     expect(t("delete", { reason: "done" })).toBe("Session 7 supprimée du fichier.");
+    // Written to memory only: never "du fichier".
+    const mem = t("delete", { reason: "done", persistence: { saved: false } });
+    expect(mem).toContain("Session 7 supprimée (en mémoire seulement).");
+    expect(mem).not.toContain("du fichier");
+    expect(t("archive", { reason: "done", persistence: { saved: false } })).toContain(
+      "archivée (en mémoire seulement)",
+    );
     expect(t("archive", { reason: "done" })).toBe(
       "Session 7 archivée : elle reste dans le filtre « Archivées ».",
     );
@@ -238,8 +252,8 @@ describe("Feature: the actions of a row", () => {
     await openView(w);
     await click(w, "Archiver la session 3", 1500);
     await click(w, "Tableau de bord", 300);
-    // (the card's own menu stays closed unless it was opened: open it, and let a poll pass)
-    if (button(w, "Sessions ▾")) await click(w, "Sessions ▾", 500);
+    // The card's own menu was opened to reach the link, so it is still open: its list was told to read again.
+    expect(button(w, "Sessions ▴")).not.toBeNull();
     await w.advance(6 * SECOND);
     const inline = findAll(w.root, (n) => n.className === "ses-row" && isShown(n)).map((n) =>
       NB(n.attrs["aria-label"] ?? ""),
@@ -256,7 +270,10 @@ describe("Feature: the actions of a row", () => {
     expect(text(w)).toContain(
       "Supprimer la session 2 (9 trajets) ? Elle est retirée du fichier pour de bon",
     );
-    expect(FakeNode.focused).toBe(byLabel(w, "Confirmer la suppression de la session 2"));
+    // The focus goes to the SAFE choice: a keyboard user who presses Enter by reflex cancels.
+    expect(FakeNode.focused).toBe(
+      findAll(view(w), (n) => n.tag === "button" && n.textContent === "Annuler" && isShown(n))[0],
+    );
     // Annuler: nothing happens, said, the focus goes back to the button.
     const annuler = findAll(
       view(w),
@@ -275,6 +292,11 @@ describe("Feature: the actions of a row", () => {
     conf.listeners["keydown"]![0]!({ key: "Escape" });
     await w.advance(100);
     expect(manageCalls(w)).toEqual([]);
+    // Really cancelled: the question is gone, it is said, and the focus is back on the row's "Supprimer".
+    expect(findAll(view(w), (n) => n.className === "ses-r-confirm" && isShown(n))).toHaveLength(0);
+    expect(said(w)).toBe("Suppression annulée : la session est conservée.");
+    expect(FakeNode.focused).toBe(byLabel(w, "Supprimer la session 2"));
+    expect(rowNumbers(w)).toContain("2");
     // Confirmer: the server is asked once, the row goes, it is said, and the list shows what is left.
     await click(w, "Supprimer la session 2", 100);
     await click(w, "Confirmer la suppression de la session 2", 1500);
@@ -389,5 +411,130 @@ describe("Feature: the amounts of the view follow the balance choice", () => {
     // The actions never say an amount, whatever the choice.
     await click(w, "Archiver la session 3", 1500);
     expect(said(w)).not.toMatch(/\d{3}/);
+  });
+
+  it("Given the balance is hidden while the reload FAILS (or is slow), Then no figure is drawn again by the redraws in between: the statistics, the list and the detail", async () => {
+    const { w, fake, at } = await managed("story");
+    await click(w, "Afficher le solde", 3 * SECOND);
+    await openView(w);
+    findAll(
+      view(w),
+      (n) =>
+        n.className === "ses-row" &&
+        (n.attrs["aria-label"] ?? "").startsWith("Ouvrir la session 2"),
+    )[0]!.click();
+    await w.advance(500);
+    // The figures are on screen: the statistics' total, the rows' results and the detail's result.
+    for (const a of [579_000, 310_500, 184_500])
+      expect(amountIn(text(w), a), `amount ${a} shown`).toBe(true);
+    // From now on every read of the sessions fails: the reload that follows the hiding can never bring the answer.
+    w.host.overrides.tool = (name: string, args: any) =>
+      name === "sc_session_list" || name === "sc_session_stats" || name === "sc_session_current"
+        ? new Error("the session file is busy")
+        : fake.tool(name, args, at());
+    await click(w, "Masquer le solde", 50);
+    for (const a of AMOUNTS)
+      expect(amountIn(everything(view(w)), a), `amount ${a} right after hiding`).toBe(false);
+    // ...and still not after the polls, the failed reloads and every redraw that came with them.
+    await w.advance(20 * SECOND);
+    for (const a of AMOUNTS)
+      expect(amountIn(everything(view(w)), a), `amount ${a} after failed reloads`).toBe(false);
+    for (const a of AMOUNTS) expect(amountIn(text(w), a), `amount ${a} on the page`).toBe(false);
+  });
+});
+
+describe("Feature: archived sessions and the figures across sessions", () => {
+  it("Given an archived session, Then the statistics leave it out and a note ALWAYS says how many (0 included)", async () => {
+    const { w } = await managed("story");
+    await openView(w);
+    expect(text(w)).toContain("0 session archivée non comptée");
+    expect(text(w)).toMatch(/4 sessions · 24 trajets/);
+    await click(w, "Archiver la session 3", 1500);
+    expect(text(w)).toContain("1 session archivée non comptée");
+    expect(text(w)).toMatch(/3 sessions · 19 trajets/);
+    const asked = w.host.log.tools.filter((t) => t.name === "sc_session_stats").at(-1)!;
+    expect(asked.args["include_archived"]).toBeUndefined(); // the default: archived are not counted
+  });
+
+  it("Given archived sessions and 3 sessions or fewer, Then the card's list still offers the way to the view", async () => {
+    const { w } = await managed("story");
+    await openView(w);
+    await click(w, "Archiver la session 3", 1500);
+    await click(w, "Tableau de bord", 300);
+    await w.advance(6 * SECOND);
+    expect(button(w, "Toutes les sessions (3 · 1 archivée)")).not.toBeNull();
+    expect(isShown(button(w, "Toutes les sessions (3 · 1 archivée)")!)).toBe(true);
+  });
+});
+
+describe("Feature: deleting while the game runs, and the keyboard", () => {
+  it("Given the last ended session and the game running, Then the question says a new session starts at once; for another session it does not", async () => {
+    const { w } = await managed("ended"); // the game is live in the page; session 4 is the last, ended by hand
+    await click(w, "Sessions ▾", 300);
+    await click(w, "Toutes les sessions (4)", 1500);
+    await click(w, "Supprimer la session 4", 100);
+    expect(text(w)).toContain("Le jeu tourne : une nouvelle session va démarrer tout de suite.");
+    expect(text(w)).toContain(
+      "ses trajets ne comptent plus dans les statistiques ni l’étalonnage des routes",
+    );
+  });
+
+  it("Given a session that is not the last, Then the question does not talk about a new session", async () => {
+    const { w } = await managed("ended");
+    await click(w, "Sessions ▾", 300);
+    await click(w, "Toutes les sessions (4)", 1500);
+    await click(w, "Supprimer la session 2", 100);
+    expect(text(w)).not.toContain("une nouvelle session va démarrer");
+  });
+
+  it("Given the tabs, Then the Sessions tab controls the view as a tab panel, and Home and End pick the first and the last tab", async () => {
+    const { w } = await managed("story");
+    await openView(w);
+    const tab = button(w, "Sessions")!;
+    expect(tab.attrs["aria-controls"]).toBe(view(w).attrs["id"]);
+    expect(view(w).attrs["role"]).toBe("tabpanel");
+    expect(view(w).attrs["aria-labelledby"]).toBe(tab.attrs["id"]);
+    button(w, "Sessions")!.listeners["keydown"]![0]!({ key: "Home" });
+    await w.advance(1000);
+    expect(viewShown(w)).toBe(false);
+    expect(FakeNode.focused).toBe(button(w, "Tableau de bord"));
+    button(w, "Tableau de bord")!.listeners["keydown"]![0]!({ key: "End" });
+    await w.advance(1000);
+    expect(viewShown(w)).toBe(true);
+    expect(FakeNode.focused).toBe(button(w, "Sessions"));
+  });
+
+  it("Given the compact view, When 'Tableau de bord' is pressed, Then the tab bar goes and the focus moves to the card, not to nothing", async () => {
+    const { w } = await managed("story");
+    await openView(w);
+    await click(w, "Réduire", 500); // back to the compact view, the view still on screen
+    expect(isShown(button(w, "Tableau de bord")!)).toBe(true);
+    button(w, "Tableau de bord")!.focus();
+    (w.doc as any).activeElement = FakeNode.focused;
+    await click(w, "Tableau de bord", 300);
+    expect(isShown(button(w, "Tableau de bord")!)).toBe(false); // the bar is gone in the compact view
+    // The focus is on a control that is still there: the card's "Sessions" button.
+    expect(FakeNode.focused).not.toBe(button(w, "Tableau de bord"));
+    expect(isShown(FakeNode.focused!)).toBe(true);
+  });
+
+  it("Given an action on a row, Then the focus lands on the row (or the neighbour that took its place), never on the top status line", async () => {
+    const { w } = await managed("story");
+    await openView(w);
+    await click(w, "Archiver la session 3", 1500);
+    // Session 3 left the list: the row that took its place (session 2) holds the focus.
+    const sel = FakeNode.focused!;
+    expect(sel.className).toBe("ses-row");
+    expect((sel.attrs["aria-label"] ?? "").startsWith("Ouvrir la session 2")).toBe(true);
+  });
+
+  it("Given a failure of an action, Then the focus stays on the row's own button", async () => {
+    const { w, fake, at } = await managed("story");
+    await openView(w);
+    w.host.overrides.tool = (name: string, args: any) =>
+      name === "sc_session_manage" ? new Error("busy") : fake.tool(name, args, at());
+    await click(w, "Archiver la session 3", 1500);
+    expect(said(w)).toContain("Action impossible");
+    expect(FakeNode.focused).toBe(byLabel(w, "Supprimer la session 3"));
   });
 });

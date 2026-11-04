@@ -1310,7 +1310,17 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   seul outil réservé au tableau de bord, `sc_session_manage` (`id`, `action` : archive, unarchive ou delete ; refusé à un
   client qui n'a pas déclaré l'extension UI, n'écrit que le fichier du serveur, rien n'est envoyé), et `sc_session_list` a
   gagné `include_archived` (faux par défaut : une session archivée est absente de la liste par défaut, que Claude lit aussi).
-  Les statistiques comptent toujours les sessions archivées (elles sont gardées). Le fichier reste en version 2 : `archived`
+  Les **statistiques entre sessions
+  laissent de côté les sessions archivées** (totaux, moyennes, meilleure et moins bonne, tendance, « N sessions » : dans la
+  vue et pour Claude), et la vue le dit toujours (« N sessions archivées non comptées ») ; `sc_session_stats` a
+  `include_archived` (faux par défaut) et répond `archived_not_counted`. Ce que le serveur APPREND de vos trajets ne
+  disparaît pas : l'étalonnage des routes (`route_reliability`), les tailles de soute du formulaire de commerce et le dernier
+  solde connu lisent toujours les sessions archivées, donc seule une suppression les en retire (la question le dit). Sans
+  identifiant, `sc_session_current` est la session de la carte (aucune quand la dernière est archivée) ; une session
+  archivée s'ouvre par son identifiant. Une session archivée est gardée dans les bornes du fichier (200 sessions, la limite
+  de taille : les plus anciennes partent d'abord, archivées ou non). Supprimer laisse un trou dans les numéros (1, 3, 4...)
+  exprès : un numéro n'est jamais réutilisé. Supprimer la dernière session terminée pendant que le jeu tourne en fait
+  démarrer une autre aussitôt quand rien avant elle ne tient la carte, et la question le dit. Le fichier reste en version 2 : `archived`
   est un drapeau facultatif qu'un ancien serveur qui réécrit le fichier perd, comme il perd `ship_losses`, ce qui ramène
   seulement la session dans sa liste par défaut.
 - **À l'ouverture**, le tableau de bord se rattache à la dernière session et n'en crée aucune : sans session il dit

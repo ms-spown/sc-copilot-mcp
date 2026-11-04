@@ -786,6 +786,10 @@
           "type": "number",
           "description": "Only the newest N sessions (1 to 200). Default: all."
         },
+        "include_archived": {
+          "type": "boolean",
+          "description": "Also count the sessions the player archived (left out by default; archived_not_counted says how many). Default false."
+        },
         "include_balance": {
           "type": "boolean",
           "description": "Include aUEC figures (balances, results, turnover, rate per hour). Default true; false hides them (the player's choice)."

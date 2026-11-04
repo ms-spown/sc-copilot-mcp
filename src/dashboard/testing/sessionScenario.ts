@@ -338,12 +338,16 @@ export function sessionToolAnswer(
     };
   }
   if (name === "sc_session_stats") {
+    // Archived sessions are left out of the figures (unless include_archived), and the answer says how many.
+    const counted =
+      args["include_archived"] === true ? all : all.filter((f) => !marks.archived.has(idOf(f)));
     return {
-      sessions: all.length,
+      sessions: counted.length,
+      archived_not_counted: all.length - counted.length,
       empty_sessions_ignored: 0,
-      trips: all.reduce((n, f) => n + f.trips, 0),
+      trips: counted.reduce((n, f) => n + f.trips, 0),
       contracts: 1,
-      active_ms: all.reduce((n, f) => n + f.activeMs, 0),
+      active_ms: counted.reduce((n, f) => n + f.activeMs, 0),
       trips_per_hour: 3.2,
       money: include
         ? {

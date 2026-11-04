@@ -26,6 +26,16 @@ versions follow [Semantic Versioning](https://semver.org/).
   the statistics still count them). The golden file moved for these two and the tool counts of the README and the capabilities
   guide are 66 tools (8 session tools). New optional session field `archived`; the file stays version 2 and readable by a
   2.7.0 server, which drops the flag when it rewrites the file (as it does `ship_losses`): the session is then back in its list.
+- **Audit fixes of the view.** The statistics across sessions now leave ARCHIVED sessions out (totals, averages, best and
+  worst, trend, "N sessions"), the view always says "N sessions archivées non comptées", and `sc_session_stats` gains
+  `include_archived` (default false) and `archived_not_counted`; the route calibration, the hold sizes and the saved balance
+  still read archived sessions (pinned by a test); `sc_session_current` without an id is the card's session. The delete question
+  says the trips stop counting in the statistics and the route calibration, and that a new session starts at once when the game
+  runs and nothing before holds the card. Hiding the balance strips every amount from the answers the view already holds before
+  anything is drawn again (a slow or failing reload can no longer redraw them). "Toutes les sessions" is also offered when
+  archived sessions exist. The delete question focuses "Annuler"; after an action the focus lands on the row (or its neighbour);
+  the tab bar is a tablist with a tabpanel, Home and End; the compact view moves the focus before it hides the bar; a change that
+  only reached memory says "(en mémoire seulement)". SECURITY.md has the row for `sc_session_manage` and its known limit.
 - Page: 411.5 kB, under the 420 kB guardrail. Tests: reducer, manager and tool tests (app-only guard, strict input, open session
   refused, real deletion, archived hidden by default, older file, answers in every balance mode), page tests through a stateful
   fake server for the tab, the filters, each action, the question, the detail, 45 sessions and the amounts as whole figures.

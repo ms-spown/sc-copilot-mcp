@@ -606,14 +606,23 @@ export function sessionFilterCounts(sessions: any[]): any {
   return out;
 }
 
-/** The question asked before a session is deleted for good (no amount in it). */
-export function sessionDeleteAsk(s: any): string {
+/** The note under the statistics: how many archived sessions they leave out ("0 session archivée non comptée" included). */
+export function sessionArchivedNote(n: number): string {
+  return n + (n > 1 ? " sessions archivées non comptées" : " session archivée non comptée");
+}
+
+/**
+ * The question asked before a session is deleted for good (no amount in it). `comesBack`: the game is running and nothing before
+ * this session would hold the card, so the game starts another one at once.
+ */
+export function sessionDeleteAsk(s: any, comesBack?: boolean): string {
   return (
     "Supprimer la session " +
     s.number +
     " (" +
     sessionTripsText(s.trips) +
-    ") ? Elle est retirée du fichier pour de bon : ni archive, ni retour possible."
+    ") ? Elle est retirée du fichier pour de bon : ni archive, ni retour possible ; ses trajets ne comptent plus dans les statistiques ni l’étalonnage des routes." +
+    (comesBack ? " Le jeu tourne : une nouvelle session va démarrer tout de suite." : "")
   );
 }
 
@@ -639,9 +648,23 @@ export function sessionManageText(action: string, raw: any): string {
       n +
       (action === "archive" ? " était déjà archivée." : " n’était pas archivée.")
     );
-  if (action === "delete") return "Session " + n + " supprimée du fichier." + unsaved;
+  // When the disk could not be written, the change is only in memory: never say "du fichier" then.
+  const memory = unsaved !== "";
+  if (action === "delete")
+    return (
+      "Session " +
+      n +
+      (memory ? " supprimée (en mémoire seulement)." : " supprimée du fichier.") +
+      unsaved
+    );
   if (action === "archive")
-    return "Session " + n + " archivée : elle reste dans le filtre « Archivées »." + unsaved;
+    return (
+      "Session " +
+      n +
+      (memory ? " archivée (en mémoire seulement)" : " archivée") +
+      " : elle reste dans le filtre « Archivées »." +
+      unsaved
+    );
   return "Session " + n + " désarchivée : elle est de retour dans la liste." + unsaved;
 }
 
@@ -749,6 +772,8 @@ export function sessionStatsNormalize(raw: any, allowMoney: boolean): any {
   const trend = m && m.trend && typeof m.trend === "object" ? m.trend : null;
   return {
     sessions: sessionCount(raw.sessions, 999999),
+    // Archived sessions the server left out of these figures.
+    archived_not_counted: sessionCount(raw.archived_not_counted, 999999),
     trips: sessionCount(raw.trips, 999999),
     contracts: sessionCount(raw.contracts, 999999),
     active_ms: sessionNum(raw.active_ms) || 0,
@@ -981,6 +1006,8 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   viewStatus.setAttribute("role", "status");
   viewStatus.setAttribute("tabindex", "-1");
   const listEmpty = el("p", "ses-note", "");
+  // Always there in the view: the statistics leave the archived sessions out, and say how many.
+  const archNote = el("p", "ses-note", "");
   const menuMsg = el("p", "ses-note", "");
   const stats = el("div", "ses-stats");
   const statEls: any[] = [];
@@ -1086,7 +1113,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     const listCol = el("div", "ses-listcol");
     add(listCol, list, listEmpty);
     add(split, listCol, detail);
-    add(menu, menuHead, filterBar, viewStatus, menuMsg, stats, split);
+    add(menu, menuHead, filterBar, viewStatus, menuMsg, stats, archNote, split);
     root.className = "ses-view ses";
     add(root, menu);
   } else {
@@ -1099,7 +1126,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     open: false,
     fold: true, // compact view: the card is one line until the player unfolds it
     view: "list", // "list" | "detail"
-    ctx: { showBalance: false, now: 0 },
+    ctx: { showBalance: false, now: 0, running: false },
     asked: null, // the balance choice the menu data was fetched with
     loading: false,
     error: "",
@@ -1266,6 +1293,19 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     setText(detailTitle, "");
   }
 
+  /**
+   * The balance is hidden: the answers already held are rebuilt without any aUEC figure, BEFORE anything is drawn again (the
+   * reload that follows may be slow or fail, and a redraw in the meantime must not bring a figure back).
+   */
+  function stripMoney() {
+    if (st.stats) st.stats.money = null;
+    if (st.list) for (const s of st.list.sessions) s.money = null;
+    if (st.detail) {
+      st.detail.session.money = null;
+      for (const t of st.detail.trips) t.net_auec = null;
+    }
+  }
+
   /** A closed menu keeps no data and no text (they may hold balances): reopening fetches them again. */
   function blankMenu() {
     st.list = null;
@@ -1400,7 +1440,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     st.vmsg = "";
     renderMenu();
     const r = rowOf(id);
-    if (r) r.btnYes.focus();
+    if (r) r.btnNo.focus();
   }
 
   function cancelDelete() {
@@ -1424,6 +1464,9 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     st.rowBusy = true;
     st.rowConfirm = "";
     st.vmsg = "Un instant…";
+    // Where the player was in the list, so that the focus lands on the affected row (or its neighbour) afterwards.
+    const shownRows = () => rows.filter((r: any) => r["_a_data-hidden"] !== "1");
+    const at = shownRows().findIndex((r: any) => r._id === id);
     renderMenu();
     try {
       const r = await api.call("sc_session_manage", { id, action });
@@ -1451,7 +1494,15 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     }
     st.rowBusy = false;
     renderMenu();
-    viewStatus.focus();
+    // The focus goes to the row that was acted on (still there after a failure, an unchanged answer), else to the row that took
+    // its place, else to the filter in force: never to the top of the view.
+    const now = shownRows();
+    const target =
+      now.length > 0 ? now[Math.max(0, Math.min(at < 0 ? 0 : at, now.length - 1))] : null;
+    const same = now.find((r: any) => r._id === id);
+    if (same) (same.btnDel || same).focus();
+    else if (target) target.focus();
+    else for (const b of filterBtns) if (b._f === st.filter) b.focus();
   }
 
   // ------------------------------------------------------------------------------ the report
@@ -1639,7 +1690,8 @@ export function sessionPanel(doc: any, L: any, api: any): any {
         " de jeu" +
         (s.trips_per_hour !== null ? " · " + s.trips_per_hour + " trajets/h" : ""),
     );
-    const m = s.money;
+    // Money only while the balance is shown (a stale answer that still holds it is never drawn).
+    const m = st.ctx.showBalance ? s.money : null;
     if (m) {
       if (m.net_auec !== null)
         lines.push(
@@ -1726,9 +1778,17 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       show(listEmpty, !!l && sessions.length === 0 && !st.loading);
     } else {
       // The button appears only when there is more than the latest few; it opens the Sessions view for all of them.
+      // It is also there when archived sessions exist: the view is the way to reach them.
       const total = l ? Math.max(l.total, fetched.length) : 0;
-      show(btnAll, total > cfg.latestRows);
-      setText(btnAll, "Toutes les sessions (" + total + ")");
+      const archived = l ? l.archived : 0;
+      show(btnAll, total > cfg.latestRows || archived > 0);
+      setText(
+        btnAll,
+        "Toutes les sessions (" +
+          total +
+          (archived > 0 ? " · " + archived + (archived > 1 ? " archivées" : " archivée") : "") +
+          ")",
+      );
     }
     for (let i = 0; i < rows.length; i++) {
       const s = i < limit ? sessions[i] : undefined;
@@ -1773,7 +1833,13 @@ export function sessionPanel(doc: any, L: any, api: any): any {
         setAttr(r.btnDel, "aria-label", "Supprimer la session " + s.number);
         const asking = st.rowConfirm === s.id;
         show(r.conf, ended && asking);
-        setText(r.confText, asking ? sessionDeleteAsk(s) : "");
+        // The game running and nothing before the last session that would hold the card (no earlier session, or one that did
+        // not end by hand): the game starts another session as soon as this one is gone.
+        const at = fetched.indexOf(s);
+        const before = at >= 0 ? fetched[at + 1] : undefined;
+        const comesBack =
+          !!st.ctx.running && at === 0 && (!before || before.end_reason !== "manual");
+        setText(r.confText, asking ? sessionDeleteAsk(s, comesBack) : "");
         setAttr(r.btnYes, "aria-label", "Confirmer la suppression de la session " + s.number);
       }
     }
@@ -1784,7 +1850,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     show(detail, st.view === "detail");
     if (st.view !== "detail" || !d) return;
     const s = d.session;
-    const m = s.money;
+    const m = st.ctx.showBalance ? s.money : null;
     setText(
       detailTitle,
       "Session " +
@@ -1926,6 +1992,12 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     if (tabMode) {
       show(filterBar, true);
       setText(viewStatus, st.vmsg);
+      setText(
+        archNote,
+        sessionArchivedNote(
+          st.stats ? st.stats.archived_not_counted : st.list ? st.list.archived : 0,
+        ),
+      );
     }
     if (showList) {
       renderStats();
@@ -1947,6 +2019,10 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     state: () => st,
     /** The Sessions view only: the page shows it (reads the sessions) or leaves it (keeps nothing). */
     setActive,
+    /** Puts the focus on the card's entry point (its folded line, or its "Sessions" button): where it goes when the tab bar goes. */
+    focusEntry() {
+      (st.fold ? one : btnMenu).focus();
+    },
     /** The card's own list, if it is open, is read again (the Sessions view changed the saved sessions). */
     reload() {
       if (!tabMode && st.open && !st.loading) void loadMenu();
@@ -1957,13 +2033,21 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       blankMenu();
     },
     render(rawBar: any, ctx: any) {
-      st.ctx = { showBalance: !!(ctx && ctx.showBalance), now: ctx && ctx.now ? ctx.now : 0 };
+      st.ctx = {
+        showBalance: !!(ctx && ctx.showBalance),
+        now: ctx && ctx.now ? ctx.now : 0,
+        // The game is running (the stream is live): deleting the last session then lets it start another at once.
+        running: !!(ctx && ctx.running),
+      };
       // A report made with the other balance choice is not reused: it goes, and so does the start-balance choice.
       if ((st.exportText !== null || st.exportMsg) && st.exportMoney !== st.ctx.showBalance)
         clearExport(true);
       else if (!st.ctx.showBalance && st.exportBalances) st.exportBalances = false;
       // The balance is hidden again: nothing the menu drew with it stays in the page, even in nodes that are not shown.
-      if (!st.ctx.showBalance && st.asked === true) blankNodes();
+      if (!st.ctx.showBalance && st.asked === true) {
+        stripMoney();
+        blankNodes();
+      }
       const bar2 = sessionBarNormalize(rawBar, st.ctx.showBalance);
       const info = sessionBarInfo(L, bar2, st.ctx);
       st.info = info;
@@ -2066,6 +2150,7 @@ export const SESSION_VIEW_FUNCTIONS = [
   sessionFilterMatch,
   sessionFilterCounts,
   sessionDeleteAsk,
+  sessionArchivedNote,
   sessionManageText,
   sessionRowInfo,
   sessionListNormalize,

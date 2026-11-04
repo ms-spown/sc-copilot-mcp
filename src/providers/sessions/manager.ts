@@ -490,7 +490,13 @@ export class SessionManager {
     this.poke();
     await this.tidy(this.now());
     const state = await this.deps.store.read();
-    const s = id ? state.sessions.find((x) => x.id === id) : latest(state);
+    // Without an id: the card's session (the last one, unless the player archived it: then there is none, as on the card).
+    const last = latest(state);
+    const s = id
+      ? state.sessions.find((x) => x.id === id)
+      : last && !last.archived
+        ? last
+        : undefined;
     if (!s) return null;
     const summary = summarizeSession(s);
     const trips = s.trips.slice(-10).map((t) => (includeBalance ? t : stripTripMoney(t)));
@@ -541,14 +547,21 @@ export class SessionManager {
     return out;
   }
 
-  async stats(last: number | undefined, includeBalance: boolean) {
+  /**
+   * The figures across sessions. Archived sessions are NOT counted (totals, averages, best and worst, trend, "N sessions")
+   * unless `includeArchived`; `archived_not_counted` says how many were left out. The route calibration (route_reliability) keeps
+   * reading every saved session: archiving hides a session from a list, it does not remove its runs from what the server learns.
+   */
+  async stats(last: number | undefined, includeBalance: boolean, includeArchived = false) {
     this.poke();
     const state = await this.deps.store.read();
-    const a = aggregate(state.sessions, last ? { last } : {});
+    const counted = includeArchived ? state.sessions : state.sessions.filter((s) => !s.archived);
+    const a = aggregate(counted, last ? { last } : {});
     // Sessions dropped to keep the file small are not in these figures: say so.
     const out = {
       ...(includeBalance ? a : aggregateWithoutMoney(a)),
       history_trimmed: state.dropped_sessions,
+      archived_not_counted: state.sessions.length - counted.length,
       // How the player's own runs compare with their plans: every ratio comes from the balance, so it follows the money.
       route_reliability: includeBalance
         ? buildCalibration(usedSessions(state.sessions, last), {

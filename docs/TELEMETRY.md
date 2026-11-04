@@ -1224,8 +1224,16 @@ compares what the plan promised with what you really got (`src/providers/session
   none is drawn, and leaving the view or hiding the balance blanks what it drew). Server side these are one app-only tool,
   `sc_session_manage` (`id`, `action`: archive, unarchive or delete; refused to a client that did not declare the UI
   extension, writes only the server's own file, nothing is sent anywhere), and `sc_session_list` gained `include_archived`
-  (default false: an archived session is left out of the default list that Claude reads too). The statistics still count
-  archived sessions (they are kept). The file keeps version 2: `archived` is an optional flag that an older server which
+  (default false: an archived session is left out of the default list that Claude reads too). The **statistics across sessions
+  leave archived sessions out** (totals, averages, best and worst, trend, "N sessions": in the view and for Claude), and
+  the view always says so ("N sessions archivées non comptées"); `sc_session_stats` has `include_archived` (default false)
+  and answers `archived_not_counted`. What the server LEARNS from your runs does not leave: the route calibration
+  (`route_reliability`), the hold sizes of the commerce form and the last known balance still read archived sessions, so
+  only a deletion removes them from those (the delete question says so). Without an id `sc_session_current` is the card's
+  session (none when the last one is archived); an archived one opens by its id. An archived session is kept within the
+  file's bounds (200 sessions, the soft size limit: the oldest go first, archived or not). Deleting leaves a gap in the
+  numbers (1, 3, 4...) on purpose: a number is never reused. Deleting the last ended session while the game runs starts
+  a new one at once when nothing before it holds the card, and the question says so. The file keeps version 2: `archived` is an optional flag that an older server which
   rewrites the file drops, as it does `ship_losses`, which only brings the session back into its default list.
 - **When it opens**, the dashboard attaches to the last session and makes none: with no session it says "Aucune session
   en cours" and offers **Démarrer une session**; a session quiet for more than the gap is closed at its last sighting; a

@@ -424,13 +424,22 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     for (const t of [R.tabDash, R.tabSessions]) {
       t.setAttribute("role", "tab");
       t.addEventListener("keydown", (e: any) => {
-        if (e && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
-          const next = t === R.tabDash ? R.tabSessions : R.tabDash;
-          setViewTab(next === R.tabSessions ? "sessions" : "dash");
-          next.focus();
+        if (!e) return;
+        // Left and right swap tabs; Home is the first tab, End the last (there are two).
+        const pick =
+          e.key === "ArrowRight" || e.key === "End"
+            ? R.tabSessions
+            : e.key === "ArrowLeft" || e.key === "Home"
+              ? R.tabDash
+              : null;
+        if (pick) {
+          setViewTab(pick === R.tabSessions ? "sessions" : "dash");
+          pick.focus();
         }
       });
     }
+    R.tabSessions.setAttribute("id", "sc-tab-sessions");
+    R.tabSessions.setAttribute("aria-controls", "sc-view-sessions");
     add(R.tabs, R.tabDash, R.tabSessions);
     R.toastTop = el("div", "toast toast-top", "");
     R.toastTop.setAttribute("aria-hidden", "true");
@@ -962,6 +971,10 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     // of each row and the selected session's detail next to the list. Shown only when its tab is the one on screen.
     R.sessionsView = L.sessionPanel(doc, L, Object.assign({ tab: true }, sessionApi));
     show(R.sessionsView.root, false);
+    // The Sessions tab controls the view, which is its tab panel (labelled by the tab).
+    R.sessionsView.root.setAttribute("id", "sc-view-sessions");
+    R.sessionsView.root.setAttribute("role", "tabpanel");
+    R.sessionsView.root.setAttribute("aria-labelledby", "sc-tab-sessions");
 
     // Commerce card (tradePanel.ts): full width at the top of the cockpit, a compact line under the small view.
     // Its action bar (tradeActions.ts) is a separate component in a slot of the card; in the small view only a
@@ -1717,7 +1730,17 @@ export function dashboardMain(win: any, doc: any, L: any): any {
 
   function renderModeUi() {
     setAttr(root, "data-view", viewTab);
-    show(R.tabs, displayMode === "fullscreen" || viewTab === "sessions");
+    const tabsOn = displayMode === "fullscreen" || viewTab === "sessions";
+    // The tab bar is about to be hidden (back to the dashboard, in the compact view): the focus must not be lost with it.
+    if (!tabsOn) {
+      for (let n = doc.activeElement; n; n = n.parentNode) {
+        if (n === R.tabs) {
+          R.sessions.focusEntry();
+          break;
+        }
+      }
+    }
+    show(R.tabs, tabsOn);
     setAttr(R.tabDash, "aria-selected", viewTab === "dash" ? "true" : "false");
     setAttr(R.tabSessions, "aria-selected", viewTab === "sessions" ? "true" : "false");
     setAttr(R.tabDash, "tabindex", viewTab === "dash" ? "0" : "-1");
@@ -1940,8 +1963,13 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       keyed: flightOn(),
     });
     renderAlerts(now, conds, !info.grey, L.lossLeads(refusal, conds, now));
-    R.sessions.render(view.poll && view.poll.sessions, { showBalance, now });
-    R.sessionsView.render(view.poll && view.poll.sessions, { showBalance, now });
+    // `running`: the stream is live (the game is running), which the delete question of the Sessions view takes into account.
+    const gameRuns = !!(
+      view.poll &&
+      (view.poll.state === "live" || view.poll.state === "connected")
+    );
+    R.sessions.render(view.poll && view.poll.sessions, { showBalance, now, running: gameRuns });
+    R.sessionsView.render(view.poll && view.poll.sessions, { showBalance, now, running: gameRuns });
     R.ledger.render(view.poll && view.poll.ledger, {
       showBalance,
       fullscreen: displayMode === "fullscreen",

@@ -333,7 +333,7 @@ session tools of its session bar).
 | **core** (14) | `sc_data_status`, `uex_get_commodity_prices`, `uex_get_trade_routes`, `uex_get_game_versions`, `uex_get_ship_prices`, `scw_get_vehicle`, `scw_get_item`, `scw_get_ship_comparison`, `sct_search`, `sct_get_article`, `sc_patch_notes`, `scmdb_search_missions`, `scmdb_changes`, `sc_fleet_get` | The everyday copilot; a test keeps it under 15 tools |
 | **trade** (23) | The eighteen tools of [section 1](#1-market-and-trade-routes-uex), the three read-only session tools (`sc_session_current`, `sc_session_list`, `sc_session_stats`), `scmdb_rank_hauling` ([section 3](#3-missions-scmdb)) and `sc_data_status` | The full market toolbox |
 | **data** (16) | Wiki browsing and snapshots, missions, crafting, mining, patch notes and history, vocabulary | Reference data, crafting, mining and patch history |
-| **local** (27) | The game log, telemetry, fleet and local-file tools | Things on your PC. Fourteen are listed while telemetry is off |
+| **local** (27) | The game log, telemetry, fleet and local-file tools | Things on your PC. Thirteen are listed while telemetry is off |
 
 ### Variables
 
