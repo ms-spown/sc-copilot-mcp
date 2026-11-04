@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-04
+
 ### Fixed (documentation)
 - What is saved: the pages no longer say that everything stays in memory, that the server "stores nothing new" or that
   the only writes are the fleet list and the caches. One reviewed sentence now says the same thing in the README, the
