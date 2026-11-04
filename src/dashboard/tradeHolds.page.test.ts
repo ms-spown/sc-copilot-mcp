@@ -313,6 +313,87 @@ describe("Feature: after a completed run, the follow-up suggestion uses the run'
     const s = searches(w);
     expect(s).toHaveLength(1);
     expect(s[0]).toMatchObject({ origin: "Area18 TDD", cargo_scu: 696 });
+    // The card says which hold it was computed with and where it came from.
+    expect(text(w)).toContain("Soute 696 SCU (d’après ton dernier trajet)");
+  });
+});
+
+describe("Feature: an automatic re-search never takes the keyboard focus", () => {
+  it("Given a first search and a size typed badly in 'Autre taille', When the automatic search runs, Then it says what is wrong and the focus stays where the player put it", async () => {
+    const w = await form({ trade: true });
+    findButton(w.root, "Plus rentable").click();
+    await w.advance(100);
+    await pick(w, "other");
+    await w.advance(10);
+    const input: any = otherField(w).children[1];
+    expect(FakeNode.focused).toBe(input);
+    input.value = "abc";
+    for (const type of ["input", "change"])
+      for (const fn of input.listeners[type] ?? []) fn({ target: input });
+    // The player moves on to the budget field before the automatic search fires (900 ms later).
+    const budget: any = findAll(
+      w.root,
+      (n) => n.tag === "label" && n.textContent.startsWith("Budget (aUEC)"),
+    )[0]!.children[1];
+    budget.focus();
+    await w.advance(2 * SECOND);
+    expect(text(w)).toContain("La soute doit être un nombre entier de SCU");
+    expect(FakeNode.focused).toBe(budget);
+    // A click of his own, on the other hand, brings him to the field.
+    findButton(w.root, "Plus rentable").click();
+    await w.advance(100);
+    await w.advance(10);
+    expect(FakeNode.focused).toBe(input);
+  });
+});
+
+describe("Feature: a typed size is read like a displayed one and bounded", () => {
+  it("Given '4 608' and '100001', Then the first is searched as 4608 and the second is refused with the hold's own sentence", async () => {
+    const w = await form({ trade: true });
+    await pick(w, "other");
+    const input: any = otherField(w).children[1];
+    const type = async (value: string) => {
+      input.value = value;
+      for (const t of ["input", "change"])
+        for (const fn of input.listeners[t] ?? []) fn({ target: input });
+      await w.advance(0);
+    };
+    await type("4\u00a0608");
+    findButton(w.root, "Plus rentable").click();
+    await w.advance(100);
+    expect(searches(w).at(-1)!.cargo_scu).toBe(4608);
+    await w.advance(10 * SECOND);
+    await type("100001");
+    findButton(w.root, "Plus rentable").click();
+    await w.advance(100);
+    expect(searches(w)).toHaveLength(1);
+    expect(text(w)).toContain("entre 1 et 100 000");
+    expect(text(w)).not.toContain("Le serveur n’a pas répondu");
+  });
+});
+
+describe("Feature: a run under way is listed but never becomes the default", () => {
+  it("Given the story's first lot only (the run is under way at 30 s), Then its size is in the list as 'en cours' and nothing is chosen for the player", async () => {
+    const scenario = new Scenario();
+    scenario.uec = tradeBalanceAt;
+    scenario.ledger = (include, nowMs) =>
+      tradeLedger(nowMs, scenario.epoch, include, "story", {
+        commodity: "Laranite",
+        scu: 696,
+        expected_profit_auec: 1,
+      });
+    const w = await startPage({ scenario });
+    w.fromHost({
+      jsonrpc: "2.0",
+      method: "ui/notifications/host-context-changed",
+      params: { displayMode: "fullscreen" },
+    });
+    await w.advance(40 * SECOND);
+    expect(labelsOf(w).some((l) => /696 SCU · trajet en cours/.test(l))).toBe(true);
+    expect(selectOf(w).value).toBe("");
+    findButton(w.root, "Plus rentable").click();
+    await w.advance(100);
+    expect(searches(w)[0]!.cargo_scu).toBeUndefined();
   });
 });
 
@@ -374,9 +455,18 @@ describe("Feature: the list is a real, quiet, labelled control", () => {
     const w = await form({ trade: true });
     findButton(w.root, "Plus rentable").click();
     await w.advance(2 * SECOND);
+    // Something does go out to the conversation (the card's fixed message), so the check below is not vacuous.
+    findAll(
+      w.root,
+      (n) => n.tag === "button" && n.textContent === "Demander à l’agent" && isShown(n),
+    )[0]!.click();
+    await w.advance(SECOND);
+    expect(w.host.log.messages.length).toBeGreaterThan(0);
     const quantity = /\b696\b/;
     for (const c of w.host.log.contexts) expect(c).not.toMatch(quantity);
     for (const m of w.host.log.messages) expect(NBSP_FREE(m)).not.toMatch(quantity);
+    // The channel between Views carries the state of the page (the leading View posts it): not empty, and no quantity.
+    expect(w.bus!.log.length).toBeGreaterThan(0);
     for (const posted of w.bus!.log) expect(JSON.stringify(posted.data)).not.toMatch(quantity);
   });
 });

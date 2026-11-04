@@ -365,12 +365,14 @@ export function tradeBuildRequest(objective: string, st: any, ctx: any): any {
   //      server has no ship to take it from (the game is closed);
   //   3. else the ship sheet's figure (a caller that passes no default), else nothing: the server then answers no_cargo.
   // The source goes back to the caller so the page can say where the figure comes from (never "saisie" for a default).
-  const cargoText = String(st.cargoText === undefined ? "" : st.cargoText).trim();
+  // Every space (also the non-breaking ones: a size is displayed as "4 608") is dropped before the digits are read.
+  const cargoText = String(st.cargoText === undefined ? "" : st.cargoText).replace(/\s/g, "");
   let cargoSource = "inconnue";
   const dflt = ctx && ctx.defaultHold ? ctx.defaultHold : null;
   if (st.cargoTyped === true && (cargoText !== "" || st.cargoPicked === "autre")) {
     if (cargoText === "") return { ok: false, reason: "cargo_empty" };
-    if (!/^\d{1,6}$/.test(cargoText) || Number(cargoText) < 1)
+    // At most 100 000 SCU, the server's own bound: a larger figure is refused here with its own sentence.
+    if (!/^\d{1,6}$/.test(cargoText) || Number(cargoText) < 1 || Number(cargoText) > 100000)
       return { ok: false, reason: "cargo" };
     args.cargo_scu = Number(cargoText);
     cargoSource = st.cargoPicked === "liste" ? "liste" : "saisie";
@@ -396,7 +398,8 @@ export function tradeBuildRequest(objective: string, st: any, ctx: any): any {
 export function tradeInputProblem(reason: string): string {
   if (reason === "budget")
     return "Le budget n’est pas un nombre (exemples : 250000, 250 000, 2,5M).";
-  if (reason === "cargo") return "La soute doit être un nombre entier de SCU, au moins 1.";
+  if (reason === "cargo")
+    return "La soute doit être un nombre entier de SCU, entre 1 et 100\u00a0000.";
   if (reason === "cargo_empty")
     return "Indique la taille de ta soute (SCU) dans « Autre taille », ou choisis-en une dans la liste.";
   return "Question incomplète.";
@@ -479,8 +482,10 @@ export function tradeAgoText(ms: any, now: number): string {
  *
  * The default, in this order, and never a value made up:
  *   vaisseau       the flown ship's hold (its wiki sheet);
- *   dernier_trajet the newest run known (the journal being read, or a saved one), when it ended less than `holdFreshMs` ago;
- *   habituelle     the size most used by the recent saved runs (ties: the newest), when the last run is older or absent;
+ *   dernier_trajet the newest COMPLETE run known (the journal being read, or a saved one), when it ended less than
+ *                  `holdFreshMs` ago;
+ *   habituelle     the size most used by the recent COMPLETE runs (ties: the newest), when the last run is older or absent;
+ * A run under way or partial is listed ("en cours", "partiel") but is never a default nor part of the habit.
  *   flotte         the one hold of the fleet list, when it has a single size and no run is known;
  *   null           nothing known: the player chooses.
  */
@@ -534,6 +539,12 @@ export function tradeHoldChoices(ctx: any): any {
     if (!(q >= 1 && q <= 100000)) continue;
     const at = Date.parse(r.ended_at);
     const it = get(q);
+    // A run that is not complete (a first lot bought, a partial sale) is only a line of the list, labelled as such: it is
+    // never the last run and never counts toward the habit (a first lot of 120 SCU is not the hold of a 696 SCU ship).
+    if (r.stage !== "complete") {
+      if (!it.underway) it.underway = r.stage === "partial" ? "partiel" : "en cours";
+      continue;
+    }
     seen[String(q)] = (seen[String(q)] || 0) + 1;
     it.lastAt = newest(it.lastAt, Number.isFinite(at) ? at : null);
     if (journalScu === null) {
@@ -597,7 +608,14 @@ export function tradeHoldChoices(ctx: any): any {
   if (flown) deflt = { scu: flown.scu, source: "vaisseau", ship: flown.name };
   else if (lastScu !== null && (fresh || !habit))
     deflt = { scu: lastScu, source: "dernier_trajet", lastAt };
-  else if (habit) deflt = { scu: habit.scu, source: "habituelle", trips: habit.trips, of: total };
+  else if (habit)
+    deflt = {
+      scu: habit.scu,
+      source: "habituelle",
+      trips: habit.trips,
+      of: total,
+      lastAt: habit.lastAt,
+    };
   else if (fleetOnly.length === 1)
     deflt = { scu: fleetOnly[0].scu, source: "flotte", ship: fleetOnly[0].ship };
   return { items, deflt, lastAt };
@@ -610,8 +628,10 @@ export function tradeHoldLabel(L: any, it: any, now: number): string {
   parts.push(it.ship && (it.flown || it.basis === "flotte") ? it.ship + " · " + size : size);
   if (it.flown) parts.push("vaisseau en vol");
   else if (it.basis === "flotte") parts.push("dans ta flotte");
-  else if (it.basis === "taille" && it.ship) parts.push("taille du " + it.ship);
-  if (it.trips > 0) {
+  else if (it.basis === "taille" && it.ship) parts.push("même taille que le " + it.ship);
+  if (it.trips === 0 && it.underway) {
+    parts.push("trajet " + it.underway);
+  } else if (it.trips > 0) {
     const ago = tradeAgoText(it.lastAt, now);
     parts.push(
       it.isLast
@@ -625,7 +645,7 @@ export function tradeHoldLabel(L: any, it: any, now: number): string {
 }
 
 /** Where the default comes from, as a sentence for under the list (a weak source says so). */
-export function tradeHoldSourceText(L: any, d: any): string {
+export function tradeHoldSourceText(L: any, d: any, now?: number): string {
   if (!d) return "";
   const size = L.fmtNum(d.scu) + "\u00a0SCU";
   if (d.source === "vaisseau")
@@ -640,7 +660,9 @@ export function tradeHoldSourceText(L: any, d: any): string {
       size +
       " transportés. Une quantité transportée peut être inférieure à ta soute : change-la si besoin."
     );
-  if (d.source === "habituelle")
+  if (d.source === "habituelle") {
+    // A habit made of one old run is that run: its age is said.
+    const ago = d.trips === 1 && typeof now === "number" ? tradeAgoText(d.lastAt, now) : "";
     return (
       "Faute de trajet récent : la taille la plus fréquente de tes trajets enregistrés (" +
       size +
@@ -648,8 +670,10 @@ export function tradeHoldSourceText(L: any, d: any): string {
       d.trips +
       " sur " +
       d.of +
+      (ago ? ", " + ago : "") +
       "). Quantité transportée, pas forcément ta soute pleine."
     );
+  }
   if (d.source === "flotte")
     return (
       "Seule soute de ta liste de vaisseaux" +
@@ -664,7 +688,7 @@ export function tradeHoldSourceWords(source: string, ship: any): string {
   if (source === "fiche") return "fiche du vaisseau" + (ship ? ", " + ship : "");
   if (source === "dernier_trajet") return "d’après ton dernier trajet";
   if (source === "habituelle") return "taille la plus fréquente de tes trajets";
-  if (source === "flotte") return "vaisseau de ta liste";
+  if (source === "flotte") return "vaisseau de ta liste, soute non vérifiée";
   if (source === "liste") return "choisie dans ta liste";
   return "saisie";
 }
@@ -1205,8 +1229,9 @@ export function tradeActionsPanel(doc: any, L: any): any {
   const budgetField = field("Budget (aUEC)", budgetInput, budgetNote);
   // The number field has its own label (two controls never share one), shown only for "Autre taille…".
   // The hold list has a row of its own, above the other fields: its labels (ship, size, source, age) are long.
-  const holdField = field("Soute (SCU)", cargoSelect, cargoNote);
-  holdField.className = "ta-field ta-field-hold";
+  // The note is NOT inside the label (it would be read twice: as part of the name and as the description).
+  const holdField = el("div", "ta-field ta-field-hold");
+  add(holdField, field("Soute (SCU)", cargoSelect), cargoNote);
   const otherField = field("Autre taille (SCU)", cargoInput);
   otherField.className = "ta-field ta-field-other";
   otherField.setAttribute("data-hidden", "1");
@@ -1463,7 +1488,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
       S.phase = "problem";
       S.problem = tradeInputProblem(built.reason);
       S.problemCode = built.reason;
-      if (built.reason === "cargo" || built.reason === "cargo_empty") openHoldForm(true);
+      if (built.reason === "cargo" || built.reason === "cargo_empty") openHoldForm(true, auto);
       refresh();
       return;
     }
@@ -1508,7 +1533,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
         S.problem = tradeErrorText(a);
         S.problemCode = a.code;
         // Nothing is known about the hold: the way out is in "Affiner", so it is opened and the list gets the focus.
-        if (a.code === "no_cargo") openHoldForm(false);
+        if (a.code === "no_cargo") openHoldForm(false, auto);
       }
     } catch (err: any) {
       S.phase = "error";
@@ -1525,9 +1550,13 @@ export function tradeActionsPanel(doc: any, L: any): any {
     refresh();
   }
 
-  /** Opens "Affiner" and puts the focus on the hold list (or on the number field when the player is typing a size). */
-  function openHoldForm(typing: boolean) {
+  /**
+   * Opens "Affiner" and puts the focus on the hold list (or on the number field when the player is typing a size). A search
+   * the player did not just ask for (`auto`: an option changed) never takes the focus: it only says what is wrong.
+   */
+  function openHoldForm(typing: boolean, auto: boolean) {
     refine.open = true;
+    if (auto) return;
     later(() => {
       const target = typing && S.holdPick === "other" ? cargoInput : cargoSelect;
       if (target.focus) target.focus();
@@ -1594,7 +1623,9 @@ export function tradeActionsPanel(doc: any, L: any): any {
     S.nextTried = want.runId;
     if (!want.fresh || !want.origin || !S.autoNext) return;
     const built = tradeBuildRequest("profit_per_hour", question(), searchContext());
-    if (!built.ok || built.cargoSource === "inconnue") return;
+    // No automatic search on a hold nobody confirmed: unknown, or a fleet ship's hold (weak). The flown ship, the last
+    // complete run, the habit and what the player picked or typed may search by themselves, with the source on the card.
+    if (!built.ok || built.cargoSource === "inconnue" || built.cargoSource === "flotte") return;
     built.args.origin = want.origin;
     // The server remembers the run: a View mounted again does not search a second time for it.
     if (/^[0-9A-Za-z:.+-]{1,40}$/.test(want.runId)) built.args.next_run = want.runId;
@@ -1605,6 +1636,8 @@ export function tradeActionsPanel(doc: any, L: any): any {
       priv: built.priv,
       problem: "",
       retries: 0,
+      source: built.cargoSource,
+      hold: "",
     };
     // Not a render inside a render: the next one (or this timer) shows it.
     later(refresh, 0);
@@ -1615,6 +1648,13 @@ export function tradeActionsPanel(doc: any, L: any): any {
         if (a && a.state === "ok") {
           S.next.phase = "ok";
           S.next.result = a;
+          // The hold this suggestion was computed with, and where it came from (what the server answers, what the page asked).
+          S.next.hold =
+            "Soute " +
+            L.fmtNum(a.cargo_scu) +
+            "\u00a0SCU (" +
+            tradeHoldSourceWords(S.next.source, a.ship) +
+            ").";
         } else if (a && a.state === "throttled" && S.next.retries < 1 && H.later) {
           S.next.retries++;
           later(
@@ -1843,7 +1883,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
     } else if (chosen !== "") {
       note = "Choisie par toi dans la liste.";
     } else if (dflt) {
-      note = tradeHoldSourceText(L, dflt);
+      note = tradeHoldSourceText(L, dflt, now);
     } else {
       note =
         "Soute inconnue : ni vaisseau en vol ni trajet enregistré. Choisis « Autre taille… » pour l’indiquer.";
@@ -2002,7 +2042,9 @@ export function tradeActionsPanel(doc: any, L: any): any {
           : nx.phase === "none"
             ? nx.problem
             : first
-              ? "Meilleure route par heure depuis là, avec tes options actuelles. Rien n’est appliqué sans ton clic."
+              ? "Meilleure route par heure depuis là, avec tes options actuelles. " +
+                (nx.hold ? nx.hold + " " : "") +
+                "Rien n’est appliqué sans ton clic."
               : "Aucune route ne part de là avec tes options actuelles.",
       );
       show(nextNote, true);

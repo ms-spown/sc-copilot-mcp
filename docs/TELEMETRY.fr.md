@@ -831,7 +831,9 @@ La barre demande au serveur, sans passer par le modèle, les routes qui correspo
 planificateur de `uex_plan_trade` derrière un outil réservé à la page (`sc_trade_suggest`, `visibility: ["app"]`,
 listé seulement quand la télémétrie est activée et que le client affiche des Views). Aucune route n'est demandée avant un
 clic. La seule lecture plus précoce est la liste des tailles de soute connues (ci-dessous), une fois la barre à l'écran en
-plein écran : fichiers locaux et liste de vaisseaux d'UEX déjà en cache, aucun calcul de route.
+plein écran : fichiers locaux et, quand il y a une taille enregistrée ou un vaisseau de flotte à nommer, la liste publique
+des vaisseaux d'UEX, que le serveur peut télécharger une fois (gardée 5 minutes) à l'ouverture du plein écran. Aucun calcul
+de route.
 
 | Bouton | Ce qu'il demande | Ordre des cartes |
 | --- | --- | --- |
@@ -852,10 +854,12 @@ aucune recherche n'est lancée.
   lance donc la recherche tout de suite, sans ouvrir « Affiner ». La valeur par défaut vient de ce que le serveur sait
   déjà, dans cet ordre, et sa source est toujours écrite sous la liste :
   1. la **soute du vaisseau piloté** (sa fiche wiki ; elle n'est pas envoyée, le serveur prend celle du vaisseau et le dit) ;
-  2. le **dernier trajet** : le trajet le plus récent du journal de commerce lu (ou des sessions enregistrées), quand il
-     s'est terminé il y a moins de 3 jours (« D'après ton dernier trajet : 696 SCU transportés ») ;
-  3. sinon la taille **la plus utilisée par les trajets de commerce enregistrés** (la plus récente en cas d'égalité),
-     présentée comme une habitude ;
+  2. le **dernier trajet** : le trajet COMPLET le plus récent du journal de commerce lu (ou des sessions enregistrées),
+     quand il s'est terminé il y a moins de 3 jours (« D'après ton dernier trajet : 696 SCU transportés »). Un trajet en
+     cours ou partiel est listé (« trajet en cours », « trajet partiel ») mais n'est jamais la valeur par défaut ni
+     compté dans l'habitude : un premier lot de 120 SCU n'est pas la soute d'un vaisseau de 696 SCU ;
+  3. sinon la taille **la plus utilisée par les trajets de commerce complets** (la plus récente en cas d'égalité),
+     présentée comme une habitude (l'âge est donné quand il s'agit d'un seul trajet) ;
   4. sinon **la seule soute du fichier de flotte** (`sc_fleet_add`), signalée comme faible (rien ne dit qu'elle sert) ;
   5. sinon rien : la liste ne contient que « Choisis ta soute… » et « Autre taille… », et l'état le demande.
 
@@ -868,12 +872,17 @@ aucune recherche n'est lancée.
   « transportés » et la mention que la soute peut être plus grande. Et **le journal du jeu ne nomme pas le vaisseau d'un
   trajet** (la ligne du kiosque ne porte qu'un identifiant d'entité, que ce projet ne garde jamais) : un trajet ne reçoit
   donc jamais de nom de vaisseau depuis l'historique. Un nom à côté d'une taille a trois sens possibles, et l'étiquette
-  dit lequel : le vaisseau piloté ; un vaisseau du fichier de flotte ; ou « taille du X » quand X est le seul vaisseau
-  auquel UEX donne exactement cette soute (une constatation sur la taille, pas la preuve que X a servi). Il n'y a pas de
-  liste de cargos « typiques » : si rien n'est connu, le joueur choisit « Autre taille… ». Les tailles viennent de
-  l'action `holds` de `sc_trade_suggest`, réservée à la page (trajets de commerce enregistrés, fichier de flotte, liste
-  de vaisseaux d'UEX déjà en cache pour les soutes de la flotte et les noms à taille unique ; aucun calcul de route, aucun
-  créneau du limiteur, aucun montant) ; le choix lui-même reste dans la mémoire de la page.
+  dit lequel : le vaisseau piloté ; un vaisseau du fichier de flotte ; ou « même taille que le X » quand X est le seul
+  vaisseau auquel UEX donne exactement cette soute (une constatation sur la taille, pas la preuve que X a servi). Il n'y
+  a pas de liste de cargos « typiques » : si rien n'est connu, le joueur choisit « Autre taille… ». Les tailles viennent
+  de l'action `holds` de `sc_trade_suggest`, réservée à la page (trajets de commerce enregistrés, fichier de flotte, et
+  liste publique des vaisseaux d'UEX pour les soutes de la flotte et les noms à taille unique : le serveur peut la
+  télécharger une fois, gardée 5 minutes, à l'ouverture du plein écran, avant tout clic et hors du limiteur du
+  planificateur ; aucun calcul de route, aucun montant envoyé) ; le choix lui-même reste dans la mémoire de la page. La
+  note sous les résultats dit d'où vient la soute, et celle d'un fichier de flotte y est dite « non vérifiée ». « Et
+  ensuite ? » cherche seule avec la soute du vaisseau piloté, le dernier trajet complet, l'habitude ou une taille choisie
+  ou saisie, et affiche la source sur sa carte ; elle ne cherche pas seule sur une soute de flotte ni quand aucune soute
+  n'est connue. Une taille saisie est limitée à 100 000 SCU et ses espaces (« 4 608 ») sont ignorés.
 
 - **Mesuré, estimé, heuristique.** Les prix sont ceux d'UEX, issus de la communauté ; aujourd'hui presque toutes les
   options portent *estimation UEX · aucun relevé de joueur* (UEX ne compte aucun relevé de joueur pour un prix) : la

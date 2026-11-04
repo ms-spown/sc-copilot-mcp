@@ -48,7 +48,8 @@ import { describePreflight } from "./preflightText.js";
  *    a check and a search never run at once, and a new UEX read starts at most once per interval for everybody.
  *
  *  - HOLDS: "holds" lists the hold sizes known for the player (recent trade trips of the saved sessions, ships of his fleet
- *    file) for the form's "Soute" list. Local reads, no argument, no planner run, no throttle slot, no balance; a size is
+ *    file) for the form's "Soute" list. Local reads plus, when there is something to name, UEX's public ship list (which may
+ *    be fetched once, cached 5 minutes, when the full screen opens). No argument, no planner run, no throttle slot, no balance; a size is
  *    a quantity moved or a fleet ship's hold, never a claim about the ship flown (dashboard/holds.ts says how it is worded).
  *
  * No network, no clock and no planner are imported here: all are injected (tests use fakes; nothing here opens a socket).
@@ -362,8 +363,9 @@ export class TradeSuggestService {
   }
 
   /**
-   * The known hold sizes: local reads only (saved sessions, the fleet file, UEX's ship list which is cached), so it takes
-   * no slot of the planner's throttle and never waits for a search. Never throws.
+   * The known hold sizes: saved sessions, the fleet file and UEX's public ship list (a live GET when its 5-minute memory is
+   * cold: this is asked when the full screen opens, before any click). It takes no slot of the planner's throttle and never
+   * waits for a search. Never throws.
    */
   private async holds(): Promise<SuggestAnswer> {
     const list = await (this.deps.holds?.() ?? Promise.resolve([])).catch(() => []);

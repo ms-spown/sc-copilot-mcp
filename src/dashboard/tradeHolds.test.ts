@@ -8,6 +8,7 @@ import {
   tradeHoldLabel,
   tradeHoldSourceText,
   tradeHoldSourceWords,
+  tradeInputProblem,
   tradeSuggestClean,
 } from "./tradeActions.js";
 import * as L from "./viewLogic.js";
@@ -168,8 +169,45 @@ describe("Feature: the sources in conflict", () => {
   it("Given a ship name next to a size, Then the label says whose size it is, not that it was used", () => {
     const m = choose({ known: [known(696, 1, 2 * DAY, "Testco Alpha Hauler")] });
     expect(NBSP_FREE(tradeHoldLabel(L, m.items[0], NOW))).toBe(
-      "696 SCU · taille du Testco Alpha Hauler · dernier trajet il y a 2 j",
+      "696 SCU · même taille que le Testco Alpha Hauler · dernier trajet il y a 2 j",
     );
+  });
+
+  it("Given five saved runs of 696 SCU and a first lot of 120 SCU under way, Then 696 stays the default and the lot is only listed", () => {
+    const open = { ...run(120, HOUR), stage: "open", scu_sold: null };
+    const m = choose({
+      runs: [open],
+      known: [known(696, 5, 2 * DAY)],
+    });
+    expect(m.deflt).toMatchObject({ scu: 696, source: "dernier_trajet" });
+    const lot = m.items.filter((i: any) => i.scu === 120)[0];
+    expect(NBSP_FREE(tradeHoldLabel(L, lot, NOW))).toBe("120 SCU · trajet en cours");
+    // The same when the last run is old: the habit is 696, not the lot.
+    const old = choose({ runs: [open], known: [known(696, 5, 5 * DAY)] });
+    expect(old.deflt).toMatchObject({ scu: 696, source: "habituelle", trips: 5, of: 5 });
+    // A partial run reads "partiel".
+    const partial = { ...run(300, HOUR), stage: "partial", scu_sold: 100 };
+    const p = choose({ runs: [partial], known: [known(696, 1, DAY)] });
+    expect(p.deflt).toMatchObject({ scu: 696 });
+    expect(NBSP_FREE(tradeHoldLabel(L, p.items.filter((i: any) => i.scu === 300)[0], NOW))).toBe(
+      "300 SCU · trajet partiel",
+    );
+  });
+
+  it("Given only a run under way, Then nothing is chosen for the player", () => {
+    const m = choose({ runs: [{ ...run(120, HOUR), stage: "open", scu_sold: null }] });
+    expect(m.deflt).toBeNull();
+    expect(m.items.map((i: any) => i.scu)).toEqual([120]);
+  });
+
+  it("Given a habit made of a single old run, Then its age is in the note", () => {
+    const m = choose({ known: [known(696, 1, 9 * DAY)] });
+    expect(m.deflt).toMatchObject({ scu: 696, source: "habituelle", trips: 1 });
+    expect(NBSP_FREE(tradeHoldSourceText(L, m.deflt, NOW))).toContain(
+      "696 SCU, 1 sur 1, il y a 9 j",
+    );
+    const many = choose({ known: [known(696, 3, 9 * DAY)] });
+    expect(NBSP_FREE(tradeHoldSourceText(L, many.deflt, NOW))).not.toContain("il y a");
   });
 });
 
@@ -227,6 +265,21 @@ describe("Feature: the request takes the default, and what the player picked win
       { defaultHold: { scu: 696, source: "dernier_trajet" } },
     );
     expect(r).toEqual({ ok: false, reason: "cargo_empty" });
+  });
+
+  it("Given a size as it is displayed ('4 608', with a non-breaking or narrow space) or at the bound, Then it is read; over the bound it is refused", () => {
+    const typed = (cargoText: string) =>
+      built(
+        { cargoTyped: true, cargoText, cargoPicked: "autre" },
+        { defaultHold: { scu: 696, source: "dernier_trajet" } },
+      );
+    expect(typed("4 608").args.cargo_scu).toBe(4608);
+    expect(typed("4\u00a0608").args.cargo_scu).toBe(4608);
+    expect(typed("4\u202f608").args.cargo_scu).toBe(4608);
+    expect(typed("100000").args.cargo_scu).toBe(100000);
+    expect(typed("100 001")).toEqual({ ok: false, reason: "cargo" });
+    expect(typed("999999")).toEqual({ ok: false, reason: "cargo" });
+    expect(NBSP_FREE(tradeInputProblem("cargo"))).toContain("entre 1 et 100 000");
   });
 
   it("Given a bad typed size, Then it is refused as before", () => {
@@ -307,6 +360,7 @@ describe("Feature: what the server lists is re-validated, and ages are worded co
     expect(tradeHoldSourceWords("dernier_trajet", null)).toBe("d’après ton dernier trajet");
     expect(tradeHoldSourceWords("habituelle", null)).toContain("plus fréquente");
     expect(tradeHoldSourceWords("flotte", null)).toContain("liste");
+    expect(tradeHoldSourceWords("flotte", null)).toContain("non vérifiée");
     expect(tradeHoldSourceWords("liste", null)).toContain("choisie");
     expect(tradeHoldSourceWords("saisie", null)).toBe("saisie");
   });

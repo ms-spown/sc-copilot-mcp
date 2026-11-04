@@ -195,7 +195,8 @@ export function dashboardTools(
     return lookup;
   };
   // The hold sizes the form offers (dashboard/holds.ts): recent trade trips of the saved sessions, ships of the fleet file
-  // with the hold UEX gives them. Local reads plus UEX's ship list (cached; a cache that cannot be read is simply absent).
+  // with the hold UEX gives them. Local reads plus UEX's public ship list: a live GET /vehicles when the 5-minute memory
+  // cache is cold (the first full-screen opening, before any click); a failure just leaves the names out.
   // Remembered for a few seconds: N Views asking at once make one read. A failure of any part leaves that part out.
   let holdsMemo: { at: number; list: Promise<KnownHold[]> } | null = null;
   const knownHolds = (): Promise<KnownHold[]> => {
@@ -508,7 +509,7 @@ export function dashboardTools(
     {
       name: "sc_trade_suggest",
       description:
-        "For the dashboard View only, not for the model: ranks trade routes for the commerce card's buttons (most profitable per hour, fastest, safest by a heuristic, or best per trip) with the UEX trade planner, or applies one of the options it returned as the dashboard's plan (action apply, by id), or checks before departure whether the plan in force still holds (action preflight: re-reads the current UEX prices of its goods at its two terminals, two cached GETs, no argument, unit prices and per-SCU margins only), or lists the hold sizes known for the player for the form's Soute list (action holds: quantities of his recent saved trade runs and the holds of his fleet-file ships, from local files and UEX's cached ship list, no planner run, no amount). Answers at most 5 options and 3 chains, throttled (one new planner run or price check per 8 seconds, identical requests served from a short cache), never the player's balance. Use uex_plan_trade instead.",
+        "For the dashboard View only, not for the model: ranks trade routes for the commerce card's buttons (most profitable per hour, fastest, safest by a heuristic, or best per trip) with the UEX trade planner, or applies one of the options it returned as the dashboard's plan (action apply, by id), or checks before departure whether the plan in force still holds (action preflight: re-reads the current UEX prices of its goods at its two terminals, two cached GETs, no argument, unit prices and per-SCU margins only), or lists the hold sizes known for the player for the form's Soute list (action holds: quantities of his recent saved trade runs and the holds of his fleet-file ships, from local files, and, when there is something to name, UEX's public ship list, which may be fetched once (kept 5 minutes) when the full screen opens, before any click; no planner run, no throttle slot, no amount). Answers at most 5 options and 3 chains, throttled (one new planner run or price check per 8 seconds, identical requests served from a short cache), never the player's balance. Use uex_plan_trade instead.",
       inputSchema: {
         type: "object",
         properties: {

@@ -24,7 +24,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // 2026-11-04 (UX wave C on top of R5): 373.0 kB with the full-screen flight and commerce orders (layoutOrder.ts, the commerce fold,
 // the shortcuts limited in flight) next to the route cards of R5; the budget is that size plus about 5 % (392 kB), rounded. Same
 // status: our own guard, nothing was removed to fit it, the host's own limit is still unproven.
-// 2026-11-04 (hold list of the route form): 384.1 kB with the "Soute" list (the flown ship, the runs, the fleet list, a default
+// 2026-11-04 (hold list of the route form): 384.7 kB with the "Soute" list (the flown ship, the runs, the fleet list, a default
 // worked out and labelled, "Autre taille…") in the commerce action bar; the budget is that size plus about 5 % (403 kB), rounded.
 // Same status: our own guard, nothing was removed to fit it, the host's own limit is still unproven.
 const BUDGET_BYTES = 403_000;
