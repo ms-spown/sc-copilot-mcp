@@ -353,6 +353,20 @@ describe("Feature: the lock is robust", () => {
     expect(fs.existsSync(fresh)).toBe(true);
   });
 
+  it("Given orphan .stale-<pid>-<hex> files of killed lock takeovers, Then the old ones are swept too and a fresh one is left alone", async () => {
+    const stale = `${file}.lock.stale-4242-deadbeef`;
+    const fresh = `${file}.lock.stale-4343-cafebabe`;
+    const unrelated = `${file}.lock.stale-notahex`;
+    for (const f of [stale, fresh, unrelated]) fs.writeFileSync(f, "");
+    const old = new Date(Date.now() - 10 * 60_000);
+    fs.utimesSync(stale, old, old);
+    fs.utimesSync(unrelated, old, old);
+    await new SessionStore(file).transact(addTrip(1, "x"));
+    expect(fs.existsSync(stale)).toBe(false);
+    expect(fs.existsSync(fresh)).toBe(true);
+    expect(fs.existsSync(unrelated)).toBe(true);
+  });
+
   it.skipIf(process.platform === "win32")(
     "Given a new file, Then it is created for the owner only (0600)",
     async () => {

@@ -112,7 +112,7 @@ const span = (t: Trip): [number, number] => {
  */
 export function effectiveResults(
   trips: readonly Trip[],
-): { trip: Trip; result: number | null; excluded: boolean }[] {
+): { trip: Trip; result: number | null; excluded: boolean; duplicate: boolean }[] {
   const runs = trips.filter((t) => t.kind === "trade").map(span);
   // Two trade trips that begin at the same instant with the same goods are one run stored twice (an older file, or a
   // run that grew under another key): only the latest-ending one counts.
@@ -133,7 +133,7 @@ export function effectiveResults(
       (trip.kind !== "trade" &&
         trip.net_auec !== null &&
         runs.some(([rb, re]) => rb < e && re > b));
-    return { trip, result: excluded ? null : tripResult(trip), excluded };
+    return { trip, result: excluded ? null : tripResult(trip), excluded, duplicate };
   });
 }
 
@@ -147,14 +147,16 @@ export function summarizeSession(s: Session): SessionSummary {
   const change =
     s.start_balance !== null && s.last_balance !== null ? s.last_balance - s.start_balance : null;
   const net = netTrips ?? change;
-  const revenue = known(s.trips.map((t) => t.revenue_auec));
-  const cost = known(s.trips.map((t) => t.cost_auec));
-  const fees = known(s.trips.map((t) => t.fees_auec));
+  // A run stored twice (an older file) must not count twice in any sum: only the latest-ending copy does.
+  const counted = eff.filter((e) => !e.duplicate).map((e) => e.trip);
+  const revenue = known(counted.map((t) => t.revenue_auec));
+  const cost = known(counted.map((t) => t.cost_auec));
+  const fees = known(counted.map((t) => t.fees_auec));
   const best = withResult.reduce<(typeof withResult)[number] | null>(
     (b, e) => (b === null || (e.result as number) > (b.result as number) ? e : b),
     null,
   );
-  const grossRuns = known(s.trips.map((t) => t.gross_margin_auec));
+  const grossRuns = known(counted.map((t) => t.gross_margin_auec));
   const planned = withResult.filter((e) => e.trip.planned_profit_auec !== null);
   const plannedSum = sum(known(planned.map((e) => e.trip.planned_profit_auec)));
   const measuredSum = sum(planned.map((e) => e.result as number));
@@ -193,10 +195,11 @@ export function summarizeSession(s: Session): SessionSummary {
       balance_change_auec: change,
       net_auec: net,
       net_source: netTrips !== null ? "trips" : change !== null ? "balance" : null,
-      net_complete: s.trips.length === 0 ? null : withResult.length === s.trips.length,
+      net_complete: counted.length === 0 ? null : withResult.length === counted.length,
       measured_net_auec: measuredNets.length > 0 ? sum(measuredNets) : null,
       gross_only_trips: withResult.filter((e) => e.trip.net_auec === null).length,
-      overlap_excluded: eff.filter((e) => e.excluded).length,
+      // A copy of a run stored twice is not a contract and does not make the total partial: only overlaps count.
+      overlap_excluded: eff.filter((e) => e.excluded && !e.duplicate).length,
       turnover_auec: revenue.length > 0 ? sum(revenue) : null,
       cost_auec: cost.length > 0 ? sum(cost) : null,
       fees_auec: fees.length > 0 ? sum(fees) : null,
@@ -318,7 +321,7 @@ export function aggregate(
   const netRated = sum(
     withNet.filter((s) => s.active_ms >= MIN_RATE_ACTIVE_MS).map((s) => s.money.net_auec as number),
   );
-  const rev = known(allTrips.map((t) => t.revenue_auec));
+  const rev = known(allEff.filter((e) => !e.duplicate).map((e) => e.trip.revenue_auec));
 
   const byRate = [...rated].sort(
     (a, b) => (b.money.net_per_hour_auec as number) - (a.money.net_per_hour_auec as number),

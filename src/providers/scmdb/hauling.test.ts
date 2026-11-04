@@ -368,3 +368,38 @@ describe("Feature: fit to the hold counts trips", () => {
     });
   });
 });
+
+describe("Feature: a merged family keeps the deduction flag of ANY variant (audit leftover)", () => {
+  const rangeOrder = order("r1", { minSCU: 288, maxSCU: 288 });
+  const deducedOrder = order("r1", { minSCU: 288, maxSCU: 0 });
+  const merged = (first: unknown, second: unknown) => ({
+    ...MERGED,
+    contracts: [
+      contract("m1", { title: "Same", haulingOrders: [first] }),
+      contract("m2", { title: "Same", haulingOrders: [second] }),
+    ],
+  });
+  it.each([
+    ["the first variant is a plain range", rangeOrder, deducedOrder],
+    ["the first variant is the deduced one", deducedOrder, rangeOrder],
+  ])("Given %s, Then the merged row is flagged deduced", (_name, first, second) => {
+    const r = rankHauling(extractHauling(merged(first, second)), QUERY);
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0].variants).toBe(2);
+    expect(r.rows[0].scu).toMatchObject({ min: 288, max: 288, deduced_fixed_quantity: true });
+    expect(r.rows[0].flags).toContain("scu_fixed_quantity_is_deduced");
+  });
+  it("Given no variant is deduced, Then the flag stays off", () => {
+    const r = rankHauling(extractHauling(merged(rangeOrder, rangeOrder)), QUERY);
+    expect(r.rows[0].scu?.deduced_fixed_quantity).toBe(false);
+    expect(r.rows[0].flags).not.toContain("scu_fixed_quantity_is_deduced");
+  });
+});
+
+describe("Feature: a contract that can roll 0 SCU still needs one trip (audit leftover)", () => {
+  it("Given a SCU range starting at 0, Then trips.min is 1, not 0", () => {
+    const ship = { name: null, hold_scu: 46, max_container_size: 16 };
+    expect(fitFor(ship, { min: 0, max: 20 }, 4).trips).toEqual({ min: 1, max: 1 });
+    expect(fitFor(ship, { min: 0, max: 100 }, 4).trips).toEqual({ min: 1, max: 3 });
+  });
+});

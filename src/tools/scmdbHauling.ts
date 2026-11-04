@@ -341,6 +341,14 @@ async function offersMode(
   clients: { uexClient: HttpClient; scwClient: HttpClient },
   a: z.infer<typeof ArgsSchema>,
 ): Promise<ToolResult> {
+  // Refuse a bad argument BEFORE any upstream request: a wrong speed must not cost UEX calls.
+  const givenSpeed =
+    a.quantum_speed_ms !== undefined ? validQuantumSpeed(a.quantum_speed_ms) : null;
+  if (a.quantum_speed_ms !== undefined && givenSpeed === null) {
+    throw new UserError(
+      "quantum_speed_ms must be between 1,000,000 and 299,792,458 m/s (a quantum drive, in metres per second).",
+    );
+  }
   const offers: OfferInput[] = (a.offers ?? []).map((o) => ({
     title: o.title ? cleanLabel(o.title, 80) : null,
     reward: Math.round(o.reward),
@@ -394,19 +402,13 @@ async function offersMode(
     }
   }
 
-  const speed =
-    a.quantum_speed_ms !== undefined
-      ? validQuantumSpeed(a.quantum_speed_ms)
-      : (sheet?.quantum_speed_ms ?? null);
-  if (a.quantum_speed_ms !== undefined && speed === null) {
-    throw new UserError(
-      "quantum_speed_ms must be between 1,000,000 and 299,792,458 m/s (a quantum drive, in metres per second).",
-    );
-  }
+  const speed = a.quantum_speed_ms !== undefined ? givenSpeed : (sheet?.quantum_speed_ms ?? null);
   const model: TravelModel = {
     quantumSpeedMs: speed,
     spoolSeconds: sheet?.spool_seconds ?? DEFAULT_SPOOL_SECONDS,
-    stopSeconds: Math.round(a.stop_minutes ?? DEFAULT_STOP_SECONDS / 60) * 60,
+    // The user's value, to the second: rounding to whole minutes would turn 0.4 into 0 and 0.5 into 1.
+    stopSeconds:
+      a.stop_minutes !== undefined ? Math.round(a.stop_minutes * 60) : DEFAULT_STOP_SECONDS,
     localHopSeconds: LOCAL_HOP_SECONDS,
   };
   if (speed === null) {
@@ -435,7 +437,7 @@ async function offersMode(
     ship: description,
     time_model: {
       estimate: true,
-      stop_minutes: Math.round(model.stopSeconds / 60),
+      stop_minutes: Math.round((model.stopSeconds / 60) * 100) / 100,
       local_hop_minutes: Math.round(model.localHopSeconds / 60),
       quantum_speed_ms: model.quantumSpeedMs,
       spool_seconds: model.spoolSeconds,
@@ -531,7 +533,8 @@ export function scmdbHaulingTools(clients: {
           },
           stop_minutes: {
             type: "number",
-            description: "offers: assumed minutes per stop (default 8, an unmeasured assumption).",
+            description:
+              "offers: assumed minutes per stop, fractions allowed (default 8, an unmeasured assumption).",
           },
           rank: {
             type: "string",

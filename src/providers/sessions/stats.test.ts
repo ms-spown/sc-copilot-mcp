@@ -256,3 +256,46 @@ describe("Feature: one basis for the result, and nothing counted twice", () => {
     expect(a.money.net_auec).toBe(10_000 + 700);
   });
 });
+
+describe("Feature: a run stored twice by an older build counts once in every sum", () => {
+  const run = (key: string, endSec: number) =>
+    trip({
+      key,
+      kind: "trade",
+      source: "trade_journal",
+      started_at: stamp(1),
+      ended_at: stamp(endSec),
+      commodity: "Waste",
+      cost_auec: 40_000,
+      revenue_auec: 90_000,
+      fees_auec: 500,
+      gross_margin_auec: 50_000,
+      net_auec: null,
+    });
+
+  it("Given two trade trips with the same start and goods, Then turnover, cost, fees and gross margin count the later one only", () => {
+    const m = summarizeSession(
+      played(1, { trips: [run("aaaaaa000001", 60), run("aaaaaa000002", 1300)] }),
+    ).money;
+    expect(m.turnover_auec).toBe(90_000);
+    expect(m.cost_auec).toBe(40_000);
+    expect(m.fees_auec).toBe(500);
+    expect(m.gross_margin_auec).toBe(50_000);
+    expect(m.net_auec).toBe(50_000);
+  });
+
+  it("Given a run stored twice and nothing else, Then the copy is neither a left-out contract nor a partial total", () => {
+    const m = summarizeSession(
+      played(1, { trips: [run("aaaaaa000001", 60), run("aaaaaa000002", 1300)] }),
+    ).money;
+    expect(m.overlap_excluded).toBe(0);
+    expect(m.net_complete).toBe(true);
+  });
+
+  it("Given the same file across sessions, Then the aggregate turnover counts it once", () => {
+    const a = aggregate([
+      played(1, { trips: [run("aaaaaa000001", 60), run("aaaaaa000002", 1300)] }),
+    ]);
+    expect(a.money.turnover_auec).toBe(90_000);
+  });
+});

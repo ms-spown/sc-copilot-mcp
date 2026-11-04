@@ -22,6 +22,8 @@ const { GameLog, gameLogConfigFromEnv } = await load("providers/gamelog/reader.j
 const { FleetStore, fleetFilePath } = await load("providers/fleet/store.js");
 const { createProbes } = await load("providers/probes.js");
 const { collectStatus } = await load("tools/status.js");
+const { extractHauling } = await load("providers/scmdb/hauling.js");
+const { parseContainerSizes } = await load("providers/uex/shipSheet.js");
 
 // Same environment as the server: the .env next to the package, then the game-log settings from the
 // Claude Desktop entry (that is where they live), unless already set in the shell.
@@ -77,12 +79,38 @@ for (const [label, url, params] of [
   }
 }
 
+// scmdb_rank_hauling reads UEX `container_sizes` (a text such as "1,2,4,8,16") to know the biggest box a ship takes.
+try {
+  const r = await clients.uexClient.get("/vehicles");
+  const rows = Array.isArray(r.data?.data) ? r.data.data : [];
+  const withSizes = rows.filter((v) => parseContainerSizes(v?.container_sizes) !== null).length;
+  line(rows.length > 0 && withSizes > 0, "vehicles container_sizes (scmdb_rank_hauling)", `${withSizes} of ${rows.length} ships have parseable sizes`);
+} catch (e) {
+  line(false, "vehicles container_sizes (scmdb_rank_hauling)", e.message);
+}
+
 console.log("\n== SCMDB: every file kind, LIVE then PTU (shape is checked on load)");
 for (const channel of ["live", "ptu"]) {
   for (const kind of ["merged", "crafting_blueprints", "mining_data", "mining_equipment"]) {
     try {
       const f = await clients.scmdb.file(channel, kind);
       line(true, `${channel} ${kind}`, f.version);
+      if (kind === "merged") {
+        // The hauling fields scmdb_rank_hauling reads: missionType "Hauling*", haulingOrders (minSCU, maxSCU,
+        // maxContainerSize). extractHauling throws when there is no hauling contract with orders.
+        try {
+          const h = extractHauling(f.data);
+          const orders = h.templates.flatMap((t) => t.orders);
+          const withContainer = orders.filter((o) => o.max_container_size !== null).length;
+          line(
+            h.counts.hauling > 0 && h.counts.orders > 0 && h.counts.with_scu > 0 && withContainer > 0,
+            `${channel} hauling fields (haulingOrders, SCU, container size)`,
+            `${h.counts.hauling} contracts, ${h.counts.orders} orders, ${h.counts.with_scu} with SCU, ${withContainer} with a container size`,
+          );
+        } catch (e) {
+          line(false, `${channel} hauling fields (haulingOrders, SCU, container size)`, e.message);
+        }
+      }
     } catch (e) {
       // A missing PTU is normal between test cycles; anything else is not.
       const absent = channel === "ptu" && /no PTU build/.test(e.message);

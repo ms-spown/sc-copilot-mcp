@@ -50,7 +50,11 @@ export function fitFor(
     return { container, hold: "unknown", trips: null };
   }
   const hold = ship.hold_scu;
-  const trips = { min: Math.ceil(scu.min / hold), max: Math.ceil(scu.max / hold) };
+  // A contract with a minimum of 0 SCU still needs one trip: never report 0 trips.
+  const trips = {
+    min: Math.max(1, Math.ceil(scu.min / hold)),
+    max: Math.max(1, Math.ceil(scu.max / hold)),
+  };
   const holdFit: HoldFit =
     scu.max <= hold ? "one_trip" : scu.min <= hold ? "depends_on_roll" : "several_trips";
   return { container, hold: holdFit, trips };
@@ -150,6 +154,8 @@ const fingerprint = (t: HaulingTemplate): string =>
 interface Family {
   first: HaulingTemplate;
   variants: number;
+  /** True when ANY merged variant reads a fixed quantity by deduction (the fingerprint does not tell them apart). */
+  deduced: boolean;
 }
 
 function perScu(t: HaulingTemplate): RankRow["reward_per_scu"] {
@@ -201,8 +207,10 @@ export function rankHauling(dataset: HaulingDataset, q: RankQuery): RankResult {
   for (const t of dataset.templates) {
     const key = fingerprint(t);
     const f = families.get(key);
-    if (f) f.variants++;
-    else families.set(key, { first: t, variants: 1 });
+    if (f) {
+      f.variants++;
+      if (t.scu_uses_deduction) f.deduced = true;
+    } else families.set(key, { first: t, variants: 1, deduced: t.scu_uses_deduction });
   }
 
   const kept: { family: Family; row: RankRow }[] = [];
@@ -239,7 +247,7 @@ export function rankHauling(dataset: HaulingDataset, q: RankQuery): RankResult {
     if (t.has_personal_cooldown) flags.push("personal_cooldown");
     if (t.is_intro) flags.push("intro_contract");
     if (t.required_intros.length) flags.push(`needs_intro: ${t.required_intros[0]}`);
-    if (t.scu_uses_deduction) flags.push("scu_fixed_quantity_is_deduced");
+    if (family.deduced) flags.push("scu_fixed_quantity_is_deduced");
     if (t.scu === null) flags.push("scu_unknown");
     if (fit.container === "too_big") flags.push("containers_too_big_for_the_ship");
     kept.push({
@@ -257,7 +265,7 @@ export function rankHauling(dataset: HaulingDataset, q: RankQuery): RankResult {
               min: t.scu.min,
               max: t.scu.max,
               fixed: t.scu.min === t.scu.max,
-              deduced_fixed_quantity: t.scu_uses_deduction,
+              deduced_fixed_quantity: family.deduced,
             }
           : null,
         reward_per_scu: perScu(t),
