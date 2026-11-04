@@ -1026,13 +1026,18 @@ it again from any conversation, after a game crash, and after a reboot of the PC
   or `sc_session_new`): the session exists from the click and its chronometer runs from then, even with the game closed.
   **The game starts it by itself** when it is seen running (launched and connected) and there is no session in progress
   (none, the last one ended, or quiet for more than 3 hours, `SC_SESSION_GAP_HOURS`, 0.25 to 48). **Opening the dashboard
-  never starts one.** A session you started that holds nothing yet (no trip, no balance, no played time: the game was
-  never seen) is a **chronometer**: the card says "en cours" with the elapsed time and "le jeu n'a pas encore été vu";
-  **Redémarrer le chrono** puts its start at now (no question: nothing is closed), **Terminer la session** deletes it
-  (nothing to archive), and the game starting later does **not** reset it (it keeps your click as its start, the balance
-  is adopted when the game gives it; a chronometer is never closed by a gap, only you end it). An empty session nobody
-  asked for (a leftover of an older server that made one when the dashboard opened) is **deleted on the first look**, not
-  archived; a session that holds something is never dropped.
+  never starts one.** A session you started that holds nothing yet (no trip, no ship loss, no refused price, no note, and
+  under 2 minutes of play, **whatever its start balance**: the game may already be running) is a **chronometer**: the card
+  says "en cours" with the elapsed time; **Redémarrer le chrono** (or **Nouvelle session** again) puts its start and its
+  start balance at now, so repeated clicks never pile up empty sessions, **Terminer la session** deletes it (nothing to
+  archive), both at once for a chronometer under 15 minutes (older ones ask first). One exception: while the game is
+  running and no earlier session was ended by hand, **Terminer** keeps the chronometer as ended by hand, since a deleted
+  one would let the game start another within seconds. The game starting later does **not** reset it (it keeps your click
+  as its start); the 3 hour gap never closes it, but it **expires after 24 hours without activity** (deleted by the next
+  look; if the game is first seen after that long, it starts at that moment instead of at the old click). An empty session
+  nobody asked for (a leftover of an older server that made one when the dashboard opened) is **deleted on the first
+  look**, not archived, unless it follows a "Nouvelle session" click of that older server closely (then it is adopted as
+  yours) or holds a note; a session that holds something is never dropped.
 - **It resumes** when the game is seen again within the gap, whether the game was closed cleanly or not. The break is
   written down: `game_closed` if the game wrote its quit line, `unclean` if there was no end marker (crash, reboot of the
   PC, or this server was not running). Nothing is invented about what happened meanwhile.
@@ -1192,8 +1197,8 @@ compares what the plan promised with what you really got (`src/providers/session
   hidden, the trips and the time. In the compact view the bar is one line (a button that unfolds it) that also says the state
   ("chrono 12 min", "terminée à 16:10"). The card has five states, and **a way to start a session is on it in every one**:
   **no session** ("Aucune session en cours", primary **Démarrer une session**, no question), **chronometer** (a session you
-  started that the game has not filled yet: "en cours", the elapsed time, **Redémarrer le chrono** and **Terminer la
-  session**, both at once), **en cours** (or "inactive" after a long quiet: **Terminer la session** and **Nouvelle session**,
+  started that holds nothing yet: "en cours", the elapsed time, "expire après 24 h sans activité", **Redémarrer le chrono**
+  and **Terminer la session**, both at once under 15 minutes, with a question above), **en cours** (or "inactive" after a long quiet: **Terminer la session** and **Nouvelle session**,
   each after a question), and **terminée** ("terminée à 16:10", how it ended, its result, and **Nouvelle session** as the
   main button, no question). **Sessions ▾/▴** is ONE button that opens and closes the list of past sessions (no separate
   close button); the list shows the **3 latest** sessions (the current one included) with the state of each (in progress,

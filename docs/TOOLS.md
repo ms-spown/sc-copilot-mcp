@@ -730,7 +730,7 @@ The player's saved play sessions, newest first, with their key numbers: start, a
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `limit` | number | no | How many sessions, 1 to 50. Default 20. |
+| `limit` | number | no | How many sessions, 1 to 200. Default 20. |
 | `include_balance` | boolean | no | Include aUEC figures (balances, results, turnover, rate per hour). Default true; false hides them (the player's choice). |
 
 ### sc_session_stats
@@ -756,7 +756,7 @@ Starts a new play session now, at any time (the player pressed or asked for 'Dé
 
 ### sc_session_end
 
-Ends the current play session now (the player asked to finish it); its numbers stay in the history. The next play period starts a new one once the game is seen starting afresh. A session that holds nothing (the player's timer, the game never seen) is DELETED instead, nothing is archived (ok=true, reason=discarded). The answer's reason is ended, discarded, already_ended (the last session was already ended) or none (no session yet); it acts on the last session. Writes only this server's own session file. Use only when the player asks. Optional note (500 characters).
+Ends the current play session now (the player asked to finish it); its numbers stay in the history. The next play period starts a new one once the game is seen starting afresh. A session that holds nothing (the player's timer: no trip, no note, under 2 minutes played) is DELETED instead, nothing is archived (ok=true, reason=discarded), except while the game is running with no earlier session ended by hand, where it is ended and kept so that the game does not start another at once. The answer's reason is ended, discarded, already_ended (the last session was already ended) or none (no session yet); it acts on the last session. Writes only this server's own session file. Use only when the player asks. Optional note (500 characters).
 
 *Source:* session file (local) · *Kind:* user · *Trust:* untrusted_text · *Profiles:* local
 

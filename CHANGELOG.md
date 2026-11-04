@@ -18,6 +18,16 @@ versions follow [Semantic Versioning](https://semver.org/).
   filled yet is a **chronometer**: "en cours" with the elapsed time from your click, even with the game closed, with
   **Redémarrer le chrono** (start put at now, no question) and **Terminer la session** (deletes it, nothing to archive). The
   game starting later does not reset it; a gap never closes it.
+- **Audit fixes of #87.** "Toutes les sessions (N)" now asks for all N (up to the 200 the file keeps; `sc_session_list` accepts
+  `limit` up to 200, the description and the golden file say so) instead of stopping at 30. The chronometer is any session of the
+  player's that holds nothing (no trip, loss, refused price or note) and has under 2 minutes of play, **whatever its start balance**
+  (the game may be running): "Nouvelle session" again restarts it (start and balance) instead of piling up empty sessions, and
+  "Terminer" deletes it; a note or a refusal makes it a real session (ended by hand after the question). While the game runs and
+  no earlier session was ended by hand, "Terminer" keeps the chronometer as ended instead of deleting it (the game would start
+  another within seconds). An untouched chronometer expires after 24 h without activity (never the 3 h gap); a chronometer over
+  15 minutes asks before it is restarted or deleted. An older server's empty session that follows its "Nouvelle session" click
+  closely is adopted as the player's; one with a note is never deleted. The result line goes when the card shows another session
+  (a new session 5 no longer sits under "Session 5 supprimée"). `sc_session_end` says when a passed note was not kept.
 - **The game starts a session by itself** when it is launched and connected and there is none in progress (none, the last one
   ended, or quiet for over 3 hours); a session you started is kept; a session you ended stays ended (#84's guarantees hold).
 - **One button for the list:** "Sessions ▾/▴" opens and closes it (the separate "Fermer" is gone, and the label flips at once);

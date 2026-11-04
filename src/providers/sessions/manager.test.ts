@@ -608,12 +608,12 @@ describe("Feature: session management with the game closed (every click has a du
     expect([ended.ended, ended.discarded, ended.reason]).toEqual([false, false, "none"]);
   });
 
-  it("Given no session, When the player starts one with the game closed, Then a timed session exists from the click, and it stays through polls and 30 hours", async () => {
+  it("Given no session, When the player starts one with the game closed, Then a timed session exists from the click, and it stays through polls and 20 hours, then expires after 24 h without activity", async () => {
     const r = rig();
     const made = await r.manager.newSession();
     expect([made.started, made.restarted, made.closedPrevious]).toEqual([true, false, null]);
     expect(made.summary.number).toBe(1);
-    for (const wait of [MIN, HOUR, 30 * HOUR]) {
+    for (const wait of [MIN, HOUR, 18 * HOUR]) {
       r.clock.t += wait;
       const bar = await r.manager.bar(false);
       expect(bar.current?.id).toBe(made.summary.id);
@@ -622,23 +622,90 @@ describe("Feature: session management with the game closed (every click has a du
       expect(bar.current?.started_at).toBe(made.summary.started_at);
     }
     expect((await stored(r)).map((s) => `${s.number}:${s.started_by}`)).toEqual(["1:player"]);
+    // Over 24 hours with nothing in it: the look deletes it (the 3 hour gap never applied to it).
+    r.clock.t += 10 * HOUR;
+    expect((await r.manager.bar(false)).current).toBeNull();
+    expect(await stored(r)).toEqual([]);
   });
 
   it("Given the player's timer that holds nothing, Then 'Redémarrer' puts its start at now (same session) and 'Terminer' deletes it", async () => {
     const r = rig();
     const first = await r.manager.newSession();
     r.clock.t += 20 * MIN;
-    const again = await r.manager.newSession("evening");
+    const again = await r.manager.newSession();
     expect([again.started, again.restarted]).toEqual([true, true]);
     expect(again.summary.id).toBe(first.summary.id);
     expect(again.summary.started_at).toBe(new Date(r.clock.t).toISOString());
-    expect((await stored(r))[0].note).toBe("evening");
     const ended = await r.manager.endSession();
     expect([ended.ended, ended.discarded, ended.reason]).toEqual([false, true, "discarded"]);
     expect(await stored(r)).toEqual([]);
     expect((await r.manager.bar(false)).current).toBeNull();
     // The number is given back: the next one is session 1 again.
     expect((await r.manager.newSession()).summary.number).toBe(1);
+  });
+
+  it("Given a note with the click, Then the session is a real one: 'Terminer' keeps it (ended by hand), nothing is deleted", async () => {
+    const r = rig();
+    await r.manager.newSession("evening");
+    expect((await r.manager.bar(false)).current?.empty).toBe(false);
+    r.clock.t += 10 * MIN;
+    const ended = await r.manager.endSession();
+    expect([ended.ended, ended.discarded, ended.reason]).toEqual([true, false, "ended"]);
+    expect((await stored(r)).map((s) => `${s.number}:${s.end_reason}:${s.note}`)).toEqual([
+      "1:manual:evening",
+    ]);
+  });
+
+  it("Given the game RUNNING with a balance, Then repeated 'Nouvelle session' clicks restart the same untouched session (no junk piles up), and 'Terminer' deletes it when nothing would bring it back", async () => {
+    const r = rig();
+    r.log.running = true;
+    // A session of the game's, closed by hand, so that deleting the next one cannot let the game start another.
+    await playMinutes(r, 4, () => 1000);
+    await r.manager.endSession();
+    r.clock.t += MIN;
+    r.tel.s.balance = 1500;
+    const first = await r.manager.newSession();
+    expect(first.restarted).toBe(false);
+    expect((await stored(r)).map((s) => s.number)).toEqual([1, 2]);
+    for (let i = 0; i < 4; i++) {
+      r.clock.t += 20_000;
+      r.tel.s.balance = 1500 + i;
+      const again = await r.manager.newSession();
+      expect(again.restarted).toBe(true);
+      expect(again.summary.id).toBe(first.summary.id);
+    }
+    const all = await stored(r);
+    expect(all.map((s) => s.number)).toEqual([1, 2]);
+    expect(all[1].start_balance).toBe(1503);
+    expect(all[1].started_at).toBe(new Date(r.clock.t).toISOString());
+    const bar = (await r.manager.bar(true)).current;
+    expect(bar?.empty).toBe(true); // a chronometer on the card, not a session of 0 trips
+    const ended = await r.manager.endSession();
+    expect([ended.ended, ended.discarded]).toEqual([false, true]);
+    expect((await stored(r)).map((s) => s.number)).toEqual([1]);
+  });
+
+  it("Given the game RUNNING and no earlier session ended by hand, Then 'Terminer' on the chronometer keeps it as ended by hand, so the game does not start another within seconds", async () => {
+    const r = rig();
+    r.log.running = true;
+    r.tel.s.state = "live";
+    r.tel.s.balance = 700;
+    await r.manager.tick();
+    await r.manager.tick(); // the game's own session 1 (started by the game)
+    await r.manager.newSession(); // closes it into the history, starts the player's session 2
+    r.clock.t += 20_000;
+    await r.manager.tick();
+    expect((await stored(r)).map((s) => s.number)).toEqual([1, 2]);
+    const ended = await r.manager.endSession();
+    expect([ended.ended, ended.discarded, ended.reason]).toEqual([true, false, "ended"]);
+    for (let i = 0; i < 4; i++) {
+      r.clock.t += 5_000;
+      await r.manager.tick();
+    }
+    expect((await stored(r)).map((s) => `${s.number}:${s.end_reason}`)).toEqual([
+      "1:new_session",
+      "2:manual",
+    ]);
   });
 
   it("Given the player's timer, When the game is launched later, Then the timer keeps the click's start and the session fills", async () => {

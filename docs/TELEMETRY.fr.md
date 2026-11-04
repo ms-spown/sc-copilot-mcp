@@ -1087,14 +1087,20 @@ plantage du jeu et après un redémarrage du PC.
   sur la carte, ou `sc_session_new`) : la session existe dès le clic et son chronomètre part de là, même jeu fermé. **Le
   jeu la démarre tout seul** quand il est vu en marche (lancé et connecté) et qu'il n'y a pas de session en cours (aucune,
   la dernière terminée, ou silencieuse depuis plus de 3 heures, `SC_SESSION_GAP_HOURS`, de 0,25 à 48). **Ouvrir le tableau
-  de bord n'en démarre jamais.** Une session que vous avez démarrée et qui ne contient encore rien (ni trajet, ni solde,
-  ni temps de jeu : le jeu n'a jamais été vu) est un **chronomètre** : la carte dit « en cours » avec le temps écoulé et
-  « le jeu n'a pas encore été vu » ; **Redémarrer le chrono** remet son début à maintenant (sans question : rien n'est
-  fermé), **Terminer la session** la supprime (rien à archiver), et le jeu qui démarre plus tard ne la remet **pas** à
-  zéro (elle garde votre clic comme début, le solde est repris quand le jeu le donne ; un chronomètre n'est jamais fermé
-  par un délai, vous seul le terminez). Une session vide que personne n'a demandée (un reste d'un ancien serveur qui en
-  créait une à l'ouverture du tableau de bord) est **supprimée dès le premier regard**, pas archivée ; une session qui
-  contient quelque chose n'est jamais supprimée.
+  de bord n'en démarre jamais.** Une session que vous avez démarrée et qui ne contient encore rien (ni trajet, ni perte de
+  vaisseau, ni prix refusé, ni note, et moins de 2 minutes de jeu, **quel que soit son solde de départ** : le jeu peut déjà
+  tourner) est un **chronomètre** : la carte dit « en cours » avec le temps écoulé ; **Redémarrer le chrono** (ou
+  **Nouvelle session** encore) remet son début et son solde de départ à maintenant, donc des clics répétés n'empilent
+  jamais de sessions vides, **Terminer la session** la supprime (rien à archiver), tout de suite pour un chronomètre de
+  moins de 15 minutes (au-delà, une question d'abord). Une exception : tant que le jeu tourne et qu'aucune session
+  précédente n'a été terminée à la main, **Terminer** garde le chronomètre comme terminé à la main, car un chronomètre
+  supprimé laisserait le jeu en démarrer un autre en quelques secondes. Le jeu qui démarre plus tard ne le remet **pas** à
+  zéro (il garde votre clic comme début) ; le délai de 3 heures ne le ferme jamais, mais il **expire après 24 heures sans
+  activité** (supprimé au regard suivant ; si le jeu n'est vu qu'après ce temps, il commence à ce moment et non au vieux
+  clic). Une session vide que personne n'a demandée (un reste d'un ancien serveur qui en créait une à l'ouverture du
+  tableau de bord) est **supprimée dès le premier regard**, pas archivée, sauf si elle suit de près un clic « Nouvelle
+  session » de cet ancien serveur (elle est alors adoptée comme la vôtre) ou porte une note ; une session qui contient
+  quelque chose n'est jamais supprimée.
 - **Elle reprend** quand le jeu est revu dans le délai, que le jeu ait été fermé proprement ou non. La coupure est notée :
   `game_closed` si le jeu a écrit sa ligne de fermeture, `unclean` s'il n'y a pas de marqueur de fin (plantage,
   redémarrage du PC, ou serveur arrêté). Rien n'est inventé sur ce qui s'est passé entre-temps.
@@ -1273,8 +1279,9 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   trajets et le temps. Dans la vue compacte elle tient sur une ligne (un bouton la déplie) qui dit aussi l'état
   (« chrono 12 min », « terminée à 16:10 »). La carte a cinq états, et **un moyen de démarrer une session y est dans chacun** :
   **aucune session** (« Aucune session en cours », **Démarrer une session** en bouton principal, sans question),
-  **chronomètre** (une session que vous avez démarrée et que le jeu n'a pas encore remplie : « en cours », le temps écoulé,
-  **Redémarrer le chrono** et **Terminer la session**, tout de suite), **en cours** (ou « inactive » après un long silence :
+  **chronomètre** (une session que vous avez démarrée et qui ne contient encore rien : « en cours », le temps écoulé,
+  « expire après 24 h sans activité », **Redémarrer le chrono** et **Terminer la session**, tout de suite sous 15 minutes,
+  avec une question au-delà), **en cours** (ou « inactive » après un long silence :
   **Terminer la session** et **Nouvelle session**, chacune après une question) et **terminée** (« terminée à 16:10 »,
   comment, son résultat, et **Nouvelle session** comme bouton principal, sans question). **Sessions ▾/▴** est UN seul
   bouton qui ouvre et ferme la liste des sessions passées (pas de bouton Fermer à part) ; la liste montre les **3 dernières**

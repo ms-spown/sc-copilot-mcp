@@ -296,19 +296,32 @@ export function sessionToolAnswer(
   args: Record<string, any>,
   nowMs: number,
   variant: SessionVariant = "story",
+  /** How many more (invented, older) ended sessions the file holds, to test a long list. */
+  extra = 0,
 ) {
   const include = args["include_balance"] !== false;
   // The history the variant implies: session 4 is the one in progress, ended by hand, or replaced by the waiting session 5.
-  const all =
+  const recent =
     variant === "ended"
       ? [...BASE, ENDED_BY_HAND]
       : variant === "timing"
         ? [...BASE, { ...ENDED_BY_HAND, endReason: "new_session" as const }, TIMING]
         : [...BASE, CURRENT];
+  const older: Fixture[] = Array.from({ length: extra }, (_, i) => ({
+    ...BASE[0]!,
+    number: 100 + i, // invented numbers: the list only needs distinct, older sessions
+    startedAgoMs: (60 + i) * HOUR,
+  }));
+  const all = [...older, ...recent];
   if (name === "sc_session_list") {
+    // Like the server: newest first, at most `limit` of them, and the total it holds.
+    const limit = typeof args["limit"] === "number" ? args["limit"] : 20;
     return {
       total: all.length,
-      sessions: [...all].reverse().map((f) => sessionSummary(f, nowMs, include)),
+      sessions: [...all]
+        .reverse()
+        .slice(0, limit)
+        .map((f) => sessionSummary(f, nowMs, include)),
     };
   }
   if (name === "sc_session_stats") {
@@ -473,6 +486,11 @@ export function sessionToolAnswer(
 export function sessionFake(initial: SessionVariant = "story") {
   let variant = initial;
   let timingFrom: number | null = null;
+  // How long ago a chronometer that was there from the start began (the default fixture says 12 minutes).
+  let timingAgo: number | undefined;
+  // With saved sessions behind it, deleting the chronometer leaves the last one (ended) on the card; with none, nothing is left.
+  const hasHistory = initial !== "empty";
+  let extra = 0;
   const calls: string[] = [];
   return {
     get variant() {
@@ -481,6 +499,13 @@ export function sessionFake(initial: SessionVariant = "story") {
     set variant(v: SessionVariant) {
       variant = v;
     },
+    set timingAgoMs(v: number) {
+      timingAgo = v;
+    },
+    /** More (invented, older) sessions in the file, for the list. */
+    set extraSessions(n: number) {
+      extra = n;
+    },
     /** Every session tool call, in order (the same names as the real tools). */
     calls,
     bar: (nowMs: number, include: boolean) =>
@@ -488,16 +513,17 @@ export function sessionFake(initial: SessionVariant = "story") {
         nowMs,
         include,
         variant,
-        timingFrom === null ? undefined : Math.max(0, nowMs - timingFrom),
+        timingFrom === null ? timingAgo : Math.max(0, nowMs - timingFrom),
       ),
     tool: (name: string, args: Record<string, any>, nowMs: number) => {
-      const answer = sessionToolAnswer(name, args, nowMs, variant);
+      const answer = sessionToolAnswer(name, args, nowMs, variant, extra);
       if (name === "sc_session_end" || name === "sc_session_new") {
         calls.push(name);
         if (name === "sc_session_new") timingFrom = nowMs; // the chronometer runs from the click
         const reason = (answer as any).reason;
         if (name === "sc_session_end" && reason === "ended") variant = "ended";
-        if (name === "sc_session_end" && reason === "discarded") variant = "empty"; // no session left
+        if (name === "sc_session_end" && reason === "discarded")
+          variant = hasHistory ? "ended" : "empty";
         if (name === "sc_session_new" && (answer as any).started === true) variant = "timing";
       }
       return answer;

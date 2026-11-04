@@ -719,7 +719,7 @@
       "properties": {
         "limit": {
           "type": "number",
-          "description": "How many sessions, 1 to 50. Default 20."
+          "description": "How many sessions, 1 to 200. Default 20."
         },
         "include_balance": {
           "type": "boolean",

@@ -377,6 +377,16 @@ describe("Feature: new and end write only the server's own file", () => {
     expect(doc.sessions).toEqual([]);
   });
 
+  it("Given a deleted chronometer and a note passed to 'end', Then the answer says the note was not kept; the list accepts up to 200", async () => {
+    const t = rig(true, undefined, undefined, false);
+    await t.call("sc_session_new");
+    const e = await t.call("sc_session_end", { note: "for later" });
+    expect(e.data.data.reason).toBe("discarded");
+    expect(e.data.data.message).toMatch(/The note was not kept: a deleted session keeps nothing/);
+    expect((await t.call("sc_session_list", { limit: 200 })).r.isError).not.toBe(true);
+    expect((await t.registry.call("sc_session_list", { limit: 201 })).isError).toBe(true);
+  });
+
   it.each([...HIDDEN_MODES, ...SHOWN_MODES])(
     "Given $label, Then the answers of end and new hold no aUEC figure (the dashboard writes them to the screen)",
     async (mode) => {

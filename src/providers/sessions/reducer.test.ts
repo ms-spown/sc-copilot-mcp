@@ -4,6 +4,7 @@ import {
   HEARTBEAT_MS,
   isEmpty,
   isLeftover,
+  isUntouched,
   latest,
   needsTidy,
   observe,
@@ -396,13 +397,195 @@ describe("Feature: the player starts a session at ANY time", () => {
     expect(cur.start_balance_quality).toBe("game_start");
     expect(cur.started_by).toBe("player");
     expect(summary(s)).toEqual(["1:open"]);
-    // A chronometer the game never filled is not closed by any gap either: only the player ends it.
+    // A chronometer the game never filled is not closed by the 3 hour gap: only the player ends it, or 24 h without activity.
     const t = STATES.timing();
-    expect(tidy(t, T0 + 30 * HOUR, cfg).changed).toBe(false);
-    expect(needsTidy(t, T0 + 30 * HOUR, cfg)).toBe(false);
-    observe(t, obs({ now: T0 + 30 * HOUR, balance: 5, freshStart: true }), cfg);
+    expect(tidy(t, T0 + 20 * HOUR, cfg).changed).toBe(false);
+    expect(needsTidy(t, T0 + 20 * HOUR, cfg)).toBe(false);
+    observe(t, obs({ now: T0 + 20 * HOUR, balance: 5, freshStart: true }), cfg);
     expect(t.sessions[0].started_at).toBe(new Date(T0).toISOString());
     expect(summary(t)).toEqual(["1:open"]);
+  });
+
+  it("Given a chronometer untouched for 24 hours, Then tidy deletes it; and the game first seen after that long starts it at now, not at the old click", () => {
+    const s = STATES.timing();
+    expect(needsTidy(s, T0 + 24 * HOUR - MIN, cfg)).toBe(false);
+    expect(needsTidy(s, T0 + 24 * HOUR + MIN, cfg)).toBe(true);
+    expect(tidy(s, T0 + 24 * HOUR + MIN, cfg).action).toBe("discarded");
+    expect(s.sessions).toEqual([]);
+    const t = STATES.timing();
+    const late = T0 + 30 * HOUR;
+    const r = observe(t, obs({ now: late, balance: 70, freshStart: true }), cfg);
+    expect(r.action).toBe("restarted");
+    expect(summary(t)).toEqual(["1:open"]);
+    expect(latest(t)!.started_at).toBe(new Date(late).toISOString());
+    expect(latest(t)!.start_balance).toBe(70);
+    expect(latest(t)!.start_balance_quality).not.toBe("late");
+    // A chronometer whose game played (not untouched) is a real session: no expiry.
+    const played = STATES.timing();
+    latest(played)!.active_ms = 5 * MIN; // the game was played for a while
+    expect(needsTidy(played, T0 + 20 * HOUR, cfg)).toBe(true); // closed by the gap as any session, not deleted
+    tidy(played, T0 + 20 * HOUR, cfg);
+    expect(summary(played)).toEqual(["1:gap"]);
+  });
+});
+
+describe("Feature: a session the player started while the game RUNS (it has a start balance)", () => {
+  /** A session started by the click with a fresh balance: the player's, holding nothing, barely played. */
+  const running = () => {
+    const s = emptyState();
+    startNew(s, T0, cfg, 5000);
+    return s;
+  };
+
+  it("Given an untouched session with a balance, Then 'Nouvelle session' restarts it (new start, new balance): no junk sessions pile up", () => {
+    const s = running();
+    expect(isEmpty(latest(s)!)).toBe(false); // it has a balance, so it is not "never seen"...
+    expect(isUntouched(latest(s)!)).toBe(true); // ...but it holds nothing: restartable
+    for (let i = 1; i <= 4; i++) {
+      const r = startNew(s, T0 + i * 20_000, cfg, 5000 + i);
+      expect(r.action).toBe("restarted");
+    }
+    expect(summary(s)).toEqual(["1:open"]);
+    expect(latest(s)!.started_at).toBe(new Date(T0 + 80_000).toISOString());
+    expect(latest(s)!.start_balance).toBe(5004);
+    expect(latest(s)!.active_ms).toBe(0);
+  });
+
+  it("Given an untouched session with a balance, Then 'Terminer' deletes it (the game closed)", () => {
+    const s = running();
+    const e = endCurrent(s, T0 + 20_000);
+    expect([e.ended, e.reason]).toEqual([false, "discarded"]);
+    expect(s.sessions).toEqual([]);
+  });
+
+  it("Given a session played for 2 minutes or holding a note, a trip, a loss or a refused price, Then it is a real session: 'Terminer' ends it by hand, 'Nouvelle' closes it", () => {
+    const real: Array<[string, (x: ReturnType<typeof emptyState>) => void]> = [
+      ["played", (x) => void (latest(x)!.active_ms = 2 * MIN)],
+      ["note", (x) => void (latest(x)!.note = "for the crew")],
+      ["refusal", (x) => void (latest(x)!.price_refusals = 1)],
+      [
+        "loss",
+        (x) =>
+          void latest(x)!.ship_losses.push({
+            at: new Date(T0 + 10_000).toISOString(),
+            ship_class: null,
+            cause: "unknown",
+            causer: "unknown",
+            zone: null,
+            cargo_scu: null,
+            cargo_paid_auec: null,
+          }),
+      ],
+    ];
+    for (const [name, touch] of real) {
+      const a = running();
+      touch(a);
+      expect(isUntouched(latest(a)!), name).toBe(false);
+      expect(endCurrent(a, T0 + 3 * MIN).reason, name).toBe("ended");
+      expect(summary(a), name).toEqual(["1:manual"]);
+      const b = running();
+      touch(b);
+      startNew(b, T0 + 3 * MIN, cfg, 1);
+      expect(summary(b), name).toEqual(["1:new_session", "2:open"]);
+    }
+    // A trip makes it real too.
+    const t = running();
+    observe(t, obs({ now: T0 + 30_000, balance: 5100, trips: [trip(1, T0 + 20_000)] }), cfg);
+    expect(isUntouched(latest(t)!)).toBe(false);
+    expect(endCurrent(t, T0 + MIN).reason).toBe("ended");
+  });
+
+  it("Given the game running and no earlier session ended by hand, Then 'Terminer' keeps the chronometer as ended (a deleted one would come back by itself); with one ended by hand it is deleted", () => {
+    const first = running();
+    const a = endCurrent(first, T0 + 20_000, undefined, { gameRunning: true });
+    expect([a.ended, a.reason]).toEqual([true, "ended"]);
+    expect(summary(first)).toEqual(["1:manual"]);
+    // And it does not come back: the game is seen, the session ended by hand holds.
+    expect(
+      observe(first, obs({ now: T0 + 40_000, balance: 5, freshStart: false }), cfg).action,
+    ).toBe("held");
+    // An earlier session ended by gap (not by hand): the game would start another by itself.
+    const gap = STATES.active();
+    tidy(gap, T0 + 5 * HOUR, cfg);
+    startNew(gap, T0 + 5 * HOUR + MIN, cfg, 9);
+    endCurrent(gap, T0 + 5 * HOUR + 2 * MIN, undefined, { gameRunning: true });
+    expect(summary(gap)).toEqual(["1:gap", "2:manual"]);
+    // An earlier session ended by hand: deleting is safe, and it is deleted.
+    const hand = STATES.ended();
+    startNew(hand, T0 + HOUR, cfg, 9);
+    const d = endCurrent(hand, T0 + HOUR + 20_000, undefined, { gameRunning: true });
+    expect(d.reason).toBe("discarded");
+    expect(summary(hand)).toEqual(["1:manual"]);
+    // With the game closed, an empty chronometer is always deleted.
+    const closed = STATES.timing();
+    expect(endCurrent(closed, T0 + MIN, undefined, { gameRunning: false }).reason).toBe(
+      "discarded",
+    );
+  });
+});
+
+describe("Feature: an older (2.7.0) file", () => {
+  const legacyEmpty = (
+    n: number,
+    startedAt: number,
+    over: Partial<Parameters<typeof makeSession>[1]> = {},
+  ) =>
+    makeSession(n, {
+      start_balance: null,
+      start_balance_at: null,
+      start_balance_quality: null,
+      last_balance: null,
+      last_balance_at: null,
+      started_at: new Date(startedAt).toISOString(),
+      last_activity_at: new Date(startedAt).toISOString(),
+      ...over,
+    });
+
+  it("Given an empty session with no started_by right after a session closed by 'new_session', Then it is the old 'Nouvelle session' click: adopted as the player's, not deleted", () => {
+    const s = emptyState();
+    const closedAt = T0 + 30 * MIN;
+    s.sessions.push(
+      makeSession(1, {
+        ended_at: new Date(closedAt).toISOString(),
+        end_reason: "new_session",
+        active_ms: 5 * MIN,
+      }),
+      legacyEmpty(2, closedAt + 20_000),
+    );
+    s.next_number = 3;
+    expect(needsTidy(s, closedAt + MIN, cfg)).toBe(true);
+    const r = tidy(s, closedAt + MIN, cfg);
+    expect(r.action).toBe("adopted");
+    expect(latest(s)!.started_by).toBe("player");
+    expect(summary(s)).toEqual(["1:new_session", "2:open"]);
+    // Adopted once: the next look changes nothing.
+    expect(tidy(s, closedAt + 2 * MIN, cfg).changed).toBe(false);
+  });
+
+  it("Given an empty session with no started_by that does NOT follow such a click (or follows it by far), Then it is a ghost and is deleted", () => {
+    const a = emptyState();
+    a.sessions.push(
+      makeSession(1, { ended_at: new Date(T0).toISOString(), end_reason: "new_session" }),
+      legacyEmpty(2, T0 + 10 * MIN),
+    );
+    expect(tidy(a, T0 + 11 * MIN, cfg).action).toBe("discarded");
+    expect(summary(a)).toEqual(["1:new_session"]);
+    const b = emptyState();
+    b.sessions.push(
+      makeSession(1, { ended_at: new Date(T0).toISOString(), end_reason: "gap" }),
+      legacyEmpty(2, T0 + 20_000),
+    );
+    expect(tidy(b, T0 + MIN, cfg).action).toBe("discarded");
+  });
+
+  it("Given an empty session with no started_by and a note, Then it is never deleted (it holds a note: a real session)", () => {
+    const s = emptyState();
+    s.sessions.push(legacyEmpty(1, T0, { note: "my evening" }));
+    s.next_number = 2;
+    expect(needsTidy(s, T0 + MIN, cfg)).toBe(false);
+    expect(tidy(s, T0 + MIN, cfg).changed).toBe(false);
+    expect(observe(s, obs({ now: T0 + 2 * MIN, running: false }), cfg).changed).toBe(false);
+    expect(latest(s)!.note).toBe("my evening");
   });
 });
 

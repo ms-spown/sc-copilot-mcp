@@ -13,6 +13,7 @@ import {
   cloneLight,
   endCurrent,
   isEmpty,
+  isUntouched,
   latest,
   needsTidy,
   observe,
@@ -192,6 +193,11 @@ export class SessionManager {
 
   get ledger(): LedgerService | undefined {
     return this.deps.ledger;
+  }
+
+  /** The game was seen running a moment ago (a look within the last 30 seconds saw it). */
+  get gameRunning(): boolean {
+    return this.now() - this.lastRunningAt < 30_000;
   }
 
   get enabled(): boolean {
@@ -545,7 +551,7 @@ export class SessionManager {
 
   /**
    * The debrief (providers/sessions/debrief.ts) of one session by id, else of the newest `last` sessions that hold something
-   * (an empty one waiting for the game is not a debrief). Money only with `includeMoney`, the start and last balance only
+   * (a chronometer that holds nothing is not a debrief). Money only with `includeMoney`, the start and last balance only
    * with `includeBalances` on top of it. Null when there is nothing to report.
    */
   async debrief(opts: {
@@ -665,7 +671,11 @@ export class SessionManager {
       restarted: r.action === "restarted",
       previous: prev ? prev.number : null,
       closedPrevious:
-        r.action === "created" && prev && prev.ended_at === null && !isEmpty(prev)
+        r.action === "created" &&
+        prev &&
+        prev.ended_at === null &&
+        !isEmpty(prev) &&
+        !isUntouched(prev)
           ? prev.number
           : null,
       saved: this.persistence.saved,
@@ -686,7 +696,7 @@ export class SessionManager {
   }> {
     await this.flush().catch(() => undefined);
     const now = this.now();
-    const r = await this.apply((s) => endCurrent(s, now, note));
+    const r = await this.apply((s) => endCurrent(s, now, note, { gameRunning: this.gameRunning }));
     return {
       ended: r.ended,
       discarded: r.reason === "discarded",

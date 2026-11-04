@@ -18,7 +18,8 @@
 
 export function sessionConfig() {
   return {
-    maxRows: 30,
+    // The most sessions the list can hold: the file keeps 200 at most (MAX_SESSIONS), and "Toutes les sessions" asks for all.
+    maxRows: 200,
     // The list shows this many sessions (the current one included) until "Toutes les sessions" is pressed.
     latestRows: 3,
     maxTrips: 10,
@@ -113,7 +114,7 @@ export function sessionSummaryNormalize(raw: any, allowMoney: boolean): any {
     started_at: startedAt,
     ended_at: sessionIso(raw.ended_at),
     last_activity_at: sessionIso(raw.last_activity_at),
-    // True while the game was never seen during the session: it only waits for the game (nothing to end or restart).
+    // True for an open session that holds nothing yet (the player's chronometer): restarting or ending it loses nothing.
     empty: raw.empty === true,
     game_closed_at: sessionIso(raw.game_closed_at),
     duration_ms: sessionNum(raw.duration_ms),
@@ -327,7 +328,7 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
   const elapsed = Number.isFinite(started) && now > started ? now - started : 0;
   if (phase === "timing") {
     if (when) sub.push("chrono lancé " + when);
-    sub.push("le jeu n’a pas encore été vu");
+    sub.push("rien d’enregistré pour l’instant");
   } else {
     const ending = phase === "ended" ? sessionEndReasonText(cur.end_reason) : "";
     if (ending) sub.push(ending);
@@ -337,11 +338,13 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
   }
   const tripsText = sessionTripsText(cur.trips);
   // Closing a session that holds something asks first; a chronometer that holds nothing is restarted or deleted at once.
-  const closes = phase === "active" || phase === "idle";
+  // (A chronometer that ran for over 15 minutes asks too: restarting or deleting it throws that time away.)
+  const longChrono = phase === "timing" && elapsed > 15 * 60000;
+  const closes = phase === "active" || phase === "idle" || longChrono;
   const canEnd = closes || phase === "timing";
   const hints: any = {
     timing:
-      "Le chrono tourne depuis ton clic et ne repart pas à zéro quand le jeu se lance. « Terminer la session » la supprime (elle ne contient rien : rien à archiver).",
+      "Le chrono tourne depuis ton clic et ne repart pas à zéro quand le jeu se lance ; il expire après 24 h sans activité. « Terminer la session » la supprime (elle ne contient rien : rien à archiver).",
     ended:
       "Rien n’est compté tant que tu ne démarres pas une nouvelle session ou que le jeu n’est pas relancé.",
   };
@@ -539,17 +542,31 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
     newLabel: phase === "timing" ? "Redémarrer le chrono" : "Nouvelle session",
     newPrimary: phase === "ended",
     endAsk:
-      "Terminer la session " +
-      cur.number +
-      " (" +
-      tripsText +
-      ") ? Elle reste dans l’historique, et rien n’y sera plus compté tant que tu ne démarres pas une nouvelle session ou que le jeu n’est pas relancé.",
+      phase === "timing"
+        ? "Supprimer la session " +
+          cur.number +
+          " ? Son chrono tourne depuis " +
+          L.formatDuration(elapsed) +
+          " et elle ne contient rien : elle sera supprimée, sans archive."
+        : "Terminer la session " +
+          cur.number +
+          " (" +
+          tripsText +
+          ") ? Elle reste dans l’historique, et rien n’y sera plus compté tant que tu ne démarres pas une nouvelle session ou que le jeu n’est pas relancé.",
     newAsk:
-      "Démarrer une nouvelle session ? La session " +
-      cur.number +
-      " (" +
-      tripsText +
-      ") sera terminée et restera dans l’historique.",
+      phase === "timing"
+        ? "Redémarrer le chrono de la session " +
+          cur.number +
+          " ? Il tourne depuis " +
+          L.formatDuration(elapsed) +
+          " ; il repartira de maintenant."
+        : "Démarrer une nouvelle session ? La session " +
+          cur.number +
+          " (" +
+          tripsText +
+          ") sera terminée et restera dans l’historique.",
+    endYes: phase === "timing" ? "Confirmer la suppression" : "Confirmer la fin",
+    newYes: phase === "timing" ? "Confirmer : redémarrer" : "Confirmer : nouvelle session",
     stale: !!bar.stale,
   };
 }
@@ -560,7 +577,7 @@ export function sessionRowStatus(s: any): string {
     const how = sessionEndReasonText(s.end_reason);
     return "terminée" + (how ? " · " + how : "");
   }
-  if (s.empty) return "en cours · jeu pas encore vu";
+  if (s.empty) return "en cours · chrono";
   return s.game_closed_at ? "en cours · jeu fermé" : "en cours";
 }
 
@@ -877,7 +894,8 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   }
   const list = el("div", "ses-list");
   const rows: any[] = [];
-  for (let i = 0; i < cfg.maxRows; i++) {
+  // Rows are made as the list needs them (3 at first; "Toutes les sessions" may need up to the 200 the file keeps).
+  const addRow = () => {
     const r = el("button", "ses-row");
     r.setAttribute("type", "button");
     r.setAttribute("aria-label", "Ouvrir cette session");
@@ -890,7 +908,8 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     r.addEventListener("click", () => openDetail(r._id));
     rows.push(r);
     add(list, r);
-  }
+  };
+  for (let i = 0; i < cfg.latestRows; i++) addRow();
   const detail = el("div", "ses-detail");
   const detailHead = el("div", "ses-detail-head");
   const detailTitle = el("h3", "ses-menu-title", "");
@@ -985,8 +1004,12 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   // none) is done at once. The result is always written in the live region under the card, and the card itself changes: it
   // shows the session as ended (with its time and its result) or the new one.
 
-  function setFlash(text: string, number: number) {
-    st.flash = text ? { text, number } : null;
+  /**
+   * The result line. `anchor` is the id of the session the card shows once the answer is in (null while the action is under way):
+   * the line goes as soon as the card shows another session (a newer one started, even under the same number).
+   */
+  function setFlash(text: string, anchor: string | null) {
+    st.flash = text ? { text, anchor } : null;
   }
 
   /** The first click: asks for the confirmation, or does it at once when nothing would be closed. */
@@ -1016,7 +1039,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       c.kind === "end"
         ? "Fin de session annulée : la session continue."
         : "Nouvelle session annulée : la session continue.",
-      info ? info.number : 0,
+      info ? info.id : "",
     );
     renderActions();
     (c.kind === "end" ? btnEnd : btnNew).focus();
@@ -1025,27 +1048,23 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   async function run() {
     const c = st.confirm;
     if (!c || st.busy) return;
-    const info = st.info;
-    const number = info ? info.number : 0;
     st.confirm = null;
     st.busy = c.kind;
     setFlash(
       c.kind === "end" ? "Fin de la session en cours…" : "Démarrage de la nouvelle session…",
-      number,
+      null,
     );
     renderActions();
     let done = false;
     try {
       const r = await api.call(c.kind === "end" ? "sc_session_end" : "sc_session_new", {});
-      const about =
-        r && r.session && typeof r.session.number === "number" ? r.session.number : number;
-      setFlash(sessionActionText(c.kind, r, st.ctx.now), about);
+      setFlash(sessionActionText(c.kind, r, st.ctx.now), null);
       done = true;
     } catch (err: any) {
       setFlash(
         (c.kind === "end" ? "Fin de session impossible : " : "Nouvelle session impossible : ") +
           sessionText(err && err.message ? err.message : "erreur", 100),
-        number,
+        null,
       );
     }
     // The card follows the server: ask for the bar again (and the list, when the menu is open), whatever the answer was. The
@@ -1058,6 +1077,8 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     } catch {
       /* the next poll shows the truth */
     }
+    // From now on the line belongs to the session the card shows.
+    if (st.flash) st.flash.anchor = st.info ? st.info.id : "";
     st.busy = null;
     renderActions();
     // The button that was pressed may be gone (a session that has ended offers another one): the focus goes to the next
@@ -1119,7 +1140,16 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   /** "Toutes les sessions" / "Les dernières seulement": the same list, every saved session or the latest few. */
   function toggleAll() {
     st.all = !st.all;
-    renderMenu();
+    // The latest few are asked for at first; "all" asks again for as many as the file holds (its total, 200 at most).
+    if (st.all) void loadMenu();
+    else renderMenu();
+  }
+
+  /** How many sessions to ask the server for: the latest few, or all of them (the total it reported, bounded by the file). */
+  function listLimit(): number {
+    if (!st.all) return cfg.latestRows;
+    const total = st.list ? st.list.total : 0;
+    return Math.min(cfg.maxRows, Math.max(total, cfg.latestRows));
   }
 
   function closeMenu() {
@@ -1146,7 +1176,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     renderMenu();
     try {
       const listRes = await api.call("sc_session_list", {
-        limit: cfg.maxRows,
+        limit: listLimit(),
         include_balance: money,
       });
       const statsRes = await api.call("sc_session_stats", { include_balance: money });
@@ -1341,7 +1371,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     show(confirmBox, !!c && !st.busy && !!info);
     if (c && info) {
       setText(confirmText, c.kind === "end" ? info.endAsk : info.newAsk);
-      setText(btnYes, c.kind === "end" ? "Confirmer la fin" : "Confirmer : nouvelle session");
+      setText(btnYes, c.kind === "end" ? info.endYes : info.newYes);
     }
     setText(hint, info && !st.busy && !c ? info.hint : "");
     show(hint, !!(info && info.hint) && !st.busy && !c);
@@ -1438,7 +1468,8 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   function renderList() {
     const l = st.list;
     const sessions = l ? l.sessions : [];
-    const limit = st.all ? rows.length : cfg.latestRows;
+    const limit = st.all ? cfg.maxRows : cfg.latestRows;
+    while (rows.length < Math.min(limit, sessions.length)) addRow();
     // The button appears only when there is more to show than the latest few (the saved total, not just what was fetched).
     const total = l ? Math.max(l.total, sessions.length) : 0;
     show(btnAll, total > cfg.latestRows);
@@ -1487,11 +1518,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       detailTitle,
       "Session " +
         s.number +
-        (s.status === "ended"
-          ? " (terminée)"
-          : s.empty
-            ? " (en cours, jeu pas encore vu)"
-            : " (en cours)"),
+        (s.status === "ended" ? " (terminée)" : s.empty ? " (en cours, chrono)" : " (en cours)"),
     );
     const f: string[] = [];
     const how = s.ended_at ? sessionEndReasonText(s.end_reason) : "";
@@ -1665,10 +1692,13 @@ export function sessionPanel(doc: any, L: any, api: any): any {
         st.confirm = null;
         setFlash(
           "La session a changé pendant que tu hésitais : la confirmation est annulée, rien n’a été fait.",
-          info.number,
+          info.id,
         );
       }
-      if (st.flash && (!info.visible || info.number > st.flash.number)) st.flash = null;
+      // The result line belongs to the session the card showed when the action finished: another one (a newer session, even
+      // under the same number) takes it away.
+      if (st.flash && (!info.visible || (st.flash.anchor !== null && info.id !== st.flash.anchor)))
+        st.flash = null;
       show(root, info.visible);
       if (!info.visible) return;
       setAttr(root, "data-empty", info.empty ? "1" : "0");
