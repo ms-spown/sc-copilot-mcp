@@ -1,6 +1,6 @@
 import { cleanLabel } from "../core/untrusted.js";
 import type { BalancePoint } from "../providers/telemetry/service.js";
-import type { Transaction } from "../providers/gamelog/trade.js";
+import { pairCargoRuns, type Transaction } from "../providers/gamelog/trade.js";
 
 /**
  * The commerce model: from the transactions of a trading run, the balance history and the optional plan, what the
@@ -11,12 +11,18 @@ import type { Transaction } from "../providers/gamelog/trade.js";
  *   - bénéfice prévu      = the plan's expected profit (a margin before any fee, from market prices).
  *   - chiffre d'affaires  = what the sales brought in (the amounts of the sell transactions).
  *   - coût d'achat        = what the purchases cost (the amounts of the buy transactions).
- *   - marge brute         = chiffre d'affaires - coût d'achat. Comparable with the planned profit.
+ *   - marge brute         = the journal's own first-in first-out pairing per commodity (`pairCargoRuns`, the one behind
+ *                           `sc_trade_journal`): revenue of the paired SCU minus their cost. Comparable with the planned
+ *                           profit. Unsold SCU and sold SCU that were not bought in the run (stock from before) are not
+ *                           valued, so the card and the journal can never disagree in sign. Remaining differences: the
+ *                           model pairs the transactions of one run, the journal those of one commodity over the session.
  *   - écart de prix       = marge brute - bénéfice prévu (prices AND quantities: both move it).
  *   - frais               = what the loading service took on top of the prices. The log has NO fee line: they are
- *                           measured against the balance (see reconcileFees) or inferred from the difference.
- *   - bénéfice net        = balance at the end - balance just before the first purchase. The only figure that is
- *                           what the player really gained.
+ *                           measured against the balance (see reconcileFees) or inferred from the difference, and the
+ *                           inferred total is refused when it is not a plausible fee (0 to 50 % of the turnover).
+ *   - bénéfice net        = balance at the end - balance just before the first purchase: the VARIATION OF THE BALANCE
+ *                           over the run, so it holds every movement of that time (a reward, another purchase), not only
+ *                           the run. `fees.unexplained` says how much of it the margin and the fees do not explain.
  *
  * PRIVACY: every figure that is an amount of aUEC lives in `money`, which is built ONLY when the View asked for the
  * balance. Without it a run carries commodity, places, quantities, times and counts, nothing else.
@@ -59,8 +65,14 @@ export const TRADE_MIN_RATE_MS = 120_000;
 export const TRADE_MAX_FEE_SHARE = 0.5;
 /** Hypothesis for "per day": hours of play. Said as such wherever it is shown. */
 export const TRADE_DAY_HOURS = 4;
-/** Sold quantity within this share of the bought one counts as "everything sold". */
+/** Sold quantity within this share of the bought one counts as "everything sold" (when the pairing is not possible). */
 const SOLD_ALL = 0.995;
+/** Overhead assumed per cycle when only one run was seen: loading, empty trip, waiting. NOT measured. */
+export const TRADE_OVERHEAD_MS = 10 * 60_000;
+/** The unexplained part of the balance is flagged above this share of the turnover. */
+export const TRADE_UNEXPLAINED_SHARE = 0.02;
+/** SCU below this are rounding noise. */
+const SCU_EPS = 0.01;
 
 // -------------------------------------------------------------------------------------------------
 // Public shapes
@@ -110,8 +122,14 @@ export interface FeeReport {
   rate: number | null;
   /** Where the rate comes from when this run has none. */
   rate_from?: "ce_trajet" | "trajet_precedent";
-  /** What the sides measured do not explain of (gross margin - net): other costs or a mismatch. */
+  /**
+   * What the margin and the fees do not explain of the balance: gross margin - net - fees (fees measured), or the
+   * deduced total minus the fee rate observed on an earlier run times the turnover; when the deduced total is refused,
+   * the whole gap. Positive: the balance went down more than the margin says. null: no reference to compare with.
+   */
   unexplained: number | null;
+  /** Why the total is unknown although the net is known. */
+  reason?: "solde_autre_raison" | "lignes_non_confirmees" | "stock_anterieur";
 }
 
 export interface NetReport {
@@ -141,10 +159,20 @@ export interface PlannedNet {
 export interface Projection {
   /** Run time between the first purchase and the last transaction. */
   run_ms: number;
+  /** The cycle the hourly figures rest on: the time between the start of this run and the previous one when both exist, else the run plus an assumed overhead. */
+  cycle_ms: number;
+  basis: "cycle_observe" | "duree_plus_marge";
+  /** The overhead added to the run time when no cycle was observed (loading, empty trip, waiting): an assumption. */
+  overhead_ms: number;
+  /** Runs whose net was measured (this one included). */
+  measured_runs: number;
+  /** The balance variation holds movements the margin and the fees do not explain: no figure is built on it. */
+  net_doubtful: boolean;
   runs_per_hour: number;
   net_per_hour: number | null;
   day_hours: number;
-  runs_per_day: number;
+  /** Only with at least two measured runs. */
+  runs_per_day: number | null;
   net_per_day: number | null;
   /** What the next run would earn: the planned profit net of the observed fees, else this run's net. */
   next_run_net: number | null;
@@ -157,8 +185,8 @@ export interface RunMoney {
   plan_match: "ok" | "non_verifie" | null;
   turnover: number | null;
   cost: number | null;
-  /** True when the cost is only the share of the purchases that was sold (partial run, quantities known). */
-  cost_prorata: boolean;
+  /** True when the cost is only that of the SCU paired with a sale (the rest is unsold, or the sale had no purchase). */
+  cost_paired: boolean;
   gross_margin: number | null;
   /** gross margin - planned profit (prices and quantities mixed). */
   price_gap: number | null;
@@ -188,6 +216,8 @@ export interface TradeRunView {
   duration_ms: number;
   scu_bought: number | null;
   scu_sold: number | null;
+  /** SCU sold that were not bought in this run (stock from before): never valued. 0 when none. */
+  prior_stock_scu: number;
   buys: number;
   sells: number;
   /** Transactions that failed (not counted) and ones whose result is unknown (counted, flagged). */
@@ -201,7 +231,7 @@ export interface TradeRunView {
 
 export interface TradeSection {
   v: 1;
-  /** `none`: no trade journal feeds the dashboard (the parser is not wired yet, or the log is off). */
+  /** `none`: no trade journal feeds the dashboard (the game log is off, unreadable or not read yet). */
   source: "journal" | "none";
   runs: TradeRunView[];
   /** Runs found before the payload kept the newest ones. */
@@ -231,6 +261,8 @@ export interface Tx {
   quantity: number | null;
   commodity: string | null;
   shop: string | null;
+  /** The journal's own record (for its pairing). */
+  src: Transaction;
 }
 
 export interface Prepared {
@@ -273,6 +305,7 @@ export function prepareTransactions(raw: readonly Transaction[] | undefined): Pr
       quantity,
       commodity: cleanLabel(r.commodity_id, TRADE_LABEL_MAX),
       shop: cleanLabel(r.shop, TRADE_LABEL_MAX),
+      src: r,
     };
     // Exactly as the journal does: only completed lines count; failed and unconfirmed ones are listed, not counted.
     if (r.status === "completed") out.counted.push(tx);
@@ -465,13 +498,52 @@ function distinct(list: readonly (string | null)[], max: number): string[] {
   return seen.slice(0, max);
 }
 
-/** The goods that weigh most (by money); the others come after. */
+/**
+ * The goods of a run in order of first appearance. Never by amount: without the balance the answer (and so the ledger
+ * hash) must not depend on relative amounts.
+ */
 function goodsOf(txs: readonly Tx[]): { main: string | null; more: string[] } {
-  const weight = new Map<string, number>();
-  for (const x of txs)
-    if (x.commodity) weight.set(x.commodity, (weight.get(x.commodity) ?? 0) + x.total);
-  const order = [...weight.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
-  return { main: order[0] ?? null, more: order.slice(1, 4) };
+  const order = distinct(
+    txs.map((x) => x.commodity),
+    4,
+  );
+  return { main: order[0] ?? null, more: order.slice(1) };
+}
+
+interface Pairing {
+  ok: boolean;
+  cost: number;
+  revenue: number;
+  paired: number;
+  unsold: number;
+  withoutPurchase: number;
+}
+
+/**
+ * The journal's own first-in first-out pairing (per commodity) over the transactions of one run. Not possible when a
+ * quantity is missing (the card then falls back on the plain totals).
+ */
+function pairRun(txs: readonly Tx[]): Pairing {
+  const none: Pairing = {
+    ok: false,
+    cost: 0,
+    revenue: 0,
+    paired: 0,
+    unsold: 0,
+    withoutPurchase: 0,
+  };
+  if (!txs.every((x) => x.quantity !== null && x.quantity > 0)) return none;
+  const runs = pairCargoRuns(
+    txs.map((x) => ({ ...x.src, resource: x.src.resource ?? x.src.commodity_id ?? "unknown" })),
+  );
+  return {
+    ok: true,
+    cost: sum(runs.map((r) => r.cost_auec)),
+    revenue: sum(runs.map((r) => r.revenue_auec)),
+    paired: sum(runs.map((r) => r.paired_scu)),
+    unsold: sum(runs.map((r) => r.unsold_scu)),
+    withoutPurchase: sum(runs.map((r) => r.sold_without_purchase_scu)),
+  };
 }
 
 interface RunFacts {
@@ -481,6 +553,9 @@ interface RunFacts {
   stage: RunStage;
   boughtQty: number | null;
   soldQty: number | null;
+  pair: Pairing;
+  /** SCU sold that were not bought in the run (quantities only: no amount). */
+  priorStock: number;
 }
 
 function factsOf(txs: Tx[]): RunFacts {
@@ -492,16 +567,19 @@ function factsOf(txs: Tx[]): RunFacts {
       : null;
   const boughtQty = qty(buys);
   const soldQty = qty(sells);
+  const pair = pairRun(txs);
   let stage: RunStage;
   if (buys.length === 0) stage = "sold_only";
   else if (sells.length === 0) stage = "open";
+  else if (pair.ok) stage = pair.unsold > SCU_EPS ? "partial" : "complete";
   else if (boughtQty !== null && soldQty !== null) {
     stage = soldQty >= boughtQty * SOLD_ALL ? "complete" : "partial";
   } else {
     // Quantities unknown: a sale after the purchases is taken as the end of the run.
     stage = "complete";
   }
-  return { txs, buys, sells, stage, boughtQty, soldQty };
+  const priorStock = pair.ok && buys.length > 0 ? pair.withoutPurchase : 0;
+  return { txs, buys, sells, stage, boughtQty, soldQty, pair, priorStock };
 }
 
 function planMatch(plan: TradePlan | undefined, goods: string | null): "ok" | "non_verifie" | null {
@@ -523,21 +601,33 @@ function moneyOf(
     nextRunStart: number | null;
     dayHours: number;
     fallbackRate: number | null;
+    /** Start of the run before this one, and how many earlier runs had a measured net. */
+    prevStart: number | null;
+    measuredBefore: number;
   },
 ): RunMoney {
   const { history, nowMs } = ctx;
   const turnover = f.sells.length > 0 ? sum(f.sells.map((x) => x.total)) : null;
   const allCost = f.buys.length > 0 ? sum(f.buys.map((x) => x.total)) : null;
-  let cost = allCost;
-  let prorata = false;
-  if (f.stage === "partial" && allCost !== null && f.boughtQty && f.soldQty !== null) {
-    cost = Math.round(allCost * Math.min(1, f.soldQty / f.boughtQty));
-    prorata = true;
-  } else if (f.stage === "open") {
-    cost = allCost;
+  // Cost and gross margin follow the journal's pairing (first in, first out, per commodity): only the paired SCU are valued.
+  let cost: number | null = allCost;
+  let gross: number | null = null;
+  let costPaired = false;
+  if (f.stage === "sold_only") {
+    cost = null;
+  } else if (f.stage !== "open" && turnover !== null) {
+    if (f.pair.ok) {
+      costPaired = f.pair.unsold > SCU_EPS || f.pair.withoutPurchase > SCU_EPS;
+      if (f.pair.paired > SCU_EPS) {
+        cost = Math.round(f.pair.cost);
+        gross = Math.round(f.pair.revenue - f.pair.cost);
+      } else {
+        cost = null;
+      }
+    } else if (allCost !== null) {
+      gross = turnover - allCost;
+    }
   }
-  const grossReady = turnover !== null && cost !== null && f.stage !== "open";
-  const gross = grossReady ? turnover - (cost as number) : null;
 
   const plan = ctx.isLatest ? ctx.plan : undefined;
   const planned =
@@ -599,7 +689,7 @@ function moneyOf(
     net.method = "calcule";
   }
 
-  // ---- fees: both sides measured, else the total inferred from gross margin - net
+  // ---- fees: both sides measured, else the total deduced from gross margin - net (only when it is a plausible fee)
   const fees: FeeReport = {
     total: null,
     method: null,
@@ -608,6 +698,7 @@ function moneyOf(
     rate: null,
     unexplained: null,
   };
+  const cap = turnover !== null ? turnover * TRADE_UNEXPLAINED_SHARE : 0;
   if (bothSides && f.sells.length > 0) {
     fees.buy = sides.buy;
     fees.sell = sides.sell;
@@ -615,16 +706,39 @@ function moneyOf(
     fees.method = "mesure";
     if (net.method === "mesure" && gross !== null)
       fees.unexplained = gross - net.auec! - fees.total;
-  } else if (net.method === "mesure" && gross !== null && f.stage === "complete" && !unsure) {
-    fees.total = gross - (net.auec as number);
-    fees.method = "estime";
-    // One side measured: the other one is what is left (still an estimate).
-    if (sides.buy && !sides.sell) {
-      fees.buy = sides.buy;
-      fees.sell = { auec: fees.total - sides.buy.auec, method: "estime" };
-    } else if (sides.sell && !sides.buy) {
-      fees.sell = sides.sell;
-      fees.buy = { auec: fees.total - sides.sell.auec, method: "estime" };
+  } else if (net.method === "mesure" && gross !== null && f.stage === "complete") {
+    if (unsure) {
+      fees.reason = "lignes_non_confirmees";
+    } else if (f.priorStock > SCU_EPS) {
+      fees.reason = "stock_anterieur";
+    } else {
+      const deduced = gross - (net.auec as number);
+      const plausible =
+        turnover !== null &&
+        turnover > 0 &&
+        deduced >= 0 &&
+        deduced <= turnover * TRADE_MAX_FEE_SHARE;
+      if (plausible) {
+        fees.total = deduced;
+        fees.method = "estime";
+        // One side measured: the other one is what is left (still an estimate).
+        if (sides.buy && !sides.sell) {
+          fees.buy = sides.buy;
+          fees.sell = { auec: deduced - sides.buy.auec, method: "estime" };
+        } else if (sides.sell && !sides.buy) {
+          fees.sell = sides.sell;
+          fees.buy = { auec: deduced - sides.sell.auec, method: "estime" };
+        }
+        // Compared with the rate seen on an earlier run, if any: the rest is not a fee.
+        if (ctx.fallbackRate !== null && turnover !== null)
+          fees.unexplained = Math.round(deduced - ctx.fallbackRate * turnover);
+      } else {
+        // The balance moved for another reason (a reward received, goods bought elsewhere): not shown as fees.
+        fees.reason = "solde_autre_raison";
+        fees.unexplained = deduced;
+        if (sides.buy) fees.buy = sides.buy;
+        if (sides.sell) fees.sell = sides.sell;
+      }
     }
   } else {
     if (sides.buy) fees.buy = sides.buy;
@@ -657,27 +771,51 @@ function moneyOf(
     }
   }
 
-  // ---- pace and projection (complete runs only)
+  // ---- pace and projection (a finished run that sold only what it bought)
   const runMs = last - first;
   let projection: Projection | null = null;
-  if (f.stage === "complete" && runMs >= TRADE_MIN_RATE_MS && ctx.isLatest) {
-    const perHour = 3_600_000 / runMs;
-    const netPerHour = net.auec !== null ? Math.round(net.auec * perHour) : null;
+  if (
+    f.stage === "complete" &&
+    runMs >= TRADE_MIN_RATE_MS &&
+    ctx.isLatest &&
+    f.priorStock <= SCU_EPS
+  ) {
+    const measuredRuns = ctx.measuredBefore + (net.method === "mesure" ? 1 : 0);
+    // The cycle the hours are made of: the time seen between two runs when there are two, else the run alone plus an
+    // overhead that is an ASSUMPTION (it ignores loading, the empty trip back and waiting otherwise).
+    const between = ctx.prevStart !== null ? first - ctx.prevStart : null;
+    const observed =
+      between !== null && between >= TRADE_MIN_RATE_MS && between <= TRADE_RUN_GAP_MS;
+    const cycle = observed ? (between as number) : runMs + TRADE_OVERHEAD_MS;
+    const perHour = 3_600_000 / cycle;
+    const showDay = measuredRuns >= 2;
+    const doubtful =
+      fees.reason !== undefined || (fees.unexplained !== null && Math.abs(fees.unexplained) > cap);
+    const usableNet = net.auec !== null && !doubtful ? net.auec : null;
     const runsPerDay = perHour * ctx.dayHours;
     projection = {
       run_ms: runMs,
+      cycle_ms: cycle,
+      basis: observed ? "cycle_observe" : "duree_plus_marge",
+      overhead_ms: observed ? 0 : TRADE_OVERHEAD_MS,
+      measured_runs: measuredRuns,
+      net_doubtful: doubtful,
       runs_per_hour: Math.round(perHour * 100) / 100,
-      net_per_hour: netPerHour,
+      net_per_hour: usableNet !== null ? Math.round(usableNet * perHour) : null,
       day_hours: ctx.dayHours,
-      runs_per_day: Math.round(runsPerDay * 10) / 10,
-      net_per_day: net.auec !== null ? Math.round(net.auec * runsPerDay) : null,
-      next_run_net: plannedNet ? plannedNet.auec : net.auec,
+      runs_per_day: showDay ? Math.round(runsPerDay * 10) / 10 : null,
+      net_per_day: showDay && usableNet !== null ? Math.round(usableNet * runsPerDay) : null,
+      next_run_net: plannedNet ? plannedNet.auec : usableNet,
       assumptions: [
+        observed
+          ? "un cycle = le temps mesuré entre le début de ce trajet et celui du précédent"
+          : "un cycle = la durée mesurée du premier achat à la dernière vente + " +
+            Math.round(TRADE_OVERHEAD_MS / 60_000) +
+            " min pour le chargement, le trajet à vide et l’attente (hypothèse, non mesurée)",
         "même trajet, mêmes prix et même quantité à chaque fois",
-        "durée mesurée du premier achat à la dernière vente : sans le trajet à vide ni l’attente",
         "marchandise toujours disponible, et prix qui ne baissent pas quand tu vends davantage",
         "frais au même taux que ce trajet",
-        "une journée de jeu = " + ctx.dayHours + " h (hypothèse)",
+        ...(showDay ? ["une journée de jeu = " + ctx.dayHours + " h (hypothèse)"] : []),
       ],
     };
   }
@@ -687,7 +825,7 @@ function moneyOf(
     plan_match: planMatch(plan, goods),
     turnover,
     cost,
-    cost_prorata: prorata,
+    cost_paired: costPaired,
     gross_margin: gross,
     price_gap: gap,
     gap_includes_quantity: gapQty,
@@ -725,6 +863,7 @@ function viewOf(f: RunFacts, prep: Prepared, money: RunMoney | undefined): Trade
     duration_ms: last - first,
     scu_bought: f.boughtQty,
     scu_sold: f.soldQty,
+    prior_stock_scu: Math.round(f.priorStock * 100) / 100,
     buys: f.buys.length,
     sells: f.sells.length,
     failed: failedHere.length,
@@ -747,6 +886,7 @@ export function buildTradeSection(input: TradeInput): TradeSection {
   const dayHours = input.dayHours ?? TRADE_DAY_HOURS;
   // The observed fee rate walks forward: a run without one uses the latest earlier run's.
   let carried: number | null = null;
+  let measured = 0;
   const moneys: (RunMoney | undefined)[] = [];
   if (input.includeBalance) {
     runs.forEach((f, i) => {
@@ -760,9 +900,18 @@ export function buildTradeSection(input: TradeInput): TradeSection {
         nextRunStart: i + 1 < runs.length ? runs[i + 1]!.txs[0]!.t : null,
         dayHours,
         fallbackRate: carried,
+        prevStart: i > 0 ? runs[i - 1]!.txs[0]!.t : null,
+        measuredBefore: measured,
       });
       moneys.push(money);
-      if (money.fees.rate_from === "ce_trajet" && money.fees.rate !== null)
+      if (money.net.method === "mesure") measured += 1;
+      // A rate that came from a doubtful deduction (the balance moved for other reasons) is never carried forward.
+      const cap = (money.turnover ?? 0) * TRADE_UNEXPLAINED_SHARE;
+      const doubtful =
+        money.fees.method === "estime" &&
+        money.fees.unexplained !== null &&
+        Math.abs(money.fees.unexplained) > cap;
+      if (money.fees.rate_from === "ce_trajet" && money.fees.rate !== null && !doubtful)
         carried = money.fees.rate;
     });
   }

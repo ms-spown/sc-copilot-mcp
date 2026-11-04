@@ -72,13 +72,27 @@ export function tradeNetReason(reason: string): string {
   return names[reason] || "Inconnu.";
 }
 
-/** Names the origin of the net figure. */
+/**
+ * Names the origin of the net figure. It is the VARIATION OF THE BALANCE over the run (first purchase to the last
+ * transaction + 8 s): everything that moved the balance in that time is in it, not only the run.
+ */
 export function tradeNetSource(net: any): string {
   if (!net || net.auec === null) return "";
-  if (net.method === "mesure") return "solde final − solde juste avant le premier achat";
+  if (net.method === "mesure")
+    return "variation du solde, du premier achat à la dernière vente : tout ce qui a bougé le solde y est compté";
   if (net.method === "calcule")
     return "marge brute − frais mesurés (le solde avant l’achat n’a pas été vu)";
   return "estimé";
+}
+
+/** The tag of the net figure: a balance variation is not "mesuré" in the sense of a log amount. */
+export function tradeNetTag(net: any): string {
+  if (!net || net.auec === null) return "";
+  return net.method === "mesure"
+    ? "variation du solde"
+    : net.method === "calcule"
+      ? "calculé"
+      : "estimé";
 }
 
 /**
@@ -116,6 +130,7 @@ export function tradeWaterfall(m: any): any[] {
       id: "planned",
       label: "Bénéfice prévu",
       hint: "plan, avant frais",
+      tag: "plan",
       kind: "total",
       from: 0,
       to: planned,
@@ -129,6 +144,7 @@ export function tradeWaterfall(m: any): any[] {
       id: "gap",
       label: "Écart de prix",
       hint: m.gap_includes_quantity ? "prix et quantité mêlés" : "réel − prévu",
+      tag: "calculé",
       kind: "delta",
       from: planned,
       to: gross,
@@ -141,12 +157,15 @@ export function tradeWaterfall(m: any): any[] {
     rows.push({
       id: "gross",
       label: "Marge brute",
-      hint: m.cost_prorata ? "ventes − coût de la part vendue" : "ventes − achats",
+      hint: m.cost_paired
+        ? "ventes − coût des SCU vendus (premier entré, premier sorti)"
+        : "ventes − achats",
+      tag: "calculé",
       kind: "total",
       from: 0,
       to: gross,
       value: gross,
-      estimate: !!m.cost_prorata,
+      estimate: false,
       tone: gross >= 0 ? "ok" : "bad",
     });
   }
@@ -155,7 +174,8 @@ export function tradeWaterfall(m: any): any[] {
     rows.push({
       id: "fees",
       label: "Frais",
-      hint: m.fees.method === "mesure" ? "chargés en plus des prix" : "écart marge − net",
+      hint: m.fees.method === "mesure" ? "chargés en plus des prix" : "écart marge − solde",
+      tag: m.fees.method === "mesure" ? "mesuré" : "estimé",
       kind: "delta",
       from: gross,
       to: gross - fees,
@@ -169,6 +189,7 @@ export function tradeWaterfall(m: any): any[] {
       id: "net",
       label: "Bénéfice net",
       hint: tradeNetSource(m.net),
+      tag: tradeNetTag(m.net),
       kind: "total",
       from: 0,
       to: m.net.auec,
@@ -368,6 +389,8 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
   slot.setAttribute("data-hidden", "1");
 
   const message = el("p", "tr-message", "");
+  // Warnings that change how a figure must be read (shown with the word "Attention", never by colour alone).
+  const warn = el("p", "tr-warn", "");
 
   // ---- the headline numbers (value first)
   const hero = el("div", "tr-hero");
@@ -528,7 +551,7 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
   add(moreBody, assumptionsTitle, assumptions, defsTitle, defs, historyTitle, history);
   add(more, moreSum, moreBody);
 
-  add(root, head, slot, message, hero, flow, duo, courseBox, more);
+  add(root, head, slot, message, warn, hero, flow, duo, courseBox, more);
 
   function render(ctx: any) {
     const trade = ctx && ctx.trade ? ctx.trade : null;
@@ -573,8 +596,11 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     let statusOk = true;
     if (!trade || trade.source !== "journal") {
       statusOk = false;
+      const st = ctx && ctx.ledgerStatus;
       msg =
-        "Le journal des transactions n’est pas encore branché : le bilan réel du trajet (chiffre d’affaires, frais, bénéfice net) n’est pas calculé. Ci-dessous, le plan et la variation du solde, qui n’est pas un bénéfice.";
+        st === "loading"
+          ? "Lecture du journal de jeu… le bilan réel du trajet apparaîtra ensuite."
+          : "Le journal de jeu est désactivé ou illisible (voir sc_log_status) : le bilan réel du trajet (chiffre d’affaires, frais, bénéfice net) n’est pas calculé. Ci-dessous, le plan et la variation du solde, qui n’est pas un bénéfice.";
     } else if (!run) {
       statusOk = false;
       msg = "Aucune transaction de marchandise dans le journal pour l’instant.";
@@ -610,7 +636,7 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           tiles.net,
           tradeAmount(L, net.auec, true),
           net.auec >= 0 ? "ok" : "bad",
-          tradeMethodLabel(net.method),
+          tradeNetTag(net),
           tradeIsEstimate(net.method),
           tradeNetSource(net),
         );
@@ -640,7 +666,20 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           m.turnover ? tradePct(L, m.fees.total / m.turnover) + " du chiffre d’affaires" : "",
         );
       } else {
-        tileValue(tiles.fees, "—", "", "inconnu", true, "ni mesurés ni déductibles pour l’instant");
+        const why: any = {
+          solde_autre_raison:
+            "le solde a bougé pour une autre raison : l’écart avec la marge n’est pas un frais plausible",
+          lignes_non_confirmees: "des lignes non confirmées du journal empêchent de les déduire",
+          stock_anterieur: "des SCU vendus n’ont pas été achetés ici : impossible de les déduire",
+        };
+        tileValue(
+          tiles.fees,
+          "—",
+          "",
+          "inconnu",
+          true,
+          why[m.fees.reason] || "ni mesurés ni déductibles pour l’instant",
+        );
       }
       const next = m.projection
         ? m.projection.next_run_net
@@ -655,7 +694,11 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           "estimé",
           true,
           m.planned_net
-            ? "bénéfice prévu − frais au taux observé (" + tradePct(L, m.planned_net.fee_rate) + ")"
+            ? "bénéfice prévu − frais au taux " +
+                (m.fees.rate_from === "trajet_precedent" ? "du trajet précédent" : "observé") +
+                " (" +
+                tradePct(L, m.planned_net.fee_rate) +
+                ")"
             : "même résultat que ce trajet",
         );
       } else {
@@ -687,7 +730,7 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       setVar(r.bar, "--w", String(row.width));
       setVar(r.zero, "--z", String(layout.zero));
       setText(r.value, tradeAmount(L, row.value, true));
-      setText(r.tag, row.estimate ? "estimé" : row.id === "planned" ? "plan" : "mesuré");
+      setText(r.tag, row.tag);
       setAttr(r.tag, "data-estimate", row.estimate ? "1" : "0");
     }
     let flowText = "";
@@ -697,20 +740,46 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           "Le plan est supposé être celui de ce trajet : le journal du jeu ne nomme pas les marchandises, impossible de le vérifier. ";
       if (m.price_gap !== null && m.gap_includes_quantity)
         flowText += "La quantité achetée diffère du plan : l’écart mêle prix et quantité. ";
-      if (
-        m.fees.unexplained !== null &&
-        m.turnover &&
-        Math.abs(m.fees.unexplained) > m.turnover * 0.02
-      )
+      if (m.cost_paired)
         flowText +=
-          "Écart non expliqué entre la marge brute, les frais mesurés et le solde : " +
-          tradeAmount(L, m.fees.unexplained, true) +
-          ". ";
-      if (m.cost_prorata)
-        flowText += "Vente partielle : la marge compte seulement la part vendue du coût d’achat. ";
+          "La marge ne valorise que les SCU vendus et achetés pendant ce trajet (premier entré, premier sorti, comme sc_trade_journal). ";
     }
     setText(flowNote, flowText.trim());
     show(flowNote, flowText !== "");
+
+    // ---- warnings: what changes how a figure must be read
+    const warns: string[] = [];
+    if (run && run.prior_stock_scu > 0)
+      warns.push(
+        "Stock antérieur : " +
+          L.fmtNum(run.prior_stock_scu, 2) +
+          "\u00a0SCU vendus n’ont pas été achetés pendant ce trajet. Ils ne sont pas valorisés dans la marge, mais leur vente est dans le solde : la variation du solde est gonflée.",
+      );
+    if (m && m.fees.reason === "solde_autre_raison")
+      warns.push(
+        "Le solde a bougé pour une autre raison que les frais : l’écart de " +
+          tradeAmount(L, m.fees.unexplained, true) +
+          " entre la marge brute et la variation du solde n’est pas un frais plausible (0 à 50 % du chiffre d’affaires), il n’est donc pas affiché comme tel.",
+      );
+    else if (
+      m &&
+      m.fees.unexplained !== null &&
+      m.turnover &&
+      Math.abs(m.fees.unexplained) > m.turnover * 0.02
+    )
+      warns.push(
+        "Le solde a " +
+          (m.fees.unexplained > 0 ? "baissé" : "monté") +
+          " de " +
+          tradeAmount(L, Math.abs(m.fees.unexplained)) +
+          " de plus que la marge brute et les frais ne l’expliquent (" +
+          (m.fees.unexplained > 0
+            ? "un autre achat ou une autre dépense pendant le trajet ?"
+            : "une récompense ou la vente d’autre chose ?") +
+          ") : la variation du solde n’est pas le bénéfice de ce seul trajet.",
+      );
+    setText(warn, warns.length ? "Attention : " + warns.join(" ") : "");
+    show(warn, warns.length > 0);
 
     // ---- fees
     const fm = m ? m.fees : null;
@@ -728,7 +797,7 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
         );
         setAttr(r.root, "data-estimate", tradeIsEstimate(side.method) ? "1" : "0");
       };
-      sideRow(feeRows[0], "Achat", fm.buy, m.cost_prorata ? null : m.cost);
+      sideRow(feeRows[0], "Achat", fm.buy, m.cost_paired ? null : m.cost);
       sideRow(feeRows[1], "Vente", fm.sell, m.turnover);
       show(feeRows[2].root, fm.total !== null);
       if (fm.total !== null) {
@@ -745,9 +814,13 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       let fn = "";
       if (fm.total === null) {
         fn =
-          run && run.uncertain > 0
-            ? "Des lignes non confirmées du journal empêchent de mesurer ou de déduire les frais : elles ont peut-être bougé le solde."
-            : "Le journal n’a pas de ligne de frais. Ils sont mesurés quand le solde a bougé à côté d’une transaction, ou déduits de l’écart entre la marge et le bénéfice net ; ici aucun des deux n’est possible.";
+          fm.reason === "solde_autre_raison"
+            ? "Le solde a bougé pour une autre raison : l’écart avec la marge n’est pas un frais plausible, il n’est pas affiché comme tel."
+            : fm.reason === "stock_anterieur"
+              ? "Des SCU vendus n’ont pas été achetés pendant ce trajet : les frais ne peuvent pas être déduits du solde."
+              : run && run.uncertain > 0
+                ? "Des lignes non confirmées du journal empêchent de mesurer ou de déduire les frais : elles ont peut-être bougé le solde."
+                : "Le journal n’a pas de ligne de frais. Ils sont mesurés quand le solde a bougé à côté d’une transaction, ou déduits de l’écart entre la marge et le bénéfice net ; ici aucun des deux n’est possible.";
       } else if (fm.rate_from === "trajet_precedent") {
         fn =
           "Taux de frais repris du trajet précédent : " +
@@ -792,7 +865,9 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
         "Bénéfice net par heure",
         pj && pj.net_per_hour !== null ? tradeAmount(L, pj.net_per_hour, true) : "—",
         pj
-          ? "estimé, à ce rythme"
+          ? pj.net_doubtful
+            ? "indisponible : le solde contient d’autres mouvements"
+            : "estimé, à ce rythme"
           : showBalance
             ? "disponible après 2 min d’un trajet terminé"
             : "solde masqué",
@@ -803,7 +878,13 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
         paceRows[2],
         "Répétitions par heure",
         pj ? L.fmtNum(pj.runs_per_hour, 1) : "—",
-        "estimé : 3 600 s ÷ durée du trajet",
+        pj
+          ? pj.basis === "cycle_observe"
+            ? "estimé : 3 600 s ÷ cycle observé de " + L.formatDuration(pj.cycle_ms)
+            : "estimé : 3 600 s ÷ (trajet + " +
+              Math.round(pj.overhead_ms / 60000) +
+              " min d’attente et de trajet à vide supposées)"
+          : "",
         true,
         !!pj,
       );
@@ -811,11 +892,11 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
         paceRows[3],
         pj ? "Sur " + pj.day_hours + " h de jeu" : "",
         pj && pj.net_per_day !== null ? tradeAmount(L, pj.net_per_day, true) : "—",
-        pj
+        pj && pj.runs_per_day !== null
           ? L.fmtNum(pj.runs_per_day, 0) + " trajets · hypothèse de " + pj.day_hours + " h de jeu"
           : "",
         true,
-        !!pj,
+        !!pj && pj.runs_per_day !== null,
       );
       paceRow(
         paceRows[4],
@@ -832,7 +913,15 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
         !!pj,
       );
     }
-    setText(paceNote, pj ? "Extrapolation, pas une promesse : voir les hypothèses plus bas." : "");
+    setText(
+      paceNote,
+      pj
+        ? "Extrapolation, pas une promesse : voir les hypothèses plus bas." +
+            (pj.runs_per_day === null
+              ? " Le chiffre « sur N h de jeu » apparaît après deux trajets mesurés."
+              : "")
+        : "",
+    );
     show(paceNote, !!pj);
     show(duo, !!m || (!!run && run.duration_ms > 0));
 
@@ -998,6 +1087,7 @@ export const TRADE_VIEW_FUNCTIONS = [
   tradeIsEstimate,
   tradeNetReason,
   tradeNetSource,
+  tradeNetTag,
   tradeGoodsLabel,
   tradeRouteText,
   tradeWaterfall,

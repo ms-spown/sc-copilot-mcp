@@ -18,6 +18,7 @@ export const TRADE_CSS = `
 .tr-stage[data-stage="complete"] { color: var(--sc-ok); background: var(--tint-ok); border-color: transparent; }
 .tr-stage[data-stage="open"], .tr-stage[data-stage="partial"] { color: var(--sc-info); background: var(--tint-info); border-color: transparent; }
 .tr-stage[data-stage="sold_only"] { color: var(--sc-warn); background: var(--tint-warn); border-color: transparent; }
+.tr-warn { margin: 0; padding: var(--sp-3); border: 1px solid var(--sc-warn); border-left-width: 4px; background: var(--tint-warn); border-radius: var(--r-m); font-size: var(--fs-s); overflow-wrap: anywhere; }
 .tr-message { margin: 0; padding: var(--sp-3); background: var(--sc-bg3); border-radius: var(--r-m); color: var(--sc-text2); font-size: var(--fs-s); }
 
 /* ---------- the headline numbers ---------- */

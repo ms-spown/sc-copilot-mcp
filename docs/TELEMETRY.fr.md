@@ -532,10 +532,10 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
 | Bénéfice prévu | Le profit attendu du plan : ventes prévues moins achats prévus, avant frais | Du plan de Claude |
 | Chiffre d'affaires | Ce que les ventes ont rapporté (les montants des transactions de vente) | Mesuré (montants du journal) |
 | Coût d'achat | Ce que les achats ont coûté (les montants des transactions d'achat) | Mesuré (montants du journal) |
-| Marge brute | Chiffre d'affaires moins coût ; le chiffre à comparer au bénéfice prévu | Calculé |
+| Marge brute | Revenu des SCU appariés à un achat moins leur coût, appariés premier entré, premier sorti par marchandise exactement comme `sc_trade_journal` (`pairCargoRuns`) ; les SCU invendus et ceux vendus sans achat dans le trajet ne sont pas valorisés. Le chiffre à comparer au bénéfice prévu | Calculé |
 | Écart de prix | Marge brute moins bénéfice prévu. Les prix et les quantités le font bouger, et la carte le dit quand la quantité achetée diffère du plan | Calculé |
-| Frais | Ce que le service de chargement a pris en plus des prix. Le journal n'a pas de ligne de frais | Mesuré côté par côté contre le solde quand c'est possible, sinon le total déduit (marge brute moins net), marqué « estimé » |
-| Bénéfice net | Solde après la dernière vente moins solde juste avant le premier achat : le seul chiffre qui dit ce que vous avez vraiment gagné | Mesuré dans l'historique du solde de la télémétrie ; inconnu (jamais zéro) si le tableau de bord n'a pas vu le solde avant l'achat |
+| Frais | Ce que le service de chargement a pris en plus des prix. Le journal n'a pas de ligne de frais | Mesuré côté par côté contre le solde quand c'est possible ; sinon le total déduit (marge brute moins la variation du solde) seulement si c'est un frais plausible (0 à 50 % du chiffre d'affaires), marqué « estimé » ; sinon inconnu, avec la raison (« le solde a bougé pour une autre raison ») |
+| Bénéfice net | La variation du solde sur le trajet : solde après la dernière vente moins solde juste avant le premier achat. Elle contient TOUS les mouvements de ce temps (une récompense, un autre achat), pas seulement le trajet ; la carte dit ce que la marge et les frais n'expliquent pas | Mesuré dans l'historique du solde de la télémétrie (étiquette « variation du solde ») ; inconnu (jamais zéro) si le tableau de bord n'a pas vu le solde avant l'achat |
 
 - **D'où viennent les transactions.** Du journal de commerce du journal de jeu (`src/providers/gamelog/trade.ts`, celui
   de `sc_trade_journal`) : le tableau de bord n'analyse rien lui-même. Les lectures du carnet (complète, puis seulement
@@ -558,14 +558,20 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
   prix). « mesuré » : une transaction a été rapprochée ; « mesuré (groupé) » : plusieurs réglées ensemble. Si un côté
   ne se rapproche pas, le total est déduit de la marge et du net et marqué « estimé » ; si le net est inconnu aussi,
   les frais sont inconnus.
-- **Bénéfice net.** Le solde juste avant le premier achat est celui d'avant la première baisse du solde autour de lui ;
-  le solde final est lu 8 s après la dernière transaction. Un trajet en cours (cargaison pas entièrement vendue) n'a
-  pas de net.
+- **Bénéfice net = variation du solde.** Le solde juste avant le premier achat est celui d'avant la première baisse du
+  solde autour de lui ; le solde final est lu 8 s après la dernière transaction. C'est toute la variation du solde entre
+  les deux, qui peut durer des heures : la carte montre `fees.unexplained` (marge brute moins net moins frais) comme « non expliqué » et
+  avertit visiblement (mot « Attention ») au-delà de 2 % du chiffre d'affaires, dans tous les chemins des frais
+  (mesurés, déduits). Rien n'est construit sur un tel net : ni chiffre par heure ni chiffre du prochain trajet. Un
+  trajet en cours (cargaison pas entièrement vendue) n'a pas de net. Les SCU vendus sans avoir été achetés dans le
+  trajet (stock antérieur) sont signalés, non valorisés, et empêchent de déduire les frais.
 - **Rythme et projection.** La durée va du premier achat à la dernière transaction (deux minutes au moins, trajet
-  terminé). Les chiffres « à ce rythme » (net par heure, répétitions par heure, par 4 heures de jeu) et le prochain
-  trajet net de frais (bénéfice prévu moins le taux de frais observé fois le chiffre d'affaires) sont des estimations ;
-  la carte liste leurs hypothèses : même trajet, mêmes prix et même quantité, marchandise toujours disponible, prix
-  qui ne baissent pas quand on vend plus, frais au même taux, et une « journée » de 4 heures de jeu (hypothèse).
+  terminé). Les chiffres par heure reposent sur un cycle : le temps entre le début de ce trajet et celui du précédent
+  quand il y en a deux, sinon le trajet plus 10 minutes de chargement, de trajet à vide et d'attente (hypothèse non
+  mesurée, dite sur la carte). Net par heure, répétitions par heure et prochain trajet net de frais (bénéfice prévu
+  moins le taux de frais observé fois le chiffre d'affaires) sont des estimations. Le chiffre « par 4 heures de jeu »
+  (une hypothèse) n'apparaît qu'après deux trajets mesurés. La carte liste les hypothèses : même trajet, mêmes prix et
+  même quantité, marchandise toujours disponible, prix qui ne baissent pas quand on vend plus, frais au même taux.
 - **Estimé contre mesuré.** Une barre mesurée est pleine et marquée « mesuré » ; une barre estimée est hachurée, a un
   bord en pointillés et le mot « estimé ». La couleur n'est jamais le seul signal.
 - **Courbe des cours.** Les prix récents du plan, leur moyenne, le prix visé par le plan et, une fois le solde affiché,

@@ -479,8 +479,10 @@ runs ("Contrat en cours : title, step 2/3").
   two instants, the gain is unknown (never zero). When two contracts overlap, each figure also holds the other's
   reward and is flagged; the total counts the overlap once. The pace (aUEC per hour) needs at least two minutes of
   contract time. The dashboard has to be open (the telemetry reads only while a View polls) for the history to exist.
-- **Planned and measured.** If Claude passed a route `plan` when it opened the dashboard, the panel puts the planned
-  profit next to the gain of the latest completed contract. It cannot check that the contract is the planned route.
+- **Planned and measured contract reward.** If Claude passed a route `plan` when it opened the dashboard, the panel puts
+  the planned profit (before fees) next to the "récompense mesurée" of the latest completed contract: the balance change
+  over that contract, so the reward minus what the contract cost, not a profit. It cannot check that the contract is the
+  planned route. For the result of a trading run, see the commerce card.
 - **Balance privacy.** Everything derived from the balance (gain, total, pace, planned against measured) is built by
   the server and drawn by the page only after you click "Afficher le solde". Without it the ledger shows steps and
   durations only, and the server's answer holds no such figure. None of it goes into the automatic summary sent to
@@ -508,10 +510,10 @@ same thing. Each figure now has one meaning:
 | Bénéfice prévu | The plan's expected profit: planned sales minus planned purchases, before fees | From Claude's plan |
 | Chiffre d'affaires | What the sales brought in (the amounts of the sell transactions) | Measured (log amounts) |
 | Coût d'achat | What the purchases cost (the amounts of the buy transactions) | Measured (log amounts) |
-| Marge brute | Chiffre d'affaires minus cost; the figure to compare with the planned profit | Calculated |
+| Marge brute | Revenue of the SCU paired with a purchase minus their cost, paired first in first out per commodity exactly as `sc_trade_journal` does (`pairCargoRuns`); unsold SCU and SCU sold without a purchase in the run are not valued. The figure to compare with the planned profit | Calculated |
 | Écart de prix | Marge brute minus planned profit. Prices and quantities both move it, and the card says so when the bought quantity differs from the plan | Calculated |
-| Frais | What the loading service took on top of the prices. The log has no fee line | Measured per side against the balance when possible, else the total deduced (marge brute minus net), labelled "estimé" |
-| Bénéfice net | Balance after the last sale minus the balance just before the first purchase: the only figure that says what you really gained | Measured from the telemetry's balance history; unknown (never zero) when the dashboard did not see the balance before the purchase |
+| Frais | What the loading service took on top of the prices. The log has no fee line | Measured per side against the balance when possible; else the total deduced (marge brute minus the balance variation) only if it is a plausible fee (0 to 50 % of the turnover), labelled "estimé"; otherwise unknown, with the reason ("le solde a bougé pour une autre raison") |
+| Bénéfice net | The variation of the balance over the run: balance after the last sale minus the balance just before the first purchase. It holds EVERY movement of that time (a reward, another purchase), not only the run; the card says how much of it the margin and the fees do not explain | Measured from the telemetry's balance history (tag "variation du solde"); unknown (never zero) when the dashboard did not see the balance before the purchase |
 
 - **Where the transactions come from.** From the trade journal of the game log (`src/providers/gamelog/trade.ts`, the
   one behind `sc_trade_journal`): the dashboard parses nothing of its own. The ledger's reads (full, then only the
@@ -532,13 +534,20 @@ same thing. Each figure now has one meaning:
   implausible fee (negative, or more than half of the price). "mesuré" means one transaction was matched; "mesuré
   (groupé)" means several were settled together. If a side cannot be matched, the total is deduced from the margin and
   the net and labelled "estimé"; if the net is unknown too, the fees are unknown.
-- **Net profit.** The balance just before the first purchase is the one before the first balance fall around it; the
-  final balance is read 8 s after the last transaction. A run still in progress (cargo not fully sold) has no net.
+- **Net profit = balance variation.** The balance just before the first purchase is the one before the first balance
+  fall around it; the final balance is read 8 s after the last transaction. It is the whole variation of the balance
+  between the two, which can last hours: the card shows `fees.unexplained` (gross margin minus net minus fees) as "unexplained", and warns
+  visibly (with the word "Attention") when it is more than 2 % of the turnover, in every fee path (measured, deduced).
+  Nothing is built on such a net: no hourly figure and no next-trip figure. A run still in progress (cargo not fully
+  sold) has no net. SCU sold that were not bought in the run (stock from before) are told ("Stock antérieur"), not
+  valued, and make the fees undeducible.
 - **Pace and projection.** Run time is the first purchase to the last transaction (at least two minutes, a finished
-  run). "À ce rythme" figures (net per hour, runs per hour, per 4 hours of play) and the next trip net of fees
-  (planned profit minus the observed fee rate times the turnover) are estimates, and the card lists their
-  assumptions: same trip, same prices and quantity, cargo always available, prices that do not drop when you sell
-  more, fees at the same rate, and a "day" of 4 hours of play (a hypothesis).
+  run). The hourly figures rest on a cycle: the time between the start of this run and the previous one when there are
+  two, else the run plus 10 minutes of loading, empty trip and waiting (an assumption, not measured, said on the card).
+  Net per hour, runs per hour and the next trip net of fees (planned profit minus the observed fee rate times the
+  turnover) are estimates. The "per 4 hours of play" figure (a hypothesis) appears only after two measured runs. The
+  card lists the assumptions: same trip, same prices and quantity, cargo always available, prices that do not drop when
+  you sell more, fees at the same rate.
 - **Estimated against measured.** A measured bar is solid and tagged "mesuré"; an estimated one is hatched, has a
   dashed edge and the word "estimé". Colour is never the only signal.
 - **Price curve.** The recent prices from the plan, their average, the target price of the plan and, once the balance

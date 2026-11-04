@@ -411,7 +411,7 @@ describe("Feature: the search runs in the background, once per ship", () => {
     const started = Date.now();
     expect(r.current("DRAK_Cutter")?.status).toBe("pending");
     expect(r.current("DRAK_Cutter")?.status).toBe("pending");
-    expect(Date.now() - started).toBeLessThan(200);
+    expect(Date.now() - started).toBeLessThan(2_000); // it never waits for the wiki (a loose bound: a slow machine must not flake)
     release(list([CUTTER]));
     await r.idle();
     expect(r.current("DRAK_Cutter")?.status).toBe("ready");

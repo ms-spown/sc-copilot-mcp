@@ -629,7 +629,7 @@ describe("Feature: session, pace and the route plan", () => {
     expect(text).toContain("Laranite");
     expect(text).toContain("Port Tressler \u2192 Area18");
     expect(text).toMatch(/\+125 000 aUEC/);
-    expect(text).toContain("n’est pas encore branché");
+    expect(text).toContain("désactivé ou illisible");
     expect(text).not.toContain("dropped");
     // The old block compared a profit with a balance change: "Réalisé" does not exist any more.
     expect(text).not.toContain("Réalisé");

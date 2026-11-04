@@ -1421,10 +1421,12 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     });
     // The commerce card: the plan from the model, the commerce section of the ledger, and the balance change only
     // as a labelled fallback while no trade journal feeds the dashboard.
+    const tradeLedger = L.ledgerNormalize(view.poll && view.poll.ledger);
     R.tradeActions.render({ enabled: false });
     show(R.trade.slot, false);
     R.trade.render({
-      trade: L.ledgerNormalize(view.poll && view.poll.ledger)?.trade ?? null,
+      trade: tradeLedger?.trade ?? null,
+      ledgerStatus: tradeLedger ? tradeLedger.status : null,
       plan: view.plan,
       showBalance,
       fullscreen: displayMode === "fullscreen",

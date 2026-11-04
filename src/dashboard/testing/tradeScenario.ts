@@ -132,7 +132,8 @@ export function tradeHistory(base: number, nowMs: number): BalancePoint[] {
   return out;
 }
 
-export type TradeVariant = "story" | "unknown" | "partial" | "none" | "second" | "estimated";
+export type TradeVariant =
+  "story" | "unknown" | "partial" | "none" | "second" | "estimated" | "reward" | "rewardcut";
 
 /**
  * The ledger payload (with its trade section) at `nowMs` for a variant:
@@ -140,6 +141,8 @@ export type TradeVariant = "story" | "unknown" | "partial" | "none" | "second" |
  *   unknown the dashboard was opened after the purchases: the balance before the first purchase was not seen.
  *   estimated the stream was cut while the sales were settled: the fees cannot be measured per side, only deduced (hatched).
  *   partial only the first sale happened (the second lot is still on board).
+ *   reward  a 400 000 reward is paid between the purchases and the sales: fees are measured, the net holds the reward.
+ *   rewardcut the same with the stream cut around the sales: the deduced fees would be negative, so they are refused.
  *   none    no trade journal feeds the dashboard.
  *   second  the run above followed by a second, smaller one (a new purchase after the sales).
  */
@@ -172,6 +175,20 @@ export function tradeLedger(
     // The balance is known before the purchases and at the end, with the stream cut around the sales.
     history = history.filter((p) => p.at < base + 20_000 || p.at > base + 202_000);
     history = history.map((p) => (p.at < base + 20_000 ? { ...p, until: base + 19_900 } : p));
+  }
+  if (variant === "reward" || variant === "rewardcut") {
+    const paid = base + 100_000;
+    const before = history.filter((p) => p.at < paid);
+    const lastBefore = before[before.length - 1]!;
+    history = [
+      ...before.map((p) => (p === lastBefore ? { ...p, until: paid - 60 } : p)),
+      { at: paid, uec: lastBefore.uec + 400_000, until: base + 200_040 },
+      ...history.filter((p) => p.at >= paid).map((p) => ({ ...p, uec: p.uec + 400_000 })),
+    ];
+    if (variant === "rewardcut") {
+      history = history.filter((p) => p.at < base + 20_000 || p.at > base + 202_000);
+      history = history.map((p) => (p.at < base + 20_000 ? { ...p, until: base + 19_900 } : p));
+    }
   }
   if (variant === "unknown") history = history.filter((p) => p.at > base + 30_000);
   if (variant === "partial") history = history.filter((p) => p.at < base + 202_000);

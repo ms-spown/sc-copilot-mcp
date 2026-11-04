@@ -64,7 +64,7 @@ export function ledgerTradeMoney(raw: any): any {
     plan_match: ledgerOneOf(raw.plan_match, ["ok", "non_verifie"], ""),
     turnover: ledgerNum(raw.turnover),
     cost: ledgerNum(raw.cost),
-    cost_prorata: raw.cost_prorata === true,
+    cost_paired: raw.cost_paired === true,
     gross_margin: ledgerNum(raw.gross_margin),
     price_gap: ledgerNum(raw.price_gap),
     gap_includes_quantity: raw.gap_includes_quantity === true,
@@ -76,6 +76,11 @@ export function ledgerTradeMoney(raw: any): any {
       rate: ledgerNum(f.rate),
       rate_from: ledgerOneOf(f.rate_from, ["ce_trajet", "trajet_precedent"], ""),
       unexplained: ledgerNum(f.unexplained),
+      reason: ledgerOneOf(
+        f.reason,
+        ["solde_autre_raison", "lignes_non_confirmees", "stock_anterieur"],
+        "",
+      ),
     },
     net: {
       auec: ledgerNum(n.auec),
@@ -110,6 +115,11 @@ export function ledgerTradeMoney(raw: any): any {
       pj && ledgerNum(pj.run_ms) !== null
         ? {
             run_ms: ledgerNum(pj.run_ms),
+            cycle_ms: ledgerNum(pj.cycle_ms) || 0,
+            basis: ledgerOneOf(pj.basis, ["cycle_observe", "duree_plus_marge"], "duree_plus_marge"),
+            overhead_ms: ledgerNum(pj.overhead_ms) || 0,
+            measured_runs: ledgerNum(pj.measured_runs) || 0,
+            net_doubtful: pj.net_doubtful === true,
             runs_per_hour: ledgerNum(pj.runs_per_hour),
             net_per_hour: ledgerNum(pj.net_per_hour),
             day_hours: ledgerNum(pj.day_hours),
@@ -141,6 +151,7 @@ export function ledgerTradeNormalize(raw: any): any {
       duration_ms: ledgerNum(r.duration_ms) || 0,
       scu_bought: ledgerNum(r.scu_bought),
       scu_sold: ledgerNum(r.scu_sold),
+      prior_stock_scu: ledgerNum(r.prior_stock_scu) || 0,
       buys: ledgerNum(r.buys) || 0,
       sells: ledgerNum(r.sells) || 0,
       failed: ledgerNum(r.failed) || 0,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { BalancePoint } from "../providers/telemetry/service.js";
-import { buildTradeJournal, parseCommerceText } from "../providers/gamelog/trade.js";
+import { buildTradeJournal, pairCargoRuns, parseCommerceText } from "../providers/gamelog/trade.js";
+import { hashText } from "./poll.js";
 import { buildTradeSection, prepareTransactions, reconcileFees, splitRuns } from "./tradeRun.js";
 import type { Transaction } from "../providers/gamelog/trade.js";
 import {
@@ -204,6 +205,165 @@ describe("Feature: the model agrees with the journal's own pairing", () => {
   });
 });
 
+describe("Feature: a deduced fee must be a plausible fee", () => {
+  it("Given the stream cut around the sales and 400 000 aUEC received during the trip, Then the gap is not shown as fees and no rate is carried", () => {
+    const history: BalancePoint[] = [
+      { at: BASE + 6_000, uec: F.start, until: BASE + 19_000 },
+      // 400 000 received (a reward) on top of the run's own movements
+      { at: BASE + 209_000, uec: F.end + 400_000, until: NOW },
+    ];
+    const m = latest({ history }).money!;
+    expect(m.net).toMatchObject({ auec: 543_000, method: "mesure" });
+    expect(m.fees.total).toBeNull();
+    expect(m.fees.method).toBeNull();
+    expect(m.fees.reason).toBe("solde_autre_raison");
+    expect(m.fees.unexplained).toBe(186_568 - 543_000);
+    expect(m.fees.rate).toBeNull();
+    expect(m.planned_net).toBeNull();
+    // nothing is built on a net that holds a reward: no next-trip figure, no hourly figure
+    expect(m.projection!.net_doubtful).toBe(true);
+    expect(m.projection!.next_run_net).toBeNull();
+    expect(m.projection!.net_per_hour).toBeNull();
+  });
+
+  it("Given such a doubtful run followed by another run, Then the next run does not inherit a rate from it", () => {
+    const first = tradeTransactions(BASE);
+    const mk = (s: number, side: "buy" | "sell", total: number): Transaction => ({
+      ...first[0]!,
+      time: new Date(BASE + s * 1000).toISOString(),
+      side,
+      total_auec: total,
+      quantity: 100,
+    });
+    const txs = [...first, mk(620, "buy", 50_000), mk(800, "sell", 80_000)];
+    const history: BalancePoint[] = [
+      { at: BASE + 6_000, uec: F.start, until: BASE + 19_000 },
+      { at: BASE + 209_000, uec: F.end + 400_000, until: BASE + 210_000 },
+    ];
+    const second = latest({ transactions: txs, history, nowMs: BASE + 900_000 }).money!;
+    expect(second.fees.rate_from).toBeUndefined();
+    expect(second.fees.rate).toBeNull();
+  });
+
+  it("Given a plausible deduction, Then it is kept; given a negative or a huge one, Then it is refused", () => {
+    const stream = (end: number): BalancePoint[] => [
+      { at: BASE + 6_000, uec: F.start, until: BASE + 19_000 },
+      { at: BASE + 209_000, uec: end, until: NOW },
+    ];
+    expect(latest({ history: stream(F.end) }).money!.fees).toMatchObject({
+      total: 43_568,
+      method: "estime",
+    });
+    // the balance is higher than the margin allows: negative fees are refused
+    expect(latest({ history: stream(F.start + 190_000) }).money!.fees.reason).toBe(
+      "solde_autre_raison",
+    );
+    // more than half of the turnover "lost": refused
+    expect(latest({ history: stream(F.start - 100_000) }).money!.fees.reason).toBe(
+      "solde_autre_raison",
+    );
+  });
+});
+
+describe("Feature: the margin follows the journal's first-in first-out pairing", () => {
+  const line = (
+    s: number,
+    side: "buy" | "sell",
+    total: number,
+    scu: number,
+    id: string,
+  ): Transaction => ({
+    ...tradeTransactions(BASE)[0]!,
+    time: new Date(BASE + s * 1000).toISOString(),
+    side,
+    total_auec: total,
+    quantity: scu,
+    commodity_id: id,
+    resource: id + "-0000-4000-8000-000000000000",
+  });
+
+  it("Given two commodities bought and only one sold, Then the margin is that of the sold one (+4 000, not -41 000)", () => {
+    const txs = [
+      line(20, "buy", 10_000, 100, "aaaaaaaa"),
+      line(22, "buy", 100_000, 100, "bbbbbbbb"),
+      line(200, "sell", 14_000, 100, "aaaaaaaa"),
+    ];
+    const m = latest({ transactions: txs, history: [], plan: undefined }).money!;
+    expect(m.gross_margin).toBe(4_000);
+    expect(m.cost).toBe(10_000);
+    expect(m.cost_paired).toBe(true);
+  });
+
+  it("Given one commodity in two lots sold in part, Then the first lot is the one sold, as in sc_trade_journal (+5 000)", () => {
+    const txs = [
+      line(20, "buy", 10_000, 100, "aaaaaaaa"),
+      line(22, "buy", 40_000, 100, "aaaaaaaa"),
+      line(200, "sell", 15_000, 100, "aaaaaaaa"),
+    ];
+    expect(latest({ transactions: txs, history: [], plan: undefined }).money!.gross_margin).toBe(
+      5_000,
+    );
+  });
+
+  it("Given the same lines, Then the margin equals what pairCargoRuns says, whatever the shape", () => {
+    const txs = [
+      line(20, "buy", 10_000, 100, "aaaaaaaa"),
+      line(22, "buy", 40_000, 100, "aaaaaaaa"),
+      line(200, "sell", 15_000, 100, "aaaaaaaa"),
+      line(210, "sell", 60_000, 100, "aaaaaaaa"),
+    ];
+    const paired = pairCargoRuns(txs);
+    const expected = paired.reduce((n, r) => n + r.gross_margin_auec, 0);
+    expect(latest({ transactions: txs, history: [], plan: undefined }).money!.gross_margin).toBe(
+      expected,
+    );
+  });
+
+  it("Given sales of SCU that were not bought in the run, Then the run says so, values only the paired ones and withholds fees", () => {
+    const txs = [
+      line(20, "buy", 10_000, 100, "aaaaaaaa"),
+      line(200, "sell", 40_000, 250, "aaaaaaaa"),
+    ];
+    const history: BalancePoint[] = [
+      { at: BASE + 6_000, uec: 100_000, until: BASE + 19_000 },
+      { at: BASE + 205_000, uec: 130_000, until: NOW },
+    ];
+    const r = latest({ transactions: txs, history, plan: undefined });
+    expect(r.prior_stock_scu).toBe(150);
+    const m = r.money!;
+    expect(m.turnover).toBe(40_000);
+    expect(m.gross_margin).toBe(16_000 - 10_000); // only the 100 paired SCU: 40 000 x 100/250 = 16 000
+    expect(m.fees.reason).toBe("stock_anterieur");
+    expect(m.projection).toBeNull();
+    // and without the balance, the quantity is still told (it carries no amount)
+    expect(latest({ transactions: txs, includeBalance: false }).prior_stock_scu).toBe(150);
+  });
+});
+
+describe("Feature: without the balance nothing depends on amounts", () => {
+  it("Given two commodities whose amounts are swapped, Then the answer and so its hash are identical without the balance", () => {
+    const base = tradeTransactions(BASE);
+    const other = base.map((t, i) => ({
+      ...t,
+      commodity_id: i % 2 === 0 ? "aaaaaaaa" : "bbbbbbbb",
+      resource: (i % 2 === 0 ? "aaaaaaaa" : "bbbbbbbb") + "-0000-4000-8000-000000000000",
+    }));
+    const swapped = other.map((t, i) => ({
+      ...t,
+      total_auec: other[(i + 1) % other.length]!.total_auec,
+    }));
+    const a = JSON.stringify(run({ transactions: other, includeBalance: false }));
+    const b = JSON.stringify(run({ transactions: swapped, includeBalance: false }));
+    expect(a).toBe(b);
+    expect(hashText(a)).toBe(hashText(b));
+    // goods come in order of first appearance
+    expect(run({ transactions: other, includeBalance: false }).runs[0]).toMatchObject({
+      commodity: "aaaaaaaa",
+      more_commodities: ["bbbbbbbb"],
+    });
+  });
+});
+
 describe("Feature: the amounts exist only with the balance", () => {
   it("Given the balance is not asked, Then no run carries an amount of aUEC", () => {
     const section = run({ includeBalance: false });
@@ -275,16 +435,55 @@ describe("Feature: the plan, net of the fees observed", () => {
 });
 
 describe("Feature: pace and projection", () => {
-  it("Given a run of 182 s, Then the pace is an extrapolation with its assumptions", () => {
+  it("Given a single run of 182 s, Then the hours rest on the run plus an assumed overhead, and no per-day figure", () => {
     const p = latest().money!.projection!;
     expect(p.run_ms).toBe(182_000);
-    expect(p.runs_per_hour).toBeCloseTo(19.78, 2);
-    expect(p.net_per_hour).toBe(Math.round((143_000 * 3_600) / 182));
-    expect(p.day_hours).toBe(4);
-    expect(p.runs_per_day).toBeCloseTo(79.1, 1);
+    expect(p.basis).toBe("duree_plus_marge");
+    expect(p.overhead_ms).toBe(600_000);
+    expect(p.cycle_ms).toBe(782_000);
+    expect(p.runs_per_hour).toBeCloseTo(3_600 / 782, 2);
+    expect(p.net_per_hour).toBe(Math.round((143_000 * 3_600) / 782));
+    expect(p.measured_runs).toBe(1);
+    // "sur N h de jeu" needs two measured runs
+    expect(p.runs_per_day).toBeNull();
+    expect(p.net_per_day).toBeNull();
     expect(p.next_run_net).toBe(136_432);
-    expect(p.assumptions.join(" ")).toMatch(/même trajet/);
-    expect(p.assumptions.join(" ")).toMatch(/hypothèse/);
+    const text = p.assumptions.join(" ");
+    expect(text).toMatch(/10 min/);
+    expect(text).toMatch(/hypothèse/);
+    expect(text).not.toMatch(/journée/);
+  });
+
+  it("Given two measured runs, Then the cycle is the time between their starts and the day figure appears", () => {
+    const first = tradeTransactions(BASE);
+    // a second Laranite run, 10 minutes after the start of the first, with its own balance movements
+    const at = (s: number) => new Date(BASE + s * 1000).toISOString();
+    const mk = (s: number, side: "buy" | "sell", total: number): Transaction => ({
+      ...first[0]!,
+      time: at(s),
+      side,
+      total_auec: total,
+      quantity: 100,
+    });
+    const txs = [...first, mk(620, "buy", 50_000), mk(800, "sell", 80_000)];
+    const base = tradeHistory(BASE, BASE + 210_000);
+    const history: BalancePoint[] = [
+      ...base.slice(0, -1),
+      { ...base.at(-1)!, until: BASE + 619_000 },
+      { at: BASE + 620_100, uec: F.end - 50_000, until: BASE + 799_000 },
+      { at: BASE + 800_100, uec: F.end - 50_000 + 80_000, until: NOW + 1_000_000 },
+    ];
+    const m = latest({ transactions: txs, history, nowMs: BASE + 900_000 }).money!;
+    expect(m.net).toMatchObject({ auec: 30_000, method: "mesure" });
+    const p = m.projection!;
+    expect(p.basis).toBe("cycle_observe");
+    expect(p.cycle_ms).toBe(600_000);
+    expect(p.overhead_ms).toBe(0);
+    expect(p.measured_runs).toBe(2);
+    expect(p.runs_per_hour).toBe(6);
+    expect(p.runs_per_day).toBe(24);
+    expect(p.net_per_day).toBe(30_000 * 24);
+    expect(p.assumptions.join(" ")).toMatch(/journée de jeu = 4 h/);
   });
 
   it("Given a run under two minutes, Then there is no projection", () => {
@@ -297,7 +496,7 @@ describe("Feature: pace and projection", () => {
 });
 
 describe("Feature: runs that are not clean", () => {
-  it("Given a sale of only the first lot, Then the run is partial: no net, a prorata margin", () => {
+  it("Given a sale of only the first lot, Then the run is partial: no net, a margin on the paired SCU only", () => {
     const t = tradeTransactions(BASE).slice(0, 3);
     const history = tradeHistory(BASE, BASE + 205_000);
     const m = latest({ transactions: t, history, nowMs: BASE + 205_000 }).money!;
@@ -306,8 +505,10 @@ describe("Feature: runs that are not clean", () => {
     expect(r.scu_bought).toBe(696);
     expect(r.scu_sold).toBe(640);
     expect(m.net).toMatchObject({ auec: null, reason: "en_cours" });
-    expect(m.cost_prorata).toBe(true);
-    expect(m.cost).toBe(Math.round((131_504 * 640) / 696));
+    expect(m.cost_paired).toBe(true);
+    // first in, first out, as the journal pairs: the 640 SCU sold are the first lot
+    expect(m.cost).toBe(120_923);
+    expect(m.gross_margin).toBe(292_480 - 120_923);
     expect(m.price_gap).toBeNull(); // not compared with the plan before the end
     expect(m.projection).toBeNull();
   });

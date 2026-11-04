@@ -81,8 +81,8 @@ describe("Feature: the commerce card says which figure is which", () => {
     const t = card(w);
     expect(t).toContain("Laranite");
     expect(t).toContain("Port Tressler → Area18 TDD");
-    expect(t).toMatch(/Bénéfice net\s*mesuré\s*\+143 000 aUEC/);
-    expect(t).toContain("solde final − solde juste avant le premier achat");
+    expect(t).toMatch(/Bénéfice net\s*variation du solde\s*\+143 000 aUEC/);
+    expect(t).toContain("tout ce qui a bougé le solde y est compté");
     expect(t).toMatch(/Chiffre d’affaires\s*mesuré\s*318 072 aUEC/);
     expect(t).toMatch(/Frais\s*mesuré\s*−43 568 aUEC/);
     expect(t).toContain("13,7 % du chiffre d’affaires");
@@ -109,9 +109,13 @@ describe("Feature: the commerce card says which figure is which", () => {
     await w.advance(3 * SECOND);
     const t = card(w);
     expect(t).toContain("Durée du trajet");
-    expect(t).toMatch(/Répétitions par heure\s*19,8/);
+    expect(t).toMatch(/Répétitions par heure\s*4,6/);
     expect(t).toContain("estimé, à ce rythme");
-    expect(t).toContain("hypothèse de 4 h de jeu");
+    // one run only: no "per 4 hours" figure yet, and the overhead is an assumption said as such
+    expect(t).not.toContain("Sur 4 h de jeu");
+    expect(t).not.toContain("hypothèse de 4 h");
+    expect(t).toContain("10 min d’attente et de trajet à vide supposées");
+    expect(t).toContain("après deux trajets mesurés");
     expect(t).toContain("même trajet, mêmes prix et même quantité à chaque fois");
   });
 
@@ -202,10 +206,39 @@ describe("Feature: honest when it does not know", () => {
     findButton(w.root, "Afficher le solde").click();
     await w.advance(3 * SECOND);
     const t = card(w);
-    expect(t).toMatch(/Bénéfice net\s*mesuré\s*\+143 000 aUEC/);
+    expect(t).toMatch(/Bénéfice net\s*variation du solde\s*\+143 000 aUEC/);
     expect(t).toMatch(/Frais\s*estimé\s*−43 568 aUEC/);
     expect(t).toContain("estimé : marge brute − bénéfice net, sans détail par côté");
     expect(t).not.toContain("Achat\n");
+  });
+
+  it("Given a reward paid during the trip and the fees measured, Then a visible warning says the balance variation is not this trip's profit", async () => {
+    const w = await page("reward");
+    await w.advance(215 * SECOND);
+    await fullscreen(w);
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(3 * SECOND);
+    const t = card(w);
+    expect(t).toMatch(/Bénéfice net\s*variation du solde\s*\+543 000 aUEC/);
+    expect(t).toMatch(
+      /Attention : Le solde a monté de 400 000 aUEC de plus que la marge brute et les frais ne l’expliquent/,
+    );
+    expect(t).toContain("la variation du solde n’est pas le bénéfice de ce seul trajet");
+    expect(t).toMatch(/Frais\s*mesuré\s*−43 568 aUEC/);
+  });
+
+  it("Given a reward and a stream cut, Then the gap is not shown as fees", async () => {
+    const w = await page("rewardcut");
+    await w.advance(215 * SECOND);
+    await fullscreen(w);
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(3 * SECOND);
+    const t = card(w);
+    expect(t).toMatch(/Frais\s*inconnu\s*—/);
+    expect(t).toContain("le solde a bougé pour une autre raison");
+    expect(t).toContain("Attention : Le solde a bougé pour une autre raison que les frais");
+    expect(t).not.toMatch(/Frais\s*estimé/);
+    expect(t).not.toMatch(/Si tu refais ce trajet\s*estimé\s*≈ \+136 432/);
   });
 
   it("Given only the first lot was sold, Then the run is in progress and no net is claimed", async () => {
@@ -228,7 +261,7 @@ describe("Feature: honest when it does not know", () => {
     await w.advance(3 * SECOND);
     const t = card(w);
     expect(t).toContain("Plan seul");
-    expect(t).toContain("n’est pas encore branché");
+    expect(t).toContain("désactivé ou illisible");
     expect(t).toMatch(/Bénéfice prévu\s*\+180 000 aUEC/);
     expect(t).toMatch(/Variation du solde\s*[−+]/);
     expect(t).toContain("pas un bénéfice");
