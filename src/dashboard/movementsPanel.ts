@@ -42,7 +42,7 @@ export function movementsFilters(): any[] {
     { id: "items", label: "Objets", categories: ["item_purchase"] },
     {
       id: "probable",
-      label: "Probables",
+      label: "Probables ou possibles",
       categories: ["probable_contract_reward", "probable_insurance_or_hangar_cost"],
     },
     { id: "unexplained", label: "Non expliqués", categories: ["unexplained"] },
@@ -209,12 +209,10 @@ export function movementsCategoryLabel(m: any): string {
         ? "Frais sur la vente"
         : "Frais sur l’achat";
   if (m.category === "item_purchase") return sell ? "Vente d’objet" : "Achat d’objet";
-  if (m.category === "probable_contract_reward") return "Récompense de contrat";
-  if (m.category === "probable_insurance_or_hangar_cost") {
-    if (m.cause === "insurance") return "Assurance";
-    if (m.cause === "hangar") return "Hangar";
-    return "Assurance ou hangar";
-  }
+  if (m.category === "probable_contract_reward") return "Récompense probable de contrat";
+  // Never a cause: the log has no line that says what an insurance claim or a hangar request cost.
+  if (m.category === "probable_insurance_or_hangar_cost")
+    return "Coût possible (hangar ou assurance)";
   if (m.reason === "stream_gap") return "Non expliqué, pendant une coupure du flux";
   if (m.reason === "ambiguous") return "Non expliqué, deux causes possibles";
   return "Non expliqué";
@@ -262,12 +260,26 @@ export function movementsDetailText(m: any): string {
         ? "plusieurs contrats terminés à proximité : lequel n’est pas connu"
         : "montant lu sur le solde : le journal n’a pas de ligne de récompense",
     );
-  if (m.category === "probable_insurance_or_hangar_cost" && m.several)
-    parts.push("plusieurs événements à proximité");
+  if (m.category === "probable_insurance_or_hangar_cost") {
+    const near: any = {
+      insurance: "une demande d’assurance",
+      hangar: "une demande de hangar terminée",
+      insurance_or_hangar: "une demande d’assurance et un hangar",
+    };
+    parts.push(
+      "baisse du solde juste après " +
+        (near[m.cause] || "un événement") +
+        (m.several ? " (plusieurs à proximité)" : "") +
+        " : le journal ne donne aucun coût, ce peut être autre chose (carburant, achat…)",
+    );
+  }
   if (m.category === "fee_on_transaction" && m.doubtful)
     parts.push("fenêtre qui contient aussi une autre cause possible : ce frais peut l’inclure");
   if (m.category === "unexplained" && m.reason === "ambiguous" && m.candidates.length > 0)
-    parts.push("pourrait être : " + m.candidates.join(", ").replace(/_/g, " "));
+    parts.push(
+      "pourrait être : " +
+        m.candidates.map((c: string) => movementsCategoryTotalLabel(c).toLowerCase()).join(" ou "),
+    );
   if (m.category === "unexplained" && m.reason !== "ambiguous" && m.hints.length === 0)
     parts.push("carburant, réparation, amende, virement ou récompense ? le journal ne le dit pas");
   for (const h of m.hints) {
@@ -300,7 +312,7 @@ export function movementsCategoryTotalLabel(category: string): string {
     fee_on_transaction: "Frais mesurés",
     item_purchase: "Objets",
     probable_contract_reward: "Récompenses de contrat (probables)",
-    probable_insurance_or_hangar_cost: "Assurance ou hangar (probables)",
+    probable_insurance_or_hangar_cost: "Coûts possibles (hangar ou assurance)",
     unexplained: "Non expliqué",
   };
   return names[category] || category;
@@ -417,7 +429,26 @@ export function movementsPanel(doc: any, L: any): any {
     const section = ctx && ctx.showBalance ? ctx.section : null;
     const on = !!(ctx && ctx.fullscreen) && !!section;
     show(root, on);
-    if (!on) return;
+    if (!on) {
+      // Hidden (the balance was hidden again, or the view is compact): nothing derived from the balance may stay in the
+      // DOM text, only hidden.
+      for (const p of explainLines) setText(p, "");
+      for (const r of totalRows) {
+        setText(r.label, "");
+        setText(r.value, "");
+        setText(r.sub, "");
+      }
+      for (const r of rows) {
+        setText(r.time, "");
+        setText(r.label, "");
+        setText(r.tag, "");
+        setText(r.amount, "");
+        setText(r.detail, "");
+      }
+      setText(empty, "");
+      setText(foot, "");
+      return;
+    }
     const d = ctx.decomposition;
     const lines: string[] = [];
     // The run's own account first (when its net was measured), then the session's.
@@ -460,7 +491,12 @@ export function movementsPanel(doc: any, L: any): any {
       if (!m) continue;
       setText(r.time, L.formatClock(m.at));
       setText(r.label, movementsCategoryLabel(m));
-      setText(r.tag, movementsConfidenceLabel(m.confidence));
+      setText(
+        r.tag,
+        m.category === "probable_insurance_or_hangar_cost"
+          ? "possible"
+          : movementsConfidenceLabel(m.confidence),
+      );
       setAttr(r.tag, "data-estimate", movementsIsWeak(m.confidence) ? "1" : "0");
       setText(r.amount, L.fmtAuec(m.amount, true) + String.fromCharCode(160) + "aUEC");
       setAttr(r.amount, "data-tone", m.amount > 0 ? "ok" : m.amount < 0 ? "bad" : "");
@@ -469,17 +505,30 @@ export function movementsPanel(doc: any, L: any): any {
       setText(r.detail, detail);
       show(r.detail, detail !== "");
     }
-    const msg = shown.length === 0 ? "Aucune variation pour ce filtre." : "";
+    // The filters only see the lines the server listed (the newest ones): say so when that is not all of them.
+    const partial = section.listed.length < section.count;
+    const msg =
+      shown.length === 0
+        ? partial
+          ? "Aucune variation pour ce filtre parmi les " +
+            section.listed.length +
+            " dernières listées (les totaux ci-dessus couvrent les " +
+            section.count +
+            ")."
+          : "Aucune variation pour ce filtre."
+        : "";
     setText(empty, msg);
     show(empty, msg !== "");
     let footText = "";
-    if (section.truncated)
+    if (partial)
       footText =
         "Les " +
-        cfg.listed +
+        section.listed.length +
         " variations les plus récentes sont listées ; les totaux couvrent les " +
         section.count +
-        ".";
+        ". Les filtres et « Ce trajet seulement » ne portent que sur ces " +
+        section.listed.length +
+        " lignes.";
     if (section.coverage.starts_before_history)
       footText +=
         (footText ? " " : "") +

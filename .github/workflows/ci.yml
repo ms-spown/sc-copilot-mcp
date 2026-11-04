@@ -52,6 +52,8 @@ jobs:
       # Hidden characters, comments, unreviewed link hosts and translation drift in the files
       # Claude reads (needs dist/, hence after the build).
       - run: npm run check:docs
+      # The dashboard page as it ships (from dist/): fails over its size budget.
+      - run: npm run check:page-size
 
   audit:
     name: Dependency audit

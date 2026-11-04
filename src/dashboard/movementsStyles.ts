@@ -13,7 +13,7 @@ export const MOVEMENTS_CSS = `
 .mv-explain-line { margin: 0; font-size: var(--fs-s); overflow-wrap: anywhere; }
 .mv-totals .tr-line-row[data-estimate="1"] .tr-line-label::after { content: " · probable ou non expliqué"; color: var(--sc-text3); font-size: var(--fs-xs); font-weight: 400; }
 .mv-filters { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); }
-.mv-chip { font: inherit; font-size: var(--fs-xs); font-weight: 600; padding: 3px 12px; border-radius: 999px; border: 1px solid var(--sc-line); background: transparent; color: var(--sc-text2); cursor: pointer; }
+.mv-chip { font: inherit; font-size: var(--fs-xs); font-weight: 600; min-height: 28px; display: inline-flex; align-items: center; padding: 3px 12px; border-radius: 999px; border: 1px solid var(--sc-line); background: transparent; color: var(--sc-text2); cursor: pointer; }
 .mv-chip[aria-pressed="true"] { background: var(--tint-info); color: var(--sc-info); border-color: transparent; }
 .mv-chip:focus-visible { outline: 2px solid var(--sc-ring); outline-offset: 2px; }
 .mv-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }

@@ -669,8 +669,12 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           tiles.fees,
           tradeAmount(L, -m.fees.total, true),
           "",
-          tradeMethodLabel(m.fees.method),
-          tradeIsEstimate(m.fees.method),
+          // The balance movement block calls these fees "ambigu" when another possible cause sits in their window:
+          // the tile says the same word instead of a plain "mesuré".
+          ctx.decomposition && ctx.decomposition.fees_doubtful
+            ? "ambigu"
+            : tradeMethodLabel(m.fees.method),
+          (ctx.decomposition && ctx.decomposition.fees_doubtful) || tradeIsEstimate(m.fees.method),
           m.turnover ? tradePct(L, m.fees.total / m.turnover) + " du chiffre d’affaires" : "",
         );
       } else {
@@ -738,8 +742,10 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       setVar(r.bar, "--w", String(row.width));
       setVar(r.zero, "--z", String(layout.zero));
       setText(r.value, tradeAmount(L, row.value, true));
-      setText(r.tag, row.tag);
-      setAttr(r.tag, "data-estimate", row.estimate ? "1" : "0");
+      // Fees measured next to another possible cause carry the same word here as in the movements block.
+      const doubtRow = row.id === "fees" && !!ctx.decomposition && ctx.decomposition.fees_doubtful;
+      setText(r.tag, doubtRow ? "ambigu" : row.tag);
+      setAttr(r.tag, "data-estimate", row.estimate || doubtRow ? "1" : "0");
     }
     let flowText = "";
     if (m) {

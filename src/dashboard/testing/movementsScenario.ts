@@ -169,9 +169,9 @@ export function movementsLedger(
 }
 
 /**
- * A story where a shop item (500 aUEC, 25 s) is bought INSIDE the buy settlement's window: the commerce model's fee
- * reconciliation cannot know about it and absorbs it (19 968 instead of 19 468), so the gap with the margin is zero and
- * the 2 % warning never fires. Only the explainer sees it, and flags the fee as doubtful.
+ * The trading story with a contract that ends "completed" a second after the sales (no reward moves the balance): the
+ * fees of the sale side are measured in a window that also holds a possible reward, so the explainer flags them as
+ * doubtful, and the card must not call them plainly "mesuré".
  */
 export function doubtfulFeeLedger(
   nowMs: number,
@@ -182,24 +182,39 @@ export function doubtfulFeeLedger(
   const loop = Math.max(0, Math.floor((nowMs - epoch) / (TRADE_LOOP_SECONDS * 1000)));
   const base = epoch + loop * TRADE_LOOP_SECONDS * 1000;
   const f = TRADE_FIGURES;
-  const afterBuys = f.start - f.buys[0] - f.buys[1] - f.buyFee - 500;
+  const afterBuys = f.start - f.buys[0] - f.buys[1] - f.buyFee;
   const steps: [number, number][] = [
     [6, f.start],
     [20.1, f.start - f.buys[0]],
     [22.1, f.start - f.buys[0] - f.buys[1]],
-    [22.6, f.start - f.buys[0] - f.buys[1] - f.buyFee],
-    [25.3, afterBuys],
+    [22.6, afterBuys],
     [200.1, afterBuys + f.sells[0]],
     [202.1, afterBuys + f.sells[0] + f.sells[1]],
     [202.6, afterBuys + f.sells[0] + f.sells[1] - f.sellFee],
   ];
-  const lines = [
-    ...tradeLines(base),
-    itemBuyLine(base, 25, 500),
-    itemSuccessLine(base, 25.2),
-  ].filter((l) => Date.parse(l.slice(1, l.indexOf(">"))) <= nowMs);
+  const lines = tradeLines(base).filter((l) => Date.parse(l.slice(1, l.indexOf(">"))) <= nowMs);
+  const endedMs = base + 203_000;
   return buildLedgerPayload({
-    base: { ...EMPTY_LEDGER, status: "ok", asOf: epoch },
+    base: {
+      ...EMPTY_LEDGER,
+      status: "ok",
+      asOf: epoch,
+      contracts:
+        endedMs <= nowMs
+          ? [
+              {
+                id: "ef56ab78",
+                title: MOVEMENT_CONTRACT_TITLE,
+                state: "completed",
+                acceptedMs: base + 30_000,
+                endedMs,
+                steps: [],
+                stepsTotal: 0,
+                objectivesDone: 0,
+              },
+            ]
+          : [],
+    },
     history: historyFrom(base, steps, nowMs),
     includeBalance,
     plan,

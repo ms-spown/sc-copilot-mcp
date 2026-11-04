@@ -9,7 +9,6 @@ import {
   explainMovements,
   explainWindowText,
   moneyText,
-  movementsForSummary,
   type ContractEnd,
   type Explanation,
   type MovementEvent,
@@ -418,8 +417,9 @@ describe("Feature: nothing is explained that the data cannot show", () => {
 });
 
 describe("Feature: ambiguity is flagged, not guessed", () => {
-  it("Given a purchase that equals the shop item in the cluster window, Then the measured fee is marked doubtful and ambiguous", () => {
-    // The story's buy cluster (18 s..30.6 s) and an item bought inside it, which the fee reconciliation cannot know about.
+  it("Given an item bought inside a cargo settlement's window, Then the item is matched FIRST and the fee is the cargo's own", () => {
+    // The story's buy cluster (18 s..30.6 s) and an item of 500 bought inside it: the change that equals the item's
+    // price is the item, not a part of the fee.
     const lines = [
       cargoBuyLine(BASE, 20, F.buys[0], 640),
       cargoBuyLine(BASE, 22, F.buys[1], 56),
@@ -447,13 +447,62 @@ describe("Feature: ambiguity is flagged, not guessed", () => {
     const buyFee = e.movements.find(
       (m) => m.category === "fee_on_transaction" && m.side === "buy",
     )!;
-    expect(buyFee.doubtful).toBe(true);
-    expect(buyFee.confidence).toBe("ambiguous");
-    // The sell side has nothing else around it: still measured.
-    expect(
-      e.movements.find((m) => m.category === "fee_on_transaction" && m.side === "sell")!.confidence,
-    ).toBe("measured");
+    expect(buyFee).toMatchObject({ amount: -F.buyFee, confidence: "measured" });
+    expect(buyFee.doubtful).toBeUndefined();
+    expect(e.movements.find((m) => m.category === "item_purchase")).toMatchObject({
+      amount: -500,
+      confidence: "matched",
+    });
+    expect(e.unmatched_transactions).toBe(0);
+    expect(e.totals.unexplained.count).toBe(0);
     expect(sum(e)).toBe(net.auec);
+  });
+
+  it("Given a net sale then an item bought two seconds later, Then the item is not absorbed into the sale's fee", () => {
+    // A sale of 100 000 at 20 s settles as +97 000 (fee 3 000); an item of 3 000 at 22 s is a change of its own.
+    const sale = journalTransactions(
+      [
+        cargoSellLine(BASE, 20, 100_000, 100),
+        itemBuyLine(BASE, 22, 3_000),
+        itemSuccessLine(BASE, 22.2),
+      ],
+      BASE + 3_600_000,
+    );
+    const hist = historyFrom(
+      BASE,
+      [
+        [5, 500_000],
+        [20.4, 597_000],
+        [22.3, 594_000],
+      ],
+      NOW,
+    );
+    const e = explainMovements({
+      history: hist,
+      transactions: sale,
+      contracts: NO_CONTRACTS,
+      events: NO_EVENTS,
+      from: sec(1),
+      fromInclusive: false,
+      to: sec(60),
+    });
+    expect(e.movements.map((m) => [m.category, m.amount, m.confidence])).toEqual([
+      ["explained_by_transaction", 100_000, "matched"],
+      ["fee_on_transaction", -3_000, "measured"],
+      ["item_purchase", -3_000, "matched"],
+    ]);
+    expect(e.unmatched_transactions).toBe(0);
+    expect(sum(e)).toBe(94_000);
+  });
+
+  it("Given a fee measured in the window of a completed contract, Then it is flagged doubtful and ambiguous", () => {
+    const story = movementsStory(NOW, BASE);
+    const { e } = explainRun(story.transactions, story.history, [
+      { state: "completed", endedMs: sec(201), title: "Late contract" },
+    ]);
+    const fee = e.movements.find((m) => m.category === "fee_on_transaction" && m.side === "sell")!;
+    expect(fee.doubtful).toBe(true);
+    expect(fee.confidence).toBe("ambiguous");
   });
 
   it("Given two different items of the same price and a single balance change, Then the change is ambiguous and names no item", () => {
@@ -572,6 +621,48 @@ describe("Feature: two quick unexplained changes of one sign are one line", () =
   });
 });
 
+describe("Feature: a slow trickle is not one line", () => {
+  it("Given ten rises 0.8 s apart, Then they are merged by at most 5 s, so several lines remain", () => {
+    const steps: [number, number][] = [[1, 10_000]];
+    for (let i = 1; i <= 10; i++) steps.push([10 + i * 0.8, 10_000 + i * 100]);
+    const e = explainMovements({
+      history: historyFrom(BASE, steps, NOW),
+      transactions: [],
+      contracts: NO_CONTRACTS,
+      events: NO_EVENTS,
+      from: sec(1),
+      fromInclusive: false,
+      to: sec(100),
+    });
+    expect(e.movements.length).toBeGreaterThan(1);
+    expect(sum(e)).toBe(1_000);
+  });
+  it("Given nothing unexplained but a probable reward, Then the text says no lead is missing, never that all is explained", () => {
+    const s = movementsStory(NOW, BASE);
+    const { e } = explainRun(
+      s.transactions,
+      s.history,
+      [{ state: "completed", endedMs: sec(99.5), title: "x" }],
+      s.events,
+    );
+    // The story still holds the unexplained fall; take a window that ends before it.
+    const early = explainMovements({
+      history: s.history,
+      transactions: s.transactions,
+      contracts: [{ state: "completed", endedMs: sec(99.5), title: "x" }],
+      events: s.events,
+      from: sec(1),
+      fromInclusive: false,
+      to: sec(120),
+    });
+    const text = explainWindowText(early).join(" ");
+    expect(e.totals.unexplained.count).toBe(1);
+    expect(early.totals.probable_contract_reward.count).toBe(1);
+    expect(text).toContain("Rien d’autre n’est resté sans piste");
+    expect(text).not.toMatch(/Rien n’est resté non expliqué/);
+  });
+});
+
 describe("Feature: the net of a run, decomposed", () => {
   const decompose = (opts: { marginPartial?: boolean } = {}) => {
     const s = movementsStory(NOW, BASE);
@@ -637,6 +728,10 @@ describe("Feature: the net of a run, decomposed", () => {
     const { d } = decompose();
     const text = d.explanation.join(" ");
     expect(text).toContain(moneyText(210_300, true));
+    // The printed equation sums exactly: it uses the transaction parts, not the margin (equal within 0.1 %).
+    expect(text).toContain(moneyText(d.parts.transactions, true));
+    expect(text).toContain("coûts possibles (hangar ou assurance, sans preuve du coût)");
+    expect(text).not.toMatch(/coûts probables/);
     expect(text).toMatch(/non expliqué/);
     expect(text).toMatch(/carburant/);
     expect(text).toMatch(/probables/);
@@ -698,21 +793,17 @@ describe("Feature: the list is bounded and the totals are not", () => {
     expect(section.total_auec).toBe(-20);
   });
 
-  it("Given the hook for the session summary, Then it reduces a section to three numbers and nothing else", () => {
+  it("Given a window's end is not the clock, Then two builds a few seconds apart give the same section", () => {
     const s = movementsStory(NOW, BASE);
-    const section = buildMovementsSection({
-      history: s.history,
-      transactions: s.transactions,
-      contracts: [],
-      events: s.events,
-      nowMs: NOW,
-    })!;
-    expect(Object.keys(movementsForSummary(section)!)).toEqual([
-      "total_auec",
-      "fees_auec",
-      "unexplained_auec",
-    ]);
-    expect(movementsForSummary(null)).toBeNull();
+    const build = (nowMs: number) =>
+      buildMovementsSection({
+        history: s.history,
+        transactions: s.transactions,
+        contracts: [],
+        events: s.events,
+        nowMs,
+      });
+    expect(JSON.stringify(build(NOW + 5000))).toBe(JSON.stringify(build(NOW)));
   });
 });
 

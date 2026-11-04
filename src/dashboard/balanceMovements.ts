@@ -59,6 +59,8 @@ export const MOVEMENT_COST_BEFORE_MS = 3_000;
 export const MOVEMENT_COST_AFTER_MS = 20_000;
 /** Unexplained changes of the same sign this close are shown as one line. */
 export const MOVEMENT_MERGE_MS = 1_000;
+/** ... and a chain of them is never merged over more than this (a slow trickle stays several lines). */
+export const MOVEMENT_MERGE_SPAN_MS = 5_000;
 /** An exact amount match is accepted within the larger of 1 aUEC and this share of the amount (as the fee reconciliation). */
 export const MOVEMENT_MATCH_SLACK_SHARE = 0.001;
 /** Movements listed in the payload (newest first); the totals always cover all of them. */
@@ -252,7 +254,53 @@ export function explainMovements(input: ExplainInput): Explanation {
   const entries: Movement[] = [];
   const unmatchedAt: number[] = [];
 
-  // ---- 1. cargo settlements, with the commerce model's own reconciliation
+  // Lines matched on an exact amount (one change, same side, inside the transaction window).
+  const owner = new Map<Move, Pending>();
+  const candidatesOf = new Map<Pending, Move[]>();
+  const matched = new Set<Pending>();
+  const everyPending: Pending[] = [];
+  const matchExact = (list: Pending[]) => {
+    for (const p of [...list].sort((a, b) => a.t - b.t)) {
+      everyPending.push(p);
+      const slack = Math.max(1, p.total * MOVEMENT_MATCH_SLACK_SHARE);
+      const sign = p.side === "buy" ? -1 : 1;
+      const cands = all.filter(
+        (m) =>
+          inWin(m) &&
+          !m.gap &&
+          Math.sign(m.delta) === sign &&
+          Math.abs(Math.abs(m.delta) - p.total) <= slack &&
+          m.at >= p.t - TRADE_MATCH_BEFORE_MS &&
+          m.at <= p.t + TRADE_MATCH_AFTER_MS,
+      );
+      candidatesOf.set(p, cands);
+      const free = cands.find((m) => !taken.has(m));
+      if (!free) {
+        if (cands.length === 0 && inWinTime(p.t, from, to)) unmatchedAt.push(p.t);
+        continue;
+      }
+      taken.add(free);
+      owner.set(free, p);
+      matched.add(p);
+      const e: Movement = {
+        at: free.at,
+        amount: free.delta,
+        category: p.category,
+        confidence: "matched",
+        side: p.side,
+        ...(p.ref ? { ref: p.ref } : {}),
+        ...(p.shop ? { shop: p.shop } : {}),
+      };
+      entries.push(e);
+      entryOf.set(free, e);
+    }
+  };
+
+  // ---- 0. shop items FIRST: a change that equals an item's price is that item, and must not be absorbed into the
+  // fee of a cargo settlement that happens to be in the same window.
+  matchExact(items);
+
+  // ---- 1. cargo settlements, with the commerce model's own reconciliation (on the changes left)
   const pending: Pending[] = [];
   for (const side of ["buy", "sell"] as const) {
     const txs = prep.counted.filter((x) => x.side === side);
@@ -261,7 +309,13 @@ export function explainMovements(input: ExplainInput): Explanation {
       const last = cluster[cluster.length - 1]!.t;
       // Not even near the window: not this window's business.
       if (last + TRADE_MATCH_AFTER_MS < from || first - TRADE_MATCH_BEFORE_MS > to) continue;
-      const r = clusterFee(cluster, side, prep.counted, prep.unconfirmed, all);
+      const r = clusterFee(
+        cluster,
+        side,
+        prep.counted,
+        prep.unconfirmed,
+        all.filter((m) => !taken.has(m)),
+      );
       const refuse = () => {
         for (const x of cluster)
           pending.push({
@@ -291,10 +345,14 @@ export function explainMovements(input: ExplainInput): Explanation {
       const shops = [...new Set(cluster.map((x) => label(x.shop)))].filter(Boolean);
       const ref = goods.length === 1 ? goods[0] : undefined;
       const shop = shops.length === 1 ? shops[0] : undefined;
-      // Another candidate cause in the same window: a shop item, or a contract/insurance event of the right sign.
+      // Another candidate cause in the same window: a shop item that found no change of its own (it may sit inside the
+      // fee), or a contract/insurance event of the right sign.
       const doubtful =
         items.some(
-          (x) => x.t >= first - TRADE_MATCH_BEFORE_MS && x.t <= last + TRADE_MATCH_AFTER_MS,
+          (x) =>
+            !matched.has(x) &&
+            x.t >= first - TRADE_MATCH_BEFORE_MS &&
+            x.t <= last + TRADE_MATCH_AFTER_MS,
         ) || used.some(weakNear);
       const tx: Movement = {
         at,
@@ -328,48 +386,11 @@ export function explainMovements(input: ExplainInput): Explanation {
     }
   }
 
-  // ---- 2. exact matches: shop items, and cargo lines the reconciliation could not settle
-  pending.push(...items);
-  pending.sort((a, b) => a.t - b.t);
-  const owner = new Map<Move, Pending>();
-  const candidatesOf = new Map<Pending, Move[]>();
-  const matched = new Set<Pending>();
-  for (const p of pending) {
-    const slack = Math.max(1, p.total * MOVEMENT_MATCH_SLACK_SHARE);
-    const sign = p.side === "buy" ? -1 : 1;
-    const cands = all.filter(
-      (m) =>
-        inWin(m) &&
-        !m.gap &&
-        Math.sign(m.delta) === sign &&
-        Math.abs(Math.abs(m.delta) - p.total) <= slack &&
-        m.at >= p.t - TRADE_MATCH_BEFORE_MS &&
-        m.at <= p.t + TRADE_MATCH_AFTER_MS,
-    );
-    candidatesOf.set(p, cands);
-    const free = cands.find((m) => !taken.has(m));
-    if (!free) {
-      if (cands.length === 0 && inWinTime(p.t, from, to)) unmatchedAt.push(p.t);
-      continue;
-    }
-    taken.add(free);
-    owner.set(free, p);
-    matched.add(p);
-    const e: Movement = {
-      at: free.at,
-      amount: free.delta,
-      category: p.category,
-      confidence: "matched",
-      side: p.side,
-      ...(p.ref ? { ref: p.ref } : {}),
-      ...(p.shop ? { shop: p.shop } : {}),
-    };
-    entries.push(e);
-    entryOf.set(free, e);
-  }
+  // ---- 2. exact matches for the cargo lines the reconciliation could not settle
+  matchExact(pending);
   // A line left without a change while its only candidates went to a line of another identity: the change could be
   // either. It is not chosen.
-  for (const p of pending) {
+  for (const p of everyPending) {
     if (matched.has(p)) continue;
     for (const m of candidatesOf.get(p) ?? []) {
       const q = owner.get(m);
@@ -478,7 +499,8 @@ export function explainMovements(input: ExplainInput): Explanation {
       open.reason === "no_cause" &&
       e.reason === "no_cause" &&
       Math.sign(open.amount) === Math.sign(e.amount) &&
-      e.at - lastEnd <= MOVEMENT_MERGE_MS
+      e.at - lastEnd <= MOVEMENT_MERGE_MS &&
+      e.at - open.at <= MOVEMENT_MERGE_SPAN_MS
     ) {
       open.amount += e.amount;
       lastEnd = e.at;
@@ -544,7 +566,8 @@ const NOTHING_IN_LOG =
 function unexplainedSentence(e: Explanation): string[] {
   const { no_cause, ambiguous, stream_gap } = e.unexplained_split;
   const n = e.totals.unexplained;
-  if (n.count === 0) return ["Rien n’est resté non expliqué."];
+  // A proximity in time is not an explanation: the sentence says "sans piste", not "expliqué".
+  if (n.count === 0) return ["Rien d’autre n’est resté sans piste."];
   const bits: string[] = [];
   const count = (reason: UnexplainedReason) =>
     e.movements.filter((m) => m.category === "unexplained" && m.reason === reason).length;
@@ -601,7 +624,7 @@ export function explainWindowText(e: Explanation): string[] {
     );
   if (t.probable_insurance_or_hangar_cost.count)
     parts.push(
-      `coûts probables d’assurance ou de hangar ${moneyText(t.probable_insurance_or_hangar_cost.auec, true)}`,
+      `coûts possibles (hangar ou assurance, sans preuve du coût) ${moneyText(t.probable_insurance_or_hangar_cost.auec, true)}`,
     );
   if (t.unexplained.count) parts.push(`non expliqué ${moneyText(t.unexplained.auec, true)}`);
   if (parts.length) out.push("Dont : " + parts.join(" ; ") + ".");
@@ -725,27 +748,27 @@ function decompositionText(d: RunDecomposition, e: Explanation): string[] {
   const p = d.parts;
   const m = moneyText;
   const lines: string[] = [];
-  if (d.closes && d.margin !== null) {
-    lines.push(`marge brute ${m(d.margin, true)}`);
-    if (p.fees)
-      lines.push(
-        `frais ${m(p.fees, true)}${d.fees_doubtful ? " (peut inclure un autre mouvement)" : " (mesurés)"}`,
-      );
-  } else {
-    if (p.transactions)
-      lines.push(`ventes moins achats rapprochés du journal ${m(p.transactions, true)}`);
-    if (p.fees)
-      lines.push(
-        `frais ${m(p.fees, true)}${d.fees_doubtful ? " (peut inclure un autre mouvement)" : " (mesurés)"}`,
-      );
-  }
+  // The equation is written with the transaction parts themselves, so that it sums exactly; when it closes they equal
+  // the gross margin (within 0.1 %), and it says so.
+  if (p.transactions)
+    lines.push(
+      d.closes
+        ? `ventes moins achats rapprochés du journal ${m(p.transactions, true)} (égal à la marge brute à 0,1 % près)`
+        : `ventes moins achats rapprochés du journal ${m(p.transactions, true)}`,
+    );
+  if (p.fees)
+    lines.push(
+      `frais ${m(p.fees, true)}${d.fees_doubtful ? " (peuvent inclure un autre mouvement)" : " (mesurés)"}`,
+    );
   if (p.items) lines.push(`objets achetés ${m(p.items, true)}`);
   if (p.probable_rewards)
     lines.push(
       `récompenses probables de contrat ${m(p.probable_rewards, true)} (montant lu sur le solde seul)`,
     );
   if (p.probable_costs)
-    lines.push(`coûts probables d’assurance ou de hangar ${m(p.probable_costs, true)}`);
+    lines.push(
+      `coûts possibles (hangar ou assurance, sans preuve du coût) ${m(p.probable_costs, true)}`,
+    );
   // What is left of the net once every named part is out: by construction the unexplained movements.
   const rest = d.net - (p.transactions + p.fees + p.items + p.probable_rewards + p.probable_costs);
   lines.push(`non expliqué ${m(rest, true)}`);
@@ -844,24 +867,5 @@ export function buildMovementsSection(
     listed: newestFirst.slice(0, MOVEMENT_MAX_LISTED).map(movementView),
     truncated: newestFirst.length > MOVEMENT_MAX_LISTED,
     explanation: explainWindowText(e).map((s) => s.slice(0, 400)),
-  };
-}
-
-/**
- * HOOK for the session summary (the sessions PR owns that file; nothing here writes to it). A session can store these
- * few numbers beside its start and end balance: how much of its balance variation each kind of cause explains. They
- * are balance-derived like everything else here: only ever computed with the balance allowed, and `unexplained_auec`
- * is a lower bound of "money whose cause is unknown", never a claim about what it was.
- */
-export function movementsForSummary(section: MovementsSection | null): {
-  total_auec: number;
-  fees_auec: number;
-  unexplained_auec: number;
-} | null {
-  if (!section) return null;
-  return {
-    total_auec: section.total_auec,
-    fees_auec: section.totals.fee_on_transaction.auec,
-    unexplained_auec: section.totals.unexplained.auec,
   };
 }

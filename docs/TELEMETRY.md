@@ -577,9 +577,9 @@ same thing. Each figure now has one meaning:
   | --- | --- | --- |
   | `explained_by_transaction` | a log transaction and the balance change agree (cargo settlements through the commerce model's own reconciliation; other lines by an exact amount) | `matched` |
   | `fee_on_transaction` | what a cargo settlement took on top of the log amount, per cluster: the model's `clusterFee`, not a copy | `measured` (`ambiguous` when the same window also holds a shop item, a contract end or an insurance/hangar event) |
-  | `item_purchase` | a completed shop item line whose total equals one balance change | `matched` |
-  | `probable_contract_reward` | an otherwise unexplained rise from 3 s before to 20 s after a contract ended `completed`; the amount is the balance's, the log has no reward line | `probable` |
-  | `probable_insurance_or_hangar_cost` | an otherwise unexplained fall from 3 s before to 20 s after an insurance claim request or a hangar request completed | `probable` |
+  | `item_purchase` | a completed shop item line whose total equals one balance change; matched BEFORE the cargo reconciliation, which then only sees the changes left (an item bought next to a sale is not absorbed into its fee) | `matched` |
+  | `probable_contract_reward` | an otherwise unexplained rise from 3 s before to 20 s after a contract ended `completed`; the amount is the balance's, the log has no reward line; the card says "Récompense probable de contrat" | `probable` |
+  | `probable_insurance_or_hangar_cost` | an otherwise unexplained fall from 3 s before to 20 s after an insurance claim request or a hangar request completed. The log has no line for what these cost, so ANY fall in that window (fuel, a purchase) qualifies: the card says "Coût possible (hangar ou assurance)", tag "possible", and never names the cause | `probable` (shown as "possible") |
   | `unexplained` | everything else; reasons `no_cause`, `ambiguous` (two kinds of cause fit: none is chosen) or `stream_gap` (the change spans a cut in the stream: neither its time nor its content is known) | `none` / `ambiguous` |
 
   A change goes to at most one cause (strong evidence, an amount that matches, comes before time proximity). **Fuel,
@@ -587,7 +587,7 @@ same thing. Each figure now has one meaning:
   "non expliqué"**, and the block says what they could be without picking one. A contract that failed or was abandoned
   just before a fall only adds a hint, never a penalty claim. Invariant, tested: the amounts of all the entries add up,
   to the aUEC, to the balance change of the window; a settlement that holds a price and a fee is ONE balance change split
-  in two parts of one cause. Same-sign unexplained changes less than 1 s apart are shown as one line.
+  in two parts of one cause. Same-sign unexplained changes less than 1 s apart are shown as one line (a chain is cut after 5 s). The session text says "Rien d’autre n’est resté sans piste", not that everything is explained: a proximity in time is a lead, not an explanation. The printed equation uses the matched transaction parts so that it sums exactly (they equal the gross margin within 0.1 % when it closes, and it says so). When the fees are measured in a window that also holds another possible cause, the card's fee tile and waterfall row say "ambigu", like the block.
   **Run decomposition.** For a run whose net was measured, the warning (shown when the net holds more than the margin and
   the fees explain) reads: variation = gross margin + fees + items + probable rewards + probable costs + unexplained, with
   the unexplained part named. The equation is shown as closing only when everything bought was sold in the run, there is no
@@ -604,8 +604,9 @@ same thing. Each figure now has one meaning:
   the delay between a log line and the balance change it causes (the log has no balance: it needs a capture of both at
   once), and what insurance or hangar requests really cost. Every amount here is derived from the balance: built only when
   the View asked for it, drawn after the click, stripped by the sender and the receiver on the channel between Views, never
-  in `ui/update-model-context` or the fixed messages. The block lists the newest 40 movements (the totals cover all). A
-  pure hook, `movementsForSummary`, is left for the session summary (not wired: the sessions work owns that file).
+  in `ui/update-model-context` or the fixed messages. The block lists the newest 40 movements (the totals cover all; the filters
+  and "Ce trajet seulement" only see those lines, and the block says so when the list is shorter than the totals). Nothing
+  of this is stored in the session summary.
 
 #### Trade actions: find the next route
 

@@ -64,7 +64,16 @@ versions follow [Semantic Versioning](https://semver.org/).
   (margin, fees, items, probable rewards and costs, unexplained) and a folded block in the card's details lists the
   movements with a filter by category. All of it is built only when the View asked for the balance and never leaves it
   (channel, hash, model-visible text: tested). The ledger service keeps insurance, hangar and login events apart from
-  its own list. A hook for the session summary (`movementsForSummary`) is left unwired. Preview: `trade=movements&open=1`.
+  its own list. Preview: `trade=movements&open=1`. Wording is strict: a rise after a completed contract is "Récompense
+  probable de contrat"; a fall after an insurance claim or a hangar request is "Coût possible (hangar ou assurance)"
+  (the log has no cost line, so any fall there qualifies, and no cause is named); the session text says "Rien d’autre
+  n’est resté sans piste", never that all is explained; a shop item is matched before the cargo fee reconciliation, so it
+  is not absorbed into a fee; fees measured next to another possible cause read "ambigu" on the card too.
+- `npm run check:page-size` (run in CI after the build, listed in the quality gate): measures the dashboard page as it
+  ships, from `dist/`, against a budget (410 kB; the built page was 382.9 kB). `tsconfig` now sets `removeComments`
+  (the emitted View script no longer carries the sources' comments, about 19 kB). The vitest size test only measures the
+  page as vitest transforms it and is a coarse guard. The size the host accepts for an MCP App HTML resource is not
+  verified.
 - **Commerce card in the live dashboard** ("Commerce"). It replaces the misleading "Prévu / Réalisé" block, which put a
   planned profit next to a balance change (the change also holds the goods bought, the sales and the fees). A pure model
   (`src/dashboard/tradeRun.ts`) turns the transactions of a run, the balance history and the plan into: planned profit,

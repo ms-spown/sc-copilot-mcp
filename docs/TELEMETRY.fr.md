@@ -603,9 +603,9 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
   | --- | --- | --- |
   | `explained_by_transaction` | une transaction du journal et la variation du solde concordent (marchandises via la réconciliation du modèle de commerce ; autres lignes par montant exact) | `matched` |
   | `fee_on_transaction` | ce qu'un règlement de marchandise a pris en plus du montant du journal, par groupe : le `clusterFee` du modèle, pas une copie | `measured` (`ambiguous` quand la même fenêtre contient aussi un objet de boutique, une fin de contrat ou un événement d'assurance/hangar) |
-  | `item_purchase` | une ligne d'objet de boutique terminée dont le total égale une variation du solde | `matched` |
-  | `probable_contract_reward` | une hausse par ailleurs non expliquée de 3 s avant à 20 s après la fin d'un contrat `completed` ; le montant est celui du solde, le journal n'a aucune ligne de récompense | `probable` |
-  | `probable_insurance_or_hangar_cost` | une baisse par ailleurs non expliquée de 3 s avant à 20 s après une demande de réclamation d'assurance ou une demande de hangar terminée | `probable` |
+  | `item_purchase` | une ligne d'objet de boutique terminée dont le total égale une variation du solde ; appariée AVANT la réconciliation des marchandises, qui ne voit plus que les variations restantes (un objet acheté à côté d'une vente n'est pas absorbé dans ses frais) | `matched` |
+  | `probable_contract_reward` | une hausse par ailleurs non expliquée de 3 s avant à 20 s après la fin d'un contrat `completed` ; le montant est celui du solde, le journal n'a aucune ligne de récompense ; la carte dit « Récompense probable de contrat » | `probable` |
+  | `probable_insurance_or_hangar_cost` | une baisse par ailleurs non expliquée de 3 s avant à 20 s après une demande de réclamation d'assurance ou une demande de hangar terminée. Le journal n'a aucune ligne sur ce que cela coûte : TOUTE baisse de cette fenêtre (carburant, un achat) convient ; la carte dit « Coût possible (hangar ou assurance) », étiquette « possible », et ne nomme jamais la cause | `probable` (affiché « possible ») |
   | `unexplained` | tout le reste ; raisons `no_cause`, `ambiguous` (deux sortes de cause conviennent : aucune n'est choisie) ou `stream_gap` (la variation chevauche une coupure du flux : ni son heure ni son contenu ne sont connus) | `none` / `ambiguous` |
 
   Une variation va à une cause au plus (une preuve forte, un montant qui correspond, passe avant la proximité dans le
@@ -614,7 +614,7 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
   en choisir un. Un contrat échoué ou abandonné juste avant une baisse n'ajoute qu'un indice, jamais l'affirmation d'une
   pénalité. Invariant, testé : les montants de toutes les entrées s'additionnent, à l'aUEC près, à la variation du solde
   de la fenêtre ; un règlement qui contient un prix et des frais est UNE variation du solde coupée en deux parts d'une
-  seule cause. Les variations non expliquées de même signe distantes de moins d'1 s sont montrées sur une ligne.
+  seule cause. Les variations non expliquées de même signe distantes de moins d'1 s sont montrées sur une ligne (une chaîne est coupée après 5 s). Le texte de session dit « Rien d’autre n’est resté sans piste », pas que tout est expliqué : une proximité dans le temps est une piste, pas une explication. L'équation affichée utilise les parts de transaction appariées pour que la somme tombe juste (elles égalent la marge brute à 0,1 % près quand elle se boucle, et le texte le dit). Quand les frais sont mesurés dans une fenêtre qui contient aussi une autre cause possible, la tuile et la ligne de la cascade de la carte disent « ambigu », comme le bloc.
   **Décomposition d'un trajet.** Pour un trajet dont le net est mesuré, l'avertissement (affiché quand le net contient
   plus que la marge et les frais n'expliquent) dit : variation = marge brute + frais + objets + récompenses probables +
   coûts probables + non expliqué, la part non expliquée étant nommée. L'équation n'est présentée comme bouclée que si tout
@@ -634,9 +634,9 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
   (le journal n'a pas de solde : il faut une capture des deux en même temps), et ce que coûtent vraiment une assurance
   ou un hangar. Tout montant ici est dérivé du solde : construit seulement quand la View l'a demandé, dessiné après le
   clic, retiré par l'émetteur et le récepteur sur le canal entre Views, jamais dans `ui/update-model-context` ni les
-  messages fixes. Le bloc liste les 40 mouvements les plus récents (les totaux couvrent tous). Un crochet pur,
-  `movementsForSummary`, est laissé pour le résumé de session (non branché : le travail sur les sessions possède ce
-  fichier).
+  messages fixes. Le bloc liste les 40 mouvements les plus récents (les totaux couvrent tous ; les filtres et
+  « Ce trajet seulement » ne voient que ces lignes, et le bloc le dit quand la liste est plus courte que les totaux).
+  Rien de tout cela n'est stocké dans le résumé de session.
 
 #### Actions de commerce : trouver la prochaine route
 

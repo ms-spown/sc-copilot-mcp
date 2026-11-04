@@ -153,7 +153,7 @@ project's licence and confirm that you have the right to do so.
 
 ```bash
 npm ci --ignore-scripts
-npm run lint && npm run format:check && npm run typecheck && npm test && npm run build && npm run check:docs && npm run audit:prod
+npm run lint && npm run format:check && npm run typecheck && npm test && npm run build && npm run check:docs && npm run check:page-size && npm run audit:prod
 ```
 
 Generated files: after changing a tool run `npm run golden:update` and `npm run docs:tools` (tests fail if you

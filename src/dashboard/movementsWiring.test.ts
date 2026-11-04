@@ -132,7 +132,7 @@ describe("Feature: the section does not change while the balance does not", () =
 });
 
 describe("Feature: fees measured next to another possible cause are said to be doubtful", () => {
-  it("Given a shop item bought inside the purchase window, Then the 2 % warning stays silent but the card says the fees may include it", async () => {
+  it("Given a completed contract right after the sales, Then the 2 % warning stays silent but the card says the fees may include a reward, and the tile says ambigu", async () => {
     const scenario = new Scenario();
     scenario.uec = movementBalanceAt;
     scenario.ledger = (include, nowMs) => doubtfulFeeLedger(nowMs, scenario.epoch, include, PLAN);
@@ -142,11 +142,13 @@ describe("Feature: fees measured next to another possible cause are said to be d
     findButton(w.root, "Afficher le solde").click();
     await w.advance(3 * SECOND);
     const t = card(w);
-    expect(t).toMatch(/Frais\s*mesuré/);
+    expect(t).toMatch(/Frais\s*ambigu/);
+    // The tile and the waterfall row no longer say a plain "mesuré" (the block's totals row is a category name).
+    expect(t).not.toMatch(/Frais\nmesuré\n/);
     expect(t).toContain(
       "Attention : Les frais mesurés tombent dans une fenêtre qui contient aussi une autre cause possible",
     );
-    expect(NBSP_FREE(visibleText(block(w)))).toMatch(/Frais sur l’achat\s*ambigu/);
+    expect(NBSP_FREE(visibleText(block(w)))).toMatch(/Frais sur la vente\s*ambigu/);
   });
 });
 
@@ -237,9 +239,9 @@ describe("Feature: the block in the card's details", () => {
     expect(t).toMatch(/Frais sur l’achat\s*mesuré\s*−19 468 aUEC/);
     expect(t).toMatch(/Achat d’objet\s*rapproché du journal\s*−2 400 aUEC/);
     expect(t).toContain("ration_pack_test");
-    expect(t).toMatch(/Récompense de contrat\s*probable\s*\+85 000 aUEC/);
+    expect(t).toMatch(/Récompense probable de contrat\s*probable\s*\+85 000 aUEC/);
     expect(t).toContain("montant lu sur le solde : le journal n’a pas de ligne de récompense");
-    expect(t).toMatch(/Assurance\s*probable\s*−9 000 aUEC/);
+    expect(t).toMatch(/Coût possible \(hangar ou assurance\)\s*possible\s*−9 000 aUEC/);
     expect(t).toMatch(/Non expliqué\s*sans cause connue\s*−6 300 aUEC/);
     expect(t).toContain(
       "carburant, réparation, amende, virement ou récompense ? le journal ne le dit pas",
@@ -255,10 +257,13 @@ describe("Feature: the block in the card's details", () => {
     findButton(w.root, "Afficher le solde").click();
     await w.advance(3 * SECOND);
     const warn = card(w);
-    expect(warn).toMatch(/Attention : Variation du solde \+210 300 aUEC = marge brute \+186 568/);
+    expect(warn).toMatch(
+      /Attention : Variation du solde \+210 300 aUEC = ventes moins achats rapprochés du journal \+186 568/,
+    );
     expect(warn).toContain("frais −43 568 (mesurés)");
     expect(warn).toContain("objets achetés −2 400");
     expect(warn).toContain("récompenses probables de contrat +85 000");
+    expect(warn).toContain("coûts possibles (hangar ou assurance, sans preuve du coût) −9 000");
     expect(warn).toContain("non expliqué −6 300");
   });
 
@@ -271,16 +276,69 @@ describe("Feature: the block in the card's details", () => {
     findButton(block(w), "Non expliqués").click();
     const t = NBSP_FREE(visibleText(findAll(block(w), (n) => n.className === "mv-list")[0]!));
     expect(t).toContain("−6 300 aUEC");
-    expect(t).not.toContain("Récompense de contrat");
+    expect(t).not.toContain("Récompense probable de contrat");
     expect(t).not.toContain("Achat de marchandise");
-    findButton(block(w), "Probables").click();
+    findButton(block(w), "Probables ou possibles").click();
     const p = NBSP_FREE(visibleText(findAll(block(w), (n) => n.className === "mv-list")[0]!));
-    expect(p).toContain("Récompense de contrat");
+    expect(p).toContain("Récompense probable de contrat");
     expect(p).not.toContain("−6 300");
     findButton(block(w), "Ce trajet seulement").click();
     expect(
       NBSP_FREE(visibleText(findAll(block(w), (n) => n.className === "mv-list")[0]!)),
-    ).toContain("Récompense de contrat");
+    ).toContain("Récompense probable de contrat");
+  });
+
+  it("Given the balance hidden again, Then no amount of the movements stays in the page text, not even in hidden rows", async () => {
+    const { w } = await page();
+    await w.advance(215 * SECOND);
+    await fullscreen(w);
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(3 * SECOND);
+    expect(NBSP_FREE(visibleText(block(w)))).toMatch(MOVED);
+    findButton(w.root, "Masquer").click();
+    await w.advance(3 * SECOND);
+    expect(isShown(block(w))).toBe(false);
+    const all: string[] = [];
+    const walk = (n: any) => {
+      if (n.textContent) all.push(n.textContent);
+      for (const c of n.children) walk(c);
+    };
+    walk(block(w));
+    expect(NBSP_FREE(all.join("\n"))).not.toMatch(MOVED);
+  });
+
+  it("Given a list shorter than the totals, Then the footer and the filter say they only see the listed lines", () => {
+    const L: any = full;
+    const section = L.movementsNormalize(L, {
+      v: 1,
+      window: {
+        from: "2026-11-03T18:00:00.000Z",
+        to: "2026-11-03T18:10:00.000Z",
+        basis: "history",
+      },
+      total_auec: -100,
+      count: 40,
+      totals: {},
+      listed: Array.from({ length: 10 }, (_, i) => ({
+        at: "2026-11-03T18:00:0" + i + ".000Z",
+        amount: -10,
+        category: "unexplained",
+        confidence: "none",
+        reason: "no_cause",
+      })),
+      truncated: true,
+      explanation: [],
+    });
+    expect(section.listed).toHaveLength(10);
+    expect(L.movementsSelect(section, "goods", null)).toHaveLength(0);
+    const ambiguous = L.movementsDetailText({
+      category: "unexplained",
+      reason: "ambiguous",
+      candidates: ["item_purchase", "explained_by_transaction"],
+      hints: [],
+    });
+    expect(ambiguous).toContain("objets");
+    expect(ambiguous).not.toMatch(/item_purchase|item purchase/);
   });
 
   it("Given the balance shown, Then ui/update-model-context and the fixed messages carry none of it", async () => {
