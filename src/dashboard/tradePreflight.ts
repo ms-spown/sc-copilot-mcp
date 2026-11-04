@@ -29,6 +29,7 @@ export function tradePreflightConfig() {
 /** The chip of a verdict: a symbol and words (never colour alone), and its tone. */
 export function tradeVerdictInfo(verdict: string): any {
   if (verdict === "valid") return { label: "✓ Toujours valable", tone: "ok" };
+  if (verdict === "valid_estimate") return { label: "≈ Inchangé · estimation UEX", tone: "info" };
   if (verdict === "watch") return { label: "⚠ À surveiller", tone: "warn" };
   if (verdict === "drifted") return { label: "✕ Dérivé", tone: "bad" };
   return { label: "? Impossible de vérifier", tone: "off" };
@@ -43,7 +44,8 @@ export function tradeRefusalInfo(L: any, trade: any, now: number): any {
   const list = trade && Array.isArray(trade.price_refusals) ? trade.price_refusals : [];
   let best: any = null;
   for (const r of list) {
-    const at = r && typeof r.at === "string" ? Date.parse(r.at) : NaN;
+    // A refusal followed by a transaction that went through, on the same side, is over: the player has moved on.
+    const at = r && r.superseded !== true && typeof r.at === "string" ? Date.parse(r.at) : NaN;
     // A time in the future is a clock problem: it is not shown.
     if (
       !Number.isFinite(at) ||
@@ -114,7 +116,7 @@ export function tradePreflightClean(raw: any): any {
         sell_price: tradePfNum(e.sell_price, 1e9),
       }
     : null;
-  const known = ["valid", "watch", "drifted", "unknown"];
+  const known = ["valid", "valid_estimate", "watch", "drifted", "unknown"];
   const legs = (Array.isArray(raw.legs) ? raw.legs : [])
     .slice(0, 2)
     .filter((l: any) => l && (l.side === "buy" || l.side === "sell"))
@@ -123,6 +125,8 @@ export function tradePreflightClean(raw: any): any {
       terminal: tradePfText(l.terminal, 60),
       verdict: known.indexOf(l.verdict) >= 0 ? l.verdict : "unknown",
       priced: tradePfNum(l.now_price, 1e9) !== null && !l.problem,
+      // Green needs a player behind the price and a row that is not stale: UEX's own estimate is never a confirmation.
+      backed: l.estimate === false && (tradePfNum(l.reports, 1e6) || 0) >= 1 && l.stale !== true,
       lines: (Array.isArray(l.lines) ? l.lines : [])
         .slice(0, 6)
         .map((s: any) => tradePfText(s, 160))
@@ -130,10 +134,14 @@ export function tradePreflightClean(raw: any): any {
     }));
   const t = raw.text && typeof raw.text === "object" ? raw.text : {};
   let verdict = known.indexOf(raw.verdict) >= 0 ? raw.verdict : "unknown";
-  // A green verdict that no leg backs is not believed, and neither are the words that came with it.
+  // A verdict that the legs do not back is not believed, and neither are the words that came with it: green needs BOTH
+  // legs green, fresh and backed by a player report; "inchangé · estimation" needs both legs priced and neither red.
+  const sound = !!plan && legs.length === 2 && legs.every((l: any) => l.priced);
   const bad =
-    verdict === "valid" &&
-    !(plan && legs.length === 2 && legs.every((l: any) => l.verdict === "valid" && l.priced));
+    (verdict === "valid" &&
+      !(sound && legs.every((l: any) => l.verdict === "valid" && l.backed))) ||
+    (verdict === "valid_estimate" &&
+      !(sound && legs.every((l: any) => l.verdict === "valid" || l.verdict === "valid_estimate")));
   if (bad) verdict = "unknown";
   return {
     state: "preflight",

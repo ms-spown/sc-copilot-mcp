@@ -193,6 +193,13 @@ describe("Feature: the alert of a refusal at the kiosk", () => {
     expect(tradeRefusalInfo(L, { price_refusals: "oops" }, NOW)).toBeNull();
   });
 
+  it("Given a refusal that a later transaction of the same side superseded, Then there is no alert", () => {
+    expect(tradeRefusalInfo(L, trade(at(30_000, { superseded: true })), NOW)).toBeNull();
+    // the older refusal still stands when the newer one is the superseded one? No: each is judged on its own
+    const info = tradeRefusalInfo(L, trade(at(200_000), at(30_000, { superseded: true })), NOW);
+    expect(info).not.toBeNull();
+  });
+
   it("Given several, Then the newest fresh one is shown", () => {
     const info = tradeRefusalInfo(L, trade(at(300_000, { side: "sell" }), at(30_000)), NOW);
     expect(info.text).toContain("pendant l’achat");
@@ -212,6 +219,7 @@ describe("Feature: the refusals on the channel between Views (a hostile peer)", 
     side: "sell",
     kind: "item",
     confidence: "ambiguous",
+    superseded: false,
   };
 
   it("Given a well-formed list, Then it is kept, rebuilt from the parsed time", () => {
@@ -221,7 +229,13 @@ describe("Feature: the refusals on the channel between Views (a hostile peer)", 
     });
     expect(t.price_refusals).toEqual([
       { ...good },
-      { at: "2026-11-04T11:59:00.000Z", side: "sell", kind: "item", confidence: "ambiguous" },
+      {
+        at: "2026-11-04T11:59:00.000Z",
+        side: "sell",
+        kind: "item",
+        confidence: "ambiguous",
+        superseded: false,
+      },
     ]);
   });
 
@@ -243,7 +257,7 @@ describe("Feature: the refusals on the channel between Views (a hostile peer)", 
     const t = ledgerTradeNormalize({ ...base, price_refusals: hostile });
     expect(t.price_refusals.length).toBeLessThanOrEqual(3);
     for (const r of t.price_refusals) {
-      expect(Object.keys(r).sort()).toEqual(["at", "confidence", "kind", "side"]);
+      expect(Object.keys(r).sort()).toEqual(["at", "confidence", "kind", "side", "superseded"]);
       expect(["buy", "sell"]).toContain(r.side);
       expect(["commodity", "item"]).toContain(r.kind);
       expect(["confirmed", "ambiguous"]).toContain(r.confidence);

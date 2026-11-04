@@ -32,6 +32,7 @@ function rig() {
     side: "buy" | "sell";
     kind: "commodity" | "item";
     confidence: "confirmed";
+    superseded: boolean;
   }[] = [];
   const telemetry = {
     enabled: true,
@@ -74,6 +75,7 @@ describe("Feature: price refusals reach the saved session", () => {
       side: "buy",
       kind: "commodity",
       confidence: "confirmed",
+      superseded: false,
     });
     for (let i = 0; i < 3; i++) {
       r.clock.t += MIN;

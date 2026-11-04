@@ -33,7 +33,13 @@ afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 function rig() {
   const clock = { t: T0 };
   const file = path.join(dir, "sessions.json");
-  const refusals: { at: string; side: "buy"; kind: "commodity"; confidence: "confirmed" }[] = [];
+  const refusals: {
+    at: string;
+    side: "buy";
+    kind: "commodity";
+    confidence: "confirmed";
+    superseded: boolean;
+  }[] = [];
   const telemetry: Telemetry = {
     enabled: true,
     status: async () => ({ state: "live" }) as TelemetryStatusReport,
@@ -91,6 +97,7 @@ describe("Feature: the session tools report price refusals", () => {
         side: "buy",
         kind: "commodity",
         confidence: "confirmed",
+        superseded: false,
       });
     }
     await t.play(10);

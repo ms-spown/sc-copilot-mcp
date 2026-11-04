@@ -170,6 +170,7 @@ export function ledgerTradeNormalize(raw: any): any {
       side: x.side === "sell" ? "sell" : "buy",
       kind: x.kind === "item" ? "item" : "commodity",
       confidence: x.confidence === "ambiguous" ? "ambiguous" : "confirmed",
+      superseded: x.superseded === true,
     }));
   const section: any = {
     v: 1,

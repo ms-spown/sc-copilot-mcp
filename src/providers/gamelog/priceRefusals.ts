@@ -30,12 +30,17 @@ export interface PriceRefusal {
   /** commodity: a cargo trade at a kiosk or a terminal. item: a shop purchase. */
   kind: "commodity" | "item";
   confidence: "confirmed" | "ambiguous";
+  /**
+   * A later transaction of the same side and kind went through: the player has passed that kiosk since, so the alert is not
+   * shown any more (the refusal still counts in the session).
+   */
+  superseded: boolean;
 }
 
 /** The price refusals in a journal's transactions, oldest first, at most PRICE_REFUSAL_MAX. */
 export function priceRefusalsOf(transactions: readonly Transaction[] | undefined): PriceRefusal[] {
   if (!Array.isArray(transactions)) return [];
-  const out: PriceRefusal[] = [];
+  const out: Omit<PriceRefusal, "superseded">[] = [];
   const ambiguous: { at: number; side: Side; kind: "commodity" | "item" }[] = [];
   for (const t of transactions.slice(-MAX_EXAMINED)) {
     if (!t || typeof t !== "object") continue;
@@ -88,5 +93,15 @@ export function priceRefusalsOf(transactions: readonly Transaction[] | undefined
       confidence: "ambiguous",
     });
   out.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-  return out.slice(-PRICE_REFUSAL_MAX);
+  // The journal gives a cargo line "completed" when no error followed it, an item line when the game said Success.
+  const passed = transactions
+    .slice(-MAX_EXAMINED)
+    .filter((t) => t && t.status === "completed" && typeof t.time === "string")
+    .map((t) => ({ side: t.side, kind: t.kind, at: Date.parse(t.time) }));
+  return out.slice(-PRICE_REFUSAL_MAX).map((e) => ({
+    ...e,
+    superseded: passed.some(
+      (d) => d.side === e.side && d.kind === e.kind && d.at > Date.parse(e.at),
+    ),
+  }));
 }

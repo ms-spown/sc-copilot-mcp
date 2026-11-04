@@ -259,16 +259,16 @@ afterEach(() => {
   configureDiskCache(null);
 });
 
-describe("Feature: the check reads UEX once, through the guarded client", () => {
-  it("Given a plan, Then ONE GET by goods name is made and the answer is a verdict", async () => {
+describe("Feature: the check reads UEX through the guarded client", () => {
+  it("Given a plan, Then ONE price GET by goods name (and the cached game-versions GET) is made and the answer is a verdict", async () => {
     const uex = fakeUex(() => ({ status: "ok", data: rows(205, 495) }));
     const r = await runPreflight({ client: uex.client, now: () => NOW }, PLAN);
-    expect(uex.calls).toHaveLength(1);
-    expect(uex.calls[0]).toMatchObject({
-      url: "/commodities_prices",
+    expect(uex.calls).toHaveLength(2);
+    expect(uex.calls.find((c) => c.url === "/commodities_prices")).toMatchObject({
       config: { params: { commodity_name: "Laranite" } },
     });
-    expect(r).toMatchObject({ state: "preflight", verdict: "valid", requests: 1 });
+    expect(uex.calls.map((c) => c.url).sort()).toEqual(["/commodities_prices", "/game_versions"]);
+    expect(r).toMatchObject({ state: "preflight", verdict: "valid", requests: 2 });
     expect(r.read_age_s).toBeGreaterThanOrEqual(0);
   });
 
@@ -341,7 +341,7 @@ describe("Feature: the check reads UEX once, through the guarded client", () => 
         "valid",
       );
       clearCache(); // the memory is empty, the disk keeps its copy
-      uex.get.mockImplementationOnce(async () => {
+      uex.get.mockImplementation(async () => {
         throw new axios.AxiosError("down", "ERR_BAD_RESPONSE", undefined, undefined, {
           status: 503,
         } as never);
@@ -358,8 +358,182 @@ describe("Feature: the check reads UEX once, through the guarded client", () => 
     const uex = fakeUex(() => ({ status: "ok", data: rows(205, 495) }));
     await runPreflight({ client: uex.client, now: () => NOW }, PLAN);
     const again = await runPreflight({ client: uex.client, now: () => NOW + 120_000 }, PLAN);
-    expect(uex.calls).toHaveLength(1);
+    expect(uex.calls).toHaveLength(2);
     expect(again.requests).toBe(0);
     expect(again.read_age_s).toBeGreaterThanOrEqual(120 - 5);
+  });
+});
+
+describe("Feature: green needs a player behind BOTH prices", () => {
+  const verdictOf = (buy: object, sell: object) =>
+    judgePreflight(PLAN, rows(205, 495, buy, sell), NOW);
+
+  it("Given prices that did not move but whose rows have 0 player reports, Then it is only 'valid_estimate', with fresh dates", () => {
+    const r = verdictOf(
+      { price_buy_users_rows: 0, date_modified: ago(HOUR) },
+      { price_sell_users_rows: 0, date_modified: ago(HOUR) },
+    );
+    expect(r.verdict).toBe("valid_estimate");
+    expect(r.action).toBe("verify");
+    expect(r.legs.map((l) => l.verdict)).toEqual(["valid_estimate", "valid_estimate"]);
+    expect(r.text).toBeUndefined(); // the words are added by the dashboard layer
+  });
+
+  it("Given ONE leg backed by players and the other an estimate, Then it is 'valid_estimate' (the worst leg decides)", () => {
+    expect(verdictOf({}, { price_sell_users_rows: 0 }).verdict).toBe("valid_estimate");
+    expect(verdictOf({ price_buy_users_rows: 0 }, {}).verdict).toBe("valid_estimate");
+  });
+
+  it("Given a report count that is absent or not a number, Then it is not green either", () => {
+    expect(verdictOf({ price_buy_users_rows: undefined }, {}).verdict).toBe("valid_estimate");
+    expect(verdictOf({}, { price_sell_users_rows: "n/a" }).verdict).toBe("valid_estimate");
+    expect(verdictOf({}, { price_sell_users_rows: null }).verdict).toBe("valid_estimate");
+  });
+
+  it("Given an estimate that moved a lot, Then it is the movement that is reported, not the estimate", () => {
+    expect(judgePreflight(PLAN, rows(200, 400, { price_buy_users_rows: 0 }), NOW).verdict).toBe(
+      "drifted",
+    );
+    expect(judgePreflight(PLAN, rows(220, 460, { price_buy_users_rows: 0 }), NOW).verdict).toBe(
+      "watch",
+    );
+  });
+
+  it("Given players behind both prices and fresh rows, Then it is green", () => {
+    expect(verdictOf({ price_buy_users_rows: 1 }, { price_sell_users_rows: 7 }).verdict).toBe(
+      "valid",
+    );
+  });
+});
+
+describe("Feature: a date from the future, and rows of another game version", () => {
+  it("Given a row dated far in the future, Then it is stale (never green) and shows no age", () => {
+    const r = judgePreflight(PLAN, rows(205, 495, { date_modified: 4_000_000_000 }), NOW);
+    expect(r.legs[0]).toMatchObject({ stale: true, data_age_hours: null });
+    expect(r.verdict).toBe("watch");
+    // a small clock skew is tolerated
+    const skew = judgePreflight(PLAN, rows(205, 495, { date_modified: ago(-HOUR) }), NOW);
+    expect(skew.legs[0]?.stale).toBe(false);
+  });
+
+  it("Given a newer-dated row of an OLDER game version, Then the row of LIVE's version is judged", () => {
+    const live = "4.10.2-LIVE.123";
+    const r = judgePreflight(
+      PLAN,
+      [
+        row("Port Tressler", { price_buy: 150, game_version: "4.9.1", date_modified: ago(HOUR) }),
+        row("Port Tressler", { price_buy: 205, game_version: "4.10.2", date_modified: ago(DAY) }),
+        row("Area18 TDD", { price_sell: 495, game_version: "4.10.2" }),
+      ],
+      NOW,
+      { live },
+    );
+    expect(r.legs[0]?.now_price).toBe(205);
+  });
+
+  it("Given a terminal that only has rows of another version, Then the leg says so and is not green", () => {
+    const r = judgePreflight(
+      PLAN,
+      [
+        row("Port Tressler", { price_buy: 150, game_version: "4.9.1" }),
+        row("Area18 TDD", { price_sell: 495, game_version: "4.10.2" }),
+      ],
+      NOW,
+      { live: "4.10.2-LIVE.1" },
+    );
+    expect(r.legs[0]).toMatchObject({ verdict: "unknown", problem: "other_version" });
+    expect(r.verdict).not.toBe("valid");
+  });
+
+  it("Given LIVE's version is not known, Then the highest version wins over a newer date", () => {
+    const r = judgePreflight(
+      PLAN,
+      [
+        row("Port Tressler", { price_buy: 150, game_version: "4.9.1", date_modified: ago(HOUR) }),
+        row("Port Tressler", { price_buy: 205, game_version: "4.10.2", date_modified: ago(DAY) }),
+        row("Area18 TDD", { price_sell: 495 }),
+      ],
+      NOW,
+    );
+    expect(r.legs[0]?.now_price).toBe(205);
+  });
+
+  it("Given the game-versions request fails, Then the check still answers", async () => {
+    const uex = fakeUex((url) => {
+      if (url === "/game_versions") throw new Error("down");
+      return { status: "ok", data: rows(205, 495) };
+    });
+    const r = await runPreflight({ client: uex.client, now: () => NOW }, PLAN);
+    expect(r.verdict).toBe("valid");
+  });
+});
+
+describe("Feature: terminals are found by UEX id first, then by exact name", () => {
+  const named = (name: string, id: number, extra: Record<string, unknown> = {}) => ({
+    ...row(name, extra),
+    id_terminal: id,
+  });
+
+  it("Given a plan from the planner (ids known), Then a renamed terminal is still found, and a homonym is not taken for it", () => {
+    const r = judgePreflight(
+      PLAN,
+      [
+        named("Port Tressler (new name)", 7, { price_buy: 205 }),
+        named("Port Tressler", 9, { price_buy: 50 }), // another terminal that now carries the old name
+        named("Area18 TDD", 8, { price_sell: 495 }),
+      ],
+      NOW,
+      { ids: { buy: 7, sell: 8 } },
+    );
+    expect(r.legs[0]?.now_price).toBe(205);
+    expect(r.legs[1]?.now_price).toBe(495);
+  });
+
+  it("Given an id that no row has, Then the exact name is the fallback", () => {
+    const r = judgePreflight(PLAN, rows(205, 495), NOW, { ids: { buy: 99999, sell: null } });
+    expect(r.legs.map((l) => l.now_price)).toEqual([205, 495]);
+  });
+
+  it("Given a plan from Claude (no ids), Then two terminals with the same name are ambiguous, never guessed", () => {
+    const r = judgePreflight(
+      PLAN,
+      [
+        named("Port Tressler", 1, { price_buy: 205 }),
+        named("Port Tressler", 2, { price_buy: 300 }),
+        named("Area18 TDD", 8, { price_sell: 495 }),
+      ],
+      NOW,
+    );
+    expect(r.legs[0]).toMatchObject({ verdict: "unknown", problem: "terminal_ambiguous" });
+  });
+
+  it("Given real-shaped names (typographic apostrophe, a '(Nyx)' suffix), Then they match by name", () => {
+    const plan: PreflightPlanEcho = {
+      ...PLAN,
+      buy_terminal: "Rayari Kaltag Research Outpost (Nyx)",
+      sell_terminal: "Levski’s Port",
+    };
+    const r = judgePreflight(
+      plan,
+      [
+        named("Rayari Kaltag Research Outpost (Nyx)", 1, { price_buy: 205 }),
+        named("Levski's Port", 2, { price_sell: 495 }),
+      ],
+      NOW,
+    );
+    expect(r.legs.map((l) => l.now_price)).toEqual([205, 495]);
+    expect(findTerminalRow([named("Levski's  PORT", 2)], "Levski’s Port").kind).toBe("row");
+  });
+
+  it("Given a 64-character name cut by the planner (59 + ellipsis) or by a model's plan (60, no ellipsis), Then it matches by its start", () => {
+    const full = "Admin Office Grand Barter Trading Terminal Of Pyro Gateway 42";
+    expect([...full].length).toBeGreaterThanOrEqual(60);
+    const rowsOf = [named(full + "-X", 5)];
+    const planner = [...full].slice(0, 59).join("") + "…";
+    const model = [...(full + "-X")].slice(0, 60).join("");
+    expect(findTerminalRow(rowsOf, planner).kind).toBe("row");
+    expect(findTerminalRow(rowsOf, model).kind).toBe("row");
+    // a short name is NOT matched by its start
+    expect(findTerminalRow([named("Area18 TDD Annex", 3)], "Area18 TDD").kind).toBe("none");
   });
 });

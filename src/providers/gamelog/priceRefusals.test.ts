@@ -38,8 +38,31 @@ describe("Feature: price refusals are read from the journal's transactions", () 
         side: "buy",
         kind: "commodity",
         confidence: "confirmed",
+        superseded: false,
       },
     ]);
+  });
+
+  it("Given a later transaction of the same side that went through, Then the refusal is superseded (the alert is over)", () => {
+    const lines = [
+      buy(10),
+      error(10.2, "TransactionCostMismatch", "Buying"),
+      buy(60), // no error line after it: the journal infers it went through
+    ];
+    expect(priceRefusalsOf(journal(lines))[0]?.superseded).toBe(true);
+    // a purchase that went through does not end the alert of a refused SALE, and an earlier one does not either
+    const sale = [buy(5), sell(10), error(10.2, "TransactionCostMismatch", "Selling"), buy(60)];
+    expect(priceRefusalsOf(journal(sale))[0]?.superseded).toBe(false);
+    const before = [buy(2), buy(10), error(10.2, "TransactionCostMismatch", "Buying")];
+    expect(priceRefusalsOf(journal(before))[0]?.superseded).toBe(false);
+    // a later refused purchase is not a success
+    const again = [
+      buy(10),
+      error(10.2, "TransactionCostMismatch", "Buying"),
+      buy(60),
+      error(60.2, "TransactionCostMismatch", "Buying"),
+    ];
+    expect(priceRefusalsOf(journal(again)).map((e) => e.superseded)).toEqual([false, false]);
   });
 
   it("Given a refused sale, Then the side is sell", () => {
@@ -118,7 +141,7 @@ describe("Feature: price refusals are read from the journal's transactions", () 
       ]),
     );
     for (const e of events)
-      expect(Object.keys(e).sort()).toEqual(["at", "confidence", "kind", "side"]);
+      expect(Object.keys(e).sort()).toEqual(["at", "confidence", "kind", "side", "superseded"]);
     const wire = JSON.stringify(events);
     for (const leak of ["98765", "77777", "SCShop", "ARMR", "5c2e9a41", "1111111111", "2222222"]) {
       expect(wire).not.toContain(leak);

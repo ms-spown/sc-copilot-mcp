@@ -173,13 +173,38 @@ describe("Feature: the verdict is a chip with words, and the numbers behind it",
     expect(t).not.toContain("Toujours valable");
   });
 
-  it("Given estimates, Then the leg says so and 'tu peux partir' asks to confirm at the terminal", async () => {
+  it("Given prices that are only UEX estimates, Then the chip is neutral with its own glyph and words, never the green check", async () => {
     const w = await world({ verdict: "estimate" });
     await fullscreen(w);
     await check(w);
+    expect(chip(w)!.textContent).toBe("≈ Inchangé · estimation UEX");
+    expect(chip(w)!.attrs["data-tone"]).toBe("info");
     const t = blockText(w);
+    expect(t).toContain("Les prix estimés par UEX n’ont pas bougé.");
     expect(t).toContain("estimation UEX · aucun relevé de joueur");
-    expect(t).toContain("ce sont des estimations UEX : confirme les prix au terminal");
+    expect(t).toContain("Aucun joueur ne confirme ces prix : vérifie au terminal avant d’acheter.");
+    expect(t).not.toContain("✓");
+    expect(t).not.toContain("Tu peux partir");
+  });
+
+  it("Given a server that says green over a leg with no player report, or a stale leg, Then the page shows 'impossible de vérifier'", async () => {
+    for (const patch of [
+      { estimate: true, reports: 0 },
+      { estimate: null, reports: null },
+      { stale: true },
+    ]) {
+      const w = await world({
+        suggest: () => {
+          const a: any = preflightAnswer("valid");
+          a.legs[1] = { ...a.legs[1], ...patch };
+          return a;
+        },
+      });
+      await fullscreen(w);
+      await check(w);
+      expect(chip(w)!.textContent).toBe("? Impossible de vérifier");
+      expect(blockText(w)).not.toContain("Tu peux partir");
+    }
   });
 
   it("Given a server that calls a plan valid over a leg it could not judge, Then the page does not show green", async () => {

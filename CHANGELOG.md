@@ -6,14 +6,24 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The page's style sheet is shipped compacted (`compactCss` in `src/dashboard/page.ts`: comments, indentation and the blanks
+  around `{ } ; , :` out, strings untouched; a test has a CSS parser read both sheets and compares them): about 6.7 kB less
+  in the shipped page, to keep room under the 360 kB budget. `docs/TOOLS.md` and the golden file changed with this release
+  (the `action` enum of `sc_trade_suggest` gains `preflight`, and its description and the one of `sc_session_stats` say more).
+
 ### Added
 - **Pre-flight check: does the plan still hold, before leaving?** On the commerce card, *Vérifier avant de partir* asks the
   app-only tool `sc_trade_suggest` (new action `preflight`, no argument, same strict input, throttle, short memory and
   in-flight sharing as the search; no new listed tool) to re-read the CURRENT UEX prices of the plan in force at its buy and
-  sell terminals: ONE cached `GET /commodities_prices` by goods name (a guard refuses a fourth request; no new host, never a
-  POST), filtered locally to the exact goods and terminals. The verdict is per leg and overall: **Toujours valable**,
-  **À surveiller** (margin down 15 % to 30 %, a row older than 7 days or undated, low or saturating stock, or an unusual
-  gain), **Dérivé** (margin down 30 % or more or no longer positive, out of stock, no demand, no price) or **Impossible de
+  sell terminals: ONE cached `GET /commodities_prices` by goods name plus the cached `GET /game_versions` (two GETs per
+  click at most, plus the client's usual retries; a guard refuses a fourth GET; no new host, never a POST), filtered
+  locally to the exact goods, then to the terminal by UEX id when the planner built the plan (kept server-side, never sent
+  by the page) else by exact normalised name, and to the row of LIVE's game version. The verdict is per leg and overall:
+  **Toujours valable** (the only green: both legs fresh AND backed by at least one player report), **Inchangé · estimation
+  UEX** (nothing moved but a price is UEX's own estimate: neutral, never green), **À surveiller** (margin down 15 % to
+  30 %, a row older than 7 days, undated or dated in the future, low or saturating stock, or an unusual gain, which the card
+  explains), **Dérivé** (margin down 30 % or more or no longer positive, out of stock, no demand, no price) or **Impossible de
   vérifier** (UEX down, a stale cache copy, terminal not found or ambiguous, incomplete plan: never green). The thresholds
   are named constants and choices, sent with each answer. It shows the plan's price against the current one and the drift,
   the margin per SCU now against planned, the age of UEX's row, the player reports (estimates labelled), the stock status and
@@ -27,7 +37,8 @@ versions follow [Semantic Versioning](https://semver.org/).
   ambiguous. No amount travels (a time, a side, a kind), so it is shown with or without the balance and crosses the channel
   between Views (rebuilt on reception). The session counts them (`price_refusals`, additive and optional, the file stays
   version 2, a watermark keeps the count idempotent) and `sc_session_current`, `sc_session_list` and `sc_session_stats` report
-  it (a total and per session). Nothing is parsed a second time. Measured read-only on the reference install's 95 logs: 2
+  it (a total and per session). The alert is muted once a later transaction of the same side and kind went through, and its
+  live region holds only the stable sentence and the absolute time. Nothing is parsed a second time. Measured read-only on the reference install's 95 logs: 2
   refusals, 162 and 247 ms after the request.
 
 ## [2.3.0] - 2026-11-04

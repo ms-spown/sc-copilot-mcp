@@ -90,13 +90,13 @@ export function preflightAnswer(variant: PreflightVariant): Record<string, unkno
   if (variant === "estimate") {
     return describePreflight(
       base(
-        "valid",
+        "valid_estimate",
         [
-          leg("buy", 189, "valid", { estimate: true, reports: 0 }),
-          leg("sell", 457, "valid", { estimate: true, reports: 0 }),
+          leg("buy", 189, "valid_estimate", { estimate: true, reports: 0 }),
+          leg("sell", 457, "valid_estimate", { estimate: true, reports: 0 }),
         ],
         268,
-        "go",
+        "verify",
       ),
     ) as unknown as Record<string, unknown>;
   }

@@ -38,6 +38,51 @@ const CSP =
 export const compact = (source: string): string =>
   source.includes("`") ? source : source.replace(/^[ \t]+/gm, "");
 
+/**
+ * The style sheet loses what a browser ignores: comments, indentation, line breaks, the blanks around `{ } ; ,`, the blank after a `:` and the
+ * last `;` of a block. Nothing else is touched: a quoted string (a `content:` value, a font name) is copied as it is, and no
+ * blank that separates two words of a value, a selector or a media query is removed (`a b`, `calc(1px + 2px)`, `and (`).
+ * A test checks that a CSS parser reads the two sheets the same.
+ */
+export function compactCss(css: string): string {
+  const parts: string[] = [];
+  let i = 0;
+  let from = 0;
+  const flush = (to: number) => {
+    // Outside a string: comments out, blanks collapsed, then the blanks around the four punctuation marks.
+    const plain = css
+      .slice(from, to)
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/ ?([{};,]) ?/g, "$1")
+      .replace(/: /g, ":");
+    parts.push(plain);
+  };
+  while (i < css.length) {
+    const c = css[i];
+    if (c === '"' || c === "'") {
+      flush(i);
+      let j = i + 1;
+      while (j < css.length && css[j] !== c) j += css[j] === "\\" ? 2 : 1;
+      parts.push(css.slice(i, j + 1));
+      i = j + 1;
+      from = i;
+    } else if (c === "/" && css[i + 1] === "*") {
+      // A comment may hold a quote: skip it whole so that the quote does not open a string.
+      const end = css.indexOf("*/", i + 2);
+      i = end < 0 ? css.length : end + 2;
+    } else {
+      i += 1;
+    }
+  }
+  flush(css.length);
+  return parts.join("").replace(/;}/g, "}").trim();
+}
+
+/** The style sheet as written, every module's rules in one string (the page ships `compactCss` of it). */
+export const pageCss = (): string =>
+  `${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}${TRADE_CSS}${TRADE_ACTIONS_CSS}${TRADE_PREFLIGHT_CSS}${SESSION_CSS}${MOVEMENTS_CSS}${HEALTH_CSS}${CALIBRATION_CSS}`;
+
 export function viewScript(): string {
   // viewLogic.ts first, then the ship sheet module (specsView.ts), then the transport ledger panel
   // (ledgerPanel.ts), the commerce card (tradePanel.ts) and its action bar slot (tradeActions.ts): one scope, one object L.
@@ -79,7 +124,7 @@ export function dashboardHtml(): string {
     '<meta name="color-scheme" content="light dark">',
     `<meta http-equiv="Content-Security-Policy" content="${CSP}">`,
     "<title>Tableau de bord en direct</title>",
-    `<style>${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}${TRADE_CSS}${TRADE_ACTIONS_CSS}${TRADE_PREFLIGHT_CSS}${SESSION_CSS}${MOVEMENTS_CSS}${HEALTH_CSS}${CALIBRATION_CSS}</style>`,
+    `<style>${compactCss(pageCss())}</style>`,
     "</head>",
     "<body>",
     '<div id="app" data-stream="init" data-mode="inline" data-grey="1"></div>',

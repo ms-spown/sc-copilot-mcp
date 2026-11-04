@@ -14,6 +14,7 @@ export const TRADE_PREFLIGHT_CSS = `
 .pf-status, .pf-leg, .pf-note { margin: 0; font-size: var(--fs-s); color: var(--sc-text2); white-space: pre-line; }
 .pf-chip { font-size: var(--fs-s); font-weight: 650; padding: 1px 10px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
 [data-tone="ok"] { --pf-tone: var(--sc-ok); }
+[data-tone="info"] { --pf-tone: var(--sc-info); }
 [data-tone="warn"] { --pf-tone: var(--sc-warn); }
 [data-tone="bad"] { --pf-tone: var(--sc-bad); }
 .pf-chip[data-tone], .pf-action[data-tone] { color: var(--pf-tone, var(--sc-text2)); }

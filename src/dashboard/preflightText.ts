@@ -23,7 +23,7 @@ function signed(value: number | null): string {
 }
 
 function rowAge(hours: number | null, stale: boolean): string {
-  if (hours === null) return "prix sans date chez UEX (périmé)";
+  if (hours === null) return "date du prix absente ou incohérente chez UEX (périmé)";
   const text =
     hours < 1
       ? "relevé il y a moins d’une heure"
@@ -45,9 +45,14 @@ const PROBLEM = {
   terminal_not_found: "terminal introuvable dans les prix UEX de cette marchandise",
   terminal_ambiguous: "plusieurs terminaux portent ce nom : rien n’est deviné",
   no_price: "UEX n’affiche plus de prix ici",
+  other_version: "seulement des prix d’une autre version du jeu que la LIVE",
 } as const;
 
-function legLines(l: PreflightLeg): string[] {
+/** What a favourable move of the unusual size says (it is capped at "à surveiller"). */
+const UNUSUAL_GAIN =
+  "Hausse inhabituelle : prix plus favorable que prévu, vérifie qu’il n’a pas changé de produit ou de lot.";
+
+function legLines(l: PreflightLeg, unusualPct: number): string[] {
   const out: string[] = [];
   if (l.now_price === null) {
     if (l.problem) out.push(`${PROBLEM[l.problem]} (prix du plan : ${fmtNum(l.plan_price)}).`);
@@ -74,7 +79,8 @@ function legLines(l: PreflightLeg): string[] {
     }
   }
   for (const w of l.warnings) out.push(`Attention : ${WARNING[w]}.`);
-  return out.slice(0, 6);
+  if (l.margin_effect_pct !== null && l.margin_effect_pct <= -unusualPct) out.push(UNUSUAL_GAIN);
+  return out.slice(0, 7);
 }
 
 const REASON: Record<string, string> = {
@@ -100,6 +106,7 @@ function safeName(value: string): string {
 
 const VERDICT_WORD = {
   valid: "toujours valable",
+  valid_estimate: "inchangé, mais seulement des estimations UEX sans relevé de joueur",
   watch: "à surveiller",
   drifted: "dérivé",
   unknown: "impossible de vérifier",
@@ -118,7 +125,9 @@ function agentMessage(r: PreflightResult, margin: string): string {
   }
   if (margin) parts.push(`${margin}.`);
   for (const l of r.legs)
-    parts.push(`${l.side === "buy" ? "Achat" : "Vente"} : ${legLines(l).join(" ; ")}.`);
+    parts.push(
+      `${l.side === "buy" ? "Achat" : "Vente"} : ${legLines(l, r.thresholds.drifted_pct).join(" ; ")}.`,
+    );
   parts.push(
     "Vérifie avec uex_get_commodity_prices et uex_get_trade_routes, dis-moi si le trajet vaut encore la peine et propose une meilleure alternative si elle existe. Ne lis pas mon solde.",
   );
@@ -128,7 +137,11 @@ function agentMessage(r: PreflightResult, margin: string): string {
 /** The same answer with its sentences. Pure. */
 export function describePreflight(r: PreflightResult): PreflightResult {
   const stale = r.legs.some((l) => l.stale);
-  const estimate = r.legs.some((l) => l.estimate === true);
+  const m = r.margin;
+  // A favourable move of the unusual size (a leg or the whole margin): said in words, since it is not green.
+  const unusual =
+    (m?.drift_pct ?? 0) >= r.thresholds.drifted_pct ||
+    r.legs.some((l) => (l.margin_effect_pct ?? 0) <= -r.thresholds.drifted_pct);
   const headline =
     r.verdict === "unknown"
       ? (
@@ -137,10 +150,13 @@ export function describePreflight(r: PreflightResult): PreflightResult {
         ).replace("%", r.detail ?? "")
       : r.verdict === "valid"
         ? "Les prix du plan n’ont pas bougé chez UEX."
-        : r.verdict === "watch"
-          ? "Le plan tient encore, mais un point demande de la prudence."
-          : "Le plan ne tient plus tel quel.";
-  const m = r.margin;
+        : r.verdict === "valid_estimate"
+          ? "Les prix estimés par UEX n’ont pas bougé."
+          : r.verdict === "watch"
+            ? unusual
+              ? UNUSUAL_GAIN
+              : "Le plan tient encore, mais un point demande de la prudence."
+            : "Le plan ne tient plus tel quel.";
   const margin =
     m === null
       ? ""
@@ -154,17 +170,17 @@ export function describePreflight(r: PreflightResult): PreflightResult {
       : r.action === "retry"
         ? "Réessaie dans un instant."
         : r.action === "go"
-          ? estimate
-            ? "Tu peux partir, mais ce sont des estimations UEX : confirme les prix au terminal."
-            : "Tu peux partir."
-          : stale
-            ? "Prix périmé : vérifie au terminal avant d’acheter."
-            : "Vérifie au terminal avant d’acheter.";
+          ? "Tu peux partir."
+          : r.verdict === "valid_estimate"
+            ? "Aucun joueur ne confirme ces prix : vérifie au terminal avant d’acheter."
+            : stale
+              ? "Prix périmé : vérifie au terminal avant d’acheter."
+              : "Vérifie au terminal avant d’acheter.";
   const t = r.thresholds;
   const notes = [
-    "UEX est alimenté par les joueurs : un prix que personne n’a relevé depuis le plan paraît « inchangé » même s’il a bougé. Le prix affiché au terminal prévaut toujours.",
+    "UEX est alimenté par les joueurs : un prix que personne n’a relevé depuis le plan paraît « inchangé » même s’il a bougé, et une estimation UEX n’est confirmée par aucun joueur. Le prix affiché au terminal prévaut toujours.",
     `Seuils (des choix, pas des mesures) : « à surveiller » dès ${fmtNum(t.watch_pct)}\u00a0% de marge perdue, « dérivé » dès ${fmtNum(t.drifted_pct)}\u00a0% ou si la marge change de signe ; un relevé de plus de ${fmtNum(t.stale_days)}\u00a0jours est périmé.`,
   ];
   const text: PreflightText = { headline, margin, action, notes, agent: agentMessage(r, margin) };
-  return { ...r, text, legs: r.legs.map((l) => ({ ...l, lines: legLines(l) })) };
+  return { ...r, text, legs: r.legs.map((l) => ({ ...l, lines: legLines(l, t.drifted_pct) })) };
 }

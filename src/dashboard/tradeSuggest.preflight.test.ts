@@ -11,6 +11,7 @@ import {
 } from "../providers/uex/preflight.js";
 import type { TripPlanResult } from "../providers/uex/tripPlanner.js";
 import { dashboardTools } from "../tools/dashboard.js";
+import { DashboardService } from "./service.js";
 import { createRegistry } from "../tools/registry.js";
 import {
   suggestInputSchema,
@@ -302,7 +303,7 @@ describe("Feature: the tool, as the registry lists and runs it", () => {
   const empty = { defaults: {}, get: async () => ({ data: {} }) } as unknown as HttpClient;
   const telemetry = { ...createTelemetry({ enabled: false }), enabled: true };
 
-  it("Given an applied plan, Then the tool re-reads UEX once with GET and answers a verdict with a fixed text", async () => {
+  it("Given an applied plan, Then the tool re-reads UEX (two cached GETs) and answers a verdict with a fixed text", async () => {
     const calls: { url: string; config: unknown }[] = [];
     const uex = {
       defaults: { baseURL: "https://preflight-tool-1.test" },
@@ -312,7 +313,10 @@ describe("Feature: the tool, as the registry lists and runs it", () => {
           data: {
             status: "ok",
             data: [
+              // The kiosk was renamed at UEX since the plan: only its id still finds it.
               row("Port Tressler", {
+                terminal_name: "Port Tressler (renamed)",
+                id_terminal: 13,
                 price_buy: 191,
                 commodity_name: "Laranite 0",
                 date_modified: 1_699_990_000,
@@ -332,8 +336,8 @@ describe("Feature: the tool, as the registry lists and runs it", () => {
         legs: [
           {
             commodity: `Laranite ${i}`,
-            from: { terminal: "Port Tressler", system: "Stanton" },
-            to: { terminal: "Area18 TDD", system: "Stanton" },
+            from: { terminal: "Port Tressler", terminal_id: 13, system: "Stanton" },
+            to: { terminal: "Area18 TDD", terminal_id: 10, system: "Stanton" },
             buy_price: 189,
             sell_price: 457,
             profit_per_scu: 268,
@@ -397,10 +401,12 @@ describe("Feature: the tool, as the registry lists and runs it", () => {
     expect(r.structuredContent).toMatchObject({
       state: "preflight",
       verdict: "valid",
-      requests: 1,
+      requests: 2,
     });
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.url).toBe("/commodities_prices");
+    // Two GETs, nothing else: the prices of the goods, and the LIVE game version (both cached by the client).
+    expect(calls.map((c) => c.url).sort()).toEqual(["/commodities_prices", "/game_versions"]);
+    // The plan came from the planner: its terminals were found by id, not by name.
+    expect(r.structuredContent.legs[0]).toMatchObject({ now_price: 191, problem: null });
     expect(JSON.stringify(r)).not.toMatch(/987654|987 654|"scu"/);
     expect(r.structuredContent.plan).toMatchObject({
       commodity: "Laranite 0",
@@ -431,5 +437,21 @@ describe("Feature: the tool, as the registry lists and runs it", () => {
     });
     const r: any = await createRegistry(tools).call("sc_trade_suggest", { action: "preflight" });
     expect(r.isError).toBe(true);
+  });
+});
+
+describe("Feature: terminal ids belong to the plan the planner built, never to a text", () => {
+  it("Given a plan set with ids and then another plan (Claude's), Then the ids are gone", () => {
+    const svc = new DashboardService(undefined);
+    svc.setPlan({ commodity: "Laranite" }, { buy: 1, sell: 2 });
+    expect(svc.currentPlanIds()).toEqual({ buy: 1, sell: 2 });
+    svc.setPlan({ commodity: "Gold" });
+    expect(svc.currentPlanIds()).toBeUndefined();
+    svc.setPlan(undefined, { buy: 3, sell: 4 });
+    expect(svc.currentPlanIds()).toBeUndefined();
+  });
+
+  it("Given the preflight input, Then no id can be given by the caller", () => {
+    expect(suggestInputSchema.safeParse({ action: "preflight", buy_id: 1 }).success).toBe(false);
   });
 });

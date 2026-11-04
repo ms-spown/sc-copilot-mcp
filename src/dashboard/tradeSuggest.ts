@@ -13,6 +13,7 @@ import { TripPlanError } from "../providers/uex/tripPlanner.js";
 import {
   planIdentity,
   unknownPreflight,
+  type PreflightIds,
   type PreflightPlan,
   type PreflightPlanEcho,
   type PreflightResult,
@@ -249,14 +250,19 @@ export interface SuggestDeps {
    * Stores the plan (memory only): in the dashboard service always, and in the saved session unless the plan is
    * private and the balance is not shown.
    */
-  applyPlan: (plan: Plan, info: { private: boolean; withBalance: boolean }) => void;
+  applyPlan: (
+    plan: Plan,
+    info: { private: boolean; withBalance: boolean; ids: PreflightIds },
+  ) => void;
   /**
    * The plan the dashboard holds (the commerce card's). The pre-flight check reads it here: the View never names it.
    * Only names and unit prices are used.
    */
   currentPlan?: () => PreflightPlan | undefined;
+  /** The UEX ids of that plan's terminals, when the planner built it (else undefined: the names are matched). */
+  currentPlanIds?: () => PreflightIds | undefined;
   /** Reads UEX and judges the plan (providers/uex/preflight.ts runPreflight with the client bound). Must not throw. */
-  preflight?: (plan: PreflightPlanEcho) => Promise<PreflightResult>;
+  preflight?: (plan: PreflightPlanEcho, ids?: PreflightIds) => Promise<PreflightResult>;
   now?: () => number;
   minIntervalMs?: number;
   cacheTtlMs?: number;
@@ -297,6 +303,8 @@ interface StoredPlan {
   plan: Plan;
   priv: boolean;
   at: number;
+  /** UEX ids of the outbound leg's two terminals (server-side only: never in an answer, never from the page). */
+  ids: PreflightIds;
 }
 
 export class TradeSuggestService {
@@ -339,7 +347,7 @@ export class TradeSuggestService {
   private apply(id: string, withBalance: boolean): SuggestAnswer {
     const held = this.plans.get(id);
     if (!held) return { v: 1, state: "error", code: "expired" };
-    this.deps.applyPlan(held.plan, { private: held.priv, withBalance });
+    this.deps.applyPlan(held.plan, { private: held.priv, withBalance, ids: held.ids });
     return { v: 1, state: "applied", plan: held.plan, private: held.priv };
   }
 
@@ -355,8 +363,10 @@ export class TradeSuggestService {
     const echo = planIdentity(held);
     if (!echo || !this.deps.preflight)
       return describePreflight(unknownPreflight("plan_incomplete", null));
+    const ids = this.deps.currentPlanIds?.();
     const key =
-      "preflight|" + JSON.stringify(Object.values(echo).map((v) => String(v).toLowerCase()));
+      "preflight|" +
+      JSON.stringify([...Object.values(echo).map((v) => String(v).toLowerCase()), ids ?? null]);
     const t = this.now();
     const kept = this.preflights.get(key);
     if (kept && t - kept.at >= 0 && t - kept.at < this.ttl) {
@@ -374,7 +384,7 @@ export class TradeSuggestService {
     this.lastStartAt = t;
     const check = this.deps.preflight;
     const job: Promise<SuggestAnswer> = Promise.resolve()
-      .then(() => check(echo))
+      .then(() => check(echo, ids))
       .then((raw) => {
         const result = describePreflight(raw);
         // Only a real verdict is kept: "impossible de vérifier" (UEX down, a stale copy) is asked again.
@@ -623,12 +633,21 @@ export class TradeSuggestService {
       },
       ...(priv ? {} : { cost: o.trip.peak_investment }),
     };
-    this.storePlan(id, option, priv, at);
+    this.storePlan(id, option, priv, at, {
+      buy: o.legs[0]?.from.terminal_id ?? null,
+      sell: o.legs[0]?.to.terminal_id ?? null,
+    });
     return option;
   }
 
   /** The plan "apply" will use: the outbound leg (a plan holds one commodity), the return named in the note. */
-  private storePlan(id: string, o: SuggestOption, priv: boolean, at: number): void {
+  private storePlan(
+    id: string,
+    o: SuggestOption,
+    priv: boolean,
+    at: number,
+    ids: PreflightIds,
+  ): void {
     const leg = o.legs[0];
     if (!leg) return;
     const second = o.legs[1];
@@ -651,7 +670,7 @@ export class TradeSuggestService {
       note,
     });
     if (!plan) return;
-    this.plans.set(id, { plan, priv, at });
+    this.plans.set(id, { plan, priv, at, ids });
     while (this.plans.size > MAX_PLANS) {
       const oldest = this.plans.keys().next().value;
       if (oldest === undefined) break;

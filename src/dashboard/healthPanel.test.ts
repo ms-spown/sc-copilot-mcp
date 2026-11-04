@@ -15,7 +15,7 @@ import {
 } from "./testing/pageHarness.js";
 import { Scenario } from "./testing/scenario.js";
 import { transportLedger } from "./testing/ledgerScenario.js";
-import { dashboardHtml, viewScript } from "./page.js";
+import { dashboardHtml, pageCss, viewScript } from "./page.js";
 import * as L from "./viewLogic.js";
 import * as P from "./sessionPanel.js";
 
@@ -585,8 +585,8 @@ describe("Feature: the other Views of the conversation show the same strip", () 
 
 describe("Feature: it works from 360 to 2000 px, in both themes (structure, not pixels)", () => {
   it("Given the stylesheet, Then the strip uses only tokens and wraps instead of overflowing", () => {
-    const html = dashboardHtml();
-    const css = html.slice(html.indexOf("<style>"), html.indexOf("</style>"));
+    // The sheet as written (the page ships it compacted: see pageCss.test.ts for what compaction keeps).
+    const css = pageCss();
     const hl = css.split("\n").filter((l) => l.startsWith(".hl") || l.startsWith(".btn.quiet"));
     expect(hl.length).toBeGreaterThan(10);
     for (const line of hl) expect(line, line).not.toMatch(/#[0-9a-f]{3,8}\b|rgb\(|hsl\(|url\(/i);

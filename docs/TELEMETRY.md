@@ -721,22 +721,28 @@ A plan is a guess made earlier from crowdsourced prices. Two things tell the pla
 button *Vérifier avant de partir*. It calls the same app-only tool, action `preflight`, with no argument: the server checks
 the plan IT holds (the View cannot name a plan), and the answer repeats the plan's names and unit prices so that the page
 shows a verdict only for the plan on its card. The server re-reads the CURRENT UEX rows of the plan's goods at its two
-terminals with ONE `GET /commodities_prices?commodity_name=...` (the request `uex_get_commodity_prices` makes, so the cache
-is shared; a hard guard refuses a fourth request; no new host, never a POST). Rows are filtered locally to the exact goods
-name and the exact terminal names (a name two terminals share is "ambigu", never guessed).
+terminals with ONE price `GET /commodities_prices?commodity_name=...` (the request `uex_get_commodity_prices` makes, so the
+cache is shared) and the `GET /game_versions` that says which game version is LIVE (cached too): two GET calls per click at
+most, plus the client's usual retries on a 429 or a 5xx; a hard guard refuses a fourth GET; no new host, never a POST. Rows
+are filtered locally to the exact goods name, then to the terminal: by UEX id when the plan was built by this server's
+planner (the id is kept server-side with the plan, never sent by the page, never taken from a plan Claude passed), else by
+the exact name (case, spaces and the typographic apostrophe aside; a name cut at 60 characters matches by its start; a name
+two terminals share is "ambigu", never guessed). When a terminal has rows of two game versions, the row of LIVE's version
+is judged (a newer-dated row of another version is not); only rows of another version means "autre version du jeu".
 
 | Verdict | When |
 | --- | --- |
-| **✓ Toujours valable** | Both legs found, current prices, fresh rows, margin down by less than 15 % |
-| **⚠ À surveiller** | Margin down by 15 % to 30 %; or a row last reported more than 7 days ago (or undated); or a low or saturating stock; or a favourable move of 30 % or more (a wrong report is as likely as a good surprise) |
+| **✓ Toujours valable** | The only green: BOTH legs found, fresh (not stale) AND each backed by at least one player report, margin down by less than 15 % |
+| **≈ Inchangé · estimation UEX** | Nothing moved, but at least one price is UEX's own estimate (0 player reports, or the count is not given). Neutral, never green: "Les prix estimés par UEX n'ont pas bougé. Aucun joueur ne confirme ces prix : vérifie au terminal avant d'acheter". The plan was made from the same estimate, so "unchanged" proves little (on real data almost every price side has 0 reports, and a fresh `date_modified` does not prove a player report) |
+| **⚠ À surveiller** | Margin down by 15 % to 30 %; or a row last reported more than 7 days ago, undated, or dated more than a day in the future; or a low or saturating stock; or a favourable move of 30 % or more (a wrong report is as likely as a good surprise; the card says "Hausse inhabituelle : prix plus favorable que prévu, vérifie qu'il n'a pas changé de produit ou de lot") |
 | **✕ Dérivé** | Margin down by 30 % or more, or no longer positive; or nothing to buy (out of stock), no demand, or no price any more at a terminal |
-| **? Impossible de vérifier** | UEX unreachable, a stale copy of the cache (never used as a verdict), goods or plan terminals not found, a plan without both terminals and both unit prices. Never green |
+| **? Impossible de vérifier** | UEX unreachable, a stale copy of the cache (never used as a verdict), goods or plan terminals not found or only found in another game version, a plan without both terminals and both unit prices. Never green |
 
 The thresholds are CHOICES, not measures (`PREFLIGHT_WATCH_MARGIN_LOSS` 0.15, `PREFLIGHT_DRIFTED_MARGIN_LOSS` 0.30,
 `PREFLIGHT_STALE_MS` 7 days in `src/providers/uex/preflight.ts`); they are sent with every answer and shown on the card.
 The margin is the planned per-SCU margin (sell price minus buy price); each leg's effect is its adverse price move (a buy
 price that rose, a sell price that fell) over that margin. The overall verdict is the worst of the legs and the margin
-(drifted, then unknown, then watch, then valid). Each leg shows the plan's price against the current one and the
+(drifted, then unknown, then watch, then unchanged-estimate, then valid). Each leg shows the plan's price against the current one and the
 percentage, the age of UEX's row, the number of player reports (`estimation UEX · aucun relevé de joueur` when UEX counts
 0; a missing count is "inconnu", never 0), the stock or demand status of the same row, and the next action: *Tu peux
 partir*, *Vérifie au terminal avant d'acheter* (*Prix périmé : ...* for a stale row), *Relance la recherche*, *Réessaie
@@ -763,7 +769,9 @@ event ("une des transactions envoyées à ce moment a été refusée"). Each eve
 (cargo or shop item) and how sure the journal is: no amount, no shop, no item, no identifier, so it is sent with or without
 the balance (`trade.price_refusals`, the newest 3, also on the channel between Views, rebuilt field by field on reception).
 The dashboard shows, for 10 minutes, "Le prix a changé pendant l'achat (ou la vente) : transaction refusée, le prix
-affiché n'est plus valable", with the time and how long ago, on the commerce card, and as one line in the small view; for a
+affiché n'est plus valable", with the time and how long ago, on the commerce card, and as one line in the small view (only
+the stable sentence and the absolute time sit in the live region, the age does not); it is muted as soon as a later
+transaction of the same side and kind went through (`superseded`); for a
 cargo trade it suggests checking the plan again (the button is highlighted; nothing is asked by itself). The session
 counts them: `price_refusals` (additive, optional, the file stays version 2 and older files read as 0; a watermark makes
 the count idempotent) in the session summary, `sc_session_current`, `sc_session_list` and `sc_session_stats` (a total and

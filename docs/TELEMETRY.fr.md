@@ -759,25 +759,33 @@ tient encore.
 bloc « Avant de partir » a un bouton *Vérifier avant de partir*. Il appelle le même outil réservé à la View, action
 `preflight`, sans argument : le serveur vérifie le plan QU'IL tient (la View ne peut pas désigner un plan), et la réponse
 répète les noms et les prix unitaires du plan pour que la page n'affiche un verdict que pour le plan de sa carte. Le serveur
-relit les lignes UEX ACTUELLES de la marchandise du plan à ses deux terminaux avec UNE SEULE requête
-`GET /commodities_prices?commodity_name=...` (celle de `uex_get_commodity_prices`, donc le cache est partagé ; un garde
-refuse une quatrième requête ; aucun nouvel hôte, jamais de POST). Les lignes sont filtrées localement sur le nom exact de
-la marchandise et les noms exacts des terminaux (un nom que deux terminaux partagent est « ambigu », jamais deviné).
+relit les lignes UEX ACTUELLES de la marchandise du plan à ses deux terminaux avec UNE requête de prix
+`GET /commodities_prices?commodity_name=...` (celle de `uex_get_commodity_prices`, donc le cache est partagé) et le
+`GET /game_versions` qui dit quelle version du jeu est LIVE (en cache aussi) : deux GET au plus par clic, plus les
+nouvelles tentatives habituelles du client sur un 429 ou un 5xx ; un garde refuse un quatrième GET ; aucun nouvel hôte,
+jamais de POST. Les lignes sont filtrées localement sur le nom exact de la marchandise, puis sur le terminal : par
+identifiant UEX quand le plan a été construit par le planificateur de ce serveur (l'identifiant reste côté serveur avec le
+plan, la page ne l'envoie jamais, et il n'est jamais repris d'un plan passé par Claude), sinon par le nom exact (casse,
+espaces et apostrophe typographique mis à part ; un nom coupé à 60 caractères correspond par son début ; un nom que deux
+terminaux partagent est « ambigu », jamais deviné). Quand un terminal a des lignes de deux versions du jeu, la ligne de la
+version LIVE est jugée (pas une ligne plus récente d'une autre version) ; seulement des lignes d'une autre version se dit
+« autre version du jeu ».
 
 | Verdict | Quand |
 | --- | --- |
-| **✓ Toujours valable** | Les deux étapes trouvées, prix actuels, lignes récentes, marge en baisse de moins de 15 % |
-| **⚠ À surveiller** | Marge en baisse de 15 % à 30 % ; ou une ligne relevée il y a plus de 7 jours (ou sans date) ; ou un stock bas ou presque saturé ; ou un mouvement favorable de 30 % ou plus (un relevé faux est aussi probable qu'une bonne surprise) |
+| **✓ Toujours valable** | Le seul vert : les DEUX étapes trouvées, récentes (non périmées) ET chacune soutenue par au moins un relevé de joueur, marge en baisse de moins de 15 % |
+| **≈ Inchangé · estimation UEX** | Rien n'a bougé, mais au moins un prix est une estimation d'UEX (0 relevé de joueur, ou nombre non donné). Neutre, jamais vert : « Les prix estimés par UEX n'ont pas bougé. Aucun joueur ne confirme ces prix : vérifie au terminal avant d'acheter ». Le plan est fait à partir de la même estimation : « inchangé » prouve peu (sur des données réelles presque chaque côté de prix a 0 relevé, et un `date_modified` récent ne prouve pas un relevé de joueur) |
+| **⚠ À surveiller** | Marge en baisse de 15 % à 30 % ; ou une ligne relevée il y a plus de 7 jours, sans date, ou datée de plus d'un jour dans le futur ; ou un stock bas ou presque saturé ; ou un mouvement favorable de 30 % ou plus (un relevé faux est aussi probable qu'une bonne surprise ; la carte dit « Hausse inhabituelle : prix plus favorable que prévu, vérifie qu'il n'a pas changé de produit ou de lot ») |
 | **✕ Dérivé** | Marge en baisse de 30 % ou plus, ou qui n'est plus positive ; ou rien à acheter (rupture), plus de demande, ou plus de prix du tout à un terminal |
-| **? Impossible de vérifier** | UEX injoignable, copie ancienne du cache (jamais utilisée comme verdict), marchandise ou terminaux du plan introuvables, plan sans les deux terminaux et les deux prix unitaires. Jamais vert |
+| **? Impossible de vérifier** | UEX injoignable, copie ancienne du cache (jamais utilisée comme verdict), marchandise ou terminaux du plan introuvables ou trouvés seulement dans une autre version du jeu, plan sans les deux terminaux et les deux prix unitaires. Jamais vert |
 
 Les seuils sont des CHOIX, pas des mesures (`PREFLIGHT_WATCH_MARGIN_LOSS` 0,15, `PREFLIGHT_DRIFTED_MARGIN_LOSS` 0,30,
 `PREFLIGHT_STALE_MS` 7 jours dans `src/providers/uex/preflight.ts`) ; ils sont envoyés avec chaque réponse et affichés sur
 la carte. La marge est la marge prévue par SCU (prix de vente moins prix d'achat) ; l'effet d'une étape est son mouvement
 de prix défavorable (un prix d'achat qui monte, un prix de vente qui baisse) rapporté à cette marge. Le verdict global est
-le pire des étapes et de la marge (dérivé, puis inconnu, puis à surveiller, puis valable). Chaque étape montre le prix du
-plan face au prix actuel et le pourcentage, l'âge de la ligne UEX, le nombre de relevés de joueurs (
-`estimation UEX · aucun relevé de joueur` quand UEX en compte 0 ; un compte absent est « inconnu », jamais 0), l'état du stock ou de la
+le pire des étapes et de la marge (dérivé, puis inconnu, puis à surveiller, puis inchangé-estimation, puis valable). Chaque étape montre le prix du
+plan face au prix actuel et le pourcentage, l'âge de la ligne UEX, le nombre de relevés de joueurs 
+(`estimation UEX · aucun relevé de joueur` quand UEX en compte 0 ; un compte absent est « inconnu », jamais 0), l'état du stock ou de la
 demande de la même ligne, et la suite à donner : *Tu peux partir*, *Vérifie au terminal avant d'acheter* (*Prix périmé :
 ...* pour une ligne périmée), *Relance la recherche*, *Réessaie dans un instant*. La réponse ne contient que des prix
 unitaires, des marges par SCU et des pourcentages : ni quantité, ni total, ni profit ; un plan dimensionné par le solde et
@@ -807,7 +815,7 @@ journal : aucun montant, aucune boutique, aucun objet, aucun identifiant ; il pa
 (`trade.price_refusals`, les 3 plus récents, aussi sur le canal entre Views, reconstruits champ par champ à la
 réception). Le tableau de bord affiche, pendant 10 minutes, « Le prix a changé pendant l'achat (ou la vente) :
 transaction refusée, le prix affiché n'est plus valable », avec l'heure et le temps écoulé, sur la carte de commerce et en
-une ligne dans la petite vue ; pour une cargaison il suggère de revérifier le plan (le bouton est mis en avant ; rien n'est
+une ligne dans la petite vue (seules la phrase stable et l'heure absolue sont dans la région vivante, pas le temps écoulé) ; elle est coupée dès qu'une transaction ultérieure du même côté et du même genre a abouti (`superseded`) ; pour une cargaison il suggère de revérifier le plan (le bouton est mis en avant ; rien n'est
 demandé tout seul). La session les compte : `price_refusals` (additif, optionnel, le fichier reste en version 2 et les
 anciens fichiers se lisent à 0 ; un repère d'horodatage rend le comptage idempotent) dans le résumé de session,
 `sc_session_current`, `sc_session_list` et `sc_session_stats` (un total et par session ; c'est un nombre, donc non retenu

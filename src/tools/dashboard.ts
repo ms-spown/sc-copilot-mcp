@@ -175,16 +175,18 @@ export function dashboardTools(
     // persistent session, which marks the trip that follows with the planned profit. A plan built from the player's
     // balance (its quantity and profit give the budget away) reaches the saved session only while the balance is shown.
     applyPlan: (plan, info) => {
-      service.setPlan(plan);
+      service.setPlan(plan, info.ids);
       if (!info.private || info.withBalance) sessions?.setPlan(plan);
     },
     // The pre-flight check reads the plan the card follows (server state) and re-reads its prices at UEX (one GET).
     currentPlan: () => service.currentPlan(),
-    preflight: async (plan) => {
+    currentPlanIds: () => service.currentPlanIds(),
+    preflight: async (plan, ids) => {
       if (!uexClient) throw new Error("UEX is not available.");
       return runPreflight(
         { client: uexClient, ...(overrides.now ? { now: overrides.now } : {}) },
         plan,
+        ids,
       );
     },
     ...(overrides.now ? { now: overrides.now } : {}),
@@ -374,7 +376,7 @@ export function dashboardTools(
     {
       name: "sc_trade_suggest",
       description:
-        "For the dashboard View only, not for the model: ranks trade routes for the commerce card's buttons (most profitable per hour, fastest, safest by a heuristic, or best per trip) with the UEX trade planner, or applies one of the options it returned as the dashboard's plan (action apply, by id), or checks before departure whether the plan in force still holds (action preflight: re-reads the current UEX prices of its goods at its two terminals, one request, no argument, unit prices and per-SCU margins only). Answers at most 5 options and 3 chains, throttled (one new planner run or price check per 8 seconds, identical requests served from a short cache), never the player's balance. Use uex_plan_trade instead.",
+        "For the dashboard View only, not for the model: ranks trade routes for the commerce card's buttons (most profitable per hour, fastest, safest by a heuristic, or best per trip) with the UEX trade planner, or applies one of the options it returned as the dashboard's plan (action apply, by id), or checks before departure whether the plan in force still holds (action preflight: re-reads the current UEX prices of its goods at its two terminals, two cached GETs, no argument, unit prices and per-SCU margins only). Answers at most 5 options and 3 chains, throttled (one new planner run or price check per 8 seconds, identical requests served from a short cache), never the player's balance. Use uex_plan_trade instead.",
       inputSchema: {
         type: "object",
         properties: {

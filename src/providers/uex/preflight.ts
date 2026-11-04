@@ -1,6 +1,6 @@
 import { fetchWithCache } from "../../core/cache.js";
 import type { HttpClient } from "../../core/http.js";
-import { rowTimestamp } from "./freshness.js";
+import { compareVersions, rowTimestamp, versionParts } from "./freshness.js";
 import { assessRow, BUILT_IN_LEGEND } from "./marketStatus.js";
 import { ageDays, isRow, label, toNumber, unwrapData, type Row } from "./normalize.js";
 
@@ -9,9 +9,11 @@ import { ageDays, isRow, label, toNumber, unwrapData, type Row } from "./normali
  * the CURRENT UEX rows of the plan's goods at its two terminals and says, leg by leg and overall, whether the figures
  * the plan rests on have moved.
  *
- * What it reads: one `commodities_prices` request by goods name (the very request `uex_get_prices` makes, so the answer is
- * shared with it through the cache), filtered locally to the exact goods and the exact terminals. At most
- * PREFLIGHT_MAX_REQUESTS requests, GET only, through the cached and guarded client: no new host, no write.
+ * What it reads: one `commodities_prices` GET by goods name (the very request `uex_get_commodity_prices` makes, so the answer
+ * is shared with it through the cache) and the `game_versions` GET (cached too, to know which game version is LIVE),
+ * filtered locally to the exact goods and the terminals (by UEX id when the plan came from the planner, else by exact
+ * name). At most PREFLIGHT_MAX_REQUESTS GET calls per check (retries the client makes by itself on a 429 or a 5xx go
+ * through its own request path and are not counted), through the cached and guarded client: no new host, no write.
  *
  * What it never uses: the player's balance, and any quantity. Only unit prices come in (the plan's, UEX's) and only unit
  * prices, per-SCU margins and percentages go out, so a plan sized from the balance and a plan typed by hand give the same
@@ -22,7 +24,7 @@ import { ageDays, isRow, label, toNumber, unwrapData, type Row } from "./normali
  * reports and the stock status are part of the verdict, and why the kiosk's own price always prevails.
  */
 
-/** At most this many UEX requests per check. The check itself makes one; the bound is a guard, tested. */
+/** At most this many GET calls per check. The check makes two (prices, game versions); the bound is a guard, tested. */
 export const PREFLIGHT_MAX_REQUESTS = 3;
 /** The check stops at this point and answers "impossible de vérifier" (the View waits longer). */
 export const PREFLIGHT_DEADLINE_MS = 15_000;
@@ -53,13 +55,21 @@ export const PREFLIGHT_UNUSUAL_GAIN = PREFLIGHT_DRIFTED_MARGIN_LOSS;
  * An undated row is stale too. Such a row cannot confirm anything: nobody has looked at that price since.
  */
 export const PREFLIGHT_STALE_MS = 7 * 86_400_000;
+/** A row dated further in the future than this is not believed: it is stale (a wrong clock or a wrong row). */
+export const PREFLIGHT_FUTURE_MS = 86_400_000;
 
-export type PreflightVerdict = "valid" | "watch" | "drifted" | "unknown";
+/**
+ * valid: BOTH legs fresh and each backed by at least one player report (the only green). valid_estimate: nothing moved,
+ * but at least one price is UEX's own estimate (0 reports, or the count is not given): nobody confirms it, and the plan
+ * was made from the same estimate, so "unchanged" proves little. Never green.
+ */
+export type PreflightVerdict = "valid" | "valid_estimate" | "watch" | "drifted" | "unknown";
 
 export type PreflightReason =
   "no_plan" | "plan_incomplete" | "commodity_not_found" | "upstream" | "stale_copy" | "no_prices";
 
-export type PreflightLegProblem = "terminal_not_found" | "terminal_ambiguous" | "no_price";
+export type PreflightLegProblem =
+  "terminal_not_found" | "terminal_ambiguous" | "no_price" | "other_version";
 
 export type PreflightWarning =
   "buy_out_of_stock" | "buy_shortage" | "sell_no_demand" | "sell_saturating" | "sell_strong_demand";
@@ -158,6 +168,15 @@ export interface PreflightPlan {
   sell_unit_price?: number | undefined;
 }
 
+/**
+ * UEX terminal ids of the plan, known only when the plan was built by this server's planner (never sent by the page, never
+ * typed by the model). Matched first; the exact name is the fallback.
+ */
+export interface PreflightIds {
+  buy: number | null;
+  sell: number | null;
+}
+
 export interface PreflightDeps {
   client: HttpClient;
   now?: () => number;
@@ -165,7 +184,13 @@ export interface PreflightDeps {
   deadlineMs?: number;
 }
 
-const RANK: Record<PreflightVerdict, number> = { valid: 0, watch: 1, unknown: 2, drifted: 3 };
+const RANK: Record<PreflightVerdict, number> = {
+  valid: 0,
+  valid_estimate: 1,
+  watch: 2,
+  unknown: 3,
+  drifted: 4,
+};
 const worst = (a: PreflightVerdict, b: PreflightVerdict): PreflightVerdict =>
   RANK[a] >= RANK[b] ? a : b;
 const pct = (x: number): number => Math.round(x * 1000) / 10;
@@ -175,8 +200,14 @@ const THRESHOLDS = {
   stale_days: PREFLIGHT_STALE_MS / 86_400_000,
 };
 
+/** Case, spaces and the typographic apostrophe aside: "Rayari Kaltag" and "rayari  kaltag", "Nyx's" and "Nyx’s". */
 const norm = (s: unknown): string =>
-  (typeof s === "string" ? s : "").normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
+  (typeof s === "string" ? s : "")
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/[’‘`]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
 
 /** The plan's identity, cleaned: the page compares it with the plan on its card. Null when something is missing. */
 export function planIdentity(plan: PreflightPlan | undefined): PreflightPlanEcho | null {
@@ -216,17 +247,61 @@ export function unknownPreflight(
   };
 }
 
-type Found = { kind: "row"; row: Row } | { kind: "none" } | { kind: "ambiguous" };
+type Found =
+  { kind: "row"; row: Row } | { kind: "none" } | { kind: "ambiguous" } | { kind: "other_version" };
 
 /**
- * The row of one terminal. The names must match exactly (case and spaces aside; a plan name that was cut with an ellipsis
- * matches by its start). Two terminals with that name are ambiguous: nothing is guessed. Several rows of ONE terminal (two
- * game versions) keep the most recently reported.
+ * Among the rows of ONE terminal, the one to judge. With LIVE's version known, only a row of that version (or a row with no
+ * version, which is kept as everywhere else) counts: a newer-dated row of another game version must not give a verdict.
+ * Without it, the highest version wins, then the most recently reported.
  */
-export function findTerminalRow(rows: readonly Row[], wanted: string): Found {
-  const cut = wanted.endsWith("…");
-  const needle = norm(cut ? wanted.slice(0, -1) : wanted);
+function chooseRow(hits: readonly Row[], live: string | null): Found {
+  const parts = (r: Row) => versionParts(r.game_version);
+  const newest = (list: readonly Row[]) =>
+    [...list].sort((a, b) => (rowTimestamp(b) ?? 0) - (rowTimestamp(a) ?? 0))[0];
+  const liveParts = versionParts(live);
+  let pool: readonly Row[];
+  if (liveParts) {
+    pool = hits.filter((r) => {
+      const p = parts(r);
+      return p === null || compareVersions(p, liveParts) === 0;
+    });
+    if (pool.length === 0) return { kind: "other_version" };
+  } else {
+    const best = hits.reduce<number[] | null>((m, r) => {
+      const p = parts(r);
+      return p && (m === null || compareVersions(p, m) > 0) ? p : m;
+    }, null);
+    pool = best
+      ? hits.filter((r) => (parts(r) ? compareVersions(parts(r) as number[], best) === 0 : false))
+      : hits;
+  }
+  const row = newest(pool);
+  return row ? { kind: "row", row } : { kind: "none" };
+}
+
+/**
+ * The row of one terminal: by UEX id when the plan knows it, else by exact name (case, spaces and the typographic
+ * apostrophe aside; a plan name cut at 60 characters, with or without an ellipsis, matches by its start). Two terminals
+ * with that name are ambiguous: nothing is guessed.
+ */
+export function findTerminalRow(
+  rows: readonly Row[],
+  wanted: string,
+  id: number | null = null,
+  live: string | null = null,
+): Found {
+  if (id !== null) {
+    const byId = rows.filter((r) => toNumber(r.id_terminal) === id);
+    if (byId.length > 0) return chooseRow(byId, live);
+  }
+  const ellipsis = wanted.endsWith("…");
+  const base = ellipsis ? wanted.slice(0, -1) : wanted;
+  const needle = norm(base);
   if (!needle) return { kind: "none" };
+  // A name of 60 characters or more has been cut by the plan's cleaner (with an ellipsis from the planner, without one from
+  // a plan Claude passed): it can only match by its start.
+  const cut = ellipsis || [...base].length >= 60;
   const hits = rows.filter((r) => {
     const name = norm(label(r.terminal_name, 80));
     return cut ? name.startsWith(needle) : name === needle;
@@ -234,8 +309,7 @@ export function findTerminalRow(rows: readonly Row[], wanted: string): Found {
   if (hits.length === 0) return { kind: "none" };
   const ids = new Set(hits.map((r) => toNumber(r.id_terminal) ?? norm(r.terminal_name)));
   if (ids.size > 1) return { kind: "ambiguous" };
-  const newest = [...hits].sort((a, b) => (rowTimestamp(b) ?? 0) - (rowTimestamp(a) ?? 0))[0];
-  return newest ? { kind: "row", row: newest } : { kind: "none" };
+  return chooseRow(hits, live);
 }
 
 const levelOf = (loss: number): PreflightVerdict =>
@@ -260,7 +334,12 @@ function judgeLeg(
     side,
     terminal,
     verdict: "unknown",
-    problem: row.kind === "ambiguous" ? "terminal_ambiguous" : "terminal_not_found",
+    problem:
+      row.kind === "ambiguous"
+        ? "terminal_ambiguous"
+        : row.kind === "other_version"
+          ? "other_version"
+          : "terminal_not_found",
     plan_price: planPrice,
     now_price: null,
     drift_pct: null,
@@ -279,8 +358,10 @@ function judgeLeg(
   const field = side === "buy" ? "price_buy" : "price_sell";
   const price = toNumber(r[field]) ?? 0;
   const ts = rowTimestamp(r);
-  const age = ageDays(ts, now);
-  const stale = ts === null || now - ts > PREFLIGHT_STALE_MS;
+  // A date in the future is not believed (a wrong row): it counts as stale, and shows no age.
+  const future = ts !== null && ts - now > PREFLIGHT_FUTURE_MS;
+  const stale = ts === null || future || now - ts > PREFLIGHT_STALE_MS;
+  const age = future ? null : ageDays(ts, now);
   const usersRaw = r[side === "buy" ? "price_buy_users_rows" : "price_sell_users_rows"];
   const reports = toNumber(usersRaw) ?? null;
   const status = assessRow(r, BUILT_IN_LEGEND);
@@ -312,6 +393,8 @@ function judgeLeg(
   let verdict = levelOf(loss);
   if (criticalCondition) verdict = worst(verdict, "drifted");
   else if (warnCondition || stale) verdict = worst(verdict, "watch");
+  // Green needs a player behind the price: a UEX estimate (0 reports) or an unknown count only gets "valid_estimate".
+  if (verdict === "valid" && (reports === null || reports === 0)) verdict = "valid_estimate";
   return {
     side,
     terminal,
@@ -330,11 +413,13 @@ export function judgePreflight(
   plan: PreflightPlanEcho,
   rows: readonly Row[],
   now: number,
+  opts: { ids?: PreflightIds | undefined; live?: string | null } = {},
 ): PreflightResult {
   const planMargin = plan.sell_price - plan.buy_price;
   if (!(planMargin > 0)) return unknownPreflight("plan_incomplete", plan);
-  const buyRow = findTerminalRow(rows, plan.buy_terminal);
-  const sellRow = findTerminalRow(rows, plan.sell_terminal);
+  const live = opts.live ?? null;
+  const buyRow = findTerminalRow(rows, plan.buy_terminal, opts.ids?.buy ?? null, live);
+  const sellRow = findTerminalRow(rows, plan.sell_terminal, opts.ids?.sell ?? null, live);
   const legs = [
     judgeLeg("buy", buyRow, plan, planMargin, now),
     judgeLeg("sell", sellRow, plan, planMargin, now),
@@ -342,6 +427,7 @@ export function judgePreflight(
   const buyNow = legs[0]?.now_price ?? null;
   const sellNow = legs[1]?.now_price ?? null;
   let margin: PreflightMargin = { plan_per_scu: planMargin, now_per_scu: null, drift_pct: null };
+  // Both legs must be green (fresh, backed by a player) for the whole to be green: the worst leg decides.
   let verdict: PreflightVerdict = "valid";
   for (const l of legs) verdict = worst(verdict, l.verdict);
   if (buyNow !== null && sellNow !== null) {
@@ -369,7 +455,7 @@ export function judgePreflight(
   };
 }
 
-/** A client that refuses to go past `max` requests (a guard; the check makes one). */
+/** A client that refuses to go past `max` GET calls (a guard; the check makes two, and the client's own retries are not counted). */
 function counting(client: HttpClient, max: number) {
   let count = 0;
   const wrapped = {
@@ -398,18 +484,33 @@ function failureDetail(error: unknown): string | undefined {
 export async function runPreflight(
   deps: PreflightDeps,
   plan: PreflightPlanEcho,
+  ids?: PreflightIds,
 ): Promise<PreflightResult> {
   const now = (deps.now ?? Date.now)();
   const guard = counting(deps.client, deps.maxRequests ?? PREFLIGHT_MAX_REQUESTS);
   let timer: NodeJS.Timeout | undefined;
   try {
-    const fetched = await Promise.race([
-      fetchWithCache(
-        guard.client,
-        "/commodities_prices",
-        { params: { commodity_name: plan.commodity } },
-        { record: false },
-      ),
+    // The LIVE game version is a nicety (it picks the right row when a terminal has rows of two versions): its failure
+    // only means the highest version is used instead.
+    const liveOf = fetchWithCache(guard.client, "/game_versions", undefined, {
+      record: false,
+    }).then(
+      (v) => {
+        const live = (v.data as { data?: { live?: unknown } } | undefined)?.data?.live;
+        return typeof live === "string" ? live : null;
+      },
+      () => null,
+    );
+    const [fetched, live] = await Promise.race([
+      Promise.all([
+        fetchWithCache(
+          guard.client,
+          "/commodities_prices",
+          { params: { commodity_name: plan.commodity } },
+          { record: false },
+        ),
+        liveOf,
+      ]),
       new Promise<never>((_, reject) => {
         timer = setTimeout(
           () => reject(new Error("deadline")),
@@ -435,7 +536,7 @@ export async function runPreflight(
         requests: guard.count(),
         read_age_s: readAge,
       });
-    const judged = judgePreflight(plan, rows, now);
+    const judged = judgePreflight(plan, rows, now, { ids, live });
     return { ...judged, requests: guard.count(), read_age_s: readAge };
   } catch (error) {
     const detail = failureDetail(error);
