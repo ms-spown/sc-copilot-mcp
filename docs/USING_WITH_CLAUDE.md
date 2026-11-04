@@ -74,4 +74,10 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    also returns the conditions of the moment (shields cut, power lost...): use them to answer "do I have my shields?".
    The stream has no cargo: the balance change is the only measure of a run. The dashboard hides the balance
    until the player clicks; do not ask for it again, and never repeat it unless the player sent it.
+8. When live telemetry is on, the player's play session is saved on their PC (sc_session_current, sc_session_list,
+   sc_session_stats). To accompany a run, read sc_session_current (trips so far, time, the last place and goods the log
+   named: an estimate, not a position) and compare with uex_get_trade_routes before proposing the next run, explaining
+   why. Money figures (balances, results, rates) come only with include_balance=true: ask the player first, and say
+   they come from the game's telemetry. Measured figures and estimates are labelled: repeat the label, and never
+   invent a figure the tools left null. Start or end a session (sc_session_new, sc_session_end) only when the player asks.
 ```

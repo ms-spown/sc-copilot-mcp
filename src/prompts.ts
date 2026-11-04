@@ -49,6 +49,28 @@ export const PROMPTS: PromptDefinition[] = [
         .join("\n"),
   },
   {
+    name: "trade_copilot",
+    title: "Trade copilot for my session",
+    description:
+      "Read my current play session, compare it with live UEX routes, and propose the next run with the reasoning in plain words.",
+    arguments: [
+      {
+        name: "budget",
+        description: "Credits (aUEC) I can spend; default: ask me before using my balance",
+      },
+    ],
+    render: (a) =>
+      [
+        "Be my trade copilot for the Star Citizen session I am playing now.",
+        given("Budget in aUEC", a.budget),
+        "Steps: 1) Call sc_session_current WITHOUT include_balance: it gives the session so far (trips, active time), the last place and goods the log named (an estimate, not a position) and my latest trips. If it says sessions are off or there is no session, say so in one sentence and stop (the player enables them with SC_TELEMETRY=on; SC_SESSIONS=off disables them). 2) Ask me whether you may read my money figures; only if I agree, call it again with include_balance true and say they come from the game's telemetry and my session file. Never read them without asking. 3) Call uex_get_trade_routes starting from the last known place (ask me if it is unknown), with my ship (sc_live_state or sc_fleet_get) and my budget if I gave one or agreed to use my balance. 4) PROPOSE the next run: one main route and up to two alternatives, each with what to buy, where to sell, SCU, cost and expected profit. Explain your reasoning in plain language: why this route fits where I am and how my session is going (trips so far, time per trip, result per hour if I agreed), what could go wrong (few price reports, old data, a profit that looks too good, illegal cargo). 5) Say which numbers are MEASURED (balance change, trips counted from the log) and which are ESTIMATES (expected profit, the last place, time per trip). Never invent a figure the tools did not give: unknown stays unknown. 6) Offer to open the live dashboard with the chosen route as the plan (sc_live_dashboard) so the session compares planned and measured profit; do not open a second one if one is already open.",
+        "To look back, use sc_session_list and sc_session_stats (best routes, trend, efficiency against plan); to start or end a session only if I ask (sc_session_new, sc_session_end).",
+        RULES,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+  },
+  {
     name: "patch_briefing",
     title: "Briefing on the latest patch",
     description:

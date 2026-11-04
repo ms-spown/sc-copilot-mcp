@@ -623,7 +623,7 @@ describe("Feature: session, pace and the route plan", () => {
     });
     findButton(w.root, FULL).click();
     await w.advance(100);
-    findButton(w.root, "Début de session").click();
+    findButton(w.root, "Début des compteurs").click();
     await w.advance(2 * SECOND);
     let text = NBSP_FREE(visibleText(w.root));
     expect(text).toContain("Laranite");
@@ -686,13 +686,13 @@ describe("Feature: session, pace and the route plan", () => {
     const w = await live();
     findButton(w.root, FULL).click();
     await w.advance(100);
-    findButton(w.root, "Début de session").click();
+    findButton(w.root, "Début des compteurs").click();
     await w.advance(2 * SECOND);
     findButton(w.root, "Solde à zéro").click();
     await w.advance(2 * SECOND);
     expect(w.host.log.marks).toEqual(["start", "reset_delta"]);
     const text = visibleText(w.root);
-    expect(text).toContain("Début de session");
+    expect(text).toContain("Début des compteurs");
     expect(text).toContain("Solde remis à zéro");
   });
 

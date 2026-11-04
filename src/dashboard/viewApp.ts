@@ -759,15 +759,15 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       ),
     );
     // Session
-    const cSes = card("Session et rythme");
+    const cSes = card("Compteurs de vol");
     R.sesEmpty = el(
       "p",
       "empty-note",
-      "Appuie sur « Début de session » pour mesurer décollages, sauts, temps de vol et rythme.",
+      "Appuie sur « Début des compteurs » pour mesurer décollages, sauts, temps de vol et rythme.",
     );
     R.sesButtons = el("div", "btn-row");
-    R.btnStart = button("Début de session", () => mark("start"), "small");
-    R.btnEnd = button("Fin de session", () => mark("end"), "small");
+    R.btnStart = button("Début des compteurs", () => mark("start"), "small");
+    R.btnEnd = button("Fin des compteurs", () => mark("end"), "small");
     R.btnReset = button("Solde à zéro", () => mark("reset_delta"), "small");
     add(R.sesButtons, R.btnStart, R.btnEnd, R.btnReset);
     R.sesRows = el("div", "facts ses-facts");
@@ -893,6 +893,16 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.ledger = L.ledgerPanel(doc, L);
     add(R.colPilot, R.ledger.card);
 
+    // Saved play sessions (sessionPanel.ts): the bar under the header; the data live on the server.
+    R.sessions = L.sessionPanel(doc, L, {
+      call: callSessionTool,
+      refresh: () => pollOnce(),
+      say: (text: string) => feedback(text),
+      toggleBalance: () => toggleBalance(),
+      setTimeout: (fn: () => void, ms: number) => win.setTimeout(fn, ms),
+      clearTimeout: (t: any) => win.clearTimeout(t),
+    });
+
     // Commerce card (tradePanel.ts): full width at the top of the cockpit, a compact line under the small view.
     // Its action bar (tradeActions.ts) is a separate component in a slot of the card, hidden until it is built.
     R.trade = L.tradePanel(doc, L, SVG_NS);
@@ -909,6 +919,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     add(
       root,
       R.top,
+      R.sessions.root,
       R.toastTop,
       R.supersede,
       R.notice,
@@ -1309,7 +1320,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     show(R.sesRows, started);
     show(R.btnEnd, started && !s.ended_at);
     show(R.btnReset, started);
-    setText(R.btnStart, started ? "Nouvelle session" : "Début de session");
+    setText(R.btnStart, started ? "Remise à zéro des compteurs" : "Début des compteurs");
     if (started) {
       setRow(
         R.sesState,
@@ -1414,6 +1425,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     streamLive = !info.grey;
     renderContext(now);
     renderAlerts(now, conds, !info.grey);
+    R.sessions.render(view.poll && view.poll.sessions, { showBalance, now });
     R.ledger.render(view.poll && view.poll.ledger, {
       showBalance,
       fullscreen: displayMode === "fullscreen",
@@ -1633,6 +1645,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     // The ledger goes without anything derived from the balance (gain, total, pace, planned against measured).
     const shared = Object.assign({}, L.sharablePoll(view.poll), {
       ledger: L.ledgerStripBalance(view.poll.ledger),
+      sessions: L.sessionBarStripBalance(view.poll.sessions),
     });
     channelSend({ t: "snapshot", id: viewId, rank, poll: shared });
   }
@@ -1654,6 +1667,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
           ? Object.assign({}, view.poll, {
               balance: undefined,
               ledger: L.ledgerStripBalance(view.poll.ledger),
+              sessions: L.sessionBarStripBalance(view.poll.sessions),
             })
           : view.poll,
       });
@@ -1687,11 +1701,16 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       const ledger = L.ledgerChannelClean(
         event.data && event.data.poll ? event.data.poll.ledger : null,
       );
+      // The session bar is rebuilt the same way, without any aUEC figure.
+      const sessions = L.sessionChannelClean(
+        event.data && event.data.poll ? event.data.poll.sessions : null,
+      );
       const shared = Object.assign(
         {},
         m.poll,
         sheet ? { specs: sheet } : {},
         ledger ? { ledger } : {},
+        sessions ? { sessions } : {},
       );
       view = L.reducePoll(view, shared, clock());
       render();
@@ -1774,6 +1793,21 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     }
   }
 
+  /** A call of a session tool (player action in the bar or its menu): the structured answer, or an error. */
+  async function callSessionTool(name: string, args: any): Promise<any> {
+    const r = await request("tools/call", { name, arguments: args });
+    if (!r || r.isError) {
+      const text =
+        r && r.content && r.content[0] && typeof r.content[0].text === "string"
+          ? r.content[0].text
+          : "";
+      throw new Error(text ? text.slice(0, 120) : "réponse vide");
+    }
+    return r.structuredContent && typeof r.structuredContent === "object"
+      ? r.structuredContent
+      : null;
+  }
+
   async function mark(action: string) {
     try {
       const r = await request("tools/call", { name: "sc_live_mark", arguments: { action } });
@@ -1795,6 +1829,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
         poll: Object.assign({}, view.poll, {
           balance: undefined,
           ledger: L.ledgerStripBalance(view.poll.ledger),
+          sessions: L.sessionBarStripBalance(view.poll.sessions),
         }),
         // The hash held for the ledger stood for the version with amounts: forget it, the next answer brings the plain one.
         hash: Object.assign({}, view.hash, { ledger: undefined }),

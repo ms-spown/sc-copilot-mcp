@@ -101,11 +101,12 @@ npm run build
    aucun secret n'est affiché. `npm run check:sources` interroge chaque source de données sur sa version et vérifie les
    fichiers et champs attendus par les outils. Dans Claude, demandez `sc_data_status`.
 
-## Outils (56)
+## Outils (61)
 
 Claude en voit 51 par défaut : `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll` et
 `sc_live_mark` ne sont listés que lorsque la télémétrie en direct est activée (les trois derniers exigent aussi un
-client capable de les afficher, comme Claude Desktop).
+client capable de les afficher, comme Claude Desktop), et les cinq outils `sc_session_*` seulement quand elle est
+activée et que `SC_SESSIONS` n'est pas `off`.
 
 Référence complète des paramètres : **[docs/TOOLS.md](docs/TOOLS.md)** (générée depuis le code). Par thème :
 
@@ -118,6 +119,7 @@ Référence complète des paramètres : **[docs/TOOLS.md](docs/TOOLS.md)** (gén
 | **Patchs et lore**                               | `sc_patch_notes` (notes d'une mise à jour, par section ou mot-clé), `sct_search`, `sct_get_article`, `sc_list_builds`, `sc_diff_versions`                                                                                                                                                                                                                                                                                     |
 | **Votre journal de jeu** (désactivé par défaut)  | `sc_log_context` (ce que vous faites actuellement), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`, `sc_trade_journal` (achats, ventes et transports de fret)                                                                                                                                                                                                                                                                                                                |
 | **Télémétrie en direct** (désactivée par défaut) | `sc_live_status` (toujours listé : l'état et comment l'activer), `sc_live_state`, `sc_live_events` (listés seulement avec `SC_TELEMETRY=on`), `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark` (le tableau de bord en direct, dans Claude Desktop uniquement)                                                                                                                                                                                                                                                                                  |
+| **Sessions de jeu enregistrées** (avec la télémétrie) | `sc_session_current` (la session jusqu'ici, pour vous accompagner et proposer la prochaine route), `sc_session_list`, `sc_session_stats` (efficacité, rythme par heure, tendance, meilleurs trajets), `sc_session_new`, `sc_session_end` ; le tableau de bord a une barre de session. Gardées dans un fichier local, voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#sessions-enregistrées) |
 | **Votre flotte**                                 | `sc_fleet_get`, `sc_fleet_upsert`, `sc_fleet_remove`                                                                                                                                                                                                                                                                                                                                                                          |
 | **Vos propres fichiers de données**              | `sc_local_datasets`, `sc_search_local`, `sc_read_local_collection`                                                                                                                                                                                                                                                                                                                                                            |
 
@@ -160,6 +162,9 @@ données :
 | `UEXTOKEN`                                                       | Jeton bearer UEX dans `.env`. Envoyé uniquement aux hôtes UEX                                                                                                                              |
 | `SCMCP_PROFILES`, `SCMCP_TOOLS`                                  | Quels outils exposer (voir ci-dessus)                                                                                                                                                      |
 | `SC_INSTALL_DIR`                                                 | Dossier d'un canal tel que `…\StarCitizen\LIVE` : active `sc_log_*` sur son `Game.log`. Désactivé si non défini                                                                            |
+| `SC_SESSIONS`                                                    | `off` désactive les sessions de jeu enregistrées en gardant la télémétrie (aucun fichier créé ni lu). Elles n'existent qu'avec `SC_TELEMETRY=on` (voir plus bas) |
+| `SCMCP_SESSIONS_FILE`                                            | Fichier de sessions (par défaut `%LOCALAPPDATA%\sc-copilot-mcp\data\sessions.json`) |
+| `SC_SESSION_GAP_HOURS`                                           | Silence après lequel la partie suivante est une nouvelle session (par défaut 3, de 0,25 à 48) |
 | `SC_TELEMETRY`                                                   | `on` active la télémétrie en direct optionnelle, côté serveur. Désactivée si absente (voir plus bas)                                                            |
 | `SC_GAME_LOG_PATH`                                               | Un fichier `.log` précis à la place (seuls les fichiers `.log` sont acceptés)                                                                                                              |
 | `SCMCP_FLEET_FILE`                                               | Fichier de flotte (par défaut `%APPDATA%\sc-copilot-mcp\fleet.json`)                                                                                                                       |

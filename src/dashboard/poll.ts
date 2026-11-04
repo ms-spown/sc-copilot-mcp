@@ -1,4 +1,5 @@
 import { notInSession, type ConnectionInfo } from "../providers/gamelog/connectionState.js";
+import type { SessionBar } from "../providers/sessions/manager.js";
 import type { TelemetryEvent } from "../providers/telemetry/events.js";
 import type { Condition } from "../providers/telemetry/handler.js";
 import type { Pilot, Ship, Weapons } from "../providers/telemetry/normalize.js";
@@ -81,6 +82,11 @@ export interface PollResult {
    * the very content sent, so a hash never stands for an amount the View was not allowed to see.
    */
   ledger?: LedgerPayload;
+  /**
+   * The saved play session (providers/sessions): a plain field, not a hashed section. Present only while sessions are
+   * on. It holds no aUEC figure unless the View asked for the balance; the channel between Views strips it again.
+   */
+  sessions?: SessionBar;
   derived: Record<string, boolean | string> | null;
   /**
    * What is true now (from the smoothed state, not from the history), most urgent first. Empty when nothing needs
@@ -248,6 +254,8 @@ export interface PollInput {
   specs?: ShipSpecs;
   /** The transport ledger as built for THIS balance choice (ledger.ts). */
   ledger?: LedgerPayload;
+  /** The session bar as built for THIS balance choice (providers/sessions/manager.ts). */
+  sessions?: SessionBar;
   /** The connection state read from Game.log (connection.ts), when the log is available. */
   connection?: ConnectionInfo | null;
 }
@@ -342,6 +350,7 @@ function buildAnswer(input: PollInput): PollResult {
     weapons: state?.weapons ? publicWeapons(state.weapons) : null,
     ...(input.specs && state?.ship ? { specs: input.specs } : {}),
     ...(input.ledger ? { ledger: input.ledger } : {}),
+    ...(input.sessions ? { sessions: input.sessions } : {}),
     derived: state ? { ...state.derived } : null,
     conditions:
       snapshot &&

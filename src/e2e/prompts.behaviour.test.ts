@@ -39,7 +39,14 @@ describe("Feature: prompts the user can pick in Claude", () => {
       const c = await connect();
       const { prompts } = await c.listPrompts();
       expect(prompts.map((p) => p.name).sort()).toEqual(
-        ["haul_plan", "mission_hunt", "mining_prep", "patch_briefing", "session_debrief"].sort(),
+        [
+          "haul_plan",
+          "mission_hunt",
+          "mining_prep",
+          "patch_briefing",
+          "session_debrief",
+          "trade_copilot",
+        ].sort(),
       );
       for (const p of prompts) {
         expect(p.title, p.name).toBeTruthy();
