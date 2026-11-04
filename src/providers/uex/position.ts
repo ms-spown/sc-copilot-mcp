@@ -147,7 +147,6 @@ export function resolvePosition(
   const index = buildPlaceIndex(terminalRows);
   let match: PlaceMatch | null = null;
   let q = "";
-  let level: Located["level"] = "wide";
   if ("text" in request) {
     for (const v of variantsOf(request.text.trim())) {
       const m = resolvePlace(index, v);
@@ -202,7 +201,6 @@ export function resolvePosition(
     ]!;
     match = pick.m;
     q = pick.q;
-    level = pick.level;
   }
   if (!match || match.status === "not_found")
     return { ok: false, reason: "unknown", suggestions: [] };
@@ -221,7 +219,6 @@ export function resolvePosition(
   // are not the same spot. Distances stay orbit-level (a same-orbit hop is a short local flight), but "where he stands" is the
   // terminals of the named city, station or outpost; when the name is the orbit's own (a moon, a planet) it is all of them.
   const loc = locate(terminalRows, inOrbit, system, orbit, q, match.label ?? "?");
-  void level;
   if (loc.ids.length === 0) return { ok: false, reason: "unknown", suggestions: [] };
   return {
     ok: true,

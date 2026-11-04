@@ -17,6 +17,14 @@ import {
   tradeSuggestClean,
 } from "./tradeActions.js";
 import { tradePlanAttached } from "./tradePanel.js";
+import { buildTradeSection } from "./tradeRun.js";
+import {
+  AGRICIUM_GUID,
+  LARANITE_GUID,
+  cargoBuyLine,
+  cargoSellLine,
+  journalTransactions,
+} from "./testing/tradeScenario.js";
 import * as L from "./viewLogic.js";
 
 /**
@@ -170,6 +178,66 @@ describe("Feature: the place a search would start from, source by source", () =>
         trade: { runs },
       });
       expect(c).toMatchObject({ source: "plan", text: "Area18 TDD" });
+    });
+
+    describe("with runs built by the real journal and the real trade section", () => {
+      const BASE_MS = Date.UTC(2026, 10, 4, 8, 0, 0);
+      // R1 buys Agricium at Lorville and sells it at Tressler; R2 buys Laranite at Tressler and sells it at Area18.
+      const lines = [
+        cargoBuyLine(BASE_MS, 60, 50_000, 100, AGRICIUM_GUID, "SCShop_Cargo_Lorville"),
+        cargoSellLine(BASE_MS, 600, 60_000, 100, AGRICIUM_GUID, "SCShop_Cargo_Tressler"),
+        cargoBuyLine(BASE_MS, 3600, 70_000, 100, LARANITE_GUID, "SCShop_Cargo_Tressler"),
+        cargoSellLine(BASE_MS, 4200, 90_000, 100, LARANITE_GUID, "SCShop_Cargo_Area18"),
+      ];
+      const section: any = JSON.parse(
+        JSON.stringify(
+          buildTradeSection({
+            transactions: journalTransactions(lines, BASE_MS + 24 * HOUR),
+            history: [],
+            includeBalance: false,
+            nowMs: BASE_MS + 2 * HOUR,
+            commodityNames: new Map([
+              [AGRICIUM_GUID, "Agricium"],
+              [LARANITE_GUID, "Laranite"],
+            ]),
+          }),
+        ),
+      );
+      const [r2, r1] = section.runs;
+      // The plan reached the page before the opening trade began.
+      const planAtMs = BASE_MS - 10 * MIN;
+      const plan = {
+        commodity: "Laranite",
+        buy_terminal: "Port Tressler",
+        sell_terminal: "Area18 TDD",
+      };
+
+      it("Given the journal's own runs, Then they are the two trips in the shape the test expects", () => {
+        expect(section.runs).toHaveLength(2);
+        expect(r1).toMatchObject({
+          commodity_name: "Agricium",
+          buy_shops: ["SCShop_Cargo_Lorville"],
+          sell_shops: ["SCShop_Cargo_Tressler"],
+        });
+        expect(r2).toMatchObject({
+          commodity_name: "Laranite",
+          buy_shops: ["SCShop_Cargo_Tressler"],
+          sell_shops: ["SCShop_Cargo_Area18"],
+        });
+      });
+
+      it("Given the plan applied before R1 with its step-1 goods, Then R2 is the plan's run and R1 (the opening trade) is not", () => {
+        const withPreamble = { ...plan, preamble: "Agricium" };
+        expect(tradePlanAttached(L, withPreamble, r2, planAtMs, section.runs).ok).toBe(true);
+        expect(tradePlanAttached(L, withPreamble, r1, planAtMs, section.runs).ok).toBe(false);
+      });
+
+      it("Given the same plan without its step-1 goods, Then R1 has used it up and R2 is not attached", () => {
+        expect(tradePlanAttached(L, plan, r2, planAtMs, section.runs)).toEqual({
+          ok: false,
+          note: "plan déjà utilisé par un trajet précédent, non rattaché",
+        });
+      });
     });
 
     it("Given only the model's own plan fields, Then the preamble survives the page's and the server's cleaners as plain text", () => {
@@ -497,6 +565,50 @@ describe("Feature: the card says step 1, step 2 and an honest comparison", () =>
       answer: { ...a, position: { ...a.position, source: "saisie", at: null } },
     });
     expect(typed).toContain("ma dernière position indiquée par moi");
+  });
+
+  it("Given a position with a planet, Then the message says the planet forces the first stop and the card's route may be absent; the recipe and the closing order stay", () => {
+    const a = answer();
+    const view = {
+      objective: "profit_per_hour",
+      request: { action: "search", position: "journal" },
+      answer: a,
+      flags: {},
+      priv: false,
+      from: "",
+      now: a.position.at + 60_000,
+    };
+    const text = NBSP_FREE(tradeAgentMessage(L, a.options[0], view));
+    expect(text).toContain("origin_planet_name impose le premier arrêt sur cette planète");
+    expect(text).toContain("la route de la carte peut être absente du résultat");
+    expect(text).not.toContain("ne reproduit aucun départ");
+    // The sentence sits before the recipe, and the recipe before the closing order (never cut).
+    expect(text.indexOf("origin_planet_name impose")).toBeLessThan(
+      text.indexOf("uex_plan_trade(objective"),
+    );
+    expect(text.indexOf("uex_plan_trade(objective")).toBeLessThan(text.lastIndexOf("Compare "));
+  });
+
+  it("Given a position with no planet, Then the recipe has no origin key and the message says the call reproduces no departure at all", () => {
+    const a = answer();
+    const noPlanet = { ...a, position: { ...a.position, planet: null } };
+    const view = {
+      objective: "profit_per_hour",
+      request: { action: "search", position: "journal" },
+      answer: noPlanet,
+      flags: {},
+      priv: false,
+      from: "",
+      now: a.position.at + 60_000,
+    };
+    const args = tradeRecipeArgs(view);
+    expect(Object.keys(args).filter((k) => k.startsWith("origin_"))).toEqual([]);
+    const text = NBSP_FREE(tradeAgentMessage(L, a.options[0], view));
+    expect(text).toContain("ne reproduit aucun départ");
+    expect(text).not.toContain("ne reproduit que la planète de départ");
+    expect(text).not.toContain("origin_planet_name");
+    expect(text).toContain("uex_plan_trade(objective");
+    expect(text).toContain("Compare ");
   });
 
   it("Given the message to the agent, Then it names step 1 with UEX names only, and never a place token or a balance instruction", () => {

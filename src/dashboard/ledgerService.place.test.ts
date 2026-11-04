@@ -85,6 +85,30 @@ describe("Feature: the last place the game log named", () => {
     }
   });
 
+  it("Given a private word inside a segment (PlayerHangar, JohnsHome), Then it is private too: only its time", async () => {
+    for (const token of [
+      "Orison_PlayerHangar",
+      "Stanton1_Lorville_JohnsHome",
+      "Stanton1_Lorville_CrewQuarters",
+    ]) {
+      const service = await read(HEADER + where(60, token));
+      expect(service.lastPlace(), token).toEqual({ private: true, at: iso(60) });
+    }
+  });
+
+  it("Given a deep token, Then the words keep the family and at most two more segments (a name further in never reaches a View)", async () => {
+    const service = await read(
+      HEADER + where(60, "Stanton1_Lorville_Tressler_Counter_Spown_Extra"),
+    );
+    const p = service.lastPlace() as { token: string; words: string };
+    expect(p.words).toBe("Stanton1 Lorville Tressler");
+    expect(p.words).not.toMatch(/Counter|Spown|Extra/);
+    // The server keeps the whole token for the resolver; only the words are cut.
+    expect(p.token).toBe("Stanton1_Lorville_Tressler_Counter_Spown_Extra");
+    const ooc = await read(HEADER + where(60, "OOC_Stanton_3a_Lyria_Spown"));
+    expect((ooc.lastPlace() as { words: string }).words).toBe("Stanton 3a Lyria");
+  });
+
   it("Given a log with no inventory request, Then there is none", async () => {
     const service = await read(HEADER);
     expect(service.lastPlace()).toBeUndefined();

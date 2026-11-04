@@ -1320,8 +1320,11 @@ export function tradeRecipeText(view: any): string {
  */
 export function tradePositionSentence(view: any): string {
   const p = view && view.answer && view.answer.position ? view.answer.position : null;
+  // A position answer has no origin of its own (the two are exclusive), so the planet is the recipe's only departure.
   const how =
-    "L’appel uex_plan_trade ci-dessous ne reproduit que la planète de départ, pas l’étape 1 ni le classement sur le premier cycle : compare avec cette réserve.";
+    p && p.planet
+      ? "L’appel uex_plan_trade ci-dessous ne reproduit que la planète de départ, pas l’étape 1 ni le classement sur le premier cycle : origin_planet_name impose le premier arrêt sur cette planète, donc la route de la carte peut être absente du résultat si elle charge ailleurs. Compare avec cette réserve."
+      : "L’appel uex_plan_trade ci-dessous ne reproduit aucun départ (ni la position, ni l’étape 1, ni le classement sur le premier cycle) : le résultat peut différer de la carte. Compare avec cette réserve.";
   if (!p) return how;
   const ago = p.source === "journal" ? tradeAgoFine(p.at, view.now) : "";
   return (

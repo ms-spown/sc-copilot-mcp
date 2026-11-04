@@ -241,9 +241,11 @@ export class LedgerService {
       // TIME is shipped ({ private: true, at }): nothing of the token, and every other source older than it is stale.
       const token = publicPlaceToken(r.token);
       if (!token) return { private: true, at: new Date(Date.parse(r.time)).toISOString() };
+      // What a View gets: the family and at most two more segments (a deeper segment is the likeliest to carry a name).
       const words = token
-        .split("_")
+        .split(/[_-]/)
         .filter((s) => s !== "" && !/^(OOC|PU|RS)$/i.test(s))
+        .slice(0, 3)
         .join(" ")
         .slice(0, 60);
       return { token, words, at: new Date(Date.parse(r.time)).toISOString() };

@@ -246,7 +246,7 @@ function trialOf(o: TripOption, ctx: ReliabilityContext): TrialTrip | null {
   // From a position: the test is the ROUTE's. Step 1 (the opening trade) stays a separate leg, at its own quantity and prices.
   if (o.opening?.step1) {
     lines.push(
-      "Ce test porte sur la route. L’étape 1 reste un trajet à part, avec sa propre quantité et ses propres prix : fais-la comme tu l’entends, ou rejoins le départ à vide.",
+      "Ce test porte sur la route. L’étape 1 reste un trajet à part, avec sa propre quantité et ses propres prix : vérifie prix et stock au terminal avant d’acheter, ou rejoins le départ à vide.",
     );
   }
   lines.push(

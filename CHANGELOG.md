@@ -107,8 +107,9 @@ versions follow [Semantic Versioning](https://semver.org/).
 - **Tool surface:** `sc_trade_suggest` `search` gains `position` (enum `journal`) and `position_text` (at most 80 characters),
   exclusive with `origin` and with each other; the answer gains `position` and, per option, `opening`. The golden file and
   `docs/TOOLS.md` were regenerated. No host, no new GET, no stored file; same throttle and guard.
-- **Page size:** 433.8 kB on the merged tree, under the unchanged 440 kB guardrail (`check:page-size` and the built
-  `pageBudget` test both pass); nothing was removed to fit it.
+- **Page size:** 439.3 kB on the merged tree (`check:page-size`; the built `pageBudget` test measures about 439.7 kB),
+  under the unchanged 440 kB guardrail, both passing; nothing was removed to fit it. The margin is under 1 kB: the next
+  feature will have to raise the budget.
 
 ### Added (a Sessions view: the dedicated tab, with archive and delete per session)
 - **Marc's request:** "on a session line I must be able to click delete, archive, etc., and see the stats when I select it ...
