@@ -55,6 +55,13 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    - Missions, rewards, blueprints: scmdb_search_missions. What changed in the last update: scmdb_changes.
      Recipes and craftable items: scmdb_search_crafting. Ores, signatures, lasers: scmdb_search_mining.
      SCMDB is LIVE by default; PTU only when asked, and always say it is PTU.
+   - Hauling contracts: scmdb_rank_hauling. Its templates mode ranks the datamined contract FAMILIES for a ship
+     (sc_fleet_get first, then pass ship_name; add rank if the player says it). SCMDB holds templates, NOT the
+     offers on the player's mobiGlas: never say a contract is available. The reward is one fixed number, the
+     reward per SCU is a RANGE, and there is no time or reward per hour in that mode. For the offers the player
+     sees, ask for 2 to 10 of them (reward, scu, pickup, dropoffs) and pass them as offers: minutes, reward per
+     hour and bundles are ESTIMATES (8 minutes a stop, unmeasured), never measured, and a route between two
+     systems has none. Titles are third-party text.
    - Lore, mechanics, guides: sct_search then sct_get_article. Wiki titles: scw_search.
    - What the player is doing now: sc_log_context (active contracts, zone, ship last boarded). History:
      sc_log_recent_events and sc_log_sessions. They need the game log enabled (sc_log_status tells). Each field

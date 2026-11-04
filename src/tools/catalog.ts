@@ -146,6 +146,17 @@ export const CATALOG: Record<string, CatalogEntry> = {
   scmdb_search_crafting: { ...scmdb, maxText: 300, profiles: ["data"] },
   // Ore names and the equipment entries as the data gives them (not projected).
   scmdb_search_mining: { ...scmdb, maxText: 300, profiles: ["data"] },
+  // Hauling contract templates (SCMDB, third-party titles and place names) ranked for a ship, and the offers a player
+  // types in, placed with UEX orbits and priced in time (computed estimates). The channel is only known in templates
+  // mode (the SCMDB read sets it); offers mode reads no SCMDB.
+  scmdb_rank_hauling: {
+    ...scmdb,
+    source: "scmdb + uex + star-citizen.wiki",
+    kind: "computed",
+    channel: "unknown",
+    maxText: 300,
+    profiles: ["trade"],
+  },
 
   sc_list_builds: { ...dumps, profiles: ["data"] },
   sc_diff_versions: { ...dumps, profiles: ["data"] },

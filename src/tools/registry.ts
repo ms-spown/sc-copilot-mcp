@@ -23,6 +23,7 @@ import { dumpTools } from "./dumps.js";
 import { localTools } from "./local.js";
 import { patchNotesTools } from "./patchnotes.js";
 import { scmdbTools } from "./scmdb.js";
+import { scmdbHaulingTools } from "./scmdbHauling.js";
 import { dashboardResources, dashboardTools } from "./dashboard.js";
 import { fleetTools } from "./fleet.js";
 import { gameLogTools } from "./gamelog.js";
@@ -67,6 +68,7 @@ export function allTools(clients: ToolClients, probes: StatusProbe[] = []): Tool
     ...sctTools(clients),
     ...patchNotesTools(clients),
     ...scmdbTools(clients),
+    ...scmdbHaulingTools(clients),
     ...gameLogTools(clients),
     ...tradeJournalTools(clients),
     ...telemetryTools(clients),
