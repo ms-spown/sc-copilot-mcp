@@ -249,7 +249,8 @@ describe("Feature: what the zone never does", () => {
 
   it("Given the balance shown, Then no figure reaches the zone", async () => {
     const w = await at(14);
-    findAll(w.root, (n) => n.tag === "button" && n.textContent === "Afficher le solde")[0]!.click();
+    // Press "Afficher le solde" when it is offered (a build that shows the balance by default has no such button).
+    findAll(w.root, (n) => n.tag === "button" && n.textContent === "Afficher le solde")[0]?.click();
     await w.advance(2 * SECOND);
     expect(visibleText(w.root)).toMatch(/250/); // the balance is on screen, so the check below means something
     expect(zoneText(w)).not.toMatch(/\d{3}/);
