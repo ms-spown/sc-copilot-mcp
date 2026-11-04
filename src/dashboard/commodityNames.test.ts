@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { HttpClient } from "../core/http.js";
 import { clearCache, configureDiskCache } from "../core/cache.js";
@@ -21,7 +20,6 @@ import { ledgerTradeNormalize } from "./ledgerPanel.js";
  * never repeated within five minutes, bounded. The journal itself names only a GUID.
  */
 
-const OTHER = "b81d3f07-1111-4222-8333-555555555555";
 let base = 0;
 
 function wiki(rows: { uuid: string; name: string }[] | Error) {

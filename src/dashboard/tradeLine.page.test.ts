@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from "vitest";
 import { findAll, isShown, startPage, visibleText } from "./testing/pageHarness.js";
 import type { PageWorld } from "./testing/pageHarness.js";
