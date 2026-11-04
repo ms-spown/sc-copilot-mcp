@@ -35,6 +35,22 @@ versions follow [Semantic Versioning](https://semver.org/).
     `sc_data_status`. `npm run doctor` is unchanged: its facts (Claude config, user variable, port) are not available at
     runtime, so the two do not share code; the strip points to it.
 
+### Fixed
+- **Tests that failed intermittently on a loaded machine.** Under CPU load (several suites at once plus busy-loop
+  processes) 15 of 15 runs failed on at least one test; they all pass now. Causes, fixed at the root and without
+  weakening an assertion: real-clock thresholds (`Date.now() - started < X`) replaced by injected clocks, counted
+  work (bytes copied by the gRPC framer, field budget of the decoder), frozen timers or lower bounds; sleeps used to
+  wait for a socket or a timer replaced by waits on the event itself; the fake game no longer drops a frame sent
+  before its stream is registered; "nothing listens" tests use a port no test server can be handed (`UNUSED_PORT`)
+  instead of a port just closed. Where real I/O is the point, the limit is a generous hang detector rather than a
+  speed claim: the default test timeout goes from 5 s to 30 s, and to 120 s for the 400-round ledger read test and for
+  the session-store tests (one fsync per change, dozens per test).
+
+### Changed
+- `npm run test:stress` (local, not in CI) runs the suite under CPU load and lists the tests that fail; the rules for
+  time-dependent tests are in CONTRIBUTING.md ("Time in tests, and running the suite under load"). Test support only:
+  no product behaviour changes.
+
 ## [2.2.0] - 2026-11-04
 
 ### Added

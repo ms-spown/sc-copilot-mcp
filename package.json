@@ -25,6 +25,7 @@
     "doctor": "node scripts/doctor.mjs",
     "check:docs": "node scripts/check-docs-safety.mjs",
     "check:page-size": "node scripts/check-page-size.mjs",
+    "test:stress": "node scripts/test-stress.mjs",
     "telemetry": "node scripts/telemetry.mjs",
     "check:telemetry-silence": "node scripts/check-no-telemetry-connection.mjs"
   },

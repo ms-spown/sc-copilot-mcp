@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConnectionInfo } from "../gamelog/connectionState.js";
 import type { Telemetry } from "../telemetry/index.js";
 import type { TelemetrySnapshot, TelemetryStatusReport } from "../telemetry/service.js";
@@ -10,6 +10,11 @@ import { SessionManager, type ManagerDeps } from "./manager.js";
 import { SessionStore } from "./store.js";
 import type { TripCollection } from "./trips.js";
 import type { TripInput } from "./types.js";
+
+// Every change to the session file is a real write with fsync (the store's promise: a power cut keeps the old file or
+// the new one), and these tests make dozens of them. An idle disk takes a few ms each; a disk shared with other
+// work can stall for seconds. A timeout here only detects a hang.
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
 /**
  * Feature: the manager turns what the server sees into the session file. A fake telemetry, a fake clock and a
