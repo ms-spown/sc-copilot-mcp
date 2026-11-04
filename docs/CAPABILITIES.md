@@ -11,7 +11,7 @@ over stdio and gives Claude tools to answer Star Citizen questions: market and t
 missions, crafting, mining, patch notes, what your own game just logged, your fleet and, if you switch it on,
 live telemetry.
 
-52 tools exist. While live telemetry is off (the default) 47 are listed to the client, because `sc_live_state`,
+53 tools exist. While live telemetry is off (the default) 48 are listed to the client, because `sc_live_state`,
 `sc_live_events`, `sc_live_dashboard`, `sc_live_poll` and `sc_live_mark` are hidden until telemetry is on. The three
 dashboard tools are also listed only to a client that can show them (Claude Desktop), never to Claude Code.
 
@@ -60,7 +60,7 @@ hidden behind old data.
 | Know what a blueprint needs to craft | [4. Crafting](#4-crafting-scmdb) |
 | Prepare a mining run | [5. Mining](#5-mining-scmdb) |
 | Know what a patch changed, compare two patches | [6. Patches and patch notes](#6-patches-and-patch-notes) |
-| Know what I did in my last session or what I am doing now | [7. Game log](#7-game-log-gamelog) |
+| Know what I did in my last session or what I am doing now, what I bought and sold, how a cargo run went | [7. Game log](#7-game-log-gamelog) |
 | Choose or manage my ships | [8. Your fleet](#8-your-fleet) |
 | Read live data from the running game | [9. Live telemetry](#9-live-telemetry) |
 | Check how fresh the data is | [10. Data freshness](#10-data-freshness-and-source-status) |
@@ -152,12 +152,34 @@ hidden behind old data.
 | --- | --- |
 | What it is for | What your own game logged: where you have been, what you accepted and completed, what you bought, and a summary of what you are doing now |
 | Example questions | "What am I doing right now?" (Qu'est-ce que je suis en train de faire ?) ; "Debrief my last session" (Fais le bilan de ma dernière session) ; "Which contracts did I complete today?" (Quels contrats ai-je terminés aujourd'hui ?) ; "Is the log readable and which version does it say?" (Le journal est-il lisible et quelle version indique-t-il ?) |
-| Tools | `sc_log_status`, `sc_log_context`, `sc_log_recent_events`, `sc_log_sessions` |
+| Tools | `sc_log_status`, `sc_log_context`, `sc_log_recent_events`, `sc_log_sessions`, `sc_trade_journal` |
 | Source | The `Game.log` file the game writes on your PC (and its `logbackups` folder) |
 | Freshness | The data is as old as the last line the game wrote (`cache_age`); `data_age` is `null`. `channel` (LIVE or PTU) and `game_version` come from the log header. Every context field is the last time the game logged it, not a live reading |
 | Limits | Reported: session start and quit, login, jurisdiction and zone changes, contracts accepted, completed, failed or abandoned, objectives, hauling pickups and drop-offs, blueprints received, shop purchases, insurance claims, hangar requests, the ship whose comms channel you joined or left, jump-point transits. Not in the log, so never reported: ordinary quantum travel, combat and kills, wallet balance, your position, a death. Names and ids of the player are never returned and paths are shortened. Lines the parser does not know are counted as ignored. CIG does not guarantee the format. Very large logs are read from their end (the last 8 MB), and the answer says so. "Running" means the log was written in the last 2 minutes. `session` `previous` reads the newest file of `logbackups`. Contract titles and item names are text from the log (`untrusted_text` for `sc_log_context` and `sc_log_recent_events`) |
 | Prerequisites | Off until you set `SC_INSTALL_DIR` (a LIVE or PTU folder) or `SC_GAME_LOG_PATH` (a `.log` file; other files are refused). `sc_log_status` explains how when it is off; the other three return an error saying the log is off |
-| Local or network | Local only: the module has no network code, reads without locking the file and never writes |
+| Local or network | The log is read locally: the reader has no network code, reads without locking the file and never writes. The one exception is `sc_trade_journal`, which asks the wiki for its public commodity list to name cargo (the same request for everyone, nothing from your log is sent; `resolve_names` false keeps it fully local) |
+
+### Trade journal (`sc_trade_journal`)
+
+Example questions: "What did I buy and sell in my last session?" (Qu'ai-je acheté et vendu pendant ma dernière session ?) ; "How did my last cargo run go?" (Comment s'est passé mon dernier transport de marchandises ?) ; "What did I spend on gear?" (Combien ai-je dépensé en équipement ?)
+
+It reads the shop and cargo-kiosk lines of the log, per session, newest first (`sessions` log files, default 2, max 10; files with no trade are left out). For each purchase or sale: time (UTC), kind (`item` or `commodity`), side, shop, quantity with its unit (SCU for cargo, a cSCU quantity on a purchase is converted), the TOTAL of the line in aUEC, the unit price when it can be derived, the outcome with a `confidence`, and for cargo the `autoLoading` flag as `auto_loading`. Then: spending by category, cargo runs and session totals.
+
+What is verified, and what is not (checked on the author's own logs, March 2025 to November 2026; counts are of requests found, not a promise about every account):
+
+- Item requests (about 183 in 17 files): every one is followed by exactly one response within about 6 seconds, so success or failure is known (`confirmed`). Values seen: Success (182), TransactionCostMismatch (1). `client_price` is the line total. Shop-UI requests state no currency (shown as "not stated (assumed aUEC)"); the small-kiosk flow states `currencyType` and any other currency than UEC is listed but left out of the aUEC totals.
+- Cargo purchases (39 lines): `price` is the line total and the quantity is in cSCU. Cargo sales (40 lines): `amount` is the line total, the quantity is in SCU. The log has NO success line for cargo, only failures (`InvalidQuantityError`, `TransactionCostMismatch`, `AutoLoadStartFailed`; 12 seen, each within 2 seconds of its request). A cargo line with no error line within 3 seconds is therefore reported as completed with confidence `inferred`; a line in the last 3 seconds of the log is `unconfirmed`. A sale with amount 0 failed in every case seen and is excluded as `zero_amount`.
+- Cargo sales in the current build (4.10) are verified on only two lines of one session (3 November 2026: 640 SCU and 56 SCU, quantity in plain SCU and equal to the boxes listed, no error line). Between March 2025 and that day the available logs hold no cargo sale, so the 4.10 sale format rests on those two lines.
+- When one cargo error line follows several requests of the same side within 3 seconds it cannot be attributed to one of them: those lines get confidence `ambiguous`, are listed as unconfirmed and are not counted.
+- Failed, unconfirmed and other-currency lines are listed but never counted in totals, categories or runs.
+
+What the log does not contain, so the journal never invents it: the wallet balance (so no net result, only a GROSS margin), the autoload fee, fuel and every other cost, contract rewards and fines, a per-unit price for cargo sales (it is the total divided by the quantity), a terminal id, and a commodity name next to its GUID.
+
+- Cargo runs: per commodity, purchases are matched first-in first-out with later sales in the same session. A run is `closed` when every purchased SCU has been sold, `open` otherwise. Only the paired SCU is valued: `cost_auec`, `revenue_auec`, `gross_margin_auec` (revenue minus cost) and `gross_margin_per_scu_auec` are estimates. A sale larger than what was bought is shown as `sold_without_purchase_scu` and not valued (the cargo may come from a mission or an earlier session). The pairing assumes the cargo sold is the cargo bought: with cargo from several sources it can pair the wrong lots.
+- Commodity names: the log has only the game's resource GUID. The wiki's commodity list carries the same GUID, and six GUIDs from real logs all resolved; for the three that also appear in the log's hauling-contract names, the wiki name agrees (Waste, Scrap, Stims). A GUID with no match, or a wiki that cannot be reached, gives "unknown commodity". A name is never guessed from a contract title. `commodity_id` is the first 8 characters of the GUID.
+- Categories (`food`, `weapon`, `armor`, `ship_component`, `other`) are INFERRED from the item class name, the log has no category field. Rules: `Food_` or `Drink_` prefix is food; four capital letters then an underscore (`HRST_LaserRepeater_S2`) is a ship component; a name with `armor`, `undersuit`, `backpack` or `helmet` is armor; `rifle`, `smg`, `pistol`, `shotgun`, `sniper`, `lmg`, `gren`, `melee`, `optics`, `barrel` or `mag` is a weapon, magazine or attachment; everything else (tools, medical items, cargo containers) is other. Only purchases are grouped.
+- Place: `location_hint` is the last `RequestLocationInventory` location token the game logged before the line, with its age in seconds. It can be stale (after a jump or a long wait) and it is never a terminal: the cargo kiosks have generic shop names, and the log carries no terminal id.
+- Very large logs are read from their end (the last 40 MB), and the answer says so. The output is capped (40 transactions per session by default, 120 in all) and is cut further, with a `truncated` note giving the counts, when it would exceed the output limit; totals and spending always cover the whole session.
 
 ## 8. Your fleet
 
@@ -255,7 +277,7 @@ The two telemetry tools stay hidden while telemetry is off, even when named in `
 | **core** (14) | `sc_data_status`, `uex_get_commodity_prices`, `uex_get_trade_routes`, `uex_get_game_versions`, `uex_get_ship_prices`, `scw_get_vehicle`, `scw_get_item`, `scw_get_ship_comparison`, `sct_search`, `sct_get_article`, `sc_patch_notes`, `scmdb_search_missions`, `scmdb_changes`, `sc_fleet_get` | The everyday copilot; a test keeps it under 15 tools |
 | **trade** (16) | The fifteen tools of [section 1](#1-market-and-trade-routes-uex) plus `sc_data_status` | The full market toolbox |
 | **data** (16) | Wiki browsing and snapshots, missions, crafting, mining, patch notes and history, vocabulary | Reference data, crafting, mining and patch history |
-| **local** (17) | The game log, telemetry, fleet and local-file tools | Things on your PC. Twelve are listed while telemetry is off |
+| **local** (18) | The game log, telemetry, fleet and local-file tools | Things on your PC. Thirteen are listed while telemetry is off |
 
 ### Variables
 

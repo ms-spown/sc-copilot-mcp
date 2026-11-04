@@ -32,7 +32,7 @@ const sessionView = (s: SessionInfo, running: boolean) => ({
       : "not running, no clean quit seen (crash, kill or still loading)",
 });
 
-function noteProvenance(session: SessionInfo, modifiedAt: number) {
+export function noteProvenance(session: SessionInfo, modifiedAt: number) {
   setChannel(session.channel);
   setGameVersion(
     session.game_version

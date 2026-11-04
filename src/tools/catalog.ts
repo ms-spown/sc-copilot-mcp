@@ -200,6 +200,16 @@ export const CATALOG: Record<string, CatalogEntry> = {
     channel: "unknown",
     profiles: ["local"],
   },
+  // Shop names and item class names come out of the log, commodity names from the wiki's public
+  // list: all text from elsewhere, so untrusted_text (cut at 400 characters).
+  sc_trade_journal: {
+    source: "Game.log (local) + star-citizen.wiki (commodity names)",
+    kind: "local_log",
+    trust: "untrusted_text",
+    maxText: 400,
+    channel: "unknown",
+    profiles: ["local"],
+  },
   sc_log_sessions: {
     source: "Game.log (local)",
     kind: "local_log",

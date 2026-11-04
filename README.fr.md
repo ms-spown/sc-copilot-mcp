@@ -101,9 +101,9 @@ npm run build
    aucun secret n'est affiché. `npm run check:sources` interroge chaque source de données sur sa version et vérifie les
    fichiers et champs attendus par les outils. Dans Claude, demandez `sc_data_status`.
 
-## Outils (52)
+## Outils (53)
 
-Claude en voit 47 par défaut : `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll` et
+Claude en voit 48 par défaut : `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll` et
 `sc_live_mark` ne sont listés que lorsque la télémétrie en direct est activée (les trois derniers exigent aussi un
 client capable de les afficher, comme Claude Desktop).
 
@@ -116,7 +116,7 @@ Référence complète des paramètres : **[docs/TOOLS.md](docs/TOOLS.md)** (gén
 | **Vaisseaux et objets** (Wiki)                   | `scw_get_vehicle`, `scw_get_item`, `scw_get_ship_comparison`, `scw_list_vehicles`, `scw_list_items`, `scw_get_filters`, `scw_search`, `scw_snapshot_save`, `scw_snapshot_list`, `scw_snapshot_diff`, `sc_get_vocabulary`                                                                                                                                                                                                      |
 | **Missions, artisanat, minage** (SCMDB)          | `scmdb_search_missions`, `scmdb_search_crafting`, `scmdb_search_mining`, `scmdb_changes`                                                                                                                                                                                                                                                                                                                                      |
 | **Patchs et lore**                               | `sc_patch_notes` (notes d'une mise à jour, par section ou mot-clé), `sct_search`, `sct_get_article`, `sc_list_builds`, `sc_diff_versions`                                                                                                                                                                                                                                                                                     |
-| **Votre journal de jeu** (désactivé par défaut)  | `sc_log_context` (ce que vous faites actuellement), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`                                                                                                                                                                                                                                                                                                                |
+| **Votre journal de jeu** (désactivé par défaut)  | `sc_log_context` (ce que vous faites actuellement), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`, `sc_trade_journal` (achats, ventes et transports de fret)                                                                                                                                                                                                                                                                                                                |
 | **Télémétrie en direct** (désactivée par défaut) | `sc_live_status` (toujours listé : l'état et comment l'activer), `sc_live_state`, `sc_live_events` (listés seulement avec `SC_TELEMETRY=on`), `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark` (le tableau de bord en direct, dans Claude Desktop uniquement)                                                                                                                                                                                                                                                                                  |
 | **Votre flotte**                                 | `sc_fleet_get`, `sc_fleet_upsert`, `sc_fleet_remove`                                                                                                                                                                                                                                                                                                                                                                          |
 | **Vos propres fichiers de données**              | `sc_local_datasets`, `sc_search_local`, `sc_read_local_collection`                                                                                                                                                                                                                                                                                                                                                            |
@@ -133,7 +133,7 @@ listé reste appelable.
 | **core**  | 14     | Le copilote au quotidien : statut, vaisseaux, bases du commerce, missions, notes de patch, flotte |
 | **trade** | 16     | La boîte à outils complète du marché UEX, avec raffinage, objets de boutique et marché des joueurs |
 | **data**  | 16     | Données de référence, artisanat, minage, historique des patchs, navigation sur le wiki            |
-| **local** | 11     | Votre journal de jeu, votre flotte, vos propres fichiers de données                               |
+| **local** | 12     | Votre journal de jeu, votre flotte, vos propres fichiers de données                               |
 
 Le choix des profils et instructions recommandées est détaillé dans
 [docs/USING_WITH_CLAUDE.fr.md](docs/USING_WITH_CLAUDE.fr.md) ; la description de chaque outil précise ce qu'il renvoie
@@ -182,6 +182,14 @@ de fret, plans (blueprints) reçus, achats en boutique, déclarations d'assuranc
 vaisseau dont vous avez rejoint ou quitté le canal de communication, et transits par points de saut entre systèmes.
 `sc_log_context` résume ces événements en « ce que je fais maintenant », et `sc_log_sessions` sous forme de tableau de
 vos sessions récentes.
+
+`sc_trade_journal` est votre carnet de commerce personnel, construit à partir du même journal : achats et ventes en
+boutique, achats et ventes aux bornes de fret (en SCU), le résultat de chacun, les dépenses par catégorie (déduites du
+nom de classe de l'objet) et les transports de fret qui apparient achats et ventes d'une même marchandise en une marge
+**brute**. Le journal ne contient ni solde du portefeuille, ni frais d'autochargement, ni ligne de succès pour le fret
+(le succès est déduit de l'absence d'erreur) : il n'y a donc pas de résultat net et les chiffres sont des estimations.
+Les noms des marchandises viennent de la liste publique du wiki, appariée localement sur le GUID du jeu (rien de votre
+journal n'est envoyé) ; sinon la marchandise est « unknown commodity ».
 
 **Absent du journal, donc jamais rapporté :** voyage quantique ordinaire, combats et éliminations, solde du
 portefeuille, position exacte, décès. Chaque champ de contexte correspond à « la dernière fois où le jeu l'a écrit »,
