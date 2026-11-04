@@ -280,6 +280,45 @@ describe("Feature: families are ranked for a ship, with ranges and unknowns", ()
     expect(big.fit.hold).toBe("several_trips");
   });
 
+  it("Given a ship, Then suitability comes before reward: a one-trip row beats a richer one that needs several", () => {
+    const small = extractHauling({
+      ...MERGED,
+      contracts: [
+        // 100 SCU at 400,000: 4,000 per SCU, but 9 trips for a 12 SCU hold.
+        contract("far", {
+          title: "Big and rich",
+          rewardUEC: 400_000,
+          haulingOrders: [order("r1", { minSCU: 100, maxSCU: 100 })],
+        }),
+        // 10 SCU at 10,000: 1,000 per SCU, one trip.
+        contract("near", {
+          title: "Small and poor",
+          rewardUEC: 10_000,
+          haulingOrders: [order("r1", { minSCU: 10, maxSCU: 10 })],
+        }),
+        // too big for the containers, richest of all
+        contract("huge", {
+          title: "Huge boxes",
+          rewardUEC: 900_000,
+          haulingOrders: [order("r1", { minSCU: 5, maxSCU: 5, maxContainerSize: 32 })],
+        }),
+      ],
+    });
+    const ship = { name: "Tiny", hold_scu: 12, max_container_size: 8 };
+    const withShip = rankHauling(small, { ...QUERY, ship, includeUnfit: true });
+    expect(withShip.rows.map((r) => r.title)).toEqual([
+      "Small and poor",
+      "Big and rich",
+      "Huge boxes",
+    ]);
+    // Without a ship nothing is known about fit: the reward per SCU decides alone.
+    expect(rankHauling(small, QUERY).rows.map((r) => r.title)).toEqual([
+      "Huge boxes",
+      "Big and rich",
+      "Small and poor",
+    ]);
+  });
+
   it("Given no ship, Then every fit is unknown", () => {
     const row = rankHauling(d, QUERY).rows[0];
     expect(row.fit).toMatchObject({ container: "unknown", hold: "unknown", trips: null });

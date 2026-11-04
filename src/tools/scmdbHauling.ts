@@ -150,7 +150,12 @@ function shipFacts(
     description: {
       name: facts.name,
       hold_scu: facts.hold_scu,
-      hold_scu_from: cargoScu !== undefined ? "cargo_scu argument" : sheet ? "UEX" : null,
+      hold_scu_from:
+        cargoScu !== undefined
+          ? "cargo_scu argument"
+          : sheet
+            ? "ship sheet (UEX, else wiki)"
+            : null,
       max_container_size: facts.max_container_size,
       container_sizes: sizes,
       max_container_size_from:
@@ -252,10 +257,16 @@ async function templatesMode(
       include_illegal: a.include_illegal === true,
       include_unfit: a.include_unfit === true,
     },
-    sorted_by:
+    sorted_by: [
+      ...(facts
+        ? [
+            "suitability first: containers that fit, then one trip, then trips depending on the SCU rolled, then several trips, then unknown",
+          ]
+        : []),
       (a.sort ?? "reward_per_scu") === "reward"
         ? "reward_auec, highest first"
         : "reward_per_scu.low (reward over the largest SCU), highest first, then .high",
+    ],
     templates_in_file: result.total_templates,
     families: result.total_families,
     matching_families: result.matching_families,
@@ -545,7 +556,7 @@ export function scmdbHaulingTools(clients: {
             type: "string",
             enum: ["reward_per_scu", "reward"],
             description:
-              "templates: reward_per_scu (default; by the low end of the range) or reward.",
+              "templates: reward_per_scu (default; by the low end of the range) or reward. With a ship, fit comes first (containers, then trips).",
           },
           max_results: {
             type: "number",

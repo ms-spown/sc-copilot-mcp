@@ -4,6 +4,7 @@ import { MAX_OUTPUT_CHARS } from "../core/format.js";
 import type { HttpClient } from "../core/http.js";
 import { FleetStore } from "../providers/fleet/store.js";
 import { GameLog } from "../providers/gamelog/reader.js";
+import { createGameVersionResolver } from "../providers/probes.js";
 import type { Scmdb } from "../providers/scmdb/store.js";
 import { CATALOG } from "./catalog.js";
 import { fitStepsOrMinimal } from "./haulingBounds.js";
@@ -137,15 +138,19 @@ function world(scmdbData: unknown) {
     version: "4.10.2-live.7",
   }));
   const scmdb = { file: scmdbFile } as unknown as Scmdb;
+  const clients = {
+    uexClient: uex.client,
+    scwClient: wiki.client,
+    sctClient: empty,
+    scmdb,
+    gameLog: new GameLog({}),
+    fleet: new FleetStore("unused-fleet.json"),
+  };
+  // The real server passes the game-version resolver: it must not add requests for this tool.
   const registry = createRegistry(
-    allTools({
-      uexClient: uex.client,
-      scwClient: wiki.client,
-      sctClient: empty,
-      scmdb,
-      gameLog: new GameLog({}),
-      fleet: new FleetStore("unused-fleet.json"),
-    }),
+    allTools(clients),
+    {},
+    { gameVersionFor: createGameVersionResolver(clients) },
   );
   return { registry, uex, wiki, scmdbFile };
 }
@@ -226,8 +231,10 @@ describe("Feature: templates mode ranks contract families for my ship", () => {
         sort: "reward",
       }),
     );
-    expect(data.rows.map((x: { id: string }) => x.id)).toEqual(["b1", "a1", "c1"]);
-    expect(data.rows[0].flags).toContain("containers_too_big_for_the_ship");
+    // Containers that fit come first even though the too-big contract pays most.
+    expect(data.rows.map((x: { id: string }) => x.id)).toEqual(["a1", "c1", "b1"]);
+    expect(data.rows[2].flags).toContain("containers_too_big_for_the_ship");
+    expect(data.sorted_by[0]).toMatch(/^suitability first/);
   });
 
   it("Given no ship, Then it still answers and says the fit is unknown", async () => {
@@ -361,6 +368,23 @@ describe("Feature: offers mode prices the offers I see in the mobiGlas", () => {
     const total = uex.get.mock.calls.length + wiki.get.mock.calls.length;
     await registry.call("scmdb_rank_hauling", { ship_name: "Cutlass Black", offers: OFFERS });
     expect(uex.get.mock.calls.length + wiki.get.mock.calls.length).toBe(total);
+  });
+
+  it("Given the real server's game-version resolver, Then offers mode adds no request and stamps no version it did not read", async () => {
+    const { registry, uex, wiki } = world(MERGED);
+    const r = await registry.call("scmdb_rank_hauling", {
+      ship_name: "Cutlass Black",
+      offers: OFFERS,
+    });
+    expect(body(r).provenance.game_version).toBeNull();
+    const urls = [...uex.get.mock.calls, ...wiki.get.mock.calls].map((c) => c[0]);
+    expect(urls).not.toContain("/game_versions");
+    // vehicles + sheet + terminals + one matrix: the budget the answer announces, nothing more.
+    expect(urls).toHaveLength(4);
+    // Templates mode with the stub (which stamps no build) gets no extra request either.
+    const t = await registry.call("scmdb_rank_hauling", { rank: "Rookie" });
+    expect(t.isError).toBeUndefined();
+    expect([...uex.get.mock.calls, ...wiki.get.mock.calls]).toHaveLength(4);
   });
 
   it("Given a system met in two places, Then one matrix per system and never a pair-by-pair distance", async () => {

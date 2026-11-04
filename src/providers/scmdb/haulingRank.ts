@@ -112,6 +112,17 @@ export interface RankResult {
 
 export class RankQueryError extends Error {}
 
+const HOLD_ORDER: Record<HoldFit, number> = {
+  one_trip: 0,
+  depends_on_roll: 1,
+  several_trips: 2,
+  unknown: 3,
+};
+
+/** Lower is more suitable: containers that fit before those that do not, then the fewest trips. */
+const suitability = (fit: Fit): number =>
+  (fit.container === "too_big" ? 10 : 0) + HOLD_ORDER[fit.hold];
+
 const fingerprint = (t: HaulingTemplate): string =>
   JSON.stringify([
     t.title,
@@ -273,6 +284,9 @@ export function rankHauling(dataset: HaulingDataset, q: RankQuery): RankResult {
   kept.sort((a, b) => {
     const A = a.row;
     const B = b.row;
+    // With a ship, suitability comes first: containers that fit, then fewer trips, then the chosen sort.
+    const bySuitability = q.ship ? suitability(A.fit) - suitability(B.fit) : 0;
+    if (bySuitability !== 0) return bySuitability;
     const byScu =
       (B.reward_per_scu?.low ?? none) - (A.reward_per_scu?.low ?? none) ||
       (B.reward_per_scu?.high ?? none) - (A.reward_per_scu?.high ?? none);

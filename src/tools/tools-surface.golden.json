@@ -675,7 +675,7 @@
             "reward_per_scu",
             "reward"
           ],
-          "description": "templates: reward_per_scu (default; by the low end of the range) or reward."
+          "description": "templates: reward_per_scu (default; by the low end of the range) or reward. With a ship, fit comes first (containers, then trips)."
         },
         "max_results": {
           "type": "number",

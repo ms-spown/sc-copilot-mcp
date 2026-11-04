@@ -15,7 +15,7 @@ versions follow [Semantic Versioning](https://semver.org/).
   an order with `maxSCU` 0 and a minimum is read as a fixed quantity and labelled deduced. Mode `templates` ranks
   contract families for a ship (`ship_name` or `cargo_scu`; container sizes now come from UEX `container_sizes` through the
   ship sheet): reward per SCU as a RANGE, rank filter on the Hauling scale, illegal contracts left out by default, container
-  fit and trips for the hold, no time and no reward per hour (no concrete pickup or drop-off exists). Mode `offers` takes
+  fit and trips for the hold (with a ship, suitability is the first sort key, then the reward per SCU or the reward), no time and no reward per hour (no concrete pickup or drop-off exists). Mode `offers` takes
   1 to 10 offers typed from the mobiGlas, resolves the places to UEX orbits (an ambiguous name is refused with suggestions),
   estimates minutes and reward per hour with the planner's travel model (8 minutes a stop and a 2 minute hop, both
   unmeasured; no time between star systems), forms bundles of offers that share a pickup orbit within the hold, and

@@ -553,7 +553,7 @@ Rank hauling contracts for a ship from SCMDB's datamined list, or price concrete
 | `system` | string | no | templates: keep contracts that run in this system ('Stanton', 'Pyro', 'Nyx'). |
 | `include_illegal` | boolean | no | templates: also show illegal contracts (default false). |
 | `include_unfit` | boolean | no | templates: also show contracts whose containers are too big for the ship, flagged (default false). |
-| `sort` | `reward_per_scu` \| `reward` | no | templates: reward_per_scu (default; by the low end of the range) or reward. |
+| `sort` | `reward_per_scu` \| `reward` | no | templates: reward_per_scu (default; by the low end of the range) or reward. With a ship, fit comes first (containers, then trips). |
 | `max_results` | number | no | templates: families to return (default 10, max 20). |
 | `channel` | `live` \| `ptu` | no | templates: game channel, 'live' (default) or 'ptu'. |
 | `offers` | list of object | no | offers: 1 to 10 offers as seen in the mobiGlas (2 or more to compare and bundle). |
