@@ -69,6 +69,43 @@ versions follow [Semantic Versioning](https://semver.org/).
 - **Page size:** 391.6 kB on the merged tree (373.0 kB in 2.7.0, 379.6 kB with the sessions fix); the internal budget of `check:page-size` is raised from 392 kB to 411 kB (measured
   size plus about 5 %; our own guard, not a proven host limit, and nothing was removed to fit it).
 
+### Added (dashboard: a permanent account balance, test-pass finding F4)
+- **A "Solde" reminder in the header, whatever the session.** "Solde · 1 234 567 aUEC", in the compact view and in full screen,
+  next to the show/hide button (which moved there from the body of the page: one balance zone, not two). Live while the stream gives the
+  balance; otherwise the last known balance labelled with its age ("dernier solde connu · il y a 15 h"), taken from the newer of the
+  last frame the reader kept in memory and the last balance saved with a play session in `sessions.json` (the current session starts
+  empty, so the file is read across all sessions); "Solde inconnu" with the reason ("jeu fermé", "aucun relevé pour l'instant",
+  "télémétrie non activée", "jeu lancé sur le PTU") when nothing is known; "jeu fermé" is said only on the game's own quit line.
+  A balance saved with a PTU session is never used (separate test economy) and a PTU stream is not presented as the account's
+  (PTU detected from the head of Game.log, with or without saved sessions: a bounded, cached, read-only look, made only for an answer
+  that asked for the balance). **Remaining fail-open cases:** when the channel cannot be read (no game log configured, a log without the
+  channel marker, an unreadable head) the stream's figure is still shown, but flagged "canal non vérifié" in the note and tooltip, because
+  a PTU figure could not be told apart; and a frame kept in memory from an earlier PTU launch of the same server process is not
+  detected once the log head says live. A View that follows another says "suivi par un autre tableau",
+  not "masqué". Nothing is invented. New plain field `account` in the `sc_live_poll` answer
+  (`source` live / last_known / unknown, outside the hashes; no tool name or input schema changed): it exists only in an answer built
+  with the balance, so "Masquer le solde", `SC_BALANCE=hidden` and `include_balance: false` leave no field and no amount, and a hidden
+  state ignores `include_balance: true` as before. It is not in the automatic summary sent to the model, not in a fixed message, and
+  stripped from what is shared between dashboards. A screen reader is told when the KIND of reading changes (through the page's
+  existing status region, no live region added), never at each poll or amount change.
+
+### Changed (dashboard: the commerce card speaks of the current session only, test-pass finding F3)
+- **A run of an older play session no longer reads as a result of the current one.** With the game closed and a new, empty session,
+  the card used to show the old journal's "Chiffre d'affaires 318 072 aUEC", "Trajet terminé" and its duration as if they were the
+  session's. Now the card, its tiles, its waterfall and its compact line speak of the runs whose last transaction is not before the
+  session's start (and whose first is not after its end), except that a run NOT finished (open or partial) is a trip under way
+  whatever the start says while its last transaction is at most 3 hours old; until one exists the card says "Aucun trajet dans
+  cette session pour l'instant", or "Session terminée : les prochains trajets comptent dans la prochaine session" after a session
+  ended by hand. The newest older run is a folded, dashed block, "Dernier trajet connu · hier 22:14, hors session" (goods, places,
+  quantity, duration; turnover and net only while the balance is shown, "Montants masqués" otherwise), the others are dated in the folded
+  "Trajets précédents", and the compact view gets one calm line with no amount. Without a session to compare with
+  (`SC_SESSIONS=off`, or a bar with no session in it) a run over 3 hours old is treated the same way. The poll's `ledger.trade.runs` is unchanged (the View does the
+  split); the net decomposition is not drawn for an older run. The Debrief button, the "Et ensuite ?" suggestion and the alert and
+  pre-flight boxes read the session's runs the same way (the action bar's list of holds still reads the whole journal). The
+  session card no longer has a second "Afficher le solde" button: the header's "Solde" zone holds the page's one show/hide control.
+  Page size 400.0 kB on the merged tree; the internal budget of `check:page-size` is raised from 411 kB to 420 kB (about 5 %, our own
+  guard, nothing removed to fit it).
+
 ## [2.7.0] - 2026-11-04
 
 This release is the dashboard's UX pass, almost all in the page and its tests: **a ship loss is now the gravest event of the page** (a

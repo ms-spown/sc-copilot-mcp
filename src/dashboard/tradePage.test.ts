@@ -156,7 +156,7 @@ describe("Feature: no amount without the balance", () => {
     findButton(w.root, "Afficher le solde").click();
     await w.advance(3 * SECOND);
     expect(card(w)).toContain("+143 000 aUEC");
-    findButton(w.root, "Masquer").click();
+    findButton(w.root, "Masquer le solde").click();
     expect(card(w).replace(/180 000/g, "")).not.toMatch(AMOUNTS);
   });
 

@@ -4,6 +4,7 @@ import type { TelemetryEvent } from "../providers/telemetry/events.js";
 import type { Condition } from "../providers/telemetry/handler.js";
 import type { Pilot, Ship, Weapons } from "../providers/telemetry/normalize.js";
 import type { TelemetrySnapshot, TelemetryStatusReport } from "../providers/telemetry/service.js";
+import type { AccountBalance } from "./accountBalance.js";
 import type { HealthSection } from "./health.js";
 import type { LedgerPayload } from "./ledger.js";
 import type { ShipSpecs } from "./specs.js";
@@ -120,6 +121,12 @@ export interface PollResult {
   session: SessionSummary;
   /** Present only when the View asked for it (after the player clicked "show balance"). */
   balance?: { uec: number | string; delta: number | null; since: string | null };
+  /**
+   * The account balance as a standing reminder (accountBalance.ts): live, or the last known reading with its time. A plain
+   * field outside the hashes, present ONLY when the View asked for the balance, like `balance`; the channel between Views
+   * never carries it. It is not `balance`: that one is the live reading the action bar uses as a budget.
+   */
+  account?: AccountBalance;
   /** What the stream never contains. Sent once (see PollRequest.includeStatic), not at every poll. */
   not_in_stream?: readonly string[];
   /** A short hash of each section, so the View can say which ones it already holds (see tailorPoll). */
@@ -269,6 +276,8 @@ export interface PollInput {
   sessions?: SessionBar;
   /** The health section (health.ts), built by the service from facts it already holds. */
   health?: HealthSection;
+  /** The account balance reminder (accountBalance.ts); the caller builds it only when `includeBalance` is true. */
+  account?: AccountBalance;
   /** The connection state read from Game.log (connection.ts), when the log is available. */
   connection?: ConnectionInfo | null;
 }
@@ -395,6 +404,8 @@ function buildAnswer(input: PollInput): PollResult {
       state?.ship?.landed === false,
     ),
     ...(balance ? { balance } : {}),
+    // Defence in depth: whatever the caller passed, a poll built without the balance never carries the reminder.
+    ...(input.account && includeBalance ? { account: input.account } : {}),
     not_in_stream: status.not_in_stream,
   };
 }

@@ -1111,7 +1111,7 @@ describe("Feature: estimated, measured and ratio side by side on a route card, i
     expect(shownNow).toMatch(amount(NET_AVG));
     expect(shownNow).toContain("Mesuré · 4 trajets");
     expect(shownNow).toMatch(/--fill:38%/);
-    findButton(w.root, "Masquer").click();
+    findButton(w.root, "Masquer le solde").click();
     await w.advance(3 * SECOND);
     expect(findAll(w.root, (n) => n.className === "ta-calib" && isShown(n))).toEqual([]);
     expect(leaks(everything(w))).toEqual([]);
@@ -1157,7 +1157,7 @@ describe("Feature: estimated, measured and ratio side by side on a route card, i
     expect(leaks(everything(w))).toEqual([]);
     expect(blockWords(w)).not.toMatch(/\d/);
     // and hiding the balance afterwards leaves nothing either
-    findButton(w.root, "Masquer").click();
+    findButton(w.root, "Masquer le solde").click();
     await w.advance(3 * SECOND);
     expect(leaks(everything(w))).toEqual([]);
     expect(blockWords(w)).not.toMatch(/\d/);
@@ -1176,7 +1176,7 @@ describe("Feature: estimated, measured and ratio side by side on a route card, i
     const bubble = findAll(w.root, (n) => n.className === "tip")[0]!;
     expect(isShown(bubble)).toBe(true);
     expect(bubble.textContent).toBe(tags[0]!.attrs["data-tip"]);
-    findButton(w.root, "Masquer").click();
+    findButton(w.root, "Masquer le solde").click();
     await w.advance(3 * SECOND);
     // the hidden tags are not in the tab order and say nothing
     for (const t of tags) {

@@ -1,6 +1,7 @@
 import type { ConnectionInfo } from "../providers/gamelog/connectionState.js";
-import type { SessionManager } from "../providers/sessions/manager.js";
+import type { GameInfo, SessionManager } from "../providers/sessions/manager.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
+import { buildAccountBalance } from "./accountBalance.js";
 import { POLL_CACHE_MS, POLL_EVENT_COUNT } from "./constants.js";
 import { buildHealth, type HealthStatic } from "./health.js";
 import { buildLedgerPayload, EMPTY_LEDGER, type PlanForLedger } from "./ledger.js";
@@ -72,6 +73,11 @@ export class DashboardService {
     private readonly health?: HealthStatic,
     /** Names of the goods of the trade runs, looked up in the background (commodityNames.ts). Absent: the goods stay unnamed. */
     private readonly commodityNames?: CommodityNameResolver,
+    /**
+     * The channel of the game launched now (live, ptu), read from the head of Game.log (cached, bounded), for the account
+     * balance reminder. Without it, and without sessions, the channel is unknown.
+     */
+    private readonly channelSource?: () => Promise<GameInfo["channel"] | null>,
   ) {}
 
   get enabled(): boolean {
@@ -166,6 +172,17 @@ export class DashboardService {
     const sessions = this.sessions?.enabled
       ? await this.sessions.bar(includeBalance).catch(() => undefined)
       : undefined;
+    // The account reminder is an aUEC figure: built ONLY for the answer that asked for the balance. A failure leaves it out.
+    const account = includeBalance
+      ? buildAccountBalance({
+          status,
+          snapshot,
+          saved: await this.savedBalance(),
+          channel: await this.gameChannel(),
+          connection,
+          nowMs,
+        })
+      : undefined;
     // What is wired, from facts already in hand: the hint the telemetry service holds, the connection tracker's answer
     // (null: the log cannot be followed) and the session bar. No read of its own.
     const health = this.health
@@ -188,6 +205,7 @@ export class DashboardService {
       ledger,
       ...(connection ? { connection } : {}),
       ...(sessions ? { sessions } : {}),
+      ...(account ? { account } : {}),
       events: recent.events,
       lastSeq: recent.last_seq,
       sessionEvents,
@@ -196,6 +214,29 @@ export class DashboardService {
       nowMs,
     });
     return boundPoll(answer);
+  }
+
+  /** The newest balance a saved session holds (the local sessions file); null when sessions are off or it cannot be read. */
+  private async savedBalance() {
+    try {
+      return this.sessions?.enabled ? await this.sessions.savedBalance() : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * The channel of the game launched now (live, ptu), from the head of Game.log; null when it cannot be read (no log, no
+   * marker). It does not depend on the saved sessions being on: it is a bounded, cached, read-only look at the log, made only
+   * for an answer that asked for the balance.
+   */
+  private async gameChannel() {
+    try {
+      if (this.sessions) return await this.sessions.gameChannel();
+      return this.channelSource ? await this.channelSource() : null;
+    } catch {
+      return null;
+    }
   }
 
   /** The ledger as last computed (never waits for the log), with balance figures only when asked. */

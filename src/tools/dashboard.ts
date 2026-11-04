@@ -41,7 +41,11 @@ import {
 } from "../dashboard/tradeSuggest.js";
 import { CommodityNameResolver, commodityNamesSwitchedOff } from "../dashboard/commodityNames.js";
 import type { ConnectionTracker } from "../providers/gamelog/connection.js";
-import type { SessionManager } from "../providers/sessions/manager.js";
+import {
+  createGameInfo,
+  type GameInfo,
+  type SessionManager,
+} from "../providers/sessions/manager.js";
 import type { Telemetry } from "../providers/telemetry/index.js";
 import { NOT_IN_STREAM } from "../providers/telemetry/normalize.js";
 import type { ResourceDefinition, ToolDefinition, ToolResult } from "./types.js";
@@ -64,6 +68,10 @@ const APP_ONLY_META = { ui: { resourceUri: DASHBOARD_URI, visibility: ["app"] } 
 /** Told to the model with every opening: a second copy is clutter, and the old one keeps updating. */
 export const OPEN_HINT =
   "If a dashboard is already open in this conversation, do not open another one unless the player explicitly asks for it: the open one updates by itself.";
+
+/** The channel (live, ptu, unknown) of a game-info reader; null when the log is not configured or unreadable. */
+const channelOf = (info: () => Promise<GameInfo | null>) => async () =>
+  (await info())?.channel ?? null;
 
 const off = (): ToolResult => ({
   content: [
@@ -158,6 +166,8 @@ export function dashboardTools(
     scwClient && !commodityNamesSwitchedOff(overrides.env ?? process.env)
       ? new CommodityNameResolver(scwClient, overrides.now ?? Date.now)
       : undefined,
+    // The game's channel (live, ptu) for the account balance, with or without saved sessions (SC_SESSIONS=off).
+    gameLog ? channelOf(createGameInfo(gameLog, overrides.now ?? Date.now)) : undefined,
   );
   const enabled = () => telemetry?.enabled === true;
   // The server's runtime balance choice. Without one passed (some tests), a private one: shown, until a click.

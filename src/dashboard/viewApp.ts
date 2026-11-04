@@ -400,8 +400,18 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       },
       "mini",
     );
+    // The account balance, a permanent reminder in the header (viewLogic.accountInfo): the one balance zone of the page. It
+    // carries the show/hide control, so the header holds both, in the compact view and in full screen.
+    R.acct = el("div", "acct");
+    R.acct.setAttribute("role", "group");
+    R.acct.setAttribute("aria-label", "Solde du compte");
+    R.acctLabel = el("span", "acct-label", "Solde");
+    R.acctValue = el("span", "acct-value", "••••••");
+    R.acctNote = el("span", "acct-note", "");
+    R.btnBalance = button("Afficher le solde", () => toggleBalance(), "mini");
+    add(R.acct, R.acctLabel, R.acctValue, R.acctNote, R.btnBalance);
     add(R.topActions, R.age, R.btnAnalyse, R.health.help, R.btnOrder, R.btnMode);
-    add(R.top, R.status, R.verdict, R.topActions);
+    add(R.top, R.status, R.verdict, R.acct, R.topActions);
     R.toastTop = el("div", "toast toast-top", "");
     R.toastTop.setAttribute("aria-hidden", "true");
 
@@ -480,11 +490,6 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     ]);
     R.iDials = el("div", "dials");
     add(R.iDials, R.iSpeed.root, R.iHydrogen.root, R.iHealth.root);
-    R.iBalance = el("div", "balance-row");
-    R.iBalanceLabel = el("span", "balance-label", "Solde");
-    R.iBalanceValue = el("span", "balance-value", "••••••");
-    R.btnBalance = button("Afficher le solde", () => toggleBalance(), "mini");
-    add(R.iBalance, R.iBalanceLabel, R.iBalanceValue, R.btnBalance);
     add(R.inline, R.iDials);
 
     // ---------------------------------------------------------------- cockpit
@@ -814,12 +819,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.sesFlight.root,
     );
     R.sesBalanceBox = widget("balance", el("div", "facts ses-balance"));
-    R.sesBalance = fact("Solde");
-    R.btnBalance2 = button("Afficher le solde", () => toggleBalance(), "mini");
-    add(R.sesBalance.root, R.btnBalance2);
     R.sesDelta = fact("Variation");
     R.sesRate = fact("Rythme");
-    add(R.sesBalanceBox, R.sesBalance.root, R.sesDelta.root, R.sesRate.root);
+    add(R.sesBalanceBox, R.sesDelta.root, R.sesRate.root);
     R.sesNote = el("p", "note", "");
     add(cSes.body, R.sesEmpty, R.sesButtons, R.sesRows, R.sesBalanceBox, R.sesNote);
     // One chronology
@@ -930,7 +932,6 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       canDownload: canDownload,
       refresh: () => pollFresh(),
       say: (text: string) => feedback(text),
-      toggleBalance: () => toggleBalance(),
     });
 
     // Commerce card (tradePanel.ts): full width at the top of the cockpit, a compact line under the small view.
@@ -995,7 +996,6 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.ctx,
       R.shortcuts.root,
       R.sessions.root,
-      R.iBalance,
       R.health.root,
       R.ledger.line,
       R.trade.line,
@@ -1172,7 +1172,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     }
     if (info.id !== lastStreamId) {
       lastStreamId = info.id;
-      if (info.id !== "init") setText(R.sr, info.label + (info.detail ? " : " + info.detail : ""));
+      if (info.id !== "init") say(info.label + (info.detail ? " : " + info.detail : ""));
     }
     const needsNotice = !live && info.id !== "init";
     show(R.notice, needsNotice || retired);
@@ -1313,13 +1313,36 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       known: hp.known,
       sub: hp.zero ? "à terre ou mort" : "",
     });
-    const bal = balanceInfo(view.poll);
-    setText(
-      R.iBalanceValue,
-      bal ? L.fmtAuec(bal.uec) + "\u00a0aUEC" : showBalance ? "—" : "••••••",
-    );
-    setText(R.btnBalance, showBalance ? "Masquer le solde" : "Afficher le solde");
     void now;
+  }
+
+  /** The permanent "Solde" reminder of the header and its show/hide control. */
+  let lastAcctKind = "";
+  function renderAccount(now: number) {
+    const info = L.accountInfo(
+      view.poll,
+      showBalance,
+      now,
+      isFollower() && (balancePref === null ? balanceStart : balancePref),
+    );
+    setText(R.acctValue, info.text);
+    // The dots of a hidden balance mean nothing to a screen reader: the note ("masqué") says it.
+    setAttr(
+      R.acctValue,
+      "aria-hidden",
+      info.kind === "hidden" || info.kind === "follower" ? "true" : "false",
+    );
+    setText(R.acctNote, info.note);
+    show(R.acctNote, info.note !== "");
+    setAttr(R.acct, "data-kind", info.kind);
+    setTip(R.acctNote, info.tip, true);
+    setText(R.btnBalance, showBalance ? "Masquer le solde" : "Afficher le solde");
+    if (info.kind !== lastAcctKind) {
+      // Not at the start ("wait"), not for a change that is only the first answer.
+      const settled = lastAcctKind !== "" && lastAcctKind !== "wait";
+      if (settled && info.kind !== "wait" && info.speak) say(info.speak);
+      lastAcctKind = info.kind;
+    }
   }
 
   function setRow(r: any, text: string, level?: string) {
@@ -1570,9 +1593,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       setRow(R.sesFlight, "≈\u00a0" + L.formatDuration(s.flight_ms));
     }
     const bal = balanceInfo(p);
-    setRow(R.sesBalance, bal ? L.fmtAuec(bal.uec) + "\u00a0aUEC" : showBalance ? "—" : "masqué");
-    setText(R.btnBalance2, showBalance ? "Masquer" : "Afficher le solde");
-    setAttr(R.btnBalance2, "aria-label", showBalance ? "Masquer le solde" : "Afficher le solde");
+    // The balance itself is the header's reminder (renderAccount); this card keeps what only the stream's own counters say.
+    show(R.sesBalanceBox, !!bal);
     show(R.sesDelta.root, !!bal);
     show(R.sesRate.root, !!bal);
     if (bal) {
@@ -1770,7 +1792,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       if (want !== cur) {
         tradeFoldUser = null;
         // Said once, through the page's existing status region (no region added); the button already speaks for a press.
-        if (!byHand) setText(R.sr, "Ordre : " + (want === "flight" ? "vol" : "commerce"));
+        if (!byHand) say("Ordre : " + (want === "flight" ? "vol" : "commerce"));
       }
     }
   }
@@ -1804,7 +1826,18 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     setAttr(R.tfoldBtn, "aria-expanded", open ? "true" : "false");
   }
 
+  // The page's one status region (R.sr). Several things can change in one render: they are said together, never one over the other.
+  let renderSeq = 0;
+  let saidAt = -1;
+  let saidText = "";
+  function say(text: string) {
+    saidText = saidAt === renderSeq ? saidText + ". " + text : text;
+    setText(R.sr, saidText);
+    saidAt = renderSeq;
+  }
+
   function render() {
+    renderSeq++;
     const now = clock();
     // A route plan built from the balance (its quantity and profit give the budget away) does not outlive the balance
     // being shown: hidden again, it is dropped here, whichever way the balance was hidden.
@@ -1817,17 +1850,21 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       .slice(0, R.condList.length);
     R.health.render(view.poll, { showBalance, now, link: view.link });
     const tradeLedger = L.ledgerNormalize(view.poll && view.poll.ledger);
+    // The runs of the journal that are not of the play session are kept apart (tradeSplitBySession): the card, the ask
+    // buttons, the alerts and the "Et ensuite ?" suggestion speak of the session's own runs. The action bar's list of holds
+    // still reads the whole journal (a hold flown last week is still the player's).
+    const scope = L.tradeSessionScope(view.poll);
+    const split = L.tradeSplitBySession(tradeLedger ? tradeLedger.trade : null, scope, now);
+    const sessionTrade = split.trade;
     // The action bar asks the server for routes; it needs a server that answers, not a live stream.
     const actionsOn =
       initialised && !tornDown && !retired && !!view.poll && view.poll.state !== "off";
     // A ship destroyed with the player aboard, else a price refused at the kiosk, goes into the verdict: it is the most urgent
     // thing the page knows.
-    const refusal = actionsOn
-      ? L.tradeAlertInfo(L, tradeLedger ? tradeLedger.trade : null, now, showBalance)
-      : null;
+    const refusal = actionsOn ? L.tradeAlertInfo(L, sessionTrade, now, showBalance) : null;
     // The "Ask Claude" buttons: their words and the message they send follow the situation (a loss, a refused price, a run
     // that just ended, else the plain analysis). The full-screen card keeps its longer default words.
-    ask = L.tradeAskInfo(L, tradeLedger ? tradeLedger.trade : null, now, actionsOn);
+    ask = L.tradeAskInfo(L, sessionTrade, now, actionsOn);
     setText(R.btnAnalyse, ask.label);
     setText(R.btnAnalyse2, ask.kind === "analyse" ? "Analyser ma situation" : ask.label);
     setAttr(R.btnAnalyse, "data-ask", ask.kind);
@@ -1841,6 +1878,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const info = renderStatus(now, conds, refusal);
     streamLive = !info.grey;
     syncOrder(info, now);
+    // Said after the stream state and the order, which share the region: a change of the reading's kind is added to them.
+    renderAccount(now);
     renderContext(now);
     R.shortcuts.render(view.poll, {
       grey: info.grey,
@@ -1864,13 +1903,22 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const calibration = showBalance
       ? L.calibrationFromLedger(L, view.poll && view.poll.ledger)
       : null;
+    // The net taken apart change by change belongs to the card's own run: with an older newest run it is not shown at all.
+    const conn = view.poll && view.poll.connection ? view.poll.connection.state : null;
+    const newestIsOlder =
+      !!tradeLedger &&
+      !!tradeLedger.trade &&
+      split.past.length > 0 &&
+      sessionTrade.runs[0] !== tradeLedger.trade.runs[0];
+    const decomposition = newestIsOlder ? null : moved.decomposition;
     R.trade.render({
       calibration,
+      scope,
       trade: tradeLedger?.trade ?? null,
       ledgerStatus: tradeLedger ? tradeLedger.status : null,
       plan: view.plan,
       planAt: view.planAt,
-      conn: view.poll && view.poll.connection ? view.poll.connection.state : null,
+      conn,
       showBalance,
       fullscreen: displayMode === "fullscreen",
       flightLine: flightOn(),
@@ -1878,22 +1926,26 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       baseline: L.baselineLabel(view.poll),
       now,
       actionsEnabled: actionsOn,
-      decomposition: moved.decomposition,
+      decomposition,
       movements: R.movements,
     });
     R.movements.render({
       section: moved.section,
-      decomposition: moved.decomposition,
+      decomposition,
       showBalance,
       fullscreen: displayMode === "fullscreen",
     });
     renderOrderUi();
     R.tradeActions.render(
-      tradeActionsContext(actionsOn, tradeLedger ? tradeLedger.trade : null, now, calibration),
+      tradeActionsContext(
+        actionsOn,
+        tradeLedger ? tradeLedger.trade : null,
+        sessionTrade,
+        now,
+        calibration,
+      ),
     );
-    R.preflight.render(
-      tradePreflightContext(actionsOn, tradeLedger ? tradeLedger.trade : null, now),
-    );
+    R.preflight.render(tradePreflightContext(actionsOn, sessionTrade, now));
     const I = L.instrumentInfo(view.poll, view);
     const sheetIns = view.poll && view.poll.ship && view.poll.ship.instruments;
     I.speed = L.speedWithSheet(
@@ -1917,7 +1969,13 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   }
 
   /** What the commerce action bar may use: the balance only while it is shown, and only as a number for its own screen. */
-  function tradeActionsContext(on: boolean, trade: any, now: number, calibration: any): any {
+  function tradeActionsContext(
+    on: boolean,
+    trade: any,
+    sessionTrade: any,
+    now: number,
+    calibration: any,
+  ): any {
     const specs = view.poll && view.poll.specs;
     const bal = balanceInfo(view.poll);
     return {
@@ -1935,6 +1993,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       sheetName:
         specs && specs.status === "ready" && typeof specs.name === "string" ? specs.name : null,
       trade,
+      // The commerce section limited to the play session's runs: what "Et ensuite ?" reads (the holds read `trade`).
+      sessionTrade,
       calibration,
       plan: view.plan,
       call: async (name: string, args: any, timeoutMs: number) =>
@@ -2086,6 +2146,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     view = Object.assign({}, view, {
       poll: Object.assign({}, view.poll, {
         balance: undefined,
+        account: undefined,
         ledger: L.ledgerStripBalance(view.poll.ledger),
         sessions: L.sessionBarStripBalance(view.poll.sessions),
       }),
@@ -2236,6 +2297,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
         poll: view.poll
           ? Object.assign({}, view.poll, {
               balance: undefined,
+              account: undefined,
               ledger: L.ledgerStripBalance(view.poll.ledger),
               sessions: L.sessionBarStripBalance(view.poll.sessions),
             })

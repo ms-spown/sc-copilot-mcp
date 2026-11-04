@@ -180,6 +180,140 @@ export function tradeRunIdle(run: any, now: any, conn: any): boolean {
 }
 
 /**
+ * When a run happened, in words a player reads at a glance: "aujourd’hui 14:05", "hier 22:14", "3 nov. 22:14" (the page's
+ * own local time). "" when the time is not usable. `now` is the page's clock (ms); without it the date is always spelled out.
+ */
+export function tradeWhen(iso: any, now: any): string {
+  const t = typeof iso === "string" ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(t)) return "";
+  const d = new Date(t);
+  const two = (n: number) => (n < 10 ? "0" + n : String(n));
+  const clock = two(d.getHours()) + ":" + two(d.getMinutes());
+  if (typeof now === "number" && Number.isFinite(now)) {
+    const key = (x: Date) => x.getFullYear() * 10000 + x.getMonth() * 100 + x.getDate();
+    const n = new Date(now);
+    if (key(d) === key(n)) return "aujourd’hui " + clock;
+    if (key(d) === key(new Date(n.getFullYear(), n.getMonth(), n.getDate() - 1)))
+      return "hier " + clock;
+  }
+  const months = [
+    "janv.",
+    "févr.",
+    "mars",
+    "avr.",
+    "mai",
+    "juin",
+    "juil.",
+    "août",
+    "sept.",
+    "oct.",
+    "nov.",
+    "déc.",
+  ];
+  return d.getDate() + "\u00a0" + months[d.getMonth()] + " " + clock;
+}
+
+/**
+ * Which runs of the journal belong to the play session, and which are older. The journal (Game.log) knows nothing of the
+ * session: it still holds the runs of the last game launch when the game is closed and a new session has just begun, and
+ * a figure of such a run next to the session's own would read as a session result.
+ *   scope = { known, start, end }: the saved play session in force (poll.sessions.current), epoch ms; `known` false when
+ *           there is none to compare with (sessions off, or the bar is absent); `start` Infinity when no session exists yet.
+ * A run is OF the session when its last transaction is not before the session's start and its first one is not after the
+ * session's end. A run that is NOT finished (open or partial: bought, not all sold) is a trip under way whatever the
+ * session's start says, as long as its last transaction is at most 3 hours old (a purchase made just before a manual
+ * "Nouvelle session" stays the trip you are on); older, it is not. Without a known session (sessions off, or a bar with no
+ * session in it) only the age decides: a run whose last transaction is over 3 hours old is not of the session. The
+ * connection does not: a trip left in the menus 2 minutes ago is still a trip (the line says it is not finished).
+ * Returns { trade, past }: `trade` is the section limited to the session's runs (a copy; `ship_losses` and the rest stay),
+ * `past` the older runs, newest first. The input is never changed.
+ */
+export function tradeSplitBySession(trade: any, scope: any, now: any): any {
+  if (!trade || trade.source !== "journal" || !Array.isArray(trade.runs) || trade.runs.length === 0)
+    return { trade, past: [] };
+  const known = !!scope && scope.known === true;
+  const of = (r: any): boolean => {
+    const last = Date.parse(r && r.ended_at);
+    const first = Date.parse(r && r.started_at);
+    if (!Number.isFinite(last)) return true;
+    const stale = typeof now === "number" && Number.isFinite(now) && now - last > 3 * 3600000;
+    if (known) {
+      if (typeof scope.end === "number" && Number.isFinite(first) && first > scope.end)
+        return false;
+      const unfinished = r.stage === "open" || r.stage === "partial";
+      if (unfinished && !stale) return true;
+      return !(typeof scope.start === "number" && last < scope.start);
+    }
+    return !stale;
+  };
+  const mine = trade.runs.filter(of);
+  if (mine.length === trade.runs.length) return { trade, past: [] };
+  return {
+    trade: Object.assign({}, trade, { runs: mine }),
+    past: trade.runs.filter((r: any) => !of(r)),
+  };
+}
+
+/**
+ * The play session in force, from the poll's session bar, as tradeSplitBySession wants it: { known, start, end } in epoch
+ * ms. `known` is false when sessions are off, the bar is absent or it holds no session (then only the age decides, see
+ * tradeSplitBySession). `ended` is true when the session was ended by hand: the next trips count in the next session.
+ */
+export function tradeSessionScope(poll: any): any {
+  const bar = poll && poll.sessions;
+  if (!bar || typeof bar !== "object" || bar.status === "off") return { known: false };
+  const cur = bar.current;
+  if (!cur || typeof cur !== "object") return { known: false };
+  const start = Date.parse(cur.started_at);
+  if (!Number.isFinite(start)) return { known: false };
+  const end = typeof cur.ended_at === "string" ? Date.parse(cur.ended_at) : NaN;
+  return {
+    known: true,
+    start,
+    end: Number.isFinite(end) ? end : null,
+    ended: Number.isFinite(end),
+  };
+}
+
+/** The label of the last run known outside the session: "Dernier trajet connu · hier 22:14, hors session". */
+export function tradePastLabel(run: any, now: any): string {
+  const when = tradeWhen(run && run.ended_at, now);
+  return "Dernier trajet connu" + (when ? " · " + when : "") + ", hors session";
+}
+
+/**
+ * What a run left outside the session is, in a few facts (no amount): the goods, the places, the quantity, how long it took
+ * and how it ended. A calm sentence that never reads as a result of the session.
+ */
+export function tradePastFacts(L: any, run: any): string {
+  if (!run) return "";
+  const route = tradeRouteText(L, null, run);
+  const bits: string[] = [route || tradeRunGoods(run) || "marchandise inconnue"];
+  if (run.scu_bought !== null && run.scu_bought !== undefined)
+    bits.push(L.fmtNum(run.scu_bought) + "\u00a0SCU");
+  if (run.stage === "complete" && run.duration_ms > 0)
+    bits.push("durée " + L.formatDuration(run.duration_ms));
+  bits.push(
+    run.stage === "open" || run.stage === "partial"
+      ? "non terminé"
+      : tradeStageLabel(run.stage).toLowerCase(),
+  );
+  return bits.join(" · ");
+}
+
+/**
+ * The compact line for a run outside the session: its goods and when, nothing else (no amount, no stage of a trip under way).
+ * "" without such a run. The card in full screen holds the detail.
+ */
+export function tradePastLine(L: any, past: any, now: any): string {
+  const run = past && past.length > 0 ? past[0] : null;
+  if (!run) return "";
+  const goods = tradeRunGoods(run) || "marchandise inconnue";
+  const when = tradeWhen(run.ended_at, now);
+  return "Hors session · dernier trajet connu : " + goods + (when ? ", " + when : "");
+}
+
+/**
  * Has the journal's shop no SPECIFIC word in common with the plan's place? Generic words (shop, cargo, port, station,
  * hub, admin, centre...) are ignored on both sides of the comparison: a word every place has proves nothing. A shop with
  * no specific word left, or a missing side, is not compared (false: it does not contradict).
@@ -757,14 +891,37 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
   add(moreBody, assumptionsTitle, assumptions, defsTitle, defs, historyTitle, history);
   add(more, moreSum, moreBody);
 
-  add(root, head, message, hero, warn, slot, flow, duo, courseBox, more);
+  // ---- the last run known outside the play session (tradeSplitBySession): folded, calm, kept apart from the session's figures
+  const last = el("details", "tr-last");
+  last.setAttribute("data-hidden", "1");
+  const lastSum = el("summary", "tr-last-sum", "");
+  const lastBody = el("div", "tr-last-body");
+  const lastFacts = el("p", "tr-last-facts", "");
+  const lastMoney = el("p", "tr-last-money", "");
+  const lastNote = el(
+    "p",
+    "note",
+    "Ce trajet date d’avant cette session : il n’entre dans aucun chiffre de la session. Il vient du journal du jeu.",
+  );
+  add(lastBody, lastFacts, lastMoney, lastNote);
+  add(last, lastSum, lastBody);
+
+  add(root, head, message, hero, warn, slot, flow, duo, courseBox, last, more);
 
   // What the last render decided, for the page's fold bar (viewApp.ts): is the card on screen, and its one-line summary.
   let lastVisible = false;
   let lastSummary = "";
 
   function render(ctx: any) {
-    const trade = ctx && ctx.trade ? ctx.trade : null;
+    // The runs of the journal that are not of the play session are set apart (tradeSplitBySession): the card, its figures
+    // and its line speak of the session's own runs only; the older ones are "dernier trajet connu, hors session".
+    const split = tradeSplitBySession(
+      ctx && ctx.trade ? ctx.trade : null,
+      ctx && ctx.scope,
+      ctx && ctx.now,
+    );
+    const trade = split.trade;
+    const pastRuns: any[] = split.past;
     const showBalance = !!(ctx && ctx.showBalance);
     // A plan built from the player's balance shows its quantity and profit only while the balance is shown.
     const plan = ctx && ctx.plan && !(ctx.plan.private === true && !showBalance) ? ctx.plan : null;
@@ -782,12 +939,17 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
             conn: ctx && ctx.conn,
             planAt: ctx && ctx.planAt,
           });
-    setText(line, inline);
-    show(line, inline !== "");
+    // Nothing of the session to say: the compact view still tells that an older run exists, calmly, without any amount.
+    const pastLine = !full && inline === "" ? tradePastLine(L, pastRuns, ctx && ctx.now) : "";
+    setText(line, inline || pastLine);
+    setAttr(line, "data-past", pastLine !== "" ? "1" : "0");
+    show(line, inline !== "" || pastLine !== "");
 
     // The action bar (tradeActions.ts) needs the card even before there is a run or a plan to show.
     const bare = !run && !plan;
-    const visible = full && (!bare || !!(ctx && ctx.actionsEnabled));
+    const hasPast = pastRuns.length > 0;
+    const sessionEnded = !!(ctx && ctx.scope && ctx.scope.ended === true);
+    const visible = full && (!bare || hasPast || !!(ctx && ctx.actionsEnabled));
     show(root, visible);
     show(slot, visible && !!(ctx && ctx.actionsEnabled));
     lastVisible = visible;
@@ -850,7 +1012,13 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           : "";
     setText(stage, stageText);
     // What the folded card says in one line (no amount: the stage and the route only).
-    lastSummary = bare ? "" : [stageText, routeText].filter((t: string) => t !== "").join(" · ");
+    lastSummary = bare
+      ? hasPast
+        ? sessionEnded
+          ? "session terminée"
+          : "aucun trajet dans cette session"
+        : ""
+      : [stageText, routeText].filter((t: string) => t !== "").join(" · ");
     show(stage, !bare);
     setAttr(stage, "data-stage", run ? run.stage : "plan");
 
@@ -863,14 +1031,18 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           ? "Lecture du journal de jeu… le bilan réel du trajet apparaîtra ensuite."
           : "Journal du jeu non lisible : pas de bilan réel pour ce trajet (voir les réglages à faire en haut de la page).";
     } else if (!run) {
-      msg =
-        "Aucune transaction de marchandise dans le journal pour l’instant : le bilan (chiffre d’affaires, frais, bénéfice net) apparaîtra après le trajet.";
+      msg = hasPast
+        ? sessionEnded
+          ? "Session terminée : les prochains trajets comptent dans la prochaine session. Le dernier trajet connu est plus bas, hors session."
+          : "Aucun trajet dans cette session pour l’instant : le bilan (chiffre d’affaires, frais, bénéfice net) apparaîtra après le premier trajet. Le dernier trajet connu est plus bas, hors session."
+        : "Aucune transaction de marchandise dans le journal pour l’instant : le bilan (chiffre d’affaires, frais, bénéfice net) apparaîtra après le trajet.";
     } else if (!showBalance) {
       msg =
         "Le solde est masqué : les montants du bilan (chiffre d’affaires, frais, bénéfice net) apparaissent quand tu affiches le solde.";
     }
-    // With the action bar alone (no run, no plan) there is no bilan to explain: the bar comes first and alone.
-    if (bare) msg = "";
+    // With the action bar alone (no run, no plan) there is no bilan to explain: the bar comes first and alone. An older run
+    // outside the session is the exception: the card says plainly that the session has no trip yet.
+    if (bare && !hasPast) msg = "";
     // The run a destroyed ship interrupted says so, with the cargo presumed lost (tradePreflight.ts words it). The alert box
     // above (fresh for 15 minutes) already says all of it: then the chip and the alert are the two places, not three.
     if (lost) {
@@ -1362,8 +1534,35 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       );
     }
 
+    // ---- the last run known outside the session: folded, calm, no amount until it is opened
+    const older = hasPast ? pastRuns[0] : null;
+    show(last, !!older);
+    if (older) {
+      setText(lastSum, tradePastLabel(older, ctx && ctx.now));
+      setText(lastFacts, tradePastFacts(L, older));
+      const om = showBalance ? older.money : null;
+      const money: string[] = [];
+      if (om) {
+        if (om.turnover !== null) money.push("Chiffre d’affaires " + tradeAmount(L, om.turnover));
+        money.push(
+          om.net.auec !== null
+            ? "Bénéfice net " +
+                tradeAmount(L, om.net.auec, true) +
+                " (" +
+                tradeMethodLabel(om.net.method) +
+                ")"
+            : "Bénéfice net inconnu",
+        );
+      } else if (!showBalance) money.push("Montants masqués.");
+      setText(lastMoney, money.join(" · "));
+      show(lastMoney, money.length > 0);
+    }
+
     // ---- folded details
-    const moreOn = !!trade && trade.source === "journal" && !!run;
+    const earlierRuns: any[] = (trade && trade.runs ? trade.runs.slice(1) : []).concat(
+      pastRuns.slice(1),
+    );
+    const moreOn = (!!trade && trade.source === "journal" && !!run) || earlierRuns.length > 0;
     show(more, moreOn || !!pj);
     const list: string[] = pj && pj.assumptions ? pj.assumptions : [];
     show(assumptionsTitle, list.length > 0);
@@ -1372,16 +1571,18 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
       show(assumptionItems[i], i < list.length);
       setText(assumptionItems[i], list[i] || "");
     }
-    const past = trade && trade.runs ? trade.runs.slice(1) : [];
-    show(historyTitle, past.length > 0);
-    show(history, past.length > 0);
+    show(historyTitle, earlierRuns.length > 0);
+    show(history, earlierRuns.length > 0);
     for (let i = 0; i < historyItems.length; i++) {
-      const r = past[i];
+      const r = earlierRuns[i];
       show(historyItems[i], !!r);
       if (!r) continue;
       const bits = [
         (tradeRunGoods(r) || "marchandise") + " · " + tradeStageLabel(r.stage).toLowerCase(),
       ];
+      // A run of an older session: said, with its date, so that it never reads as a result of this one.
+      if (pastRuns.indexOf(r) >= 0)
+        bits.push("hors session, " + tradeWhen(r.ended_at, ctx && ctx.now));
       if (r.scu_bought !== null) bits.push(L.fmtNum(r.scu_bought) + "\u00a0SCU");
       if (showBalance && r.money && r.money.net.auec !== null)
         bits.push(
@@ -1427,6 +1628,12 @@ export const TRADE_VIEW_FUNCTIONS = [
   tradeElapsed,
   tradeAgoLong,
   tradeRunIdle,
+  tradeWhen,
+  tradeSplitBySession,
+  tradeSessionScope,
+  tradePastLabel,
+  tradePastFacts,
+  tradePastLine,
   tradeShopContradicts,
   tradeIsUnderWay,
   tradePlanAttached,

@@ -142,7 +142,7 @@ describe("Feature: the one line unfolds on a real button", () => {
     expect(findButton(ended.root, "Nouvelle session").className).toBe("btn small primary");
   });
 
-  it("Given the compact view, Then the order is header, alerts, dials, ship, session line, balance, then the rest", async () => {
+  it("Given the compact view, Then the order is header (balance inside it), alerts, dials, ship, session line, then the rest", async () => {
     const w = await page();
     await w.advance(5 * SECOND);
     const order = w.root.children.map((n) => n.className.split(" ")[0]!);
@@ -151,7 +151,13 @@ describe("Feature: the one line unfolds on a real button", () => {
     expect(at("alerts")).toBeLessThan(at("inline"));
     expect(at("inline")).toBeLessThan(at("ctx"));
     expect(at("ctx")).toBeLessThan(at("ses"));
-    expect(at("ses")).toBeLessThan(at("balance-row"));
+    // The balance row left the body of the page: the one balance zone ("Solde" and its control) sits in the header.
+    expect(at("balance-row")).toBe(-1);
+    const header = w.root.children[at("top")]!;
+    expect(findAll(header, (n) => n.className.split(" ").includes("acct"))).toHaveLength(1);
+    expect(
+      findAll(header, (n) => n.className.includes("btn") && /le solde$/.test(n.textContent ?? "")),
+    ).toHaveLength(1);
     expect(at("ses")).toBeLessThan(at("btn"));
   });
 

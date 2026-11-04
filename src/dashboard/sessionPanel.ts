@@ -798,8 +798,8 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   const btnNew = button("Nouvelle session", () => ask("new"), "small");
   const btnMenu = button("Sessions", () => toggleMenu(), "small");
   btnMenu.setAttribute("aria-expanded", "false");
-  const btnBalance = button("Afficher le solde", () => api.toggleBalance(), "small");
-  add(actions, btnBalance, btnMenu, btnEnd, btnNew);
+  // No balance button here: the header's "Solde" zone holds the one show/hide control of the page.
+  add(actions, btnMenu, btnEnd, btnNew);
   add(bar, id, kpiBox, actions);
   // The explanation of what the card offers (or why it offers nothing), the inline confirmation, and the result of the last
   // action. The result is ONE live region, present from the start and never hidden (a region that appears together with its
@@ -1308,7 +1308,6 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     setText(status, st.flash ? st.flash.text : "");
     setText(btnMenu, st.open ? "Sessions ▴" : "Sessions ▾");
     setAttr(btnMenu, "aria-expanded", st.open ? "true" : "false");
-    show(btnBalance, !st.ctx.showBalance);
   }
 
   const fmtMoney = (n: any, signed: boolean) =>

@@ -337,7 +337,7 @@ describe("Feature: the block in the card's details", () => {
     findButton(w.root, "Afficher le solde").click();
     await w.advance(3 * SECOND);
     expect(NBSP_FREE(visibleText(block(w)))).toMatch(MOVED);
-    findButton(w.root, "Masquer").click();
+    findButton(w.root, "Masquer le solde").click();
     await w.advance(3 * SECOND);
     expect(isShown(block(w))).toBe(false);
     const all: string[] = [];

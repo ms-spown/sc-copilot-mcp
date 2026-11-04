@@ -357,7 +357,7 @@ describe("Feature: the balance is never used, shown or not, and a private plan s
     await check(w);
     expect(preflights(w)).toEqual([{ action: "preflight" }]);
     expect(chip(w)!.textContent).toBe("✓ Toujours valable");
-    findButton(w.root, "Masquer").click();
+    findButton(w.root, "Masquer le solde").click();
     await w.advance(8 * SECOND);
     expect(isShown(block(w)!)).toBe(false);
     expect(text(w)).not.toContain("Toujours valable");
