@@ -72,7 +72,8 @@ ask for by installing the server:
 `sc_live_dashboard` points at a resource of type ui: one self-contained HTML page that the client renders in an iframe
 and that talks to the host with JSON-RPC over `postMessage` (hand-written, no package). The page calls two tools
 that only it may call (`visibility: ["app"]`): `sc_live_poll` (state, events, session counters as
-`structuredContent`) and `sc_live_mark` (session markers, in memory).
+`structuredContent`), `sc_live_mark` (session markers, in memory) and `sc_trade_suggest` (the commerce action bar: the
+trade planner behind a throttle and a short cache, see `src/dashboard/tradeSuggest.ts`).
 
 - **Conditional surface.** `ToolDefinition.requiresUi` and `registry.list(context)`: the three tools are listed only
   when telemetry is on AND the client declared `capabilities.extensions["io.modelcontextprotocol/ui"]` with the HTML

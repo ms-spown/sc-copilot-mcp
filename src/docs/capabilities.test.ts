@@ -88,6 +88,7 @@ describe("Feature: the capabilities guide names real tools and misses none", () 
       "sc_live_mark",
       "sc_live_poll",
       "sc_live_state",
+      "sc_trade_suggest",
     ]);
     expect(doc).toContain(`${tools.length - hidden.length} are listed`);
   });

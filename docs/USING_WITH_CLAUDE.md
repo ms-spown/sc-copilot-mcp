@@ -89,7 +89,7 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    inactivity), menu or closed, tell the player and never present the last values as current, even if frames still
    seem to arrive.
 7. When the live dashboard (sc_live_dashboard) is open, the player may still ask you questions: answer them with
-   sc_live_state and sc_live_events. Never call sc_live_poll or sc_live_mark: they belong to the dashboard itself.
+   sc_live_state and sc_live_events. Never call sc_live_poll, sc_live_mark or sc_trade_suggest: they belong to the dashboard itself (for routes, use uex_plan_trade).
    Only Claude Desktop displays it. If a dashboard is already open in the conversation, do not open another one
    unless the player explicitly asks: it updates by itself (each extra copy stays on screen; only the most recent
    one calls the server). After uex_get_trade_routes you may pass the route as a plan when you open it. sc_live_state

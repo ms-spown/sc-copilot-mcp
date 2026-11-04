@@ -8,6 +8,7 @@
  * No browser, no DOM, no network, no Node-only module.
  */
 import type { Scenario } from "./scenario.js";
+import { suggestAnswer } from "./suggestFixtures.js";
 
 export interface HostOptions {
   scenario: Scenario;
@@ -20,6 +21,11 @@ export interface HostOptions {
   legacyFullPolls?: boolean;
   /** Style variables to hand out (a plausible set is used by default). */
   variables?: Record<string, string>;
+  /**
+   * What `sc_trade_suggest` answers (structuredContent, or an isError result). May be asynchronous: the host then
+   * answers when it settles (to test a slow planner). Default: the invented answer of testing/suggestFixtures.ts.
+   */
+  suggest?: (args: any) => unknown | Promise<unknown>;
 }
 
 export interface HostLog {
@@ -30,6 +36,8 @@ export interface HostLog {
   contexts: string[];
   modeRequests: string[];
   marks: string[];
+  /** The arguments of every sc_trade_suggest call, in order. */
+  suggests: any[];
 }
 
 const LIGHT_VARS: Record<string, string> = {
@@ -67,6 +75,7 @@ export function createFakeHost(options: HostOptions) {
     contexts: [],
     modeRequests: [],
     marks: [],
+    suggests: [],
   };
   /** Set by a test to change what the next polls answer. */
   const overrides: { poll?: (base: any) => any } = {};
@@ -148,6 +157,22 @@ export function createFakeHost(options: HostOptions) {
             respond(id, {
               content: [{ type: "text", text: String(structuredContent["message"]) }],
               structuredContent,
+            });
+          } else if (params.name === "sc_trade_suggest") {
+            log.suggests.push(params.arguments ?? {});
+            const make = options.suggest ?? ((a: any) => suggestAnswer(a));
+            void Promise.resolve(make(params.arguments ?? {})).then((out: any) => {
+              if (out && out.isError === true) {
+                respond(id, {
+                  content: [{ type: "text", text: "sc_trade_suggest: error" }],
+                  isError: true,
+                });
+                return;
+              }
+              respond(id, {
+                content: [{ type: "text", text: "trade suggestion: " + String(out?.state) }],
+                structuredContent: out,
+              });
             });
           } else {
             deliver({ jsonrpc: "2.0", id, error: { code: -32602, message: "unknown tool" } });

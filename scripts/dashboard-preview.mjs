@@ -12,6 +12,10 @@
 //                 the figures of a real run: see src/dashboard/testing/tradeScenario.ts; its loop lasts 600 s, the run is
 //                 settled from t=215; it implies plan=full: a plan with prices and a price curve; none = no journal)
 //                 transport=story|off|loading|unreadable|empty|none   (the transport ledger; story by default, none = no field)
+//                 suggest=ok|wait|error|empty|nospeed|reported|slow  (what the commerce action bar's tool answers: invented
+//                 routes from src/dashboard/testing/suggestFixtures.ts, no UEX; slow = 4 s of virtual waiting)
+//                 click=<button label>  (presses it once the page is up, e.g. click=Plus rentable)
+//                 refine=1 (opens "Affiner")  card=1 (opens the details of the first card)
 //                 fw=<px>  (width of the frame in full screen, to see a narrow host at 360 px in a window that cannot be that narrow)
 //                 conn=disconnected|menu|closed|online  (the connection read from Game.log)
 //                 specs=ready|unknown|ambiguous|pending|error|none  (the ship sheet from the wiki; default ready; the figures
@@ -58,6 +62,7 @@ import { createFakeHost } from "/dist/dashboard/testing/fakeHost.js";
 import { transportLedger } from "/dist/dashboard/testing/ledgerScenario.js";
 import { specsSamples } from "/dist/dashboard/testing/specsFixtures.js";
 import { tradeBalanceAt, tradeLedger } from "/dist/dashboard/testing/tradeScenario.js";
+import { suggestAnswer } from "/dist/dashboard/testing/suggestFixtures.js";
 const q = new URLSearchParams(location.search);
 const seek = Number(q.get("t") ?? 0);
 const scenario = new Scenario(Date.now() - seek * 1000);
@@ -95,7 +100,16 @@ const deliver = (m) => {
   frame.contentWindow.postMessage(m, "*");
   if (m.method === "ui/notifications/host-context-changed" && m.params?.displayMode) applyMode();
 };
-host = createFakeHost({ scenario, theme: $("theme").value, deliver });
+const suggestVariant = q.get("suggest") ?? "ok";
+host = createFakeHost({
+  scenario,
+  theme: $("theme").value,
+  deliver,
+  suggest: (args) => {
+    const answer = suggestAnswer(args, { variant: suggestVariant === "slow" ? "ok" : suggestVariant });
+    return suggestVariant === "slow" ? new Promise((resolve) => setTimeout(() => resolve(answer), 4000)) : answer;
+  },
+});
 window.__host = host; window.__scenario = scenario;
 // The transport ledger: invented log lines through the real parser and ledger code, with the balance of the story.
 // The scenario sends it through the real delta protocol (hash, unchanged) like the other sections.
@@ -112,7 +126,11 @@ if (trade) {
 }
 $("specs").value = q.get("specs") ?? "ready";
 // The scenario holds the wiki sheet of its ship in the chosen state; the poll sends it through the real delta protocol.
-const paintSpecs = () => { scenario.specs = specsSamples(scenario.now)[$("specs").value] ?? null; };
+const paintSpecs = () => {
+  const sample = specsSamples(scenario.now)[$("specs").value] ?? null;
+  // The made-up routes are sized for a big hold: give the sheet one, so the bar's hold matches what it shows.
+  scenario.specs = sample && sample.status === "ready" ? { ...sample, name: "Hull C", cargo_scu: 696 } : sample;
+};
 paintSpecs();
 $("specs").onchange = paintSpecs;
 const setWidth = () => { frame.style.width = $("w").value + "px"; };
@@ -151,6 +169,16 @@ if (q.get("balance")) frame.addEventListener("load", () => setTimeout(() => {
   const b = [...frame.contentDocument.querySelectorAll("button")].find((x) => x.textContent === "Afficher le solde");
   if (b) b.click();
 }, 1200));
+// click=<label>, refine=1, card=1: drive the page the way the player would (same-origin frame).
+if (q.get("click") || q.get("refine") || q.get("card")) frame.addEventListener("load", () => setTimeout(() => {
+  const doc = frame.contentDocument;
+  if (q.get("refine")) doc.querySelectorAll("details.ta-refine").forEach((d) => { d.open = true; });
+  if (q.get("click")) {
+    const b = [...doc.querySelectorAll("button")].find((x) => x.textContent === q.get("click") && x.offsetParent !== null);
+    if (b) b.click();
+  }
+  if (q.get("card")) setTimeout(() => doc.querySelectorAll("details.ta-more").forEach((d, i) => { if (i === 1) d.open = true; }), 400);
+}, 3000));
 if (q.get("scroll")) frame.addEventListener("load", () => setTimeout(() => frame.contentWindow.scrollTo(0, Number(q.get("scroll"))), 1500));
 frame.src = "/view.html";
 setInterval(() => { $("clock").textContent = "histoire : " + Math.round(scenario.t / 1000) + " s"; }, 500);

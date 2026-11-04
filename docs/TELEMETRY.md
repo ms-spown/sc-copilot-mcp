@@ -280,6 +280,7 @@ What becomes of every field of the stream. `poll.` is the answer of `sc_live_pol
 | `sc_live_events` | when `SC_TELEMETRY=on` | Recent derived events, each marked `confirmed` or `unverified` |
 | `sc_live_dashboard` | when `SC_TELEMETRY=on` and the client can show Views | Opens the [live dashboard](#live-dashboard) in the conversation |
 | `sc_live_poll`, `sc_live_mark` | same | Used by the dashboard itself to refresh and to set session markers. Claude is told not to call them |
+| `sc_trade_suggest` | same | Used by the dashboard's commerce buttons only (the [action bar](#trade-actions-find-the-next-route)): the trade planner behind a throttle. Claude is told not to call it; it uses `uex_plan_trade` |
 
 States: `off` (server switch not set), `waiting` (no telemetry for now: normal in menus, during loading, before the
 character has appeared, or if the game was started without the game-side setting; this server cannot tell whether
@@ -372,11 +373,10 @@ that this server provides and that the client renders next to the chat.
   and sell terminals, SCU, `expected_profit_auec` (the planned PROFIT: sales minus purchases before any fee, not a
   turnover), unit buy and sell prices, an estimated trip time in minutes, a safety note, a short note and up to 30
   recent prices (`price_points`, oldest first, with `price_points_for` and `price_points_label`) that draw the
-  price curve. Claude fills the prices from the UEX price tools; the dashboard never calls UEX. Text is cleaned and
+  price curve. Claude fills the prices from the UEX price tools; the price curve never comes from a dashboard call to UEX. Text is cleaned and
   capped (60 characters) and displayed as plain text; numbers are bounded; fewer than two usable price points make no
-  curve. The plan feeds the commerce card below. A suggested route has the same shape as a plan, so applying one as the
-  active plan will be a matter of passing it through the same cleaner (the action bar that will offer suggestions is
-  not built yet; its slot is in the card).
+  curve. The plan feeds the commerce card below. A suggested route has the same shape as a plan: the action bar (see Trade
+  actions) applies one through the same cleaner.
 - **Balance privacy.** The balance is hidden in the page until you click "Afficher le solde". Only then does the
   page ask the server for it (`include_balance`). The balance is never put in the automatic summary that the
   page may send to the model, nor in the fixed messages of the buttons, nor on the channel between dashboards (see
@@ -452,7 +452,7 @@ approved by Cloud Imperium Games.
 A preview for people who work on the page: `npm run build`, then `node scripts/dashboard-preview.mjs`, then open
 the local address it prints (loopback, port 4173 by default). It plays a made-up flight, including a full quantum
 jump, against a fake host; no game and no Claude is involved. Parameters: `t`, `theme`, `w`, `mode`, `scroll`,
-`forced`, `cut`, `plan`, `trade` (the commerce card with an invented trade journal: `story`, `estimated`, `unknown`, `partial`, `second`, `none`), `fw` (frame width in full screen).
+`forced`, `cut`, `plan`, `trade` (the commerce card with an invented trade journal: `story`, `estimated`, `unknown`, `partial`, `second`, `none`), `fw` (frame width in full screen), `suggest` (what the commerce action bar's tool answers, with invented routes and no UEX: `ok`, `wait`, `error`, `empty`, `nospeed`, `reported`, `slow`), `click` (a button label to press) and `refine=1` (opens "Affiner").
 
 ### Transport ledger
 
@@ -563,8 +563,59 @@ same thing. Each figure now has one meaning:
 - **Several runs.** A purchase after a sale starts a new run (so does two hours of silence); the card shows the latest
   and lists the earlier ones. The plan is applied to the latest run only; if the commodity does not match it says the
   plan is not verified.
-- **Action bar slot.** The top of the card has a separate, hidden component (`tradeActions.ts`) reserved for the buttons
-  and options that will ask Claude for routes. It does nothing yet.
+- **Action bar.** Right under the headline numbers sits the bar described in the next section (it is also reachable
+  before there is any run or plan).
+
+#### Trade actions: find the next route
+
+The bar asks the server, with no help from the model, for the routes that fit what the player wants. It is the
+`uex_plan_trade` planner behind an app-only tool (`sc_trade_suggest`, `visibility: ["app"]`, listed only with
+telemetry on and a client that shows Views). Nothing is asked until a click.
+
+| Button | What it asks | Order of the cards |
+| --- | --- | --- |
+| **Plus rentable** | `profit_per_hour` | aUEC per estimated hour; the big figure is the hourly profit |
+| **Plus rapide** | `speed` | shortest estimated cycle; the big figure is the duration |
+| **Plus sûre** | `safety` | fewest risk factors of the planner's heuristic, then profit per hour. It never says "safe" |
+| **Gros gain** | `profit` | aUEC per trip, duration set aside |
+
+Under "Affiner" (folded): *Éviter Pyro*, *Zones d'armistice seulement* (UEX's armistice flag; unknown counts as no),
+*Relevés de joueurs exigés* (`min_reports` 1: keeps only options with a player report at every end), *Aller-retour
+seulement* (hides the open A>B>C chains; it is not `max_legs`: that one needs an origin and returns one-way routes
+only), a budget (a number: `250000`, `2,5M`), the hold in SCU (prefilled from the ship sheet, with its source shown),
+an origin (a terminal, planet or system name, resolved by the server), and *Proposer la suite à la fin d'un trajet*.
+Once a search exists, changing an option searches again by itself after a short quiet time; before the first click
+nothing is asked.
+
+- **Measured, estimated, heuristic.** Prices are UEX's, crowdsourced; today almost every option is tagged
+  *estimation UEX · aucun relevé de joueur* (UEX counts no player report for a price), and the bar says so and offers
+  the player-report option. Durations are ESTIMATES (quantum flight plus a fixed 8 minutes per stop); without a quantum
+  speed (no ship sheet) hourly figures and the "fastest" order are unavailable and the cards say "durée inconnue".
+  Fuel is not subtracted. The prudence badge is the planner's heuristic over UEX place data (armistice flag,
+  jurisdiction, system, kind of place, number of flights), always labelled "(heuristique)"; UEX has no piracy data.
+  Prices older than 7 days are flagged "périmés". The ship's quantum speed comes from the server's own state (the flown
+  ship's wiki sheet, then the same lookup as `uex_plan_trade`), never from the page.
+- **Cards.** The first is the headline (big number, ring); the others are quiet rows; chains (A>B>C, no priced return)
+  are apart and not comparable. Each card has *Appliquer comme plan* (the server builds the plan from its own option, by
+  id: the outbound leg, the return named in the note; the commerce card then follows that route: planned profit,
+  expected prices, estimated time) and *Demander à l'agent* (a fixed text built from the card, posted as a message: the
+  route, prices, estimate status, chosen constraints, and a request to verify with `uex_get_trade_routes` and
+  `uex_plan_trade`).
+- **Et ensuite ?** When a run completes (less than 30 minutes ago), one suggestion is computed from where it ended (the
+  plan's selling terminal, else the journal's shop name, which UEX may not know: then it fails quietly), once per run,
+  never applied by itself. It can be switched off.
+- **Rate limit.** UEX is a shared service. The server answers an identical question from a 2-minute memory, shares one
+  planner run between identical simultaneous calls, and otherwise starts at most ONE new planner run every 8 seconds for
+  all Views: a request inside the interval gets "attends N s" (a state, not an error; an automatic re-search retries
+  by itself at most twice). The planner has its own 20 s deadline, shorter than the page's 32 s wait. Only the leading
+  View calls the server (a following View takes the lead when its button is pressed). There is no polling of the planner.
+- **The balance.** *Budget = mon solde* exists only while the balance is shown and only if you tick it. The page then
+  sends the number to the local server as the budget with a private flag; the answer never contains the balance or the
+  budget, and with the flag it carries no cost. The figures sized by it stay on your screen: the message to the agent
+  then holds no quantity, total or hourly figure (it says the budget is your balance, not communicated), nothing goes on
+  the channel between Views or into the automatic summary, and the results are forgotten when you hide the balance.
+- **Not verified.** The host's own time limit for a tool call (the page waits 32 s), the behaviour of the buttons in
+  Claude Desktop, and the quality of the heuristic against real piracy.
 
 ## Privacy
 

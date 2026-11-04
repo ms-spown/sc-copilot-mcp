@@ -108,6 +108,7 @@ describe("tool surface (non-regression)", () => {
       "sc_live_dashboard",
       "sc_live_poll",
       "sc_live_mark",
+      "sc_trade_suggest",
     ]);
   });
 });
@@ -122,7 +123,7 @@ describe("scoping: SCMCP_TOOLS, SCMCP_PROFILES", () => {
   it("advertises everything by default, except the optional tools whose feature is off", () => {
     // Live telemetry is off by default: sc_live_state, sc_live_events and the three dashboard tools are not
     // listed (sc_live_status is).
-    expect(names({})).toHaveLength(allTools(clientsWith()).length - 5);
+    expect(names({})).toHaveLength(allTools(clientsWith()).length - 6);
     expect(names({})).toContain("sc_live_status");
     expect(names({})).not.toContain("sc_live_state");
   });

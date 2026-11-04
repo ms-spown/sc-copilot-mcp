@@ -72,7 +72,7 @@ without changing anything; `npm run doctor` repeats it. Full explanations and th
 ## The live dashboard does not appear
 
 - **Claude Code and other text clients never show it.** They cannot render a page, so the server does not even list
-  `sc_live_dashboard`, `sc_live_poll` and `sc_live_mark` to them. Use `sc_live_state` there.
+  `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark` and `sc_trade_suggest` to them. Use `sc_live_state` there.
 - **`SC_TELEMETRY=on` must be set** in the `sc-copilot` entry. Without it the three tools and the page are not
   served at all. `sc_live_status` tells you.
 - **Quit Claude Desktop completely** (tray icon included) and start it again after any change to the server entry:

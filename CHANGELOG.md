@@ -7,6 +7,28 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Commerce action bar in the live dashboard: find the next route.** Four buttons in the commerce card ("Plus
+  rentable", "Plus rapide", "Plus sûre", "Gros gain") ask the trade planner (`planTrips`, the code of `uex_plan_trade`)
+  for routes ranked by profit per hour, shortest cycle, fewest risk factors of its heuristic, or profit per trip. Folded
+  options: avoid Pyro, armistice zones only, player reports required, round trips only (hides the open A>B>C chains), a
+  budget, the hold (prefilled from the ship sheet, with its source), an origin, and "budget = mon solde" (offered only
+  while the balance is shown). Results are scannable cards (the first is the headline): route, goods, big figure by
+  objective, time, SCU, "estimation UEX" / "relevés de joueurs" tag, the heuristic badge (never "safe"), price age;
+  chains are apart. Each card has "Appliquer comme plan" (the commerce card then follows that route) and "Demander à
+  l'agent" (a fixed message with the figures of the card; none derived from the balance). "Et ensuite ?" computes one
+  suggestion from where a completed run ended, once per run, never applied by itself. Loading, empty, error and "attends
+  N s" states; the bar stays in colour when the stream is grey.
+  - New app-only tool `sc_trade_suggest` (`visibility: ["app"]`, listed with the dashboard tools only), implemented in
+    `src/dashboard/tradeSuggest.ts`: strict input validation, a bounded and cleaned answer (5 options, 3 chains), a
+    2-minute cache, one shared planner run for identical simultaneous calls, at most one new run every 8 s for all Views
+    ("attends N s" is a state, not an error), a 20 s planner deadline (the page waits 32 s: the page's request timeout
+    is now per call). The ship's quantum speed and hold come from the server's own state (the flown ship's wiki sheet),
+    never from the page; "apply" is by the id of an option the server produced. The answer never contains the balance or
+    the budget. 57 tools now (51 listed to a client without live telemetry); golden, `docs/TOOLS.md`, README, FR docs and
+    SECURITY updated. The commerce card now also shows (with the bar alone) when there is neither a run nor a plan.
+  - Preview: `suggest=ok|wait|error|empty|nospeed|reported|slow`, `click=<label>`, `refine=1`.
+  - Not verified: the real host's time limit for a tool call, the buttons in Claude Desktop, the heuristic against real
+    piracy. The price curve still never comes from a dashboard call to UEX (its points are Claude's).
 - **Commerce card in the live dashboard** ("Commerce"). It replaces the misleading "Prévu / Réalisé" block, which put a
   planned profit next to a balance change (the change also holds the goods bought, the sales and the fees). A pure model
   (`src/dashboard/tradeRun.ts`) turns the transactions of a run, the balance history and the plan into: planned profit,
@@ -26,11 +48,11 @@ versions follow [Semantic Versioning](https://semver.org/).
   turnover); the net is the variation of the balance and says how much of it the margin and the fees do not explain
   (a visible warning above 2 % of the turnover); sold stock that was not bought in the run is told; hourly figures
   rest on an observed cycle or on the run plus an assumed overhead, and "per 4 h of play" waits for two measured runs. Goods are shown by the
-  journal's id (8 characters of the GUID) unless the plan names them; no wiki name lookup yet. A hidden slot for a
-  future action bar (`tradeActions.ts`) is ready at the top of the card.
+  journal's id (8 characters of the GUID) unless the plan names them; no wiki name lookup yet. The action bar of the
+  next entry sits in a slot under the headline numbers.
 - `sc_live_dashboard` plan: `buy_unit_price`, `sell_unit_price`, `est_trip_minutes`, `safety_note`, `price_points` (at
   most 30), `price_points_for`, `price_points_label`. Cleaned and bounded on the server and again in the page; the
-  dashboard never calls UEX (golden and docs/TOOLS.md regenerated).
+  price curve never comes from a dashboard call to UEX (golden and docs/TOOLS.md regenerated).
 - Preview: `trade=story|estimated|unknown|partial|second|none` and `fw=<px>`.
 
 - **Trade intelligence (UEX), three tools in the `trade` profile.**

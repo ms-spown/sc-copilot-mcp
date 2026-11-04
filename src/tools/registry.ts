@@ -117,6 +117,7 @@ function withDashboardSet(names: Set<string>): Set<string> {
   if (names.has("sc_live_dashboard")) {
     names.add("sc_live_poll");
     names.add("sc_live_mark");
+    names.add("sc_trade_suggest");
   }
   return names;
 }
