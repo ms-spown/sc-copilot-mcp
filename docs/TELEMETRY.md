@@ -509,7 +509,7 @@ approved by Cloud Imperium Games.
 
 A preview for people who work on the page: `npm run build`, then `node scripts/dashboard-preview.mjs`, then open
 the local address it prints (loopback, port 4173 by default). It plays a made-up flight, including a full quantum
-jump, against a fake host; no game and no Claude is involved. The list that follows is not complete (`scripts/dashboard-preview.mjs` also reads `conn`, `preflight`, `transport`, `sessions`, `health`, `seen`, `help`, `calib`, `specs`, `balance`, `card`, `menu` and `open`): read the top of that script for the current ones. Parameters: `t`, `theme`, `w`, `mode`, `scroll`,
+jump, against a fake host; no game and no Claude is involved. The list that follows is not complete (`scripts/dashboard-preview.mjs` also reads `conn`, `preflight`, `transport`, `sessions`, `health`, `seen`, `help`, `calib`, `specs`, `balance`, `card`, `menu` and `open`): read that script for the current ones. Parameters: `t`, `theme`, `w`, `mode`, `scroll`,
 `forced`, `cut`, `plan`, `trade` (the commerce card with an invented trade journal: `story`, `estimated`, `unknown`, `partial`, `second`, `none`), `fw` (frame width in full screen), `suggest` (what the commerce action bar's tool answers, with invented routes and no UEX: `ok`, `wait`, `error`, `empty`, `nospeed`, `reported`, `slow`), `click` (a button label to press) and `refine=1` (opens "Affiner").
 
 ### Transport ledger

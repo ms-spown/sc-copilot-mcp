@@ -532,7 +532,7 @@ ne prétendons pas qu'il soit approuvé par Cloud Imperium Games.
 
 Un aperçu pour les personnes qui travaillent sur la page : `npm run build`, puis `node scripts/dashboard-preview.mjs`,
 puis ouvrez l'adresse locale qu'il affiche (boucle locale, port 4173 par défaut). Il joue un vol fictif, saut
-quantique complet compris, face à un hôte factice ; ni jeu ni Claude n'interviennent. La liste qui suit n'est pas complète (`scripts/dashboard-preview.mjs` lit aussi `conn`, `preflight`, `transport`, `sessions`, `health`, `seen`, `help`, `calib`, `specs`, `balance`, `card`, `menu` et `open`) : lisez le début de ce script pour la liste à jour. Paramètres : `t`, `theme`,
+quantique complet compris, face à un hôte factice ; ni jeu ni Claude n'interviennent. La liste qui suit n'est pas complète (`scripts/dashboard-preview.mjs` lit aussi `conn`, `preflight`, `transport`, `sessions`, `health`, `seen`, `help`, `calib`, `specs`, `balance`, `card`, `menu` et `open`) : lisez ce script pour la liste à jour. Paramètres : `t`, `theme`,
 `w`, `mode`, `scroll`, `forced`, `cut`, `plan`, `trade` (la carte Commerce avec un journal de commerce inventé : `story`, `estimated`, `unknown`, `partial`, `second`, `none`), `fw` (largeur du cadre en plein écran), `suggest` (ce que répond l'outil de la barre d'actions de commerce, avec des routes inventées et sans UEX : `ok`, `wait`, `error`, `empty`, `nospeed`, `reported`, `slow`), `click` (le libellé d'un bouton à presser) et `refine=1` (ouvre « Affiner »).
 
 ### Carnet de transport
