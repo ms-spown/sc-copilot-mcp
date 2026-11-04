@@ -138,6 +138,16 @@ describe("Feature: the sources in conflict", () => {
     expect(m.items[0].trips).toBe(2);
   });
 
+  it("Given a complete run that sold more than it bought (stock from before), Then it counts as the saved trip does (its SCU sold): one size, not two", () => {
+    const complete = { ...run(696, 3 * HOUR), scu_sold: 690 };
+    const m = choose({ runs: [complete], known: [known(690, 1, 3 * HOUR)] });
+    expect(m.items.map((i: any) => i.scu)).toEqual([690]);
+    expect(m.items[0].trips).toBe(1);
+    // A run still under way has only what was bought.
+    const open = { ...run(300, HOUR), stage: "open", scu_sold: null };
+    expect(choose({ runs: [open] }).items.map((i: any) => i.scu)).toEqual([300]);
+  });
+
   it("Given a size the player chose that no source knows, Then it stays in the list, marked as his choice", () => {
     const m = choose({ runs: [run(696, HOUR)], picked: 250 });
     expect(m.items.map((i: any) => i.scu).sort((a: number, b: number) => a - b)).toEqual([

@@ -66,7 +66,7 @@ promise, and every item says what is verified and what is not. The history of wh
     page's old order), chosen from the stream and the ship's `landed` state, applied after 3 seconds, deferred while the focus
     is in a section that would move or the page is scrolled far down, with a grey stream keeping the order on screen. A button
     "Ordre : auto / commerce / vol" forces one. An unknown situation gets the commerce order and says so.
-  - The dashboard page is 384.0 kB against our own internal budget of 403 kB (a guard of ours, not a limit of the host;
+  - The dashboard page is 384.1 kB against our own internal budget of 403 kB (a guard of ours, not a limit of the host;
     nothing was removed to fit it).
 - **The agent:** server `instructions`, refreshed prompts (`haul_plan`, `trade_copilot`, `trade_review`,
   `session_debrief`), a block to paste into a Claude project.

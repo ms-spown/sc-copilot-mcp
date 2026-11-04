@@ -48,8 +48,8 @@ versions follow [Semantic Versioning](https://semver.org/).
   "Choisis ta soute…" and **"Autre taille…"** (which shows a labelled number field). A click on a button searches at once
   with the default, without opening "Affiner", and the red message is gone as long as a hold is known; with none known the
   answer is a question (not a red error) that opens "Affiner" on the list. A size picked in the list or typed still wins over
-  the flown ship and the default (`cargoTyped`), a change after a first search searches again, and nothing is asked before
-  the first click. The note under the results says where the hold came from ("choisie dans ta liste", "d'après ton dernier
+  the flown ship and the default (`cargoTyped`), a change after a first search searches again, and no search is made before
+  the first click (only the list of known sizes is read, once the bar is on screen in full screen, never in the compact view). The note under the results says where the hold came from ("choisie dans ta liste", "d'après ton dernier
   trajet", "saisie"), where it used to call every sent hold "saisie".
 - **What a size means, said plainly.** A run's SCU is the quantity moved, not the capacity (it can be less than the hold), and
   the game log does not name a run's ship, so a run never gets a ship name from history. A name next to a size is the flown ship,
@@ -61,7 +61,7 @@ versions follow [Semantic Versioning](https://semver.org/).
   UEX's cached ship list. It reads local files and one cached UEX read, runs no planner and takes no throttle slot; sources that
   fail give an empty list. `src/tools/tools-surface.golden.json` and `docs/TOOLS.md` were regenerated (the `action` enum and the
   description changed). No host, variable or stored file was added.
-- **Page size:** 384.0 kB (373.0 kB in 2.7.0); the internal budget of `check:page-size` is raised from 392 kB to 403 kB (measured
+- **Page size:** 384.1 kB (373.0 kB in 2.7.0); the internal budget of `check:page-size` is raised from 392 kB to 403 kB (measured
   size plus about 5 %; our own guard, not a proven host limit, and nothing was removed to fit it).
 
 ## [2.7.0] - 2026-11-04

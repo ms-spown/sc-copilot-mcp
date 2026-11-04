@@ -783,7 +783,8 @@ same thing. Each figure now has one meaning:
 
 The bar asks the server, with no help from the model, for the routes that fit what the player wants. It is the
 `uex_plan_trade` planner behind an app-only tool (`sc_trade_suggest`, `visibility: ["app"]`, listed only with
-telemetry on and a client that shows Views). Nothing is asked until a click.
+telemetry on and a client that shows Views). No route is asked for before a click. The one thing read earlier is the list of
+known hold sizes (below), once the bar is on screen in full screen: local files and UEX's cached ship list, no planner.
 
 | Button | What it asks | Order of the cards |
 | --- | --- | --- |
@@ -797,7 +798,7 @@ Under "Affiner" (folded): *Éviter Pyro*, *Zones d'armistice seulement* (UEX's a
 seulement* (hides the open A>B>C chains; it is not `max_legs`: that one needs an origin and returns one-way routes
 only), a budget (a number: `250000`, `2,5M`), the hold (a list, see below), an origin (a terminal, planet or system
 name, resolved by the server), and *Proposer la suite à la fin d'un trajet*. Once a search exists, changing an option
-searches again by itself after a short quiet time; before the first click nothing is asked.
+searches again by itself after a short quiet time; before the first click no search is made.
 
 - **The hold ("Soute (SCU)").** A real list, not a blank field, with a default already chosen so a click on a button
   searches at once, without opening "Affiner". The default is taken from what the server already knows, in this order,

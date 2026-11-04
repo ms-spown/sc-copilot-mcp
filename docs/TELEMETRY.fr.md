@@ -829,7 +829,9 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
 
 La barre demande au serveur, sans passer par le modèle, les routes qui correspondent à ce que veut le joueur. C'est le
 planificateur de `uex_plan_trade` derrière un outil réservé à la page (`sc_trade_suggest`, `visibility: ["app"]`,
-listé seulement quand la télémétrie est activée et que le client affiche des Views). Rien n'est demandé avant un clic.
+listé seulement quand la télémétrie est activée et que le client affiche des Views). Aucune route n'est demandée avant un
+clic. La seule lecture plus précoce est la liste des tailles de soute connues (ci-dessous), une fois la barre à l'écran en
+plein écran : fichiers locaux et liste de vaisseaux d'UEX déjà en cache, aucun calcul de route.
 
 | Bouton | Ce qu'il demande | Ordre des cartes |
 | --- | --- | --- |
@@ -844,7 +846,7 @@ bout), *Aller-retour seulement* (masque les chaînes ouvertes A>B>C ; ce n'est p
 rend que des routes aller simple), un budget (un nombre : `250000`, `2,5M`), la soute (une liste, voir ci-dessous), un
 départ (un terminal, une planète ou un système, résolu par le serveur) et *Proposer la suite à la fin d'un trajet*.
 Quand une recherche existe, changer une option la relance seule après un court temps de calme ; avant le premier clic,
-rien n'est demandé.
+aucune recherche n'est lancée.
 
 - **La soute (« Soute (SCU) »).** Une vraie liste, pas un champ vide, avec une valeur déjà choisie : un clic sur un bouton
   lance donc la recherche tout de suite, sans ouvrir « Affiner ». La valeur par défaut vient de ce que le serveur sait

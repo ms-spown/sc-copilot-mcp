@@ -33,9 +33,13 @@ async function form(
     balanceHidden?: boolean;
     /** A route plan from Claude (its selling terminal is a UEX name), delivered before the full screen. */
     plan?: boolean;
+    /** Stay in the compact view (the default is the full screen). */
+    compact?: boolean;
+    /** A scenario the test keeps hold of (to change what the stream carries later). */
+    scenario?: Scenario;
   } = {},
 ) {
-  const scenario = new Scenario();
+  const scenario = options.scenario ?? new Scenario();
   if (options.ship) scenario.specs = specsSamples(scenario.now).ready;
   if (options.trade) {
     scenario.uec = tradeBalanceAt;
@@ -72,11 +76,13 @@ async function form(
     // The run completes at 202 s: the full screen is asked for after it, as the other tests of the bar do.
     await w.advance(215 * SECOND);
   }
-  w.fromHost({
-    jsonrpc: "2.0",
-    method: "ui/notifications/host-context-changed",
-    params: { displayMode: "fullscreen" },
-  });
+  if (!options.compact) {
+    w.fromHost({
+      jsonrpc: "2.0",
+      method: "ui/notifications/host-context-changed",
+      params: { displayMode: "fullscreen" },
+    });
+  }
   // The story's run is complete at 202 s: let the journal be read.
   await w.advance(options.trade ? 215 * SECOND : 20 * SECOND);
   return w;
@@ -153,7 +159,8 @@ describe("Feature: the form takes the player's own hold by default", () => {
         {
           scu: 696,
           trips: 3,
-          last_at: new Date(Date.now()).toISOString(),
+          // Relative to the story's clock (it starts on 2026-11-03 at 18:00 UTC), not to the wall clock.
+          last_at: "2026-11-03T17:00:00.000Z",
           ship: null,
           basis: null,
         },
@@ -203,11 +210,30 @@ describe("Feature: picking another size runs the search again with it", () => {
   });
 
   it("Given a size picked, When the flown ship appears, Then his choice still wins", async () => {
-    const w = await form({ trade: true });
+    const scenario = new Scenario();
+    const w = await form({ trade: true, scenario });
+    expect(selectOf(w).value).toBe("696");
     await pick(w, "696");
+    // The ship (a 4 SCU Cutter) shows up in the stream after the pick.
+    scenario.specs = specsSamples(scenario.now).ready;
+    await w.advance(5 * SECOND);
+    expect(valuesOf(w)).toContain("4");
+    expect(selectOf(w).value).toBe("696");
     findButton(w.root, "Plus rentable").click();
     await w.advance(100);
     expect(searches(w)[0]!.cargo_scu).toBe(696);
+  });
+
+  it("Given no pick, When the flown ship appears, Then it takes over as the default (and its hold is not sent)", async () => {
+    const scenario = new Scenario();
+    const w = await form({ trade: true, scenario });
+    expect(selectOf(w).value).toBe("696");
+    scenario.specs = specsSamples(scenario.now).ready;
+    await w.advance(5 * SECOND);
+    expect(selectOf(w).value).toBe("4");
+    findButton(w.root, "Plus rentable").click();
+    await w.advance(100);
+    expect(searches(w)[0]!.cargo_scu).toBeUndefined();
   });
 });
 
@@ -287,6 +313,27 @@ describe("Feature: after a completed run, the follow-up suggestion uses the run'
     const s = searches(w);
     expect(s).toHaveLength(1);
     expect(s[0]).toMatchObject({ origin: "Area18 TDD", cargo_scu: 696 });
+  });
+});
+
+describe("Feature: the compact view asks the server nothing", () => {
+  it("Given the compact view with runs and a hold list, Then the sizes are not read; they are read once the full screen opens", async () => {
+    const w = await form({
+      trade: true,
+      compact: true,
+      holds: [{ scu: 120, trips: 2, last_at: "2026-10-30T10:00:00.000Z", ship: null, basis: null }],
+    });
+    await w.advance(10 * 60 * SECOND);
+    expect(w.host.log.holdsCalls).toBe(0);
+    expect(w.host.log.suggests).toEqual([]);
+    w.fromHost({
+      jsonrpc: "2.0",
+      method: "ui/notifications/host-context-changed",
+      params: { displayMode: "fullscreen" },
+    });
+    await w.advance(5 * SECOND);
+    expect(w.host.log.holdsCalls).toBe(1);
+    expect(valuesOf(w)).toContain("120");
   });
 });
 

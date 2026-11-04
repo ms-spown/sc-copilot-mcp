@@ -524,7 +524,13 @@ export function tradeHoldChoices(ctx: any): any {
   let journalAt: number | null = null;
   for (let i = 0; i < runs.length; i++) {
     const r = runs[i];
-    const q = r && typeof r.scu_bought === "number" ? Math.round(r.scu_bought) : 0;
+    // The same quantity the session keeps for a complete run (its SCU sold, else bought), so a run that is also a saved one
+    // is one size, not two; a run under way has only what was bought.
+    const moved =
+      r && r.stage === "complete" && typeof r.scu_sold === "number"
+        ? r.scu_sold
+        : r && r.scu_bought;
+    const q = typeof moved === "number" ? Math.round(moved) : 0;
     if (!(q >= 1 && q <= 100000)) continue;
     const at = Date.parse(r.ended_at);
     const it = get(q);
@@ -1886,8 +1892,9 @@ export function tradeActionsPanel(doc: any, L: any): any {
     );
 
     // The hold: the default chosen from what is known (flown ship > last run > habit > fleet), labelled with its source,
-    // until the player picks a size in the list or types his own.
-    ensureHolds();
+    // until the player picks a size in the list or types his own. The sizes are read only while the form is on screen
+    // (full screen): the compact view asks the server nothing.
+    if (full) ensureHolds();
     paintHold(now);
 
     // The objective buttons.
