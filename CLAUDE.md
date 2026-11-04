@@ -62,8 +62,10 @@ src/providers/  sessions (saved play sessions: store, reducer, stats, manager, t
 src/tools/      one file per group (definition + handler together), catalog.ts (provenance + profiles),
                 registry.ts (envelope, scoping), status.ts (sc_data_status)
 src/dashboard/  the live dashboard (MCP App): poll, service, ledger, trade and pre-flight, health strip, session bar,
-                viewApp/viewLogic/page (the one HTML page, size-budgeted), shortcuts* (context shortcuts and
-                the sources of their keys), commodityNames (names of goods, wiki lookup), testing/ (fake host)
+                viewApp/viewLogic/page (the one HTML page, size-budgeted: 392 kB, scripts/check-page-size.mjs),
+                shortcuts* (context shortcuts and the sources of their keys), layoutOrder (the flight and commerce
+                orders of full screen), calibrationPanel (route cards), commodityNames (names of goods, wiki
+                lookup), testing/ (fake host)
 src/instructions.ts, src/prompts.ts   what Claude is told by the server (manual, length-bounded; the prompts)
 src/testing/    shared test helpers (replay harness, waitFor)
 src/install/    mergeConfig (pure planning of the Claude Desktop config merge), telemetrySwitch + jsonEdit

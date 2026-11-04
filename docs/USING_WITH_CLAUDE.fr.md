@@ -21,11 +21,12 @@ fraîcheur), la règle 2 (texte non fiable), la règle 4 (erreurs), le choix des
 règles 6 et 7 (aucune affirmation de sûreté, solde masqué respecté, état de connexion, pas de second tableau
 de bord, jamais `sc_live_poll`, `sc_live_mark` ni `sc_trade_suggest`) et la manière d'accompagner. Ce qu'il ne porte pas, et que le bloc
 doit garder : les autres lignes de la règle 3 (vaisseaux, patchs, missions, wiki, journal de jeu), la règle 5, et les
-détails des règles 6 et 7 (ce que le flux n'a pas, à pied ou assis, le solde du tableau de bord).
+détails des règles 6 et 7 (ce que le flux n'a pas, à pied ou assis, le solde du tableau de bord) et la règle 9 (la zone
+Raccourcis : le mode d'emploi du serveur n'en dit rien).
 
 - Claude Desktop ou claude.ai, la question canari 1 échoue : gardez le bloc entier.
 - Claude Code, ou un client où la question canari 1 réussit : vous pouvez retirer les règles 1, 2 et 4 et les lignes
-  de commerce de la règle 3. Si vous utilisez la télémétrie en direct, gardez les règles 6 et 7.
+  de commerce de la règle 3. Si vous utilisez la télémétrie en direct, gardez les règles 6, 7 et 9.
 
 ```
 Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règles :
@@ -142,15 +143,20 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
    aucune cause affirmée). Si le joueur veut garder ou partager une session, sc_session_debrief donne un bilan court (Markdown par défaut, environ
    28 000 caractères au plus, trajets plus anciens coupés avec leur nombre) : avec include_balance=false il ne contient aucun montant en aUEC et le dit ; sinon il contient les montants, mais les soldes de départ et de fin restent dehors sauf demande du joueur (include_start_balance) : dites ce qu'il contient avant de le remettre, il est fait pour être partagé. Remettez-le tel quel, sans ajouter de chiffre, et dites que le joueur télécharge le
    Markdown et le CSV complets depuis la barre de session du tableau de bord.
+9. La zone « Raccourcis » du tableau de bord est un affichage : n'appelez rien pour elle. Si le joueur vous interroge sur une
+   touche, ce sont des valeurs par défaut tirées de sources publiques, jamais vérifiées en jeu sur la 4.10 : dites « la
+   touche par défaut est X, vérifiez dans vos Keybindings », jamais « appuyez sur X ». Ne déduisez jamais d'elle que le
+   joueur a changé une touche, qu'il fait sombre, ni que les phares sont allumés ou éteints.
 ```
 
 ## La zone « Raccourcis » du tableau de bord : ce que Claude doit et ne doit pas dire des touches
 
 Le tableau de bord en direct a une zone « Raccourcis » (voir [TELEMETRY.fr.md](TELEMETRY.fr.md#raccourcis-selon-le-contexte))
 qui rappelle au joueur les actions qui conviennent au moment (train sorti, à pied, verrouillage hostile...). C'est un
-affichage, construit dans la page : Claude n'appelle rien pour elle. Si le joueur interroge Claude sur une touche,
-traitez celles qu'elle montre comme des valeurs par défaut tirées de sources publiques et jamais vérifiées en jeu sur la
-4.10 : dites « la touche par défaut est R, vérifiez dans vos Keybindings », jamais « appuyez sur R ». La page ne sait pas
+affichage, construit dans la page : Claude n'appelle rien pour elle. C'est la règle 9 du bloc ci-dessus, avec ses raisons.
+Si le joueur interroge Claude sur une touche, traitez celles qu'elle montre comme des valeurs par défaut tirées de sources
+publiques et jamais vérifiées en jeu sur la 4.10 (quatre seulement sont affichées : X, H, J et T, chacune marquée
+« défaut ») : dites « la touche par défaut est X, vérifiez dans vos Keybindings », jamais « appuyez sur X ». La page ne sait pas
 si le joueur a changé une touche, s'il fait sombre, ni si les phares sont allumés (le flux ne distingue pas éteint de non
 rapporté) : Claude ne doit pas non plus l'affirmer à partir d'elle.
 

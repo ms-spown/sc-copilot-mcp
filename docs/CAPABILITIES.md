@@ -204,7 +204,7 @@ What the log does not contain, so the journal never invents it: the wallet balan
 
 Example questions: "Did I lose my ship during that run?" (Ai-je perdu mon vaisseau pendant ce trajet ?) ; "What did that crash cost me in cargo?" (Combien de cargo ai-je perdu dans ce crash ?)
 
-When your own ship is destroyed with you aboard, the dashboard shows it in the alert slot (the header verdict, the compact line and the box of the commerce card, before a refused price), the commerce card marks the run it interrupted, the saved session keeps it (the `ship_losses` list of `sessions.json`, additive, format version 2) and the session debrief lists it. Needs the game log (`SC_INSTALL_DIR` or `SC_GAME_LOG_PATH`); the saved session and the dashboard also need telemetry on, like everything else of the sessions. Nothing is sent anywhere and no tool changed.
+When your own ship is destroyed with you aboard, the dashboard shows it in the alert slot as the gravest event of the page (a "fatal" tone in the header verdict for 3 minutes, the compact line and the box of the commerce card, before a refused price unless that price is newer; the box has a folded "Pourquoi ce n'est pas certain ?" and an "Et maintenant" that states facts only, and, in full screen, its own "Analyser la perte" button), the commerce card marks the run it interrupted, the saved session keeps it (the `ship_losses` list of `sessions.json`, additive, format version 2) and the session debrief lists it. Needs the game log (`SC_INSTALL_DIR` or `SC_GAME_LOG_PATH`); the saved session and the dashboard also need telemetry on, like everything else of the sessions. Nothing is sent anywhere and no tool changed.
 
 What is verified, and what is not (checked on the author's own logs; the 4.10 files hold three such losses, all collisions, none with a purchase):
 
@@ -254,13 +254,18 @@ What to know before you switch it on:
 - **A live dashboard, in Claude Desktop only.** `sc_live_dashboard` shows the stream as a small page in the
   conversation, inline (three dials, alerts, a verdict) or in full screen (a cockpit with dials, compass, power
   diagram, warning lights, weapons, pilot vitals and one chronology), with the age of each value, the alerts of the
-  moment, what the stream lacks and, if Claude passes a route plan, planned next to measured profit. Several
+  moment, what the stream lacks and, if Claude passes a route plan, planned next to measured profit. In full screen the
+  sections come in a flight order (the instruments first) or a commerce order (the commerce card first) according to the
+  stream and the ship's landed state, changed only after 3 seconds and never under your keyboard focus, with a button
+  "Ordre" to force one. Under each suggested route, once you have 3 saved runs of it, the card puts the estimate, your
+  measured mean and the ratio side by side (needs the balance shown). A button of the "Demander à Claude" zone sends a
+  fixed message that follows the situation (a loss, a refused price, a run just ended) and respects your balance choice. Several
   dashboards share one stream of calls: only the most recent visible one polls. Claude Code does not render it and never
   lists its tools. The balance is shown in the page unless you hide it ("Masquer le solde", or `SC_BALANCE=hidden` to start hidden). The speed dial is drawn against the ship's own limits (SCM and maximum speed from its Star Citizen Wiki page, found in the background, one search per ship, only when exactly one sheet fits) and says so when it keeps a scale deduced from the speeds seen; the hydrogen tank capacity is not known, so the hydrogen endurance stays an estimate. See
   [TELEMETRY.md](TELEMETRY.md#live-dashboard).
 - **Context shortcuts in that dashboard.** A "Raccourcis" zone reminds you of the actions that fit the moment, from
   states already in the stream (landing gear out and not landed, on foot, EVA, ground vehicle, powerplant off, quantum
-  mode, hostile lock, shields cut): three in the compact view, six in full screen, the rest behind one button. Only a
+  mode, hostile lock, shields cut): three in the compact view, six in full screen (in the flight order only what has a key or is an alert), the rest behind one button. Only a
   handful of default keys are shown, labelled "défaut", from public sources and never checked in the game on 4.10; the other
   actions have no key. It never says the lights are off or that it is dark (the stream cannot tell), and shows nothing
   without a live stream. A display only: nothing is sent to the game. See
