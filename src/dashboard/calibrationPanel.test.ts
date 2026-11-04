@@ -92,7 +92,6 @@ const gold = group({
 });
 const SECTION: CalibrationSection = {
   v: 1,
-  as_of: "2026-11-04T10:00:00.000Z",
   patch_line: "4.10",
   groups: [group(), gold, route] as never,
 };

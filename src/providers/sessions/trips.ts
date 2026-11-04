@@ -137,7 +137,9 @@ export { buildContracts };
  * a resource id, never a name, so the goods are named, and the plan tied to the run, in one of two ways (`planLinkOf`):
  * by name when the model could compare names (`plan_link: "name"`), else by the PRICES: the run's average buy and sell
  * price per SCU both within 40 % of the plan's, and a bought quantity within a factor of 4 of the plan's
- * (`plan_link: "prices"`, an association by resemblance that the route calibration reports as unverified goods).
+ * (`plan_link: "prices"`, an association by resemblance that the route calibration reports as unverified goods). A run tied
+ * by name is named after the plan here; a run tied by prices is named by the session manager, and only on the one run that
+ * carries the plan.
  */
 export class TradeRunTripSource implements TripSource {
   constructor(
@@ -164,7 +166,8 @@ export class TradeRunTripSource implements TripSource {
       if (m.net.reason === "en_cours" || (m.net.reason === "en_attente" && !opts.final)) continue;
       const plan = this.plan();
       const link = planLinkOf(plan, run, m);
-      const named = link !== null ? cleanLabel(plan?.commodity, 60) : null;
+      // By name only: a run tied to its plan by prices is named after the plan by the manager, on the run that carries it.
+      const named = link === "name" ? cleanLabel(plan?.commodity, 60) : null;
       trips.push({
         // The run's own id (the time of its first transaction) is its identity: it does not change when a late sale
         // is added to the run (the end moves, the key does not), so the stored trip is REPLACED, not doubled.

@@ -56,14 +56,14 @@ const trade = (n: number): Trip => ({
   fees_method: "mesure",
 });
 
-async function rig() {
+async function rig(trips: Trip[] = [trade(1), trade(2)]) {
   const file = path.join(dir, "sessions.json");
   const store = new SessionStore(file, { now: () => NOW });
   await store.transact((d) => {
     d.sessions.push(
       session(1, {
         game_version: "4.10.197.2878 (build 12881860)",
-        trips: [trade(1), trade(2)],
+        trips,
         active_ms: 3_600_000,
       }),
     );
@@ -99,12 +99,38 @@ async function rig() {
       [],
     ),
   );
-  const call = async (args: Record<string, unknown> = {}) => {
-    const r = await registry.call("sc_session_stats", args);
+  const callTool = async (name: string, args: Record<string, unknown> = {}) => {
+    const r = await registry.call(name, args);
     return { r, text: r.content[0].text, data: JSON.parse(r.content[0].text).data };
   };
-  return { call, registry };
+  const call = (args: Record<string, unknown> = {}) => callTool("sc_session_stats", args);
+  return { call, callTool, registry };
 }
+
+describe("Feature: what the plan said reaches the model only with the balance", () => {
+  /** A quantity sized by the balance (a route built from "Budget = mon solde"): a made-up number found nowhere else. */
+  const SIZED = 6937;
+
+  it("Given a trip whose plan was sized by the balance, Then its quantity is withheld like the planned profit, and given only with include_balance", async () => {
+    const t = await rig([{ ...trade(1), planned_scu: SIZED }]);
+    for (const [name, args] of [
+      ["sc_session_current", {}],
+      ["sc_session_list", {}],
+      ["sc_session_stats", {}],
+    ] as const) {
+      const { text, r } = await t.callTool(name, args);
+      expect(text, name).not.toContain(String(SIZED));
+      expect(JSON.stringify(r.structuredContent ?? {}), name).not.toContain(String(SIZED));
+      expect(text, name).not.toContain("100000"); // the planned profit
+    }
+    const rich = await t.callTool("sc_session_current", { include_balance: true });
+    expect(rich.text).toContain(String(SIZED));
+    // what carries no amount stays visible: the plan's places and how it was tied to the run
+    const plain = await t.callTool("sc_session_current", {});
+    expect(plain.text).toContain("Port Tressler");
+    expect(plain.text).toContain("prices");
+  });
+});
 
 describe("Feature: route_reliability in sc_session_stats", () => {
   it("Given two planned runs, When include_balance is true, Then the group shows its runs, its confidence and an estimate note", async () => {

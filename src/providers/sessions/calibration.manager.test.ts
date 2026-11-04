@@ -134,6 +134,33 @@ describe("Feature: what the plan said is kept on the one run it marked", () => {
   });
 });
 
+describe("Feature: a run tied to its plan by prices is named after the plan on that one run only", () => {
+  it("Given two runs the source tied to the plan by prices, Then only the first is named, planned and linked; the second is not", async () => {
+    const r = rig();
+    r.manager.setPlan(PLAN);
+    const priced = (id: number, end: number): TripInput => ({
+      ...run(id, end, 73_700),
+      commodity: null,
+      label: null,
+      planned_profit_auec: 100_000,
+      plan_link: "prices",
+    });
+    r.trips.list = [priced(1, T0 + 3 * MIN), priced(2, T0 + 5 * MIN)];
+    await r.play(8);
+    const [a, b] = (await r.store.read()).sessions[0].trips;
+    expect(a).toMatchObject({
+      commodity: "Laranite",
+      label: "Cargo Laranite",
+      plan_link: "prices",
+      planned_profit_auec: 100_000,
+    });
+    expect(b.commodity).toBeNull();
+    expect(b.label).toBeNull();
+    expect(b.plan_link).toBeNull();
+    expect(b.planned_profit_auec).toBeNull();
+  });
+});
+
 describe("Feature: route reliability follows the balance, in the tool and in the poll", () => {
   it("Given two planned runs, When the balance is allowed, Then sc_session_stats data holds the group with its number of runs", async () => {
     const r = rig();

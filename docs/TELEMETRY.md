@@ -744,7 +744,7 @@ A trip is a **completed contract** of the transport ledger (its result is the ba
 stays unknown when two contracts overlapped or the balance was not seen) or a **completed trade run** of the commerce card
 (its model, `src/dashboard/tradeRun.ts`, is the one pairing of the journal's purchases and sales; the trip keeps its
 cost, turnover, **gross margin**, fees and **net**, each as that model measured or computed it, and the plan's profit
-when the model matched the plan to the run). A contract's balance change that overlaps a trade run is left out of the
+when the plan was tied to the run, by the goods' name or by prices: see Route reliability). A contract's balance change that overlaps a trade run is left out of the
 totals (it already holds the run's sales), and the session shows the measured net and the gross margin separately. A trip is stored only once its result is
 settled and is never recomputed later.
 

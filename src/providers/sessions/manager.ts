@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { cleanLabel } from "../../core/untrusted.js";
 import type { LedgerService } from "../../dashboard/ledgerService.js";
 import type { TradePlan } from "../../dashboard/tradeRun.js";
 import type { ConnectionInfo } from "../gamelog/connectionState.js";
@@ -352,8 +353,12 @@ export class SessionManager {
       // What the plan said besides the profit goes to the same ONE trip, and to no other (it would make a second run
       // look planned): the calibration compares a run with the plan it was started from.
       const facts = mine ? planFacts(p) : NO_PLAN_FACTS;
+      // A run tied to the plan by its prices is named after the plan only here, on the one run that carries it: a later
+      // run of the same goods must not look as if its goods had been verified.
+      const named = mine && t.commodity == null ? cleanLabel(p?.commodity, 60) : null;
       return {
         ...t,
+        ...(named ? { commodity: named, label: t.label ?? `Cargo ${named}` } : {}),
         planned_profit_auec: mine ? (t.planned_profit_auec ?? planned) : null,
         planned_scu: mine ? (t.planned_scu ?? facts.planned_scu) : null,
         plan_buy_terminal: mine ? (t.plan_buy_terminal ?? facts.plan_buy_terminal) : null,
@@ -581,6 +586,8 @@ const stripTripMoney = (t: Session["trips"][number]) => ({
   net_auec: null,
   net_kind: null,
   planned_profit_auec: null,
+  // The plan's quantity can be sized by the balance (a route built from "Budget = mon solde"): it goes with the money.
+  planned_scu: null,
 });
 
 export { MONEY_WITHHELD_NOTE };

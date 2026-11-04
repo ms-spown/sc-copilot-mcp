@@ -784,7 +784,7 @@ Un trajet est un **contrat terminé** du carnet de transport (son résultat est 
 lui, et reste inconnu si deux contrats se chevauchaient ou si le solde n'a pas été vu) ou une **cargaison
 terminée** de la carte de commerce (son modèle, `src/dashboard/tradeRun.ts`, est l'unique appariement des achats et des
 ventes du journal ; le trajet garde son coût, son chiffre d'affaires, sa **marge brute**, ses frais et son **net**, tels
-que ce modèle les a mesurés ou calculés, et le profit prévu quand le modèle a rattaché le plan à la cargaison). La
+que ce modèle les a mesurés ou calculés, et le profit prévu quand le plan a été rattaché à la cargaison, par le nom de la marchandise ou par les prix : voir Fiabilité des routes). La
 variation du solde d'un contrat qui chevauche une cargaison est écartée des totaux (elle contient déjà les ventes de la
 cargaison), et la session montre le net mesuré et la marge brute séparément. Un trajet n'est enregistré qu'une fois son résultat réglé et n'est jamais recalculé ensuite.
 

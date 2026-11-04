@@ -82,8 +82,9 @@ describe("Feature: a trade trip keeps what the plan said", () => {
       () => plan,
     );
     const [trip] = (await src.collect(NOW)).trips;
+    // the goods are named after the plan by the session manager, on the run that carries it, not here
+    expect(trip.commodity).toBeNull();
     expect(trip).toMatchObject({
-      commodity: "Agricium",
       plan_link: "prices",
       planned_profit_auec: 7000,
       planned_scu: 10,

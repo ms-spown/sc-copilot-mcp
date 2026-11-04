@@ -449,7 +449,6 @@ export type PollGroup = Omit<
 
 export interface CalibrationSection {
   v: 1;
-  as_of: string;
   patch_line: string | null;
   groups: PollGroup[];
 }
@@ -478,7 +477,6 @@ export function calibrationForPoll(report: CalibrationReport): CalibrationSectio
       .map(slim);
   return {
     v: 1,
-    as_of: report.as_of,
     patch_line: report.patch_line,
     groups: [
       ...keep("commodity", CALIBRATION_POLL_GROUPS.commodity),
