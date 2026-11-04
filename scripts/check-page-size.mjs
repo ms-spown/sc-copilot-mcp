@@ -32,11 +32,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // current play session and the older ones, the folded "Dernier trajet connu, hors session" block, and the session's trade section
 // handed to the Debrief button, "Et ensuite ?" and the alert boxes; the budget is that size plus about 5 % (420 kB), rounded. Same
 // status: our own guard, nothing was removed to fit it, the host's own limit is still unproven.
-// 2026-11-04 (prominent header balance F8, recipe of the agent message F9, fixed messages F6): 419.9 kB with the bigger header
-// "Solde" zone, the recipe builder and the per-step figures of the message to the agent: still under the 420 kB budget set for the
-// hold list and the session fix, so the budget is unchanged (the margin is thin: the next feature raises it to its measure plus
-// about 5 %). Same status: our own guard, nothing was removed to fit it, the host's own limit is still unproven.
-const BUDGET_BYTES = 420_000;
+// 2026-11-04 (prominent header balance F8, recipe of the agent message F9, fixed messages F6): 419.9 kB built, 420.3 kB as the
+// vitest guard (pageBudget.test.ts) measures it from the sources, with the bigger header "Solde" zone, the recipe builder and the
+// per-step figures of the message to the agent. A 420 kB budget left 0.1 kB for the built page and none for the vitest measure
+// (CI failed on it), so the budget is the larger measure plus about 5 % (440 kB), rounded; both guards use the same number. Same
+// status: our own guard, nothing was removed to fit it, the host's own limit is still unproven.
+const BUDGET_BYTES = 440_000;
 
 const page = await import(pathToFileURL(path.join(root, "dist", "dashboard", "page.js")).href);
 const bytes = Buffer.byteLength(page.dashboardHtml(), "utf8");
