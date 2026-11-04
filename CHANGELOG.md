@@ -6,6 +6,29 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **End-to-end replay of a complete trade run (tests only).** Every part of the trade and session pipeline was tested on
+  its own; none had been played together. A harness (`src/testing/replay/`) now drives the real objects from one
+  synthetic timeline: a Game.log that grows (commerce lines, errors, contracts, connection lines), telemetry frames
+  carrying a balance that changes at precise times (through the fake game and the frame encoder), a plan applied by the
+  action bar's tool, the session manager writing a temp file, a crash and restart, and every tool called through an
+  in-memory MCP client, on one injected clock. Eight scenarios (`src/e2e/replay.*.behaviour.test.ts`) assert the exact
+  figures and the privacy guarantees at every step: the player's run (gross margin 186 568, fees 19 468 / 24 100, net
+  +143 000, price deviation +6 568, nothing unexplained), a second and a third run (calibration, a foreign spending kept
+  out), a late sale of stock from before, rejected cargo lines, a disconnection and a restart, a quiet telemetry around a
+  sale, a reward paid near a sale, and hostile text in the log. How to add a scenario: CONTRIBUTING.
+- `createSessionStack` (`src/providers/sessions/stack.ts`): the server's wiring of the ledger reader, the session file and
+  the session manager, shared by `index.ts` and the replay harness so that they cannot drift apart. No change of behaviour.
+
+### Fixed
+- **A restarted server no longer replaces a measured trip by an unknown one.** After a restart the server re-reads the
+  whole log and offers every trade run again, but the balance history of the runs it did not watch is gone (memory only):
+  their net and fees came out unknown, and the stored trip (the frozen, measured one) was overwritten with `null` net and
+  `null` fees, dropping it out of the session total and the calibration. A trade trip is now replaced only when the run
+  grew (a later sale) or when the new version loses nothing the stored one measured.
+- **The commerce card now counts a rejected sale of zero as failed**, as the trade journal does (the card dropped any line
+  without a positive amount, so it said 1 failed line where the journal listed 2).
+
 ## [2.3.0] - 2026-11-04
 
 ### Added

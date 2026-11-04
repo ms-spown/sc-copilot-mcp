@@ -1,6 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from "vitest";
-import { expectAbsent, expectPresent, sweepWithBalance, sweepWithoutBalance } from "../testing/replay/audit.js";
+import {
+  expectAbsent,
+  expectPresent,
+  sweepWithBalance,
+  sweepWithoutBalance,
+} from "../testing/replay/audit.js";
 import { buyLine, errorLine, sellLine } from "../testing/replay/lines.js";
 import { PLAYER_RUN, scheduleRun } from "../testing/replay/scripts.js";
 import { F, MONEY, newestRun, useWorld } from "../testing/replay/story.js";
@@ -108,12 +113,20 @@ describe("Feature: a late sale of stock from before the run", () => {
     });
     // The session total follows the replaced trip, once.
     const cur = (await w.call("sc_session_current", { include_balance: true })).data;
-    expect(cur.session.money).toMatchObject({ net_auec: net, turnover_auec: turnover, fees_auec: fees });
+    expect(cur.session.money).toMatchObject({
+      net_auec: net,
+      turnover_auec: turnover,
+      fees_auec: fees,
+    });
     expect(cur.session.trips).toBe(1);
 
     // Privacy: none of it without the balance.
     const without = await sweepWithoutBalance(w);
-    expectAbsent(without.all, [...MONEY, net, turnover, fees, LATE.amount, LATE.fee], "the answers without the balance");
+    expectAbsent(
+      without.all,
+      [...MONEY, net, turnover, fees, LATE.amount, LATE.fee],
+      "the answers without the balance",
+    );
     expectPresent(await sweepWithBalance(w), [net, turnover, fees], "the answers with the balance");
   });
 });

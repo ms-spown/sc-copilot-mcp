@@ -155,6 +155,28 @@ const figures = (t: Trip) =>
   ].join("|");
 const grew = (a: Trip, b: Trip) => figures(a) !== figures(b);
 
+const MEASURES = [
+  "cost_auec",
+  "revenue_auec",
+  "fees_auec",
+  "gross_margin_auec",
+  "net_auec",
+] as const;
+/** The offered trip no longer knows a figure that the stored one has. */
+const lostFigure = (stored: Trip, offered: Trip) =>
+  MEASURES.some((k) => stored[k] !== null && offered[k] === null);
+/**
+ * Should the offered version of a trade run replace the stored one? When the run GREW (its last line is later, a late
+ * sale) its figures describe more than the stored ones: yes. When it ends at the same moment, the figures differ only
+ * because of what the server could see: a result that was still settling and is known now replaces it, but a figure
+ * that was measured must never be replaced by an unknown one. That is what a restarted server offers for every run it
+ * did not watch: the log still holds the lines, the balance history of the run is gone (memory only), so its net and
+ * its fees come out unknown. The stored trip is the frozen, measured one (trips.ts).
+ */
+const supersedes = (stored: Trip, offered: Trip) =>
+  grew(stored, offered) &&
+  (ms(offered.ended_at) > ms(stored.ended_at) || !lostFigure(stored, offered));
+
 function mergeTrips(state: StoreState, cur: Session, inputs: readonly TripInput[]): boolean {
   if (inputs.length === 0) return false;
   const known = new Set<string>();
@@ -169,7 +191,11 @@ function mergeTrips(state: StoreState, cur: Session, inputs: readonly TripInput[
       // A trade run of THIS session that grew (a late sale line) replaces its stored trip: same key, new figures.
       // Contracts stay frozen. A run stored in an older session is left as it was.
       const at = cur.trips.findIndex((t) => t.key === parsed.data.key);
-      if (at >= 0 && parsed.data.source === "trade_journal" && grew(cur.trips[at], parsed.data)) {
+      if (
+        at >= 0 &&
+        parsed.data.source === "trade_journal" &&
+        supersedes(cur.trips[at], parsed.data)
+      ) {
         cur.trips[at] = {
           ...parsed.data,
           planned_profit_auec: parsed.data.planned_profit_auec ?? cur.trips[at].planned_profit_auec,

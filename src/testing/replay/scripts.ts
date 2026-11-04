@@ -71,7 +71,9 @@ export interface RunOptions {
 export function scheduleRun(world: ReplayWorld, t0: number, opts: RunOptions = {}): number {
   const run = PLAYER_RUN;
   run.buys.forEach((b, i) => {
-    world.at(t0 + RUN_TIMES.buy[i]!).log(buyLine(world.ms(t0 + RUN_TIMES.buy[i]!), b.price, b.scu, opts.guid));
+    world
+      .at(t0 + RUN_TIMES.buy[i]!)
+      .log(buyLine(world.ms(t0 + RUN_TIMES.buy[i]!), b.price, b.scu, opts.guid));
     world.at(t0 + RUN_TIMES.buyChange[i]!).change(-(b.price + b.fee));
   });
   run.sells.forEach((x, i) => {
@@ -84,7 +86,12 @@ export function scheduleRun(world: ReplayWorld, t0: number, opts: RunOptions = {
 }
 
 /** A cargo line the game rejects: the request, then the error line a second later (balance untouched). */
-export function scheduleFailedBuy(world: ReplayWorld, at: number, price: number, scu: number): void {
+export function scheduleFailedBuy(
+  world: ReplayWorld,
+  at: number,
+  price: number,
+  scu: number,
+): void {
   world.at(at).log(buyLine(world.ms(at), price, scu));
   world.at(at + 1).log(errorLine(world.ms(at + 1)));
 }

@@ -90,5 +90,13 @@ export function expectPresent(text: string, figures: readonly number[], where: s
  * Characters that must never come out of the server: control characters, the zero-width and direction-changing ones.
  * `JSON.stringify` writes them as `\u00XX` escapes, so the escapes are looked for as well as the characters.
  */
-export const INVISIBLE =
-  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f​-‏‪-‮⁠-⁤﻿]|\\u00(?:[01][0-9a-f]|7f|[89][0-9a-f])|\\u(?:200[b-f]|202[a-e]|206[0-4]|feff)/i;
+// The pattern is written with escapes only (the repository refuses invisible characters in its own files).
+export const INVISIBLE = new RegExp(
+  [
+    "[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f-\\u009f\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u2064\\ufeff]",
+    // the same characters as JSON.stringify writes them
+    "\\\\u00(?:[01][0-9a-f]|7f|[89][0-9a-f])",
+    "\\\\u(?:200[b-f]|202[a-e]|206[0-4]|feff)",
+  ].join("|"),
+  "i",
+);

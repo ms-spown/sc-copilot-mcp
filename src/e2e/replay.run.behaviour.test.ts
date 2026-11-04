@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from "vitest";
 import { calibrationFromLedger } from "../dashboard/calibrationPanel.js";
 import { ledgerNum, ledgerOneOf, ledgerText } from "../dashboard/ledgerPanel.js";
@@ -43,7 +42,11 @@ describe("Feature: the player's run, from the first frame to the saved session",
       start_balance_quality: "game_start",
     });
     expect(withB.ledger.trade).toMatchObject({ source: "journal", runs: [], runs_total: 0 });
-    expectAbsent((await sweepWithoutBalance(w)).all, MONEY, "the answers without the balance (step 1)");
+    expectAbsent(
+      (await sweepWithoutBalance(w)).all,
+      MONEY,
+      "the answers without the balance (step 1)",
+    );
     expectPresent(JSON.stringify(withB), [PLAYER_RUN.start], "the poll with the balance (step 1)");
 
     // ---- Step 2: the plan is applied by the action bar (a search, then "apply" on the first option).
@@ -57,8 +60,15 @@ describe("Feature: the player's run, from the first frame to the saved session",
     });
     withB = await w.poll(true);
     // The plan is compared with contracts only: no contract yet, so nothing is measured against it.
-    expect(withB.ledger.plan_compare).toMatchObject({ expected_auec: PLAYER_RUN.planned, measured_auec: null });
-    expectAbsent((await sweepWithoutBalance(w)).all, MONEY, "the answers without the balance (plan applied)");
+    expect(withB.ledger.plan_compare).toMatchObject({
+      expected_auec: PLAYER_RUN.planned,
+      measured_auec: null,
+    });
+    expectAbsent(
+      (await sweepWithoutBalance(w)).all,
+      MONEY,
+      "the answers without the balance (plan applied)",
+    );
 
     // ---- Step 3: the purchases (lines at 20 and 22 s, the balance drops 0.7 s and 0.9 s later).
     // One second after the first line the journal cannot believe it yet: the game logs only failures, so a cargo line
@@ -85,7 +95,11 @@ describe("Feature: the player's run, from the first frame to the saved session",
     expect(r.money.fees.buy).toEqual({ auec: F.buyFee, method: "groupe" });
     expect(r.money.fees.sell).toBeNull();
     expect(w.sessionsJson().sessions[0]!.trips).toHaveLength(0); // an open run is not a trip yet
-    expectAbsent((await sweepWithoutBalance(w)).all, MONEY, "the answers without the balance (purchases)");
+    expectAbsent(
+      (await sweepWithoutBalance(w)).all,
+      MONEY,
+      "the answers without the balance (purchases)",
+    );
 
     // ---- Step 4: the first sale is believed (4 s of log), the second (written at +82 s) is still waiting for its 3 s:
     // a partial run, valued on what was paired.
@@ -103,7 +117,11 @@ describe("Feature: the player's run, from the first frame to the saved session",
     expect(r.stage).toBe("complete");
     expect(r.money.net).toMatchObject({ auec: null, reason: "en_attente" });
     expect(w.sessionsJson().sessions[0]!.trips).toHaveLength(0); // not stored while the result is pending
-    expectAbsent((await sweepWithoutBalance(w)).all, MONEY, "the answers without the balance (pending)");
+    expectAbsent(
+      (await sweepWithoutBalance(w)).all,
+      MONEY,
+      "the answers without the balance (pending)",
+    );
 
     // ---- Step 6: settled. Every figure of the story.
     await w.playTo(settled + 6);
@@ -209,7 +227,12 @@ describe("Feature: the player's run, from the first frame to the saved session",
       last_balance_auec: PLAYER_RUN.end,
       balance_change_auec: F.net,
       overlap_excluded: 0,
-      plan: { planned_auec: PLAYER_RUN.planned, measured_auec: F.net, trips: 1, price_linked_trips: 1 },
+      plan: {
+        planned_auec: PLAYER_RUN.planned,
+        measured_auec: F.net,
+        trips: 1,
+        price_linked_trips: 1,
+      },
     });
     expect(current.session.money.plan.efficiency).toBeCloseTo(F.net / PLAYER_RUN.planned, 3);
     expect(current.recent_trips).toHaveLength(1);
@@ -248,18 +271,29 @@ describe("Feature: the player's run, from the first frame to the saved session",
     const without = await sweepWithoutBalance(w);
     expectAbsent(without.all, MONEY, "the answers without the balance (end of the run)");
     const withAll = await sweepWithBalance(w);
-    expectPresent(withAll, [PLAYER_RUN.start, PLAYER_RUN.end, F.net, F.fees, F.gross], "the answers with the balance");
+    expectPresent(
+      withAll,
+      [PLAYER_RUN.start, PLAYER_RUN.end, F.net, F.fees, F.gross],
+      "the answers with the balance",
+    );
     // Without the balance the card still knows the run happened: places, quantities, times, counts.
-    const open = run(await w.poll(false));
+    const quiet = await w.poll(false);
+    const open = run(quiet);
     expect(open).toMatchObject({ stage: "complete", buys: 2, sells: 2, scu_bought: F.scu });
     expect(open.money).toBeUndefined();
+    // The session bar knows the trip happened (a count) and holds back every amount.
+    expect(quiet.sessions.current).toMatchObject({
+      trips: 1,
+      trips_with_net: 1,
+      money: "withheld",
+    });
+    expect(quiet.balance).toBeUndefined();
+    expect(quiet.ledger.movements).toBeUndefined();
 
     // ---- Later: nothing changes, nothing is stored twice.
-    const revision = w.sessionsJson().revision;
     await w.playTo(settled + 60);
     expect(w.sessionsJson().sessions[0]!.trips).toHaveLength(1);
     expect(w.sessionsJson().sessions[0]!.trips[0]!.key).toBe(session.trips[0]!.key);
-    void revision;
     // The label the View shows for a plan tied by prices exists only from two runs: a single one gives no line.
     const calib = calibrationFromLedger(L, (await w.poll(true)).ledger);
     expect(calib).toBeNull();

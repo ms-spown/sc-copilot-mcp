@@ -68,7 +68,8 @@ export function kickLines(ms: number): string[] {
 }
 
 /** The game writes its quit line (a clean exit). */
-export const quitLine = (ms: number) => `${stamp(ms)} [Notice] <SystemQuit> CSystem::Quit invoked exitCode=0 [Team_Core]`;
+export const quitLine = (ms: number) =>
+  `${stamp(ms)} [Notice] <SystemQuit> CSystem::Quit invoked exitCode=0 [Team_Core]`;
 
 /** Lines that carry the handle, as real logs do (location request, lobby, ship channel). */
 export function handleLines(ms: number): string[] {
@@ -104,4 +105,5 @@ export const contractCompleted = (ms: number, title: string, mission: string): s
 ];
 
 /** A hand-made mission id (36 characters, as the game writes them). */
-export const missionId = (n: number) => `${n.toString(16).padStart(8, "a")}-1111-2222-3333-444444444444`;
+export const missionId = (n: number) =>
+  `${n.toString(16).padStart(8, "a")}-1111-2222-3333-444444444444`;

@@ -43,7 +43,12 @@ const scwClient = createScwClient(config.scwBaseUrl);
 const sessionSettings = sessionsConfig(process.env, config.telemetry);
 let sessions: SessionManager | undefined;
 if (sessionSettings.enabled) {
-  sessions = createSessionStack({ telemetry, gameLog, connection, config: sessionSettings }).manager;
+  sessions = createSessionStack({
+    telemetry,
+    gameLog,
+    connection,
+    config: sessionSettings,
+  }).manager;
   sessions.start();
   // The last trip is not lost when the host closes the server: one last look, saved, before the process ends.
   process.stdin.once("end", () => {

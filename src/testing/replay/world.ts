@@ -148,6 +148,8 @@ export class ReplayWorld {
   readonly logFile: string;
   readonly sessionsFile: string;
   readonly outputs: Output[] = [];
+  /** The seconds at which a step was taken, in order (for the harness's own tests, and to diagnose a scenario). */
+  readonly steps: number[] = [];
   game!: FakeGame;
 
   /** What the fake game sends. */
@@ -205,7 +207,10 @@ export class ReplayWorld {
     const w = new ReplayWorld(opts);
     w.game = await startFakeGame();
     // The log starts a minute before second 0: a game that had just been started.
-    w.writeLog([...headerLines(w.epoch - 60_000), ...joinLines(w.epoch - 50_000)], w.epoch - 50_000);
+    w.writeLog(
+      [...headerLines(w.epoch - 60_000), ...joinLines(w.epoch - 50_000)],
+      w.epoch - 50_000,
+    );
     await w.boot();
     return w;
   }
@@ -282,6 +287,7 @@ export class ReplayWorld {
   /** One step at second `s` (>= the current one). */
   async step(s: number): Promise<void> {
     this.cur = Math.max(this.cur, s);
+    this.steps.push(this.cur);
     this.clock.t = this.ms(this.cur);
     while (this.actions.length > 0 && this.actions[0]!.sec <= this.cur + 1e-9) {
       this.actions.shift()!.run();
@@ -396,7 +402,10 @@ export class ReplayWorld {
 
     // Start the reader and wait for the fake game to be reached.
     await this.telemetry.status(true);
-    await until(() => this.game.connections() > connectionsBefore, "the reader to reach the fake game");
+    await until(
+      () => this.game.connections() > connectionsBefore,
+      "the reader to reach the fake game",
+    );
     await until(
       async () => ["connected", "live"].includes((await this.telemetry.status(false)).state),
       "the telemetry state to be connected",

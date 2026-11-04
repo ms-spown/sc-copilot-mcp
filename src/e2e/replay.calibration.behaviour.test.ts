@@ -133,7 +133,11 @@ describe("Feature: route reliability from the player's own runs", () => {
     // What the margin and the fees do not explain is exactly the fuel.
     expect(r3.money.fees.unexplained).toBe(FUEL);
     // The residual is what neither the margin nor a named cause explains: here, the fuel, which the log cannot name.
-    expect(r3.money.decomposition).toMatchObject({ net: F.net - FUEL, residual: -FUEL, closes: true });
+    expect(r3.money.decomposition).toMatchObject({
+      net: F.net - FUEL,
+      residual: -FUEL,
+      closes: true,
+    });
     expect(r3.money.decomposition.parts.unexplained).toBe(-FUEL);
     expect(r3.money.decomposition.named).toEqual([
       expect.objectContaining({ amount: -FUEL, reason: "no_cause" }),

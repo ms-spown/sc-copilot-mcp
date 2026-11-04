@@ -203,6 +203,51 @@ npm run test:stress -- --rounds 10 --parallel 3 --burners 16   # the setting use
 A run takes about ten times longer than an idle one. A test that fails there and passes alone is flaky: fix its
 cause (above) rather than raising a bound.
 
+## End-to-end replay scenarios
+
+Every part of the trade and session pipeline has its own tests; `src/e2e/replay.*.behaviour.test.ts` plays them all
+TOGETHER, on one synthetic timeline, through the real objects: the telemetry service (fed over a loopback socket by the
+fake game and the frame encoder), the Game.log reader, the connection tracker, the ledger service, the session manager
+and its file in a temp folder, the dashboard service behind `sc_live_poll`, and the tools (`sc_session_*`,
+`sc_trade_journal`, `sc_live_*`, `sc_trade_suggest`) called through an in-memory MCP client. What is made up: the game, the
+log lines, the planner behind the action bar, and the clock. One `VirtualClock` is read by every part, so nothing sleeps.
+The harness is `src/testing/replay/` (start with the header of `world.ts`).
+
+To add a scenario:
+
+1. Start a world with `useWorld()` (`story.ts`) and `await rig.start()`: the server was watching when the game began,
+   the stream is open, nothing has happened. Time is in seconds from the epoch of the world.
+2. Schedule the story with `world.at(seconds)`: `.log(lines)` (the line builders are in `lines.ts`, every line carries its
+   own time), `.change(delta)` or `.balance(n)`, `.ship(spec)`, `.cut()` and `.resume()` of the stream. `scheduleRun`
+   (`scripts.ts`) schedules the synthetic copy of the player's run; its figures are in `PLAYER_RUN` and `RUN_FIGURES`.
+3. Move time with `await world.playTo(seconds)`, then ask: `world.poll(includeBalance)`, `world.call(tool, args)`,
+   `world.applyPlan()` (the action bar's own search and "apply"), `world.sessionsJson()`. `world.crash()`,
+   `world.playDownTo()` and `world.restart()` kill the server objects and recreate them on the same files.
+4. Write the expected figures from the story, not from what the code prints. Check privacy at every step with
+   `sweepWithoutBalance` and `expectAbsent` (`audit.ts`), and always the positive control (`expectPresent`) with the
+   balance: an absence proves nothing if the figure was never there.
+
+Rules the harness depends on (each one cost a false failure once):
+
+- **A step is a stage of one moment.** The clock moves, the due events run, the log grows (the due lines and one filler
+  line), one frame carries the balance (and the world waits until the telemetry service counted it, so the balance is
+  stamped with THIS step's time), then the ledger reads the log and the session manager looks at the game. Steps fall on
+  a 2 s grid and on every scheduled event.
+- **The balance is only vouched for by frames.** The commerce model trusts a balance for 3 s after its last frame. A
+  stretch played with `playTo(s, { dt: 30 })` is a stretch the telemetry did not cover: use it for quiet time only, and
+  come back to the default grid a few seconds before anything that reads the balance. A stream cut (`.cut()`) must end
+  before the model reads the final balance (8 s after the last cargo line), or the result is unknown, not estimated.
+- **A cargo line is believed 3 s later.** The game logs only failures, so the journal leaves a cargo line `unconfirmed`
+  until 3 s of log have passed after it. The filler line makes the log's last time move; a scenario that asserts a run
+  one second after its last line sees nothing, as the card would.
+- **Figures can collide with durations.** `duration_ms` of 320 s is 320 000, a balance of the story. `expectAbsent` prints
+  the text around the hit; move the scenario in time rather than the figure.
+- **Assumptions are named in the test.** The delay between a log line and the balance change it causes (0.4 to 1.1 s here)
+  and the fee split are invented; the windows (2 s before, 8 s after a cluster) are the model's own assumptions, not
+  measured with the real game. A real capture would replace them.
+- A balance is a varint in the frame: it cannot be negative, so a scenario that spends more than it has must raise the
+  balance first.
+
 ## Reporting a security problem
 
 Do not open a public issue. Follow [SECURITY.md](SECURITY.md) (private security advisory on this repository).
