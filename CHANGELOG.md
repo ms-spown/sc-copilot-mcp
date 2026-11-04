@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-04
+
 ### Added
 - **Commerce action bar in the live dashboard: find the next route.** Four buttons in the commerce card ("Plus
   rentable", "Plus rapide", "Plus sûre", "Gros gain") ask the trade planner (`planTrips`, the code of `uex_plan_trade`)
