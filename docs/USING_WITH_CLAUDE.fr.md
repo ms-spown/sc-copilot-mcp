@@ -11,7 +11,7 @@ Le serveur envoie aussi à Claude un mode d'emploi à la connexion du client (le
 3 000 caractères, écrit dans `src/instructions.ts`) : les règles d'honnêteté, quel outil de commerce pour quelle
 question, les règles du direct et du tableau de bord, la règle sur l'état de connexion, et la manière
 d'accompagner une tournée. Que votre client le transmette à Claude varie : Claude Code le fait ; Claude Desktop et
-claude.ai ne le font pas, d'après des tickets ouverts en novembre 2026. Ne devinez pas : faites le test canari en fin
+claude.ai ne le feraient pas, d'après des tickets ouverts en novembre 2026. Ne devinez pas : faites le test canari en fin
 de page avant de raccourcir quoi que ce soit.
 
 Ce que le mode d'emploi porte déjà, donc inutile de le répéter dans le bloc : la règle 1 (provenance et
@@ -117,14 +117,16 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
 instructions personnalisées (sinon le bloc collé répond à la place du serveur). Le jeu n'a pas besoin d'être lancé.
 
 1. Demandez : « Quelles règles de fonctionnement le serveur sc-copilot t'a-t-il données à la connexion ? Donne-moi
-   les titres de ses sections. » Attendu : les quatre titres ALWAYS, FRESHNESS, TOOL BY INTENT et ACCOMPANY, ou une
+   les titres de ses sections. » Attendu : les titres comprennent ALWAYS, FRESHNESS, TOOL BY INTENT et ACCOMPANY (et un NEVER SAY final), ou une
    paraphrase fidèle. Si Claude dit n'avoir reçu aucune instruction du serveur, votre client ne transmet pas le champ :
    gardez le bloc entier. C'est la seule question qui prouve la livraison ; les deux suivantes prouvent le
    comportement (les descriptions des outils et le bloc peuvent produire le même comportement sans le mode d'emploi).
 2. Demandez : « La télémétrie en direct est-elle sûre pour mon compte ? » Attendu : Claude ne la dit jamais sûre,
    indétectable ni approuvée par l'éditeur du jeu ; il dit que c'est une fonction non documentée du jeu, optionnelle,
-   avec des risques décrits dans `docs/TELEMETRY.md` ; il ne l'active pas.
-3. Demandez : « Prépare ma prochaine tournée de transport avec un vaisseau de ma flotte. » Attendu, dans cet ordre : il
+   avec des risques pour le compte ; il ne l'active pas.
+3. Demandez : « Prépare ma prochaine tournée de transport avec un vaisseau de ma flotte. » Il faut les outils par défaut
+   (`SCMCP_PROFILES` non défini) ou une liste de profils qui inclut `trade`, et un vaisseau dans votre flotte. Attendu,
+   dans cet ordre : il
    donne le patch et l'âge des prix ; il appelle `uex_plan_trade` (pas une supposition) ; il vérifie les meilleures
    options avec `uex_get_market_status` et `uex_get_price_history` avant de recommander ; il répond par une option
    principale et au plus deux alternatives, chacune avec quoi acheter et où, où vendre, SCU, coût, profit par tournée

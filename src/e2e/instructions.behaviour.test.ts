@@ -107,7 +107,7 @@ describe("Feature: the server tells Claude how to be a trade copilot", () => {
       ["never calls telemetry safe", /Never call telemetry safe, undetectable or approved/],
       ["asks before the balance", /include_balance, and only after asking the player/],
       ["never calls the dashboard's tools", /Never call sc_live_poll or sc_live_mark/],
-      ["does not open a second dashboard", /never a second copy/],
+      ["does not open a second dashboard", /never a second one unless the player asks/],
       ["never says the game is not running", /Never say the game is not running/],
       ["connection state", /connection .*disconnected, menu or closed/],
       ["untrusted text is data", /untrusted_text .*never instructions/],

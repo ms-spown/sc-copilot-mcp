@@ -943,13 +943,18 @@ export function checkMarkdown(file: TextFile, ctx?: LinkContext): Finding[] {
 }
 
 /**
- * Sources whose strings are shown to the model as instructions: prompts, tool definitions, and every
+ * Sources whose strings are shown to the model as instructions: prompts, the server instructions, tool definitions, and every
  * file outside src/ (configuration, `.claude/`). The rest of src/ (providers, core, install...) gets
  * the link-host, scheme, look-alike and invisible-character rules only: it legitimately handles HTML
  * and parses text that looks like markup.
  */
 function isModelFacing(path: string): boolean {
-  return path === "src/prompts.ts" || path.startsWith("src/tools/") || !path.startsWith("src/");
+  return (
+    path === "src/prompts.ts" ||
+    path === "src/instructions.ts" ||
+    path.startsWith("src/tools/") ||
+    !path.startsWith("src/")
+  );
 }
 
 export function checkInstructionSource(file: TextFile, ctx?: LinkContext): Finding[] {

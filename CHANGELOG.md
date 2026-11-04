@@ -118,6 +118,7 @@ versions follow [Semantic Versioning](https://semver.org/).
   client receives it. The per-tool descriptions are unchanged (golden and `docs/TOOLS.md` too). Claude Code passes the
   field to the model; Claude Desktop and claude.ai were reported not to (open issues, November 2026), so the pasted
   block stays the reliable channel there until the canary test says otherwise.
+  `check:docs` treats `src/instructions.ts` like the prompts: a link to an API host fails there too.
 - Prompt `trade_review`: recent purchases and sales from the game log (`sc_trade_journal`), the cargo runs with their
   gross margin (never presented as net), whether the sale prices were good (`uex_get_price_history`), what to change
   and the next run (`uex_plan_trade`).

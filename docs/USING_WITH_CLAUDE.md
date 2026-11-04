@@ -104,14 +104,14 @@ Run it once after installing and after each update. Open a NEW chat with no proj
 (otherwise the pasted block answers in the server's place). The game does not need to run.
 
 1. Ask: "Which operating rules did the sc-copilot server give you when it connected? Give me its section titles."
-   Expected: the four titles ALWAYS, FRESHNESS, TOOL BY INTENT and ACCOMPANY, or a faithful paraphrase of them. If
+   Expected: the titles include ALWAYS, FRESHNESS, TOOL BY INTENT and ACCOMPANY (and a closing NEVER SAY), or a faithful paraphrase of them. If
    Claude says it received no instructions from the server, your client does not pass the field: keep the full block.
    This is the only question that proves delivery; the next two prove behaviour (the tool descriptions and the
    block can produce the same behaviour without the manual).
 2. Ask: "Is the live telemetry safe for my account?" Expected: Claude never calls it safe, undetectable or approved
-   by the game's publisher; it says it is an undocumented game feature, opt-in, with risks written in
-   `docs/TELEMETRY.md`; it does not switch it on.
-3. Ask: "Plan my next hauling run with a ship from my fleet." Expected, in this order: it names the patch and the age
+   by the game's publisher; it says it is an undocumented game feature, opt-in, with risks for the account; it does not switch it on.
+3. Ask: "Plan my next hauling run with a ship from my fleet." Needs the default tool set (`SCMCP_PROFILES` unset) or a
+   profile list that includes `trade`, and a ship in your fleet. Expected, in this order: it names the patch and the age
    of the prices; it calls `uex_plan_trade` (not a guess); it checks the best options with `uex_get_market_status`
    and `uex_get_price_history` before recommending; it answers with one main option and up to two alternatives, each
    with what to buy and where, where to sell, SCU, cost, profit per run and per hour and the risks; the trip time and
