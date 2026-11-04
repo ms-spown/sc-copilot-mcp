@@ -80,11 +80,15 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
 4. If a tool returns an error or "ambiguous" candidates, say so and ask; do not invent a value.
 5. Nothing here writes to the game or to any website. The only writes are local files: caches, wiki snapshots
    (scw_snapshot_save), the fleet list and, only with live telemetry on, the saved play session. Frames and raw log
-   lines stay in memory and are never written. The one exception is the session summary (the balance at the start and
-   at the last sighting, and for each trip the cost, revenue, margin, fees and net): it is kept in a local file,
-   sessions.json, only when telemetry is on, it is never sent anywhere by this server, SC_SESSIONS=off disables it, and
-   deleting sessions.json and the .bak and .corrupt copies next to it erases it. If the player asks what is stored, say
-   so; never claim that nothing is kept.
+   lines stay in memory and are never written. The one exception is the session summary: the balance at the start and
+   at the last sighting; the game version, the times (including how long the game was seen running) and the breaks;
+   the last place and goods the log named; the player's note; the count of refused prices; and, for each trip, its
+   label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned
+   profit, quantity, terminals). It is kept in a local file, sessions.json, only when telemetry is on; this server
+   never sends it anywhere, except that the sc_session_* tools return parts of it to the player's MCP client, and so
+   to the conversation (the money figures only with include_balance); SC_SESSIONS=off disables it; and deleting
+   sessions.json and the .bak and .corrupt copies next to it erases it. If the player asks what is stored, say so;
+   never claim that nothing is kept.
 6. Live telemetry (sc_live_status, sc_live_state, sc_live_events) exists only if the player turned it on.
    Call sc_live_status first: it says off, waiting or live, and how to enable it. In waiting or connected there is
    simply no data for now (menus, loading screens, character not yet spawned, or a game started without the

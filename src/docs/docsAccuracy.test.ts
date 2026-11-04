@@ -7,6 +7,7 @@ import { GameLog } from "../providers/gamelog/reader.js";
 import { Scmdb } from "../providers/scmdb/store.js";
 import { MAX_INSTRUCTIONS_LENGTH, SERVER_INSTRUCTIONS } from "../instructions.js";
 import { PROMPTS } from "../prompts.js";
+import { InterruptionSchema, SessionSchema, TripSchema } from "../providers/sessions/types.js";
 import { CATALOG, PROFILE_NAMES } from "../tools/catalog.js";
 import { allTools } from "../tools/registry.js";
 
@@ -251,9 +252,119 @@ describe("Feature: the English and French pages state the same things", () => {
 
 /** The reviewed sentence about what stays in memory and what is saved. Change it here and in every page below. */
 const PRIVACY_EN =
-  "Frames and raw log lines stay in memory and are never written. The one exception is the session summary (the balance at the start and at the last sighting, and for each trip the cost, revenue, margin, fees and net): it is kept in a local file, `sessions.json`, only when telemetry is on, it is never sent anywhere by this server, `SC_SESSIONS=off` disables it, and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it.";
+  "Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (the money figures only with `include_balance`); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it.";
 const PRIVACY_FR =
-  "Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais écrites. La seule exception est le résumé de session (le solde au départ et à la dernière observation, et pour chaque trajet le coût, le revenu, la marge, les frais et le net) : il est gardé dans un fichier local, `sessions.json`, seulement quand la télémétrie est activée, il n'est jamais envoyé nulle part par ce serveur, `SC_SESSIONS=off` le désactive, et supprimer `sessions.json` ainsi que les copies `.bak` et `.corrupt` à côté de lui l'efface.";
+  "Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais écrites. La seule exception est le résumé de session : le solde au départ et à la dernière observation ; la version du jeu, les heures (dont la durée pendant laquelle le jeu a été vu en marche) et les coupures ; le dernier lieu et les dernières marchandises nommés par le journal ; votre note ; le nombre de prix refusés ; et, pour chaque trajet, son libellé (titre du contrat, lieux, marchandises), la quantité, le coût, le revenu, la marge, les frais, le net et le plan appliqué (profit prévu, quantité, terminaux). Il est gardé dans un fichier local, `sessions.json`, seulement quand la télémétrie est activée ; ce serveur ne l'envoie jamais nulle part, sauf que les outils `sc_session_*` en renvoient des parties à votre client MCP, donc à votre conversation (les chiffres d'argent seulement avec `include_balance`) ; `SC_SESSIONS=off` le désactive ; et supprimer `sessions.json` ainsi que les copies `.bak` et `.corrupt` à côté de lui l'efface.";
+
+/**
+ * The same sentence as rule 5 of the block pasted into Claude: no backticks (the block is a code fence) and addressed to
+ * Claude, so "your" becomes "the player's". Nothing else may differ.
+ */
+const blockVariant = (sentence: string) =>
+  sentence
+    .replace(/`/g, "")
+    .replace("your note", "the player's note")
+    .replace(
+      "your MCP client, and so to your conversation",
+      "the player's MCP client, and so to the conversation",
+    )
+    .replace("votre note", "la note du joueur")
+    .replace(
+      "votre client MCP, donc à votre conversation",
+      "le client MCP du joueur, donc à la conversation",
+    );
+
+/**
+ * What the session file stores, by key of the zod objects in providers/sessions/types.ts. Each key is covered by a phrase
+ * of the sentence (the phrase must be in it), or allowed with a reason: a key that is in neither makes the test fail, so
+ * whoever adds a stored field has to review the sentence.
+ */
+const COVERED_BY: Record<string, { en: string; fr: string } | string> = {
+  // Session
+  id: "allowed: an identifier of the file's own, no game identifier",
+  number: "allowed: the session's rank, 1, 2, 3...",
+  started_at: { en: "the times", fr: "les heures" },
+  ended_at: { en: "the times", fr: "les heures" },
+  end_reason: "allowed: why the session ended (manual, new session, gap)",
+  last_activity_at: { en: "the times", fr: "les heures" },
+  quit_at: { en: "the times", fr: "les heures" },
+  updated_at: { en: "the times", fr: "les heures" },
+  start_balance: { en: "the balance at the start", fr: "le solde au départ" },
+  start_balance_at: { en: "the balance at the start", fr: "le solde au départ" },
+  start_balance_quality: "allowed: how far the start balance can be trusted (a label)",
+  last_balance: { en: "at the last sighting", fr: "à la dernière observation" },
+  last_balance_at: { en: "at the last sighting", fr: "à la dernière observation" },
+  game_version: { en: "the game version", fr: "la version du jeu" },
+  game_channel: { en: "the game version", fr: "la version du jeu" },
+  active_ms: { en: "how long the game was seen running", fr: "le jeu a été vu en marche" },
+  interruptions: { en: "the breaks", fr: "les coupures" },
+  from: { en: "the breaks", fr: "les coupures" },
+  to: { en: "the breaks", fr: "les coupures" },
+  trips: { en: "for each trip", fr: "pour chaque trajet" },
+  trips_dropped: "allowed: a count of trips cut to stay under the size bound",
+  last_location: {
+    en: "the last place and goods",
+    fr: "le dernier lieu et les dernières marchandises",
+  },
+  last_commodity: {
+    en: "the last place and goods",
+    fr: "le dernier lieu et les dernières marchandises",
+  },
+  last_context_at: { en: "the times", fr: "les heures" },
+  note: { en: "your note", fr: "votre note" },
+  price_refusals: { en: "the count of refused prices", fr: "le nombre de prix refusés" },
+  price_refusal_last_at: { en: "the count of refused prices", fr: "le nombre de prix refusés" },
+  // Trip
+  key: "allowed: a hash of what identifies the trip, never a game identifier",
+  kind: "allowed: a type tag (hauling, trade, contract); `kind` of a break is covered by the breaks",
+  source: "allowed: where the trip came from (log ledger, trade journal, manual)",
+  label: {
+    en: "its label (contract title, places, goods)",
+    fr: "son libellé (titre du contrat, lieux, marchandises)",
+  },
+  commodity: {
+    en: "its label (contract title, places, goods)",
+    fr: "son libellé (titre du contrat, lieux, marchandises)",
+  },
+  buy_terminal: {
+    en: "its label (contract title, places, goods)",
+    fr: "son libellé (titre du contrat, lieux, marchandises)",
+  },
+  sell_terminal: {
+    en: "its label (contract title, places, goods)",
+    fr: "son libellé (titre du contrat, lieux, marchandises)",
+  },
+  scu: { en: "quantity", fr: "la quantité" },
+  cost_auec: { en: "cost", fr: "le coût" },
+  revenue_auec: { en: "revenue", fr: "le revenu" },
+  fees_auec: { en: "fees", fr: "les frais" },
+  gross_margin_auec: { en: "margin", fr: "la marge" },
+  net_auec: { en: "net", fr: "le net" },
+  net_kind: "allowed: how the net was obtained, a label about a covered figure",
+  fees_method: "allowed: how the fees were obtained, a label about a covered figure",
+  unexplained_auec:
+    "allowed: the part of the balance change the figures do not explain, a derived figure of the net",
+  net_doubtful: "allowed: a flag about the net",
+  figures_from_before: "allowed: a flag about the net and the fees",
+  planned_profit_auec: {
+    en: "the applied plan (planned profit, quantity, terminals)",
+    fr: "le plan appliqué (profit prévu, quantité, terminaux)",
+  },
+  planned_scu: {
+    en: "the applied plan (planned profit, quantity, terminals)",
+    fr: "le plan appliqué (profit prévu, quantité, terminaux)",
+  },
+  plan_buy_terminal: {
+    en: "the applied plan (planned profit, quantity, terminals)",
+    fr: "le plan appliqué (profit prévu, quantité, terminaux)",
+  },
+  plan_sell_terminal: {
+    en: "the applied plan (planned profit, quantity, terminals)",
+    fr: "le plan appliqué (profit prévu, quantité, terminaux)",
+  },
+  plan_link:
+    "allowed: how the plan was tied to the run (by name or by prices), a label about the plan",
+};
 
 /** The sentence may be wrapped over several lines or quoted in a block: compare on single spaces. */
 const flat = (text: string) => text.replace(/^[> ]+/gm, "").replace(/\s+/g, " ");
@@ -279,14 +390,58 @@ describe("Feature: every page says the same true thing about what is saved", () 
     });
   }
 
-  it("Given the block to paste, Then rule 5 allows the session file and does not contradict rule 8", () => {
-    for (const file of ["docs/USING_WITH_CLAUDE.md", "docs/USING_WITH_CLAUDE.fr.md"]) {
+  it("Given the block to paste, Then rule 5 carries the same sentence and does not contradict rule 8", () => {
+    for (const [file, sentence] of [
+      ["docs/USING_WITH_CLAUDE.md", PRIVACY_EN],
+      ["docs/USING_WITH_CLAUDE.fr.md", PRIVACY_FR],
+    ] as const) {
       const block = flat(read(file));
       const rule5 = block.slice(block.indexOf(" 5. "), block.indexOf(" 6. "));
-      expect(rule5, file).toContain("sessions.json");
+      expect(rule5, file).toContain(blockVariant(sentence));
       expect(rule5, file).toContain("scw_snapshot_save");
-      expect(rule5, file).toContain("SC_SESSIONS=off");
       expect(block, file).toContain("sc_session_new");
+    }
+  });
+
+  it("Given the stored shapes of the session file, Then every key is covered by the sentence or allowed with a reason", () => {
+    const keys = new Set([
+      ...Object.keys(SessionSchema.shape),
+      ...Object.keys(TripSchema.shape),
+      ...Object.keys(InterruptionSchema.shape),
+    ]);
+    // A key nobody reviewed: add it to COVERED_BY with the phrase of the sentence that covers it, or an "allowed" reason,
+    // and change the sentence (and its copies) if the new field is a new category of what is stored.
+    expect([...keys].filter((k) => !(k in COVERED_BY))).toEqual([]);
+    expect(Object.keys(COVERED_BY).filter((k) => !keys.has(k))).toEqual([]);
+    for (const [key, cover] of Object.entries(COVERED_BY)) {
+      if (typeof cover === "string") {
+        expect(cover, key).toMatch(/^allowed: .{10,}/);
+        continue;
+      }
+      expect(PRIVACY_EN, `${key} (en)`).toContain(cover.en);
+      expect(PRIVACY_FR, `${key} (fr)`).toContain(cover.fr);
+    }
+  });
+
+  it("Given the pages that describe `disable`, Then each says it leaves the saved sessions in place", () => {
+    const says: [string, RegExp][] = [
+      ["README.md", /does not delete your saved sessions/],
+      ["README.fr.md", /ne supprime pas vos sessions enregistrées/],
+      ["docs/TELEMETRY.md", /does not delete your saved sessions/],
+      ["docs/TELEMETRY.fr.md", /ne supprime pas vos sessions enregistrées/],
+      ["SECURITY.md", /leaves `sessions.json` in place/],
+    ];
+    for (const [file, re] of says) expect(flat(read(file)), file).toMatch(re);
+  });
+
+  it("Given the app-only tools, Then the architecture page names each one and the troubleshooting page the dashboard ones", () => {
+    const appOnly = tools.filter((t) => t.requiresUi && t.name !== "sc_live_dashboard");
+    expect(appOnly.length).toBeGreaterThanOrEqual(4);
+    const architecture = read("docs/ARCHITECTURE.md");
+    for (const t of appOnly) expect(architecture, t.name).toContain(`\`${t.name}\``);
+    const troubleshooting = read("docs/TROUBLESHOOTING.md");
+    for (const name of ["sc_live_dashboard", "sc_live_poll", "sc_live_mark", "sc_trade_suggest"]) {
+      expect(troubleshooting, name).toContain(`\`${name}\``);
     }
   });
 

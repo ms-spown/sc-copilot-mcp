@@ -94,11 +94,16 @@ Vous disposez des outils Star Citizen fournis par le serveur "sc-copilot". Règl
 5. Rien ici n'écrit dans le jeu ni sur aucun site web. Les seules écritures sont des fichiers locaux : caches,
    instantanés du wiki (scw_snapshot_save), liste de flotte et, seulement avec la télémétrie en direct activée, la
    session de jeu enregistrée. Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais
-   écrites. La seule exception est le résumé de session (le solde au départ et à la dernière observation, et pour
-   chaque trajet le coût, le revenu, la marge, les frais et le net) : il est gardé dans un fichier local,
-   sessions.json, seulement quand la télémétrie est activée, il n'est jamais envoyé nulle part par ce serveur,
-   SC_SESSIONS=off le désactive, et supprimer sessions.json ainsi que les copies .bak et .corrupt à côté de lui
-   l'efface. Si le joueur demande ce qui est enregistré, dites-le ; ne prétendez jamais que rien n'est gardé.
+   écrites. La seule exception est le résumé de session : le solde au départ et à la dernière observation ; la version
+   du jeu, les heures (dont la durée pendant laquelle le jeu a été vu en marche) et les coupures ; le dernier lieu et
+   les dernières marchandises nommés par le journal ; la note du joueur ; le nombre de prix refusés ; et, pour chaque
+   trajet, son libellé (titre du contrat, lieux, marchandises), la quantité, le coût, le revenu, la marge, les frais,
+   le net et le plan appliqué (profit prévu, quantité, terminaux). Il est gardé dans un fichier local, sessions.json,
+   seulement quand la télémétrie est activée ; ce serveur ne l'envoie jamais nulle part, sauf que les outils
+   sc_session_* en renvoient des parties à le client MCP du joueur, donc à la conversation (les chiffres d'argent
+   seulement avec include_balance) ; SC_SESSIONS=off le désactive ; et supprimer sessions.json ainsi que les copies
+   .bak et .corrupt à côté de lui l'efface. Si le joueur demande ce qui est enregistré, dites-le ; ne prétendez jamais
+   que rien n'est gardé.
 6. La télémétrie en direct (sc_live_status, sc_live_state, sc_live_events) n'existe que si le joueur l'a activée.
    Appelez d'abord sc_live_status : il dit off, waiting ou live, et comment l'activer. En waiting ou connected, il n'y a
    simplement pas de données pour l'instant (menus, écrans de chargement, personnage pas encore apparu, ou jeu lancé
