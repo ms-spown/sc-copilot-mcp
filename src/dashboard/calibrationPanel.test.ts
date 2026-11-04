@@ -512,6 +512,29 @@ describe("Feature: the line under the suggestions, in the assembled page", () =>
     expect(text(w)).not.toContain("tes 4 trajets");
   });
 
+  it("Given a bubble open on a confidence tag, When the balance is hidden again, Then the tag loses its tip and the bubble closes", async () => {
+    const w = await page();
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(3 * SECOND);
+    findButton(w.root, "Plus rentable").click();
+    await w.advance(300);
+    const tags = findAll(w.root, (n) => n.className === "tr-tag" && !!n.attrs["data-tip"]);
+    expect(tags.length).toBeGreaterThan(0);
+    expect(tags[0]!.attrs["tabindex"]).toBe("0");
+    for (const fn of w.doc.body.listeners["focusin"] ?? []) fn({ target: tags[0] });
+    const bubble = findAll(w.root, (n) => n.className === "tip")[0]!;
+    expect(isShown(bubble)).toBe(true);
+    expect(bubble.textContent).toBe(tags[0]!.attrs["data-tip"]);
+    findButton(w.root, "Masquer").click();
+    await w.advance(3 * SECOND);
+    // the hidden tags are not in the tab order and say nothing
+    for (const t of tags) {
+      expect(t.attrs["data-tip"]).toBe("");
+      expect(t.attrs["tabindex"]).toBe("-1");
+    }
+    expect(isShown(bubble)).toBe(false);
+  });
+
   it("Given the line is shown, Then it is in no message to the agent, no context update and no message on the channel", async () => {
     const w = await page();
     findButton(w.root, "Afficher le solde").click();

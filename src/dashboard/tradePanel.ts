@@ -725,11 +725,13 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
             : "même résultat que ce trajet",
         );
       } else {
+        setTip(tiles.next.tag, "", true);
         tileValue(tiles.next, "—", "", "", false, "il faut un plan et des frais observés");
       }
     } else {
       // Nothing measured yet (no run, or the balance is hidden): no wall of dashes, only what exists is drawn.
       for (const k of ["net", "turnover", "fees", "next"]) show(tiles[k].root, false);
+      setTip(tiles.next.tag, "", true);
       if (plan && typeof plan.expected_profit_auec === "number") {
         setText(tiles.turnover.label, "Bénéfice prévu");
         tileValue(

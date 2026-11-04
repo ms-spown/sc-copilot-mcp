@@ -592,6 +592,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.pwrNodes = [];
     for (let i = 0; i < 8; i++) {
       const n = el("div", "pwr-node");
+      n.setAttribute("role", "img");
       n.label = el("span", "pwr-label", "");
       n.state = el("span", "pwr-state", "");
       add(n, n.label, n.state);
@@ -613,6 +614,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.lightEls = [];
     for (let i = 0; i < 10; i++) {
       const l = el("div", "lamp");
+      l.setAttribute("role", "img");
       l.name = el("span", "lamp-name", "");
       l.state = el("span", "lamp-state", "");
       add(l, l.name, l.state);
@@ -944,15 +946,36 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     for (; n; n = n.parentNode) if (n.getAttribute && n.getAttribute("data-tip")) return n;
     return null;
   };
+  /** A label the page no longer shows (a hidden card, the other display mode) has no bubble. */
+  const tipGone = (n: any): boolean => {
+    for (let p = n; p; p = p.parentNode)
+      if (p.getAttribute && p.getAttribute("data-hidden") === "1") return true;
+    return n.offsetParent === null;
+  };
   const tipMark = (n: any, on: boolean) => {
     setAttr(n, "aria-describedby", on ? "sc-tip" : "");
-    if (n.getAttribute("role")) setAttr(n, "aria-expanded", on ? "true" : "false");
+    if (n.getAttribute("role") === "button") setAttr(n, "aria-expanded", on ? "true" : "false");
   };
   function tipHide() {
     if (tipOn) tipMark(tipOn, false);
     tipOn = null;
     tipPin = false;
     show(R.tip, false);
+  }
+  /** Under the label, above it when there is no room, and never outside the frame (a short compact frame included). */
+  function tipPlace() {
+    // Measured from the left edge, where a bubble has all its width (a fixed box shrinks towards the right edge).
+    R.tip.style.setProperty("left", "8px");
+    const r = tipOn.getBoundingClientRect();
+    const w = R.tip.offsetWidth || 0;
+    const h = R.tip.offsetHeight || 0;
+    const room = win.innerHeight || 0;
+    let top = r.bottom + 4;
+    if (top + h + 4 > room) top = r.top - h - 4;
+    top = Math.max(4, Math.min(top, room - h - 4));
+    const left = Math.max(8, Math.min(r.left, (win.innerWidth || 0) - w - 8));
+    R.tip.style.setProperty("left", Math.round(left) + "px");
+    R.tip.style.setProperty("top", Math.round(top) + "px");
   }
   function tipShow(n: any) {
     if (tipOn !== n) {
@@ -963,24 +986,24 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     tipMark(n, true);
     setText(R.tip, n.getAttribute("data-tip"));
     show(R.tip, true);
-    // Under the label, or above it when there is no room; never outside the frame.
-    const r = n.getBoundingClientRect();
-    const h = R.tip.offsetHeight || 0;
-    const below = r.bottom + h + 8 <= (win.innerHeight || 0) || r.top - h - 8 < 0;
-    const left = Math.max(
-      8,
-      Math.min(r.left, (win.innerWidth || 0) - (R.tip.offsetWidth || 0) - 8),
-    );
-    R.tip.style.setProperty("left", Math.round(left) + "px");
-    R.tip.style.setProperty("top", Math.round(below ? r.bottom + 4 : r.top - h - 4) + "px");
+    tipPlace();
   }
-  function tipToggle(n: any) {
-    if (tipOn === n && tipPin) tipHide();
+  /** After every render: the bubble follows its label (the age changes every second) and goes with a label that is gone. */
+  function tipSync() {
+    if (!tipOn) return;
+    const t = tipOn.getAttribute("data-tip");
+    if (!t || tipGone(tipOn)) tipHide();
     else {
-      tipShow(n);
-      tipPin = true;
+      setText(R.tip, t);
+      tipPlace();
     }
   }
+  /** A bubble is placed in the frame, not on the label: when the page scrolls or resizes, a pinned one closes, the others follow. */
+  const onTipMove = () => {
+    if (!tipOn) return;
+    if (tipPin) tipHide();
+    else tipPlace();
+  };
   function buildTips() {
     const body = doc.body;
     body.addEventListener("mouseover", (e: any) => {
@@ -998,19 +1021,37 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       else tipHide();
     });
     body.addEventListener("focusout", () => tipHide());
+    // A click or a tap on a label keeps its bubble open (the hover or the focus that came first opened it); a second one
+    // closes it, as does a click anywhere else.
     body.addEventListener("click", (e: any) => {
       const n = tipOf(e.target);
-      if (n) tipToggle(n);
-      else tipHide();
+      if (!n) tipHide();
+      else if (tipOn === n && tipPin) tipHide();
+      else {
+        tipShow(n);
+        tipPin = true;
+      }
     });
     body.addEventListener("keydown", (e: any) => {
       const n = tipOf(e.target);
-      if (e.key === "Escape") tipHide();
-      else if (n && n.getAttribute("role") && (e.key === "Enter" || e.key === " ")) {
+      if (e.key === "Escape") {
+        // Escape belongs to the host when no bubble is open.
+        if (!tipOn) return;
+        tipHide();
         e.preventDefault();
-        tipToggle(n);
+        e.stopPropagation();
+      } else if (n && n.getAttribute("role") === "button" && (e.key === "Enter" || e.key === " ")) {
+        // What is on screen decides: an open bubble (the focus opened it) closes, a closed one opens and stays.
+        e.preventDefault();
+        if (tipOn === n) tipHide();
+        else {
+          tipShow(n);
+          tipPin = true;
+        }
       }
     });
+    win.addEventListener("scroll", onTipMove, true);
+    win.addEventListener("resize", onTipMove);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1279,7 +1320,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       setText(n.label, c.label);
       setText(n.state, !c.known ? "?" : c.on ? "alimenté" : "coupé");
       setAttr(n, "data-on", !c.known ? "na" : c.on ? "1" : "0");
-      setTip(n, c.title + " : " + (!c.known ? "inconnu" : c.on ? "alimenté" : "coupé"));
+      const said = c.title + " : " + (!c.known ? "inconnu" : c.on ? "alimenté" : "coupé");
+      setTip(n, said);
+      setAttr(n, "aria-label", said);
     }
     const modes = L.flightModesInfo(ship && ship.flight_modes);
     for (let i = 0; i < R.modeChips.length; i++) {
@@ -1298,6 +1341,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       setAttr(slot, "data-tone", ship ? l.tone : "off");
       setAttr(slot, "data-verified", l.verified ? "1" : "0");
       setTip(slot, l.title + " : " + (ship ? l.text : "pas de données"));
+      // The abbreviation on the lamp (THR, RADR) says nothing to a screen reader: the full name and the state do.
+      setAttr(slot, "aria-label", l.title + ", " + (ship ? l.text : "pas de données"));
     }
 
     // Weapons
@@ -1566,12 +1611,6 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       showBalance,
       fullscreen: displayMode === "fullscreen",
     });
-    // An open tip follows its label (the age changes every second) and goes with a label that lost its text.
-    if (tipOn) {
-      const t = tipOn.getAttribute("data-tip");
-      if (t) setText(R.tip, t);
-      else tipHide();
-    }
     R.tradeActions.render(
       tradeActionsContext(actionsOn, tradeLedger ? tradeLedger.trade : null, now, calibration),
     );
@@ -1595,6 +1634,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     }
     if (displayMode === "fullscreen") renderFull(I, V, now);
     else renderInline(I, V, now);
+    // Last, once every panel has written its labels: an open tip follows its label and goes with a label that is gone.
+    tipSync();
     reportSize();
   }
 
@@ -2255,6 +2296,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     win.removeEventListener("message", onWindowMessage);
     doc.removeEventListener("visibilitychange", onVisibility);
     win.removeEventListener("pagehide", onPageHide);
+    win.removeEventListener("scroll", onTipMove, true);
+    win.removeEventListener("resize", onTipMove);
   }
 
   // ---------------------------------------------------------------------------------------------

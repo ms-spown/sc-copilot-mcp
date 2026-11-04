@@ -28,7 +28,14 @@ let dir: string;
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-sessions-tools-refusal-"));
 });
-afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+/** The managers of the test: a tool call starts a look at the file in the background (see afterEach). */
+const managers: SessionManager[] = [];
+afterEach(async () => {
+  // A look started by a call may still be reading or writing the file when the test ends, depending on the load:
+  // close() waits for it, only then is the folder removed.
+  await Promise.all(managers.splice(0).map((m) => m.close()));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
 
 function rig() {
   const clock = { t: T0 };
@@ -59,6 +66,7 @@ function rig() {
       collect: async () => ({ trips: [], context: null, price_refusals: [...refusals] }),
     },
   });
+  managers.push(manager);
   const registry = createRegistry(
     allTools(
       {

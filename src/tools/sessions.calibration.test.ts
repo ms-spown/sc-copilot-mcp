@@ -33,7 +33,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   // The tick that a call started is still reading sessions.json (and may lock and write it) when the test body ends:
-  // measured, it is still running in 19 calls out of 20. Removing the folder under it races its file access, and how
+  // sometimes, depending on the load. Removing the folder under it races its file access, and how
   // that goes depends on the machine's load. close() waits for it; only then is the folder removed.
   await Promise.all(managers.splice(0).map((m) => m.close()));
   fs.rmSync(dir, { recursive: true, force: true });

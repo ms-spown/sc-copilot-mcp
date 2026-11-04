@@ -30,8 +30,12 @@ function fire(w: PageWorld, type: string, target: FakeNode | null, extra: object
   const event: any = {
     target,
     prevented: false,
+    stopped: false,
     preventDefault() {
       event.prevented = true;
+    },
+    stopPropagation() {
+      event.stopped = true;
     },
     ...extra,
   };
@@ -70,23 +74,84 @@ describe("Feature: a tip is reachable without a mouse", () => {
     expect(a.attrs["aria-expanded"]).toBe("false");
   });
 
-  it("Given an open bubble, Then Escape closes it, and Enter or Space opens it again and a second one closes it", async () => {
+  it("Given an open bubble, Then Escape closes it and is taken; given none, Then Escape goes on to the host untouched", async () => {
+    const w = await live();
+    const a = age(w);
+    // nothing open: the View keeps its hands off Escape
+    const idle = fire(w, "keydown", a, { key: "Escape" });
+    expect(idle.prevented).toBe(false);
+    expect(idle.stopped).toBe(false);
+    fire(w, "focusin", a);
+    const taken = fire(w, "keydown", a, { key: "Escape" });
+    expect(open(w)).toBe(false);
+    expect(taken.prevented).toBe(true);
+    expect(taken.stopped).toBe(true);
+    expect(a.attrs["aria-expanded"]).toBe("false");
+  });
+
+  it("Given the focus opened the bubble, Then Enter closes it, the next Enter opens it and keeps it (what is on screen decides)", async () => {
     const w = await live();
     const a = age(w);
     fire(w, "focusin", a);
-    fire(w, "keydown", a, { key: "Escape" });
+    expect(open(w)).toBe(true);
+    // the first Enter after an opening by focus used to change nothing visible: it now closes
+    const first = fire(w, "keydown", a, { key: "Enter" });
+    expect(first.prevented).toBe(true);
     expect(open(w)).toBe(false);
     expect(a.attrs["aria-expanded"]).toBe("false");
-    // Enter pins it: leaving with the mouse no longer closes it
-    const enter = fire(w, "keydown", a, { key: "Enter" });
-    expect(enter.prevented).toBe(true);
+    // the next one opens it and pins it: leaving with the mouse no longer closes it
+    fire(w, "keydown", a, { key: "Enter" });
     expect(open(w)).toBe(true);
     fire(w, "mouseout", a);
     expect(open(w)).toBe(true);
-    fire(w, "keydown", a, { key: " " });
+    // Space does the same as Enter, and a Space on a button must not scroll the page
+    const space = fire(w, "keydown", a, { key: " " });
+    expect(space.prevented).toBe(true);
     expect(open(w)).toBe(false);
     // another key does nothing
-    fire(w, "keydown", a, { key: "a" });
+    const other = fire(w, "keydown", a, { key: "a" });
+    expect(other.prevented).toBe(false);
+    expect(open(w)).toBe(false);
+  });
+
+  it("Given a mouse leaving the label, Then the bubble stays while the pointer goes to a child of the label and closes otherwise", async () => {
+    const w = await live();
+    findButton(w.root, "Plein écran").click();
+    await w.advance(SECOND);
+    const l = lamp(w);
+    const child = l.children[0]!;
+    fire(w, "mouseover", l);
+    expect(open(w)).toBe(true);
+    fire(w, "mouseout", l, { relatedTarget: child });
+    expect(open(w)).toBe(true);
+    fire(w, "mouseout", child, { relatedTarget: w.root });
+    expect(open(w)).toBe(false);
+  });
+
+  it("Given a bubble open on a label that gets hidden, Then it closes at the next render", async () => {
+    const w = await live();
+    findButton(w.root, "Plein écran").click();
+    await w.advance(SECOND);
+    const l = lamp(w);
+    fire(w, "mouseover", l);
+    expect(open(w)).toBe(true);
+    l.parentNode!.attrs["data-hidden"] = "1";
+    await w.advance(2 * SECOND);
+    expect(open(w)).toBe(false);
+  });
+
+  it("Given a pinned bubble, When the page scrolls or resizes, Then it closes; an unpinned one stays (the focus may have scrolled)", async () => {
+    const w = await live();
+    const a = age(w);
+    fire(w, "focusin", a);
+    w.fireWindow("scroll");
+    expect(open(w)).toBe(true);
+    fire(w, "click", a);
+    w.fireWindow("scroll");
+    expect(open(w)).toBe(false);
+    fire(w, "click", a);
+    expect(open(w)).toBe(true);
+    w.fireWindow("resize");
     expect(open(w)).toBe(false);
   });
 
@@ -114,7 +179,10 @@ describe("Feature: a tip is reachable without a mouse", () => {
     const l = lamp(w);
     expect(l.attrs["data-tip"]).toMatch(/ : /);
     expect(l.attrs["tabindex"]).toBeUndefined();
-    expect(l.attrs["role"]).toBeUndefined();
+    // not a tab stop, but named in full for a screen reader (the abbreviation THR says nothing)
+    expect(l.attrs["role"]).toBe("img");
+    expect(l.attrs["aria-label"]).toBe(l.attrs["data-tip"]!.replace(" : ", ", "));
+    expect(l.attrs["aria-label"]).toMatch(/^Poussée, /);
     // the event comes from a child of the lamp: the tip is found upwards
     fire(w, "mouseover", l.children[0]!);
     expect(open(w)).toBe(true);
@@ -123,6 +191,33 @@ describe("Feature: a tip is reachable without a mouse", () => {
     expect(open(w)).toBe(false);
     fire(w, "click", l.children[0]!);
     expect(open(w)).toBe(true);
+  });
+
+  it("Given full screen, Then every lamp and power node says its full name and state to a screen reader, and none is a tab stop", async () => {
+    const w = await live();
+    findButton(w.root, "Plein écran").click();
+    await w.advance(SECOND);
+    const lamps = findAll(w.root, (n) => n.className === "lamp");
+    expect(lamps).toHaveLength(10);
+    for (const l of lamps) {
+      const abbreviation = l.children[0]!.textContent;
+      expect(l.attrs["role"]).toBe("img");
+      expect(l.attrs["aria-label"], abbreviation).toMatch(/^[^,]{4,}, [a-zé]/);
+      expect(l.attrs["aria-label"], abbreviation).not.toMatch(new RegExp("^" + abbreviation + ","));
+      expect(l.attrs["tabindex"]).toBeUndefined();
+    }
+    expect(lamps.map((l) => l.attrs["aria-label"]!.split(",")[0])).toContain(
+      "Radar : verrouillage hostile",
+    );
+    const nodes = findAll(w.root, (n) => n.className === "pwr-node" && n.attrs["role"] === "img");
+    expect(nodes).toHaveLength(8);
+    for (const n of nodes) {
+      expect(n.attrs["aria-label"]).toMatch(/ : (alimenté|coupé|inconnu)$/);
+      expect(n.attrs["tabindex"]).toBeUndefined();
+    }
+    expect(nodes.map((n) => n.attrs["aria-label"]!.split(" : ")[0])).toContain(
+      "Générateurs de boucliers",
+    );
   });
 
   it("Given the page, Then no element but a button keeps a hover-only native title, and every tab stop added is a named button", async () => {

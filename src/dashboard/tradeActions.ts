@@ -1249,7 +1249,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
       setAttr(c.calibTag, "data-estimate", "1");
       setTip(c.calibTag, cal.hint, true);
       setText(c.calibMoreText, cal.more);
-    }
+    } else setTip(c.calibTag, "", true);
     const applied = S.appliedId === o.id;
     setText(c.apply, applied ? "Plan appliqué" : "Appliquer comme plan");
     setAttr(c.apply, "aria-pressed", applied ? "true" : "false");
