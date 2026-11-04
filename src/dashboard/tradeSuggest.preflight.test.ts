@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { configureDiskCache } from "../core/cache.js";
 import type { HttpClient } from "../core/http.js";
 import { createTelemetry } from "../providers/telemetry/index.js";
 import {
@@ -22,6 +23,8 @@ import {
  * The server side of the pre-flight check: the input, the plan it reads, the privacy of the answer, the throttle shared with
  * the search, the short memory, and the tool as the registry runs it. No network: the UEX read is a fake.
  */
+
+beforeAll(() => configureDiskCache(null)); // the tool's UEX read leaves nothing on disk
 
 const NOW = Date.parse("2026-11-04T12:00:00Z");
 const ago = (ms: number) => Math.floor((NOW - ms) / 1000);

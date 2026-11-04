@@ -65,6 +65,9 @@ export function tradeRefusalInfo(L: any, trade: any, now: number): any {
         during +
         (item ? " d’un objet de boutique" : "") +
         " : transaction refusée, le prix affiché n’est plus valable.",
+      // The absolute time never changes while the alert stands (a screen reader must not re-announce it every second);
+      // the age does, and sits outside the live text.
+      at: "à " + L.formatClock(new Date(at).toISOString()),
       when: "à " + L.formatClock(new Date(at).toISOString()) + " · il y a " + L.formatAge(now - at),
     };
   }
@@ -219,8 +222,8 @@ export function tradePreflightPanel(doc: any, L: any): any {
   root.setAttribute("aria-label", "Avant de partir : vérifier le plan");
   root.setAttribute("data-hidden", "1");
   const alertBox = el("div", "pf-alert");
-  alertBox.setAttribute("role", "status");
   const alertText = el("p", "pf-alert-text");
+  alertText.setAttribute("role", "status");
   const alertWhen = el("p", "pf-alert-when");
   add(alertBox, alertText, alertWhen);
   const head = el("div", "pf-head");
@@ -301,7 +304,7 @@ export function tradePreflightPanel(doc: any, L: any): any {
     const refusal = H.enabled ? tradeRefusalInfo(L, H.trade, now) : null;
     const planOk = tradePreflightPlanOk(H.plan);
     // The compact line: the alert alone.
-    setText(line, refusal ? refusal.text + " " + refusal.when : "");
+    setText(line, refusal ? refusal.text + " " + refusal.at : "");
     show(line, !full && !!refusal);
     show(root, !!H.enabled && full && (planOk || !!refusal));
     if (!H.enabled || !full) return;

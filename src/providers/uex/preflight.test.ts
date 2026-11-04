@@ -2,7 +2,7 @@ import axios from "axios";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearCache, configureDiskCache } from "../../core/cache.js";
 import type { HttpClient } from "../../core/http.js";
 import {
@@ -252,9 +252,11 @@ function fakeUex(handler: (url: string, config: unknown) => unknown) {
   return { client, calls, get };
 }
 
+beforeEach(() => configureDiskCache(null));
+
 afterEach(() => {
   clearCache();
-  configureDiskCache(undefined);
+  configureDiskCache(null);
 });
 
 describe("Feature: the check reads UEX once, through the guarded client", () => {
