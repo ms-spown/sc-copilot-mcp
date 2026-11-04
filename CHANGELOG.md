@@ -6,6 +6,35 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed (BEHAVIOUR CHANGE: the aUEC balance and the amounts derived from it are now SHOWN by default)
+- **Default flipped, by the owner's decision of 2026-11-04.** Until now the balance and every figure derived from it (results,
+  rates, route reliability, balance movements, aUEC paid for lost cargo, the trade journal's amounts, session reports) reached the
+  model and the dashboard only with `include_balance` / the "Afficher le solde" click, after asking the player. They are now
+  SHOWN by default; hiding is the opt-in, and the masking feature is kept in full. The earlier rule in `CLAUDE.md` and
+  `SECURITY.md` was a decision of the owner that his new decision replaces.
+- **Three ways to hide**: `include_balance: false` on a tool call; the dashboard's "Masquer le solde" toggle (the page then asks
+  for no amount, in the poll and in the session calls it makes); and the new server setting **`SC_BALANCE=hidden`** in the
+  entry of the server (the dashboard starts hidden and a tool call that does not say otherwise is answered without amounts; an
+  explicit `include_balance: true` still shows them, so a prompt written for 2.5 keeps working; a value it does not know hides
+  and says so on stderr). Hiding in the dashboard does not stop Claude's tools from giving amounts: only `SC_BALANCE=hidden` or
+  `include_balance: false` does, and the docs and the health strip say so.
+- **Honest wording.** When the amounts are shown they reach the model and the conversation: that is the player's choice. What
+  does not change: the server sends nothing over a network; no handle, account id, GUID of a player or a game session, or raw
+  frame is ever stored; sessions are local summaries; the balance is never in `ui/update-model-context`, in the fixed messages
+  (except the route button the player presses) or on the channel between Views; `include_start_balance` of the reports stays a
+  separate explicit choice, false by default.
+- **What changed in the code.** `core/balance.ts` resolves the choice once per call (an explicit true or false wins, otherwise
+  the start choice) for `sc_live_state`, `sc_live_events`, `sc_live_poll`, `sc_session_current`, `sc_session_list`,
+  `sc_session_stats`, `sc_session_debrief`, `sc_session_export` and `sc_trade_journal` (schemas and descriptions changed: the
+  golden file and `docs/TOOLS.md` are regenerated). The page carries the start choice in `data-balance` (missing means hidden);
+  the View keeps the player's choice apart from what it draws (a View that follows another one draws no amount and goes back to
+  the choice when it leads again) and states `include_balance` true or false on every poll. Server instructions, prompts and the
+  block of `docs/USING_WITH_CLAUDE` no longer tell Claude to ask before reading amounts; they tell it not to work around a
+  hidden balance. The health strip and the "Solde" row say which state this screen is in and how to change it.
+- **Tests.** Every masking test is kept and runs in each hiding mode (`include_balance: false`, `SC_BALANCE=hidden` with and
+  without an argument, the toggle, the replay sweeps); new tests pin the shown default, the explicit `true` under
+  `SC_BALANCE=hidden`, the page's two starts and the follower that leads again.
+
 ### Added (dashboard)
 - A "Raccourcis" zone under the ship banner: reminders of the actions that fit the moment, chosen from states the stream
   and Game.log already carry (landing gear out and not landed, on foot, EVA, ground vehicle, powerplant off, quantum mode,

@@ -289,7 +289,7 @@ export function withoutMoney<T extends { money: unknown }>(
 }
 
 export const MONEY_WITHHELD_NOTE =
-  "aUEC figures (balances, results, turnover, rates) are withheld: they come from the player's balance. Ask the player, then call again with include_balance=true.";
+  "aUEC figures (balances, results, turnover, rates) are hidden: the player chose that (include_balance=false, or SC_BALANCE=hidden in the server's setup). Do not work around it; pass include_balance=true only if the player asks to see amounts.";
 
 // -------------------------------------------------------------------------------------------------
 // Across sessions

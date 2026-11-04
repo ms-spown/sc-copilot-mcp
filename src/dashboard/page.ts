@@ -127,7 +127,12 @@ export function rawViewScript(): string {
  */
 export const viewScript = (): string => minifyScript(rawViewScript());
 
-export function dashboardHtml(): string {
+export interface DashboardHtmlOptions {
+  /** SC_BALANCE=hidden: the View starts with the aUEC amounts hidden. Default: shown. */
+  balanceHidden?: boolean;
+}
+
+export function dashboardHtml(options: DashboardHtmlOptions = {}): string {
   const script = viewScript();
   if (script.toLowerCase().includes("</script"))
     throw new Error("the View script must not contain a closing script tag");
@@ -143,7 +148,7 @@ export function dashboardHtml(): string {
     `<style>${compactCss(pageCss())}</style>`,
     "</head>",
     "<body>",
-    '<div id="app" data-stream="init" data-mode="inline" data-grey="1"></div>',
+    `<div id="app" data-stream="init" data-mode="inline" data-grey="1" data-balance="${options.balanceHidden === true ? "hidden" : "shown"}"></div>`,
     `<script>${script}</script>`,
     "</body>",
     "</html>",

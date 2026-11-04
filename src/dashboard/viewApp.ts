@@ -9,7 +9,9 @@
  *   - messages whose source is not the parent window are ignored;
  *   - the View answers {} to ping and ui/resource-teardown;
  *   - it never polls while hidden, off screen, torn down or retired, nor faster than 2 Hz;
- *   - the balance is requested only after the player clicks, and only the explicit "route" action sends it.
+ *   - the balance is shown by default (the player's choice); the server starts it hidden with SC_BALANCE=hidden, and the
+ *     player hides or shows it with the toggle. Every poll states the choice (include_balance true or false). Only the
+ *     explicit "route" action sends the balance to the conversation.
  */
 export function dashboardMain(win: any, doc: any, L: any): any {
   const cfg = L.viewConfig();
@@ -23,7 +25,12 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   let hostCtx: any = {};
   let displayMode = "inline";
   let availableModes: string[] = ["inline"];
+  // The balance: `showBalance` is what this View draws and asks for NOW; `balancePref` is the player's own choice (null:
+  // none yet, so the server's start choice applies). A View that follows another one never gets the balance (it is not
+  // shared on the channel), and goes back to the choice when it leads again.
   let showBalance = false;
+  let balancePref: boolean | null = null;
+  let balanceStart = false;
   let hidden = !!doc.hidden;
   let offscreen = false;
   let awaySince: number | null = hidden ? clock() : null;
@@ -94,6 +101,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   // Building the interface once; render() only changes text and attributes afterwards
   // ---------------------------------------------------------------------------------------------
   const root = doc.getElementById("app");
+  // The page says how the server starts: data-balance="shown" (default) or "hidden" (SC_BALANCE=hidden). Anything else hides.
+  balanceStart = !!root && root.getAttribute("data-balance") === "shown";
+  showBalance = balanceStart;
   const R: any = { cards: [], widgets: {} };
   /** Marks a node as a widget of the coverage table (the test looks for every id of coverage.ts in the page). */
   const widget = (id: string, node: any): any => {
@@ -1223,7 +1233,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.iBalanceValue,
       bal ? L.fmtAuec(bal.uec) + "\u00a0aUEC" : showBalance ? "—" : "••••••",
     );
-    setText(R.btnBalance, bal ? "Masquer le solde" : "Afficher le solde");
+    setText(R.btnBalance, showBalance ? "Masquer le solde" : "Afficher le solde");
     void now;
   }
 
@@ -1476,7 +1486,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     }
     const bal = balanceInfo(p);
     setRow(R.sesBalance, bal ? L.fmtAuec(bal.uec) + "\u00a0aUEC" : showBalance ? "—" : "masqué");
-    setText(R.btnBalance2, bal ? "Masquer" : "Afficher le solde");
+    setText(R.btnBalance2, showBalance ? "Masquer" : "Afficher le solde");
     show(R.sesDelta.root, !!bal);
     show(R.sesRate.root, !!bal);
     if (bal) {
@@ -1904,7 +1914,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       // Replaced: stop calling the server, forget the balance (it is not shared), show the banner.
       if (timer !== null) win.clearTimeout(timer);
       timer = null;
-      showBalance = false;
+      syncBalance();
       view = Object.assign({}, view, {
         poll: view.poll
           ? Object.assign({}, view.poll, {
@@ -1917,9 +1927,16 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       if (!hidden && !offscreen) startTicker();
       render();
     } else {
+      // Leading again: the player's choice (or the server's start choice) applies again; the next poll carries it.
+      syncBalance();
       render();
       resumeIfAllowed();
     }
+  }
+
+  /** What this View shows now: nothing while it follows another View, otherwise the player's choice or the start choice. */
+  function syncBalance() {
+    showBalance = !isFollower() && (balancePref === null ? balanceStart : balancePref);
   }
 
   function takeLead() {
@@ -2096,6 +2113,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       let balance: any;
       if (kind === "route") {
         // The button says it sends the balance: that click is the player's explicit choice.
+        balancePref = true;
         showBalance = true;
         await pollWithBalance();
         render();
@@ -2161,6 +2179,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     // A View that follows another one never gets the balance (it is not shared): taking over comes first.
     if (isFollower()) takeLead();
     showBalance = !showBalance;
+    balancePref = showBalance;
     if (!showBalance && view.poll) {
       // Hidden again: forget it here too. The next answers will not carry it.
       view = Object.assign({}, view, {

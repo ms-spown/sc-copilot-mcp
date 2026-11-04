@@ -28,6 +28,12 @@ if (!config.uexToken) {
   console.error("UEXTOKEN is not set: UEX requests go out without credentials.");
 }
 
+if (config.balanceEnvUnrecognised) {
+  console.error(
+    "SC_BALANCE has a value this server does not know (use 'hidden' or 'shown'): the aUEC amounts start hidden.",
+  );
+}
+
 const gameLog = new GameLog(gameLogConfigFromEnv());
 
 const connection = new ConnectionTracker(gameLog);
@@ -67,6 +73,8 @@ const clients = {
   fleet: new FleetStore(fleetFilePath()),
   telemetry,
   ...(sessions ? { sessions } : {}),
+  // Shown by default; SC_BALANCE=hidden starts the dashboard and the tools without amounts.
+  balance: { hiddenByDefault: config.balanceHiddenByDefault },
 };
 
 // A bad SCMCP_TOOLS or SCMCP_PROFILES throws here, at startup, rather than listing nothing.

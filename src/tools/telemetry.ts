@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MAX_OUTPUT_CHARS, formatOutputRaw } from "../core/format.js";
+import { wantsBalance, type BalancePolicy } from "../core/balance.js";
 import { TELEMETRY_WARNING } from "../core/telemetryNotice.js";
 import { addNote, recordFetch, setChannel, setGameVersion } from "../core/provenance.js";
 import {
@@ -21,8 +22,9 @@ import type { ToolDefinition, ToolResult } from "./types.js";
  * - sc_live_status: always advertised. Says why there is no data, and how to turn it on.
  * - sc_live_state / sc_live_events: advertised only when SC_TELEMETRY=on.
  *
- * Tool results are part of the conversation, which goes to the model provider. So the UEC balance is returned only
- * when the caller asks for it (`include_balance`); the stream itself stays on this PC.
+ * Tool results are part of the conversation, which goes to the model provider. The UEC balance is returned by default
+ * (the player's choice, since 2.6); `include_balance: false` or SC_BALANCE=hidden leaves it out. The stream itself stays
+ * on this PC.
  */
 
 const ok = (value: unknown): ToolResult => ({
@@ -110,7 +112,10 @@ function stripBalance(snapshot: TelemetrySnapshot, include: boolean) {
     ...(include && uec_session ? { uec_session } : {}),
     ...(include
       ? {}
-      : { uec_balance: "withheld: call again with include_balance=true if the player agrees" }),
+      : {
+          uec_balance:
+            "hidden by the player's choice (include_balance=false or SC_BALANCE=hidden): do not work around it; pass include_balance=true only if the player asks",
+        }),
     state: { ...state, pilot },
   };
 }
@@ -137,10 +142,12 @@ export function telemetryTools({
   telemetry,
   gameLog,
   connection,
+  balance,
 }: {
   telemetry?: Telemetry;
   gameLog?: GameLog;
   connection?: ConnectionTracker;
+  balance?: BalancePolicy;
 }): ToolDefinition[] {
   const enabled = () => telemetry?.enabled === true;
   const addLogContext = logContext(gameLog);
@@ -200,7 +207,7 @@ export function telemetryTools({
           include_balance: {
             type: "boolean",
             description:
-              "Include the aUEC balance and its change since the reader started. Default false: the result goes into the conversation.",
+              "Include the aUEC balance and its change since the reader started. Default true; false hides it (the player's choice).",
           },
         },
       },
@@ -236,7 +243,8 @@ export function telemetryTools({
         }
         recordFetch({ fetchedAt: Date.now() - snapshot.frame_age_ms, cache: "network" });
         addNote("Live telemetry: a frame is only as current as frame_age_ms says.");
-        const view = stripBalance(snapshot, include_balance === true);
+        const money = wantsBalance(include_balance, balance);
+        const view = stripBalance(snapshot, money);
         const { state } = view;
         const wanted = new Set(sections ?? ["ship", "pilot", "weapons"]);
         const status = await telemetry.status(false);
@@ -266,8 +274,8 @@ export function telemetryTools({
             : {}),
           derived: state.derived,
           conditions: out ? [] : state.conditions,
-          ...(include_balance && view.uec_session ? { uec_session: view.uec_session } : {}),
-          ...(!include_balance ? { uec_balance: view.uec_balance } : {}),
+          ...(money && view.uec_session ? { uec_session: view.uec_session } : {}),
+          ...(!money ? { uec_balance: view.uec_balance } : {}),
           not_available: unavailable,
           sections_unreadable: state.broken,
           limits: LIMITS,
@@ -282,7 +290,7 @@ export function telemetryTools({
     {
       name: "sc_live_events",
       description:
-        "Recent events derived from the live telemetry (took off, landed, quantum jump, lock-on, hits taken, shields down, power lost, health low or 0, respawn, countermeasures, hunger), newest last, from an in-memory ring that starts when the reader starts. Each event says confidence: 'confirmed' (seen working in the field test) or 'unverified' (heuristic or never seen live). The game itself sends almost no events, so these are inferred and debounced; a missing event proves nothing. Use after_seq with the last_seq of a previous call to get only new ones. Balance-change events are withheld unless include_balance is true. Not advertised when telemetry is off.",
+        "Recent events derived from the live telemetry (took off, landed, quantum jump, lock-on, hits taken, shields down, power lost, health low or 0, respawn, countermeasures, hunger), newest last, from an in-memory ring that starts when the reader starts. Each event says confidence: 'confirmed' (seen working in the field test) or 'unverified' (heuristic or never seen live). The game itself sends almost no events, so these are inferred and debounced; a missing event proves nothing. Use after_seq with the last_seq of a previous call to get only new ones. Balance-change events are left out when include_balance is false. Not advertised when telemetry is off.",
       inputSchema: {
         type: "object",
         properties: {
@@ -298,7 +306,7 @@ export function telemetryTools({
           },
           include_balance: {
             type: "boolean",
-            description: "Include balance-change events (default false).",
+            description: "Include balance-change events (default true; false hides them).",
           },
         },
       },
@@ -314,6 +322,7 @@ export function telemetryTools({
           })
           .parse(args || {});
         await addLogContext();
+        const money = wantsBalance(include_balance, balance);
         const max = Math.min(Math.max(Math.floor(limit ?? 30), 1), 100);
         // Filter BEFORE the cap: limit=1 must give the newest event that is allowed, not an empty answer.
         const result = await telemetry.events(
@@ -321,7 +330,7 @@ export function telemetryTools({
           max,
           (e) =>
             (confidence !== "confirmed" || e.confidence === "confirmed") &&
-            (include_balance === true || e.type !== "uec_changed"),
+            (money || e.type !== "uec_changed"),
         );
         const status = await telemetry.status(false);
         const events = result.events;

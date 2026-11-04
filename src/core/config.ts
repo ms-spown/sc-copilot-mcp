@@ -1,3 +1,4 @@
+import { parseBalanceEnv } from "./balance.js";
 import { ALLOWED_HOSTS, resolveBaseUrl } from "./http.js";
 
 export interface Config {
@@ -22,10 +23,18 @@ export interface Config {
    * game-side switch is separate and never touched by this process.
    */
   telemetry: boolean;
+  /**
+   * SC_BALANCE=hidden starts the server with the aUEC amounts hidden (dashboard and tools). Unset or "shown": shown,
+   * which is the default. An unrecognised value hides them (a typo fails toward privacy) and `balanceEnvUnrecognised`
+   * lets the entry point say so on stderr.
+   */
+  balanceHiddenByDefault: boolean;
+  balanceEnvUnrecognised: boolean;
 }
 
 /** Read the configuration from the environment. Throws if a base URL points outside its allowlist. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const balance = parseBalanceEnv(env.SC_BALANCE);
   return {
     uexToken: env.UEXTOKEN,
     uexBaseUrl: resolveBaseUrl(
@@ -59,5 +68,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
           .filter(Boolean)
       : null,
     telemetry: /^(on|1|true|yes)$/i.test(env.SC_TELEMETRY?.trim() ?? ""),
+    balanceHiddenByDefault: balance.hiddenByDefault,
+    balanceEnvUnrecognised: balance.unrecognised,
   };
 }

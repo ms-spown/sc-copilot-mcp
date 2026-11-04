@@ -136,7 +136,7 @@ export function createFakeHost(options: HostOptions) {
         case "tools/call": {
           scenario.advanceTo(Math.max(scenario.t, nowMs - scenario.epoch));
           if (params.name === "sc_live_poll") {
-            const include = params.arguments?.include_balance === true;
+            const include = params.arguments?.include_balance !== false;
             const a = params.arguments ?? {};
             const base = scenario.poll(
               include,

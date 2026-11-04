@@ -237,7 +237,7 @@ export function sessionBar(
 
 /** What the session tools answer to the View (structured content). */
 export function sessionToolAnswer(name: string, args: Record<string, any>, nowMs: number) {
-  const include = args["include_balance"] === true;
+  const include = args["include_balance"] !== false;
   const all = [...BASE, CURRENT];
   if (name === "sc_session_list") {
     return {

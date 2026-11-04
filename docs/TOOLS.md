@@ -61,12 +61,12 @@
 | [`sc_live_status`](#sc_live_status) | local | game telemetry (local, 127.0.0.1) | local_telemetry | structured | State of the optional live telemetry: off, waiting, game_without_telemetry, connected, live or incompatible, the cause, the age of the last frame and, when not live, how to enable it. |
 | [`sc_live_state`](#sc_live_state) | local | game telemetry (local, 127.0.0.1) | local_telemetry | structured | Snapshot of the running game from its local telemetry, only when the user enabled it: ship (name, speed, altitude, heading, hydrogen, boost, g-force, gear, flight modes, power flags, warning lights), weapons per seat, countermeasures, and the pilot (locomotion, health, hunger, thirst, heart rate, atmosphere). |
 | [`sc_live_events`](#sc_live_events) | local | game telemetry (local, 127.0.0.1) | local_telemetry | structured | Recent events derived from the live telemetry (took off, landed, quantum jump, lock-on, hits taken, shields down, power lost, health low or 0, respawn, countermeasures, hunger), newest last, from an in-memory ring that starts when the reader starts. |
-| [`sc_live_dashboard`](#sc_live_dashboard) | local | game telemetry (local, 127.0.0.1) | local_telemetry | structured | Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance stays hidden until the player clicks). |
+| [`sc_live_dashboard`](#sc_live_dashboard) | local | game telemetry (local, 127.0.0.1) | local_telemetry | structured | Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance is shown unless the player hid it). |
 | [`sc_live_poll`](#sc_live_poll) | local | game telemetry (local, 127.0.0.1) | local_telemetry | structured | For the dashboard View only, not for the model: current telemetry state, recent events and session counters as structured content, refreshed by the View about once a second (answers are shared for half a second). |
 | [`sc_live_mark`](#sc_live_mark) | local | game telemetry (local, 127.0.0.1) | local_telemetry | structured | For the dashboard View only, not for the model: sets a session marker (start, end) or restarts the balance change. |
 | [`sc_trade_suggest`](#sc_trade_suggest) | local | uex | computed | untrusted_text | For the dashboard View only, not for the model: ranks trade routes for the commerce card's buttons (most profitable per hour, fastest, safest by a heuristic, or best per trip) with the UEX trade planner, or applies one of the options it returned as the dashboard's plan (action apply, by id), or checks before departure whether the plan in force still holds (action preflight: re-reads the current UEX prices of its goods at its two terminals, two cached GETs, no argument, unit prices and per-SCU margins only). |
-| [`sc_session_current`](#sc_session_current) | local, trade | session file (local) | user | untrusted_text | The player's current play session, saved on this PC: start time, active time, trips made, last known place and goods (from Game.log, an estimate), the latest trips and, only with include_balance, balance at start and now, result so far, rate per hour and efficiency against the planned route. |
-| [`sc_session_list`](#sc_session_list) | local, trade | session file (local) | user | untrusted_text | The player's saved play sessions, newest first, with their key numbers: start, active time, trips and, only with include_balance, net result and rate per hour. |
+| [`sc_session_current`](#sc_session_current) | local, trade | session file (local) | user | untrusted_text | The player's current play session, saved on this PC: start time, active time, trips made, last known place and goods (from Game.log, an estimate), the latest trips and, unless include_balance is false, balance at start and now, result so far, rate per hour and efficiency against the planned route. |
+| [`sc_session_list`](#sc_session_list) | local, trade | session file (local) | user | untrusted_text | The player's saved play sessions, newest first, with their key numbers: start, active time, trips and, unless include_balance is false, net result and rate per hour. |
 | [`sc_session_stats`](#sc_session_stats) | local, trade | session file (local) | user | untrusted_text | Statistics across the player's saved sessions: totals, average rate per hour, trend, best and worst session, best routes and goods (when known), efficiency against planned routes, and how many transactions the game refused because the price moved (price_refusals, a count). |
 | [`sc_session_new`](#sc_session_new) | local | session file (local) | user | untrusted_text | Starts a new play session now (the player pressed or asked for 'Nouvelle session'): the current one is closed with its numbers kept, the new one starts from the balance just seen. |
 | [`sc_session_end`](#sc_session_end) | local | session file (local) | user | untrusted_text | Ends the current play session now (the player asked to finish it); its numbers stay in the history. |
@@ -609,7 +609,7 @@ A table of the player's recent play sessions from Game.log and its backups, newe
 
 ### sc_trade_journal
 
-The player's trade journal, from Game.log only, per play session (newest first): each shop or cargo-kiosk purchase and sale (time, side, shop, quantity, unit, outcome, confidence); spending by category; cargo runs pairing purchases and sales of one commodity first-in first-out (paired SCU, estimated); totals. Without include_balance there is NO aUEC amount (counts, SCU, kinds, statuses, categories only); with it (ask the player first) it adds line totals, unit prices, spending, and per run cost, revenue and GROSS margin. Use it for 'what did I buy', 'how did my last cargo run go'. Tell the player: the log has NO wallet balance and no autoload fee, so no net result; cargo success is only inferred from the absence of an error; failed lines are listed, not counted; location_hint is a stale hint, not a terminal; an unnamed commodity is 'unknown commodity'. Read-only; needs the game log.
+The player's trade journal, from Game.log only, per play session (newest first): each shop or cargo-kiosk purchase and sale (time, side, shop, quantity, unit, outcome, confidence); spending by category; cargo runs pairing purchases and sales of one commodity first-in first-out (paired SCU, estimated); totals. With include_balance=false there is NO aUEC amount (counts, SCU, kinds, statuses, categories only); otherwise it adds line totals, unit prices, spending, and per run cost, revenue and GROSS margin. Use it for 'what did I buy', 'how did my last cargo run go'. Tell the player: the log has NO wallet balance and no autoload fee, so no net result; cargo success is only inferred from the absence of an error; failed lines are listed, not counted; location_hint is a stale hint, not a terminal; an unnamed commodity is 'unknown commodity'. Read-only; needs the game log.
 
 *Source:* Game.log (local) + star-citizen.wiki (commodity names) · *Kind:* local_log · *Trust:* untrusted_text · *Profiles:* local
 
@@ -618,7 +618,7 @@ The player's trade journal, from Game.log only, per play session (newest first):
 | `sessions` | number | no | How many of the newest log files to scan (default 2, max 10). Files with no trade are left out. |
 | `max_transactions` | number | no | Most recent transactions listed per session (default 40, max 120; at most 120 in all). Totals and runs always cover the whole session. |
 | `resolve_names` | boolean | no | Look commodity names up in the wiki's public commodity list (default true). The list is the same for everyone: nothing from the log is sent. False keeps it fully local. |
-| `include_balance` | boolean | no | Include the aUEC amounts (line totals, unit prices, cost, revenue, gross margin, spending). Default false. Ask the player first: the answer goes into the conversation. |
+| `include_balance` | boolean | no | Include the aUEC amounts (line totals, unit prices, cost, revenue, gross margin, spending). Default true; false hides them (the player's choice). |
 
 ### sc_live_status
 
@@ -637,11 +637,11 @@ Snapshot of the running game from its local telemetry, only when the user enable
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `sections` | list of `ship` \| `pilot` \| `weapons` | no | Only these parts (default all). Smaller answers cost less. |
-| `include_balance` | boolean | no | Include the aUEC balance and its change since the reader started. Default false: the result goes into the conversation. |
+| `include_balance` | boolean | no | Include the aUEC balance and its change since the reader started. Default true; false hides it (the player's choice). |
 
 ### sc_live_events
 
-Recent events derived from the live telemetry (took off, landed, quantum jump, lock-on, hits taken, shields down, power lost, health low or 0, respawn, countermeasures, hunger), newest last, from an in-memory ring that starts when the reader starts. Each event says confidence: 'confirmed' (seen working in the field test) or 'unverified' (heuristic or never seen live). The game itself sends almost no events, so these are inferred and debounced; a missing event proves nothing. Use after_seq with the last_seq of a previous call to get only new ones. Balance-change events are withheld unless include_balance is true. Not advertised when telemetry is off.
+Recent events derived from the live telemetry (took off, landed, quantum jump, lock-on, hits taken, shields down, power lost, health low or 0, respawn, countermeasures, hunger), newest last, from an in-memory ring that starts when the reader starts. Each event says confidence: 'confirmed' (seen working in the field test) or 'unverified' (heuristic or never seen live). The game itself sends almost no events, so these are inferred and debounced; a missing event proves nothing. Use after_seq with the last_seq of a previous call to get only new ones. Balance-change events are left out when include_balance is false. Not advertised when telemetry is off.
 
 *Source:* game telemetry (local, 127.0.0.1) · *Kind:* local_telemetry · *Trust:* structured · *Profiles:* local
 
@@ -650,11 +650,11 @@ Recent events derived from the live telemetry (took off, landed, quantum jump, l
 | `after_seq` | number | no | Only events with a higher seq (default 0). |
 | `limit` | number | no | At most this many, the newest (default 30, max 100). |
 | `confidence` | `confirmed` \| `all` | no | 'confirmed' hides unverified events (default all). |
-| `include_balance` | boolean | no | Include balance-change events (default false). |
+| `include_balance` | boolean | no | Include balance-change events (default true; false hides them). |
 
 ### sc_live_dashboard
 
-Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance stays hidden until the player clicks). Call it when the player asks to see their ship or session live. If a dashboard is already open in this conversation, do not open it again unless the player explicitly asks for a new one: it updates by itself, and each extra copy stays on screen (only the most recent one calls the server, the others show a banner). Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Waiting or connected means no data yet (menus, loading): never say the game is not running or that something is wrong, no troubleshooting unless it shows a game launched without telemetry or an unknown format. On foot only character data exists; ship instruments need the player seated in a ship. Optional plan: after uex_get_trade_routes, pass the route (expected_profit_auec is the PROFIT, not the turnover; unit prices and recent price points are welcome) so the View compares planned profit with the measured result of the trade run.
+Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance is shown unless the player hid it). Call it when the player asks to see their ship or session live. If a dashboard is already open in this conversation, do not open it again unless the player explicitly asks for a new one: it updates by itself, and each extra copy stays on screen (only the most recent one calls the server, the others show a banner). Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Waiting or connected means no data yet (menus, loading): never say the game is not running or that something is wrong, no troubleshooting unless it shows a game launched without telemetry or an unknown format. On foot only character data exists; ship instruments need the player seated in a ship. Optional plan: after uex_get_trade_routes, pass the route (expected_profit_auec is the PROFIT, not the turnover; unit prices and recent price points are welcome) so the View compares planned profit with the measured result of the trade run.
 
 *Source:* game telemetry (local, 127.0.0.1) · *Kind:* local_telemetry · *Trust:* structured · *Profiles:* local
 
@@ -664,13 +664,13 @@ Opens the live dashboard of the running game in the conversation (ship, speed, h
 
 ### sc_live_poll
 
-For the dashboard View only, not for the model: current telemetry state, recent events and session counters as structured content, refreshed by the View about once a second (answers are shared for half a second). Never starts the reader while telemetry is off. The balance is included only if include_balance is true, which the View sets after the player clicks. Use sc_live_state instead.
+For the dashboard View only, not for the model: current telemetry state, recent events and session counters as structured content, refreshed by the View about once a second (answers are shared for half a second). Never starts the reader while telemetry is off. The balance is included unless include_balance is false (the View sends the player's choice; absent follows the server's start choice). Use sc_live_state instead.
 
 *Source:* game telemetry (local, 127.0.0.1) · *Kind:* local_telemetry · *Trust:* structured · *Profiles:* local
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `include_balance` | boolean | no | Include the aUEC balance and its change. Default false. |
+| `include_balance` | boolean | no | Include the aUEC balance and its change. Default true; false hides it. |
 | `include_static` | boolean | no | Include the list of what the stream never contains. The View asks once. |
 | `since_seq` | number | no | The newest event number the View holds: only newer events come back. |
 | `have` | object | no | Hashes (the `hash` of a previous answer) of the sections the View holds; a section with the same hash is left out and listed in `unchanged`. |
@@ -710,36 +710,36 @@ For the dashboard View only, not for the model: ranks trade routes for the comme
 
 ### sc_session_current
 
-The player's current play session, saved on this PC: start time, active time, trips made, last known place and goods (from Game.log, an estimate), the latest trips and, only with include_balance, balance at start and now, result so far, rate per hour and efficiency against the planned route. Use it to ACCOMPANY and PROPOSE the next run (then compare with uex_get_trade_routes). It survives a game crash or a PC reboot and is found again from any conversation. Pass id to open a past session (read-only). Counts and durations are always given; aUEC figures need include_balance=true, which you ask the player for first. Needs SC_TELEMETRY=on.
+The player's current play session, saved on this PC: start time, active time, trips made, last known place and goods (from Game.log, an estimate), the latest trips and, unless include_balance is false, balance at start and now, result so far, rate per hour and efficiency against the planned route. Use it to ACCOMPANY and PROPOSE the next run (then compare with uex_get_trade_routes). It survives a game crash or a PC reboot and is found again from any conversation. Pass id to open a past session (read-only). Counts and durations are always given; aUEC figures are given too unless the player hid them (include_balance=false). Needs SC_TELEMETRY=on.
 
 *Source:* session file (local) · *Kind:* user · *Trust:* untrusted_text · *Profiles:* local, trade
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `include_balance` | boolean | no | Include aUEC figures (balances, results, turnover, rate per hour). Default false. Ask the player first: the answer goes into the conversation. |
+| `include_balance` | boolean | no | Include aUEC figures (balances, results, turnover, rate per hour). Default true; false hides them (the player's choice). |
 | `id` | string | no | A session id from sc_session_list. |
 
 ### sc_session_list
 
-The player's saved play sessions, newest first, with their key numbers: start, active time, trips and, only with include_balance, net result and rate per hour. For going back to a past session (open one with sc_session_current and its id). Counts and durations are always given; aUEC figures need include_balance=true, which you ask the player for first. Needs SC_TELEMETRY=on.
+The player's saved play sessions, newest first, with their key numbers: start, active time, trips and, unless include_balance is false, net result and rate per hour. For going back to a past session (open one with sc_session_current and its id). Counts and durations are always given; aUEC figures are given too unless the player hid them (include_balance=false). Needs SC_TELEMETRY=on.
 
 *Source:* session file (local) · *Kind:* user · *Trust:* untrusted_text · *Profiles:* local, trade
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `limit` | number | no | How many sessions, 1 to 50. Default 20. |
-| `include_balance` | boolean | no | Include aUEC figures (balances, results, turnover, rate per hour). Default false. Ask the player first: the answer goes into the conversation. |
+| `include_balance` | boolean | no | Include aUEC figures (balances, results, turnover, rate per hour). Default true; false hides them (the player's choice). |
 
 ### sc_session_stats
 
-Statistics across the player's saved sessions: totals, average rate per hour, trend, best and worst session, best routes and goods (when known), efficiency against planned routes, and how many transactions the game refused because the price moved (price_refusals, a count). Estimates and measures are labelled, an unknown figure is null, never zero. Sessions with too little active time give no rate. route_reliability (with include_balance only): per goods and route, realised against planned margin and fee rate from the player's own saved runs, always with the number of runs and a confidence label; few runs means low confidence; an estimate that claims no cause. aUEC figures need include_balance=true, which you ask the player for first; counts and times are always given. Use last to limit to the newest N sessions. Needs SC_TELEMETRY=on.
+Statistics across the player's saved sessions: totals, average rate per hour, trend, best and worst session, best routes and goods (when known), efficiency against planned routes, and how many transactions the game refused because the price moved (price_refusals, a count). Estimates and measures are labelled, an unknown figure is null, never zero. Sessions with too little active time give no rate. route_reliability (not with include_balance=false): per goods and route, realised against planned margin and fee rate from the player's own saved runs, always with the number of runs and a confidence label; few runs means low confidence; an estimate that claims no cause. aUEC figures are given unless the player hid them (include_balance=false); counts and times are always given. Use last to limit to the newest N sessions. Needs SC_TELEMETRY=on.
 
 *Source:* session file (local) · *Kind:* user · *Trust:* untrusted_text · *Profiles:* local, trade
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `last` | number | no | Only the newest N sessions (1 to 200). Default: all. |
-| `include_balance` | boolean | no | Include aUEC figures (balances, results, turnover, rate per hour). Default false. Ask the player first: the answer goes into the conversation. |
+| `include_balance` | boolean | no | Include aUEC figures (balances, results, turnover, rate per hour). Default true; false hides them (the player's choice). |
 
 ### sc_session_new
 
@@ -763,14 +763,14 @@ Ends the current play session now (the player asked to finish it); its numbers s
 
 ### sc_session_debrief
 
-The report of the player's saved play session (or the newest N), to share or keep: Markdown (default; header, key numbers, trips table with measured/computed/estimated/unknown tags, what is unexplained, footer) or the trips as CSV (format csv, 100 rows at most). Text in French, about 28,000 characters at most, older trips cut with a count. Without include_balance there is NO aUEC amount (counts, times, SCU, labels) and the report says so; with it amounts appear, but the start and end balances only with include_start_balance too: ask the player, the report is meant to be shared. Give the Markdown as it is, add no figure, send it nowhere. The player downloads the full Markdown and CSV from the session bar of the dashboard: mention it. id: a past session; last: the newest N (1 to 10). Needs SC_TELEMETRY=on.
+The report of the player's saved play session (or the newest N), to share or keep: Markdown (default; header, key numbers, trips table with measured/computed/estimated/unknown tags, what is unexplained, footer) or the trips as CSV (format csv, 100 rows at most). Text in French, about 28,000 characters at most, older trips cut with a count. With include_balance=false there is NO aUEC amount (counts, times, SCU, labels) and the report says so; otherwise amounts appear, but the start and end balances only with include_start_balance too: ask the player, the report is meant to be shared. Give the Markdown as it is, add no figure, send it nowhere. The player downloads the full Markdown and CSV from the session bar of the dashboard: mention it. id: a past session; last: the newest N (1 to 10). Needs SC_TELEMETRY=on.
 
 *Source:* session file (local) · *Kind:* user · *Trust:* untrusted_text · *Profiles:* local
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `format` | `markdown` \| `csv` | no | Default markdown. csv is the trips only. |
-| `include_balance` | boolean | no | Include aUEC figures (results, margins, fees, rate). Default false. Ask the player first: the answer goes into the conversation. |
+| `include_balance` | boolean | no | Include aUEC figures (results, margins, fees, rate). Default true; false hides them (the player's choice). |
 | `include_start_balance` | boolean | no | With include_balance only: also the balance at the start and at the last sighting. Default false. The player must ask for it. |
 | `csv_delimiter` | `,` \| `;` | no | CSV separator: "," (default) or ";" (Excel in French opens it in columns; decimal comma). |
 | `id` | string | no | A session id from sc_session_list. |
@@ -786,7 +786,7 @@ For the dashboard only, not for the model: the whole report of one saved session
 | --- | --- | --- | --- |
 | `id` | string | yes | A session id. |
 | `kind` | `md` \| `csv` | yes | The text wanted. |
-| `include_balance` | boolean | no | Include aUEC figures (results, margins, fees, rate). Default false. Ask the player first: the answer goes into the conversation. |
+| `include_balance` | boolean | no | Include aUEC figures (results, margins, fees, rate). Default true; false hides them (the player's choice). |
 | `include_start_balance` | boolean | no | With include_balance only: also the balance at the start and at the last sighting. Default false. The player must ask for it. |
 | `csv_delimiter` | `,` \| `;` | no | CSV separator: "," (default) or ";" (Excel in French opens it in columns; decimal comma). |
 

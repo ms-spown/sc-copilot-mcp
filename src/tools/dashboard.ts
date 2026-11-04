@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { wantsBalance, type BalancePolicy } from "../core/balance.js";
 import {
   DASHBOARD_URI,
   PLAN_PRICE_POINTS_MAX,
@@ -61,7 +62,13 @@ const off = (): ToolResult => ({
   isError: true,
 });
 
-export function dashboardResources({ telemetry }: { telemetry?: Telemetry }): ResourceDefinition[] {
+export function dashboardResources({
+  telemetry,
+  balance,
+}: {
+  telemetry?: Telemetry;
+  balance?: BalancePolicy;
+}): ResourceDefinition[] {
   return [
     {
       uri: DASHBOARD_URI,
@@ -71,7 +78,8 @@ export function dashboardResources({ telemetry }: { telemetry?: Telemetry }): Re
       mimeType: UI_MIME_TYPE,
       advertised: () => telemetry?.enabled === true,
       contentMeta: { ui: { prefersBorder: false } },
-      text: dashboardHtml,
+      // The page carries the server's start choice for the balance (shown unless SC_BALANCE=hidden).
+      text: () => dashboardHtml({ balanceHidden: balance?.hiddenByDefault === true }),
     },
   ];
 }
@@ -93,6 +101,7 @@ export function dashboardTools(
     connection,
     gameLog,
     sessions,
+    balance,
   }: {
     telemetry?: Telemetry;
     scwClient?: HttpClient;
@@ -100,6 +109,7 @@ export function dashboardTools(
     connection?: ConnectionTracker;
     gameLog?: GameLog;
     sessions?: SessionManager;
+    balance?: BalancePolicy;
   },
   overrides: DashboardOverrides = {},
 ): ToolDefinition[] {
@@ -200,7 +210,7 @@ export function dashboardTools(
     {
       name: "sc_live_dashboard",
       description:
-        "Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance stays hidden until the player clicks). Call it when the player asks to see their ship or session live. If a dashboard is already open in this conversation, do not open it again unless the player explicitly asks for a new one: it updates by itself, and each extra copy stays on screen (only the most recent one calls the server, the others show a banner). Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Waiting or connected means no data yet (menus, loading): never say the game is not running or that something is wrong, no troubleshooting unless it shows a game launched without telemetry or an unknown format. On foot only character data exists; ship instruments need the player seated in a ship. Optional plan: after uex_get_trade_routes, pass the route (expected_profit_auec is the PROFIT, not the turnover; unit prices and recent price points are welcome) so the View compares planned profit with the measured result of the trade run.",
+        "Opens the live dashboard of the running game in the conversation (ship, speed, hydrogen, health, warning lights, events, session pace; the aUEC balance is shown unless the player hid it). Call it when the player asks to see their ship or session live. If a dashboard is already open in this conversation, do not open it again unless the player explicitly asks for a new one: it updates by itself, and each extra copy stays on screen (only the most recent one calls the server, the others show a banner). Rendered by Claude Desktop only. The View refreshes itself: never call sc_live_poll or sc_live_mark. When the player asks a question while it is open, answer with sc_live_state. The stream has no cargo, position or shield level. Waiting or connected means no data yet (menus, loading): never say the game is not running or that something is wrong, no troubleshooting unless it shows a game launched without telemetry or an unknown format. On foot only character data exists; ship instruments need the player seated in a ship. Optional plan: after uex_get_trade_routes, pass the route (expected_profit_auec is the PROFIT, not the turnover; unit prices and recent price points are welcome) so the View compares planned profit with the measured result of the trade run.",
       inputSchema: {
         type: "object",
         properties: {
@@ -283,13 +293,13 @@ export function dashboardTools(
     {
       name: "sc_live_poll",
       description:
-        "For the dashboard View only, not for the model: current telemetry state, recent events and session counters as structured content, refreshed by the View about once a second (answers are shared for half a second). Never starts the reader while telemetry is off. The balance is included only if include_balance is true, which the View sets after the player clicks. Use sc_live_state instead.",
+        "For the dashboard View only, not for the model: current telemetry state, recent events and session counters as structured content, refreshed by the View about once a second (answers are shared for half a second). Never starts the reader while telemetry is off. The balance is included unless include_balance is false (the View sends the player's choice; absent follows the server's start choice). Use sc_live_state instead.",
       inputSchema: {
         type: "object",
         properties: {
           include_balance: {
             type: "boolean",
-            description: "Include the aUEC balance and its change. Default false.",
+            description: "Include the aUEC balance and its change. Default true; false hides it.",
           },
           include_static: {
             type: "boolean",
@@ -335,7 +345,7 @@ export function dashboardTools(
           })
           .parse(args || {});
         const result = await service.poll({
-          includeBalance: include_balance === true && enabled(),
+          includeBalance: wantsBalance(include_balance, balance) && enabled(),
           ...(include_static === true ? { includeStatic: true } : {}),
           ...(since_seq !== undefined ? { sinceSeq: since_seq } : {}),
           ...(have ? { have } : {}),

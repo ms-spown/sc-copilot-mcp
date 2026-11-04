@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { formatOutputRaw } from "../core/format.js";
+import { wantsBalance, type BalancePolicy } from "../core/balance.js";
 import { sanitizeUntrusted } from "../core/untrusted.js";
 import type { SessionManager } from "../providers/sessions/manager.js";
 import { MONEY_WITHHELD_NOTE, withoutMoney } from "../providers/sessions/stats.js";
@@ -11,8 +12,9 @@ import type { ToolDefinition, ToolResult } from "./types.js";
  * earned. They exist only with SC_TELEMETRY=on and are left unlisted when SC_SESSIONS=off.
  *
  * - sc_session_current, sc_session_list and sc_session_stats only read. Every aUEC figure (balances, results, turnover,
- *   rates) is withheld unless the caller passes include_balance=true, which the model does only after the player agreed:
- *   a tool result is part of the conversation. Counts, durations and place names are not withheld.
+ *   rates) is given by default (the player's choice, since 2.6) and left out when the caller passes include_balance=false
+ *   or the server starts with SC_BALANCE=hidden: a tool result is part of the conversation, so the player may keep the
+ *   money out of it. Counts, durations and place names are never left out.
  * - sc_session_new and sc_session_end write ONLY this server's own session file (same precedent as the fleet tools):
  *   nothing is sent to the game or to a network.
  *
@@ -33,7 +35,7 @@ const OFF =
 const includeBalanceProp = {
   type: "boolean",
   description:
-    "Include aUEC figures (balances, results, turnover, rate per hour). Default false. Ask the player first: the answer goes into the conversation.",
+    "Include aUEC figures (balances, results, turnover, rate per hour). Default true; false hides them (the player's choice).",
 };
 
 const PROPOSE_HINT =
@@ -45,7 +47,13 @@ const saveWarning = (saved: boolean) =>
     ? ""
     : " WARNING: this change is NOT saved to disk (see persistence.status); it is kept in memory and saved at the next change that succeeds.";
 
-export function sessionTools({ sessions }: { sessions?: SessionManager }): ToolDefinition[] {
+export function sessionTools({
+  sessions,
+  balance,
+}: {
+  sessions?: SessionManager;
+  balance?: BalancePolicy;
+}): ToolDefinition[] {
   const enabled = () => sessions?.enabled === true;
   const off = (): ToolResult => ({ content: [{ type: "text", text: OFF }], isError: true });
 
@@ -53,7 +61,7 @@ export function sessionTools({ sessions }: { sessions?: SessionManager }): ToolD
     {
       name: "sc_session_current",
       description:
-        "The player's current play session, saved on this PC: start time, active time, trips made, last known place and goods (from Game.log, an estimate), the latest trips and, only with include_balance, balance at start and now, result so far, rate per hour and efficiency against the planned route. Use it to ACCOMPANY and PROPOSE the next run (then compare with uex_get_trade_routes). It survives a game crash or a PC reboot and is found again from any conversation. Pass id to open a past session (read-only). Counts and durations are always given; aUEC figures need include_balance=true, which you ask the player for first. Needs SC_TELEMETRY=on.",
+        "The player's current play session, saved on this PC: start time, active time, trips made, last known place and goods (from Game.log, an estimate), the latest trips and, unless include_balance is false, balance at start and now, result so far, rate per hour and efficiency against the planned route. Use it to ACCOMPANY and PROPOSE the next run (then compare with uex_get_trade_routes). It survives a game crash or a PC reboot and is found again from any conversation. Pass id to open a past session (read-only). Counts and durations are always given; aUEC figures are given too unless the player hid them (include_balance=false). Needs SC_TELEMETRY=on.",
       inputSchema: {
         type: "object",
         properties: {
@@ -70,7 +78,7 @@ export function sessionTools({ sessions }: { sessions?: SessionManager }): ToolD
             id: z.string().max(48).optional(),
           })
           .parse(args || {});
-        const money = include_balance === true;
+        const money = wantsBalance(include_balance, balance);
         const found = await sessions.session(id, money);
         if (!found) {
           return result({
@@ -107,7 +115,7 @@ export function sessionTools({ sessions }: { sessions?: SessionManager }): ToolD
     {
       name: "sc_session_list",
       description:
-        "The player's saved play sessions, newest first, with their key numbers: start, active time, trips and, only with include_balance, net result and rate per hour. For going back to a past session (open one with sc_session_current and its id). Counts and durations are always given; aUEC figures need include_balance=true, which you ask the player for first. Needs SC_TELEMETRY=on.",
+        "The player's saved play sessions, newest first, with their key numbers: start, active time, trips and, unless include_balance is false, net result and rate per hour. For going back to a past session (open one with sc_session_current and its id). Counts and durations are always given; aUEC figures are given too unless the player hid them (include_balance=false). Needs SC_TELEMETRY=on.",
       inputSchema: {
         type: "object",
         properties: {
@@ -124,7 +132,7 @@ export function sessionTools({ sessions }: { sessions?: SessionManager }): ToolD
             include_balance: z.boolean().optional(),
           })
           .parse(args || {});
-        const money = include_balance === true;
+        const money = wantsBalance(include_balance, balance);
         const out = await sessions.list(limit ?? 20, money);
         return result({
           ...out,
@@ -136,7 +144,7 @@ export function sessionTools({ sessions }: { sessions?: SessionManager }): ToolD
     {
       name: "sc_session_stats",
       description:
-        "Statistics across the player's saved sessions: totals, average rate per hour, trend, best and worst session, best routes and goods (when known), efficiency against planned routes, and how many transactions the game refused because the price moved (price_refusals, a count). Estimates and measures are labelled, an unknown figure is null, never zero. Sessions with too little active time give no rate. route_reliability (with include_balance only): per goods and route, realised against planned margin and fee rate from the player's own saved runs, always with the number of runs and a confidence label; few runs means low confidence; an estimate that claims no cause. aUEC figures need include_balance=true, which you ask the player for first; counts and times are always given. Use last to limit to the newest N sessions. Needs SC_TELEMETRY=on.",
+        "Statistics across the player's saved sessions: totals, average rate per hour, trend, best and worst session, best routes and goods (when known), efficiency against planned routes, and how many transactions the game refused because the price moved (price_refusals, a count). Estimates and measures are labelled, an unknown figure is null, never zero. Sessions with too little active time give no rate. route_reliability (not with include_balance=false): per goods and route, realised against planned margin and fee rate from the player's own saved runs, always with the number of runs and a confidence label; few runs means low confidence; an estimate that claims no cause. aUEC figures are given unless the player hid them (include_balance=false); counts and times are always given. Use last to limit to the newest N sessions. Needs SC_TELEMETRY=on.",
       inputSchema: {
         type: "object",
         properties: {
@@ -156,7 +164,7 @@ export function sessionTools({ sessions }: { sessions?: SessionManager }): ToolD
             include_balance: z.boolean().optional(),
           })
           .parse(args || {});
-        const money = include_balance === true;
+        const money = wantsBalance(include_balance, balance);
         const stats = await sessions.stats(last, money);
         return result({
           ...stats,

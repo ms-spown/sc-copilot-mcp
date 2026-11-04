@@ -198,12 +198,12 @@ describe("Feature: every capability section has the same fixed table", () => {
     expect([...at].sort((a, b) => a - b)).toEqual(at);
   });
 
-  it("Given the telemetry section, Then it says off by default, two switches, and the balance is withheld", () => {
+  it("Given the telemetry section, Then it says off by default, two switches, and the balance is shown by default and can be hidden", () => {
     const start = doc.indexOf("\n## 9. Live telemetry\n");
     const section = doc.slice(start, doc.indexOf("\n## 10."));
     expect(section).toMatch(/Off by default/);
     expect(section).toMatch(/two explicit switches/);
-    expect(section).toMatch(/balance is withheld by default/);
+    expect(section).toMatch(/balance is shown by default, and you can hide it/i);
     expect(section).toContain("TELEMETRY.md");
   });
 });

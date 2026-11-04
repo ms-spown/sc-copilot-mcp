@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { wantsBalance, type BalancePolicy } from "../core/balance.js";
 import type { HttpClient } from "../core/http.js";
 import { formatOutputRaw } from "../core/format.js";
 import { addNote } from "../core/provenance.js";
@@ -47,8 +48,8 @@ const ok = (value: unknown): ToolResult => ({
 type Row = Omit<Transaction, "resource"> & { commodity_name?: string };
 
 /**
- * Every aUEC amount of the journal, the same class of figures that the session tools and the debrief withhold without
- * include_balance: line totals and unit prices, cost, revenue and gross margin of a run, spending by category.
+ * Every aUEC amount of the journal, the same class of figures that the session tools and the debrief leave out with
+ * include_balance=false: line totals and unit prices, cost, revenue and gross margin of a run, spending by category.
  * Counts, SCU, kinds, statuses, categories and the structure stay.
  */
 const MONEY_KEYS_TRANSACTION = ["total_auec", "unit_price_auec", "shop_unit_price_scu"] as const;
@@ -63,20 +64,22 @@ const without = <T extends object>(value: T, keys: readonly string[]): T =>
   Object.fromEntries(Object.entries(value).filter(([k]) => !keys.includes(k))) as T;
 
 export const JOURNAL_AMOUNTS_WITHHELD_NOTE =
-  "aUEC amounts (line totals, unit prices, cost, revenue, gross margin, spending) are withheld, like the figures of the session tools: they are the player's money. Counts, SCU, kinds, statuses and categories are shown. Ask the player, then call again with include_balance=true.";
+  "aUEC amounts (line totals, unit prices, cost, revenue, gross margin, spending) are hidden, like the figures of the session tools: the player chose that (include_balance=false, or SC_BALANCE=hidden in the server's setup). Counts, SCU, kinds, statuses and categories are shown. Do not work around it; pass include_balance=true only if the player asks to see amounts.";
 
 export function tradeJournalTools({
   gameLog,
   scwClient,
+  balance,
 }: {
   gameLog: GameLog;
   scwClient: HttpClient;
+  balance?: BalancePolicy;
 }): ToolDefinition[] {
   return [
     {
       name: "sc_trade_journal",
       description:
-        "The player's trade journal, from Game.log only, per play session (newest first): each shop or cargo-kiosk purchase and sale (time, side, shop, quantity, unit, outcome, confidence); spending by category; cargo runs pairing purchases and sales of one commodity first-in first-out (paired SCU, estimated); totals. Without include_balance there is NO aUEC amount (counts, SCU, kinds, statuses, categories only); with it (ask the player first) it adds line totals, unit prices, spending, and per run cost, revenue and GROSS margin. Use it for 'what did I buy', 'how did my last cargo run go'. Tell the player: the log has NO wallet balance and no autoload fee, so no net result; cargo success is only inferred from the absence of an error; failed lines are listed, not counted; location_hint is a stale hint, not a terminal; an unnamed commodity is 'unknown commodity'. Read-only; needs the game log.",
+        "The player's trade journal, from Game.log only, per play session (newest first): each shop or cargo-kiosk purchase and sale (time, side, shop, quantity, unit, outcome, confidence); spending by category; cargo runs pairing purchases and sales of one commodity first-in first-out (paired SCU, estimated); totals. With include_balance=false there is NO aUEC amount (counts, SCU, kinds, statuses, categories only); otherwise it adds line totals, unit prices, spending, and per run cost, revenue and GROSS margin. Use it for 'what did I buy', 'how did my last cargo run go'. Tell the player: the log has NO wallet balance and no autoload fee, so no net result; cargo success is only inferred from the absence of an error; failed lines are listed, not counted; location_hint is a stale hint, not a terminal; an unnamed commodity is 'unknown commodity'. Read-only; needs the game log.",
       inputSchema: {
         type: "object",
         properties: {
@@ -98,7 +101,7 @@ export function tradeJournalTools({
           include_balance: {
             type: "boolean",
             description:
-              "Include the aUEC amounts (line totals, unit prices, cost, revenue, gross margin, spending). Default false. Ask the player first: the answer goes into the conversation.",
+              "Include the aUEC amounts (line totals, unit prices, cost, revenue, gross margin, spending). Default true; false hides them (the player's choice).",
           },
         },
       },
@@ -111,7 +114,7 @@ export function tradeJournalTools({
             include_balance: z.boolean().optional(),
           })
           .parse(args || {});
-        const money = input.include_balance === true;
+        const money = wantsBalance(input.include_balance, balance);
         const files = Math.min(Math.max(Math.floor(input.sessions ?? 2), 1), MAX_FILES);
         const perSession = Math.min(Math.max(Math.floor(input.max_transactions ?? 40), 1), 120);
         const list = await gameLog.sessions(files);

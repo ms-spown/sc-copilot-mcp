@@ -6,7 +6,7 @@
 // - No network access, no game, no Claude Desktop configuration, no file written. Stop with Ctrl+C.
 // - The fake host plays the scenario of src/dashboard/testing/scenario.ts through the REAL normaliser and event
 //   handler, answers the ui/* requests as the measured host does, and shows what the View sends to the conversation.
-// URL parameters: t=<seconds into the story> theme=light|dark w=<px> mode=inline|fullscreen balance=1 (presses the show-balance button) session=1
+// URL parameters: t=<seconds into the story> theme=light|dark w=<px> mode=inline|fullscreen hidden=1 (the page starts hidden, like SC_BALANCE=hidden; the default is shown) balance=1 (presses the show-balance button, if it is there) session=1
 //                 forced=off|waiting|game_without_telemetry|incompatible cut=1 gear=out plan=1 scroll=<px>
 //                 open=1  (unfolds the commerce card's details and the "Mouvements du solde" block)
 //                 trade=movements  (the story plus balance movements of every kind: an item, a probable reward, an unexplained
@@ -248,7 +248,7 @@ if (q.get("open")) frame.addEventListener("load", () => setTimeout(() => {
   for (const d of frame.contentDocument.querySelectorAll("details.tr-more, details.mv")) d.open = true;
 }, 2200));
 if (q.get("scroll")) frame.addEventListener("load", () => setTimeout(() => frame.contentWindow.scrollTo(0, Number(q.get("scroll"))), 1500));
-frame.src = "/view.html";
+frame.src = q.get("hidden") ? "/view.html?hidden=1" : "/view.html";
 setInterval(() => { $("clock").textContent = "histoire : " + Math.round(scenario.t / 1000) + " s"; }, 500);
 </script>
 </body></html>`;
@@ -260,7 +260,7 @@ const server = http.createServer((req, res) => {
     res.end(body);
   };
   if (url.pathname === "/") return send(200, "text/html; charset=utf-8", HARNESS);
-  if (url.pathname === "/view.html") return send(200, "text/html; charset=utf-8", page.dashboardHtml());
+  if (url.pathname === "/view.html") return send(200, "text/html; charset=utf-8", page.dashboardHtml({ balanceHidden: url.searchParams.get("hidden") === "1" }));
   if (url.pathname.startsWith("/dist/") && url.pathname.endsWith(".js")) {
     const file = path.resolve(root, "." + url.pathname);
     if (file.startsWith(dist + path.sep) && fs.existsSync(file)) {

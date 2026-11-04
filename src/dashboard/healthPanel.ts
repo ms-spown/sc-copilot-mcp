@@ -278,8 +278,10 @@ export function healthRows(L: any, poll: any, h: any, ctx: any): any[] {
       "balance",
       "info",
       "Solde",
-      (ctx.showBalance ? "Affiché sur cet écran. " : "Masqué. ") +
-        "« Afficher le solde » demande ton solde au serveur et l’affiche ici, sur cet écran seulement. Il n’est ni dans le résumé automatique envoyé à Claude, ni partagé entre tableaux ; seul « Route avec mon solde et ce vaisseau » l’envoie à la conversation, quand tu l’appuies. Les sessions enregistrées gardent leurs chiffres dans un fichier local.",
+      (ctx.showBalance
+        ? "Affiché sur cet écran. « Masquer le solde » le retire d’ici. "
+        : "Masqué. « Afficher le solde » le remet ici, sur cet écran seulement. ") +
+        "Il n’est ni dans le résumé automatique envoyé à Claude, ni partagé entre tableaux ; « Route avec mon solde et ce vaisseau » l’envoie à la conversation, quand tu l’appuies. Claude reçoit aussi les montants s’il les demande à ses outils, sauf si le serveur démarre avec SC_BALANCE=hidden. Les sessions enregistrées gardent leurs chiffres dans un fichier local.",
     ),
   );
 

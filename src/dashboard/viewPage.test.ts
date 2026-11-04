@@ -132,7 +132,10 @@ describe("Feature: the View speaks the ui/* protocol with the host", () => {
     // Nothing but ui/initialize may precede the agreement with the host.
     expect(methods(w).indexOf("ui/notifications/size-changed")).toBeGreaterThan(1);
     const call = w.host.log.received.find((r) => r.method === "tools/call")!;
-    expect(call.params).toEqual({ name: "sc_live_poll", arguments: { include_static: true } });
+    expect(call.params).toEqual({
+      name: "sc_live_poll",
+      arguments: { include_static: true, include_balance: false },
+    });
   });
 
   it("Given a host, Then ping and ui/resource-teardown are answered with {}", async () => {
@@ -340,7 +343,7 @@ describe("Feature: polling is bounded, adaptive and suspended when nobody looks"
   });
 });
 
-describe("Feature: the balance stays hidden until the player asks", () => {
+describe("Feature: with SC_BALANCE=hidden (the hidden start) the balance stays hidden until the player asks", () => {
   it("Given a View that was never asked to show the balance, Then no poll requests it and it is nowhere on screen", async () => {
     const w = await live();
     await w.advance(100 * SECOND); // past the sale at 90 s

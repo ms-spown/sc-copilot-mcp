@@ -176,8 +176,10 @@ describe("Feature: the rows say what is wired, per combination", () => {
   it("Given the balance, Then the line says what the button reveals and what stays local, in both states", () => {
     for (const showBalance of [false, true]) {
       const row = rowsFor("ok", {}, { showBalance }).find((r: any) => r.id === "balance");
-      expect(row.detail).toContain("Afficher le solde");
-      expect(row.detail).toContain("cet écran seulement");
+      expect(row.detail).toContain(showBalance ? "Masquer le solde" : "Afficher le solde");
+      expect(row.detail).toContain(showBalance ? "retire d’ici" : "cet écran seulement");
+      // Said in both states: Claude's tools give the amounts too unless the server starts hidden.
+      expect(row.detail).toContain("SC_BALANCE=hidden");
       expect(row.detail).toContain("fichier local");
       expect(row.detail.startsWith(showBalance ? "Affiché" : "Masqué")).toBe(true);
     }

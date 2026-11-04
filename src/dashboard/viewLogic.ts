@@ -519,7 +519,8 @@ export function reducePoll(prev: any, incoming: any, now: number): any {
 /** What to ask the server for: what this View does not hold yet, so the answer carries only what changed. */
 export function pollArguments(view: any, showBalance: boolean): any {
   const args: any = {};
-  if (showBalance) args.include_balance = true;
+  // The View states its choice every time (true or false): it never leaves it to the server's default.
+  args.include_balance = !!showBalance;
   if (!Array.isArray(view.notInStream)) args.include_static = true;
   if (view.lastSeq > 0) args.since_seq = view.lastSeq;
   const have: any = {};

@@ -106,7 +106,10 @@ describe("Feature: the server tells Claude how to be a trade copilot", () => {
     it.each([
       ["never invents a number", /Never invent/],
       ["never calls telemetry safe", /Never call telemetry safe, undetectable or approved/],
-      ["asks before the balance", /include_balance, and only after asking the player/],
+      [
+        "respects a hidden balance",
+        /If a result says they are hidden, that is the player's choice/,
+      ],
       [
         "never calls the dashboard's tools",
         /Never call sc_live_poll, sc_live_mark or sc_trade_suggest/,

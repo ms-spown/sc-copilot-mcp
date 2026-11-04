@@ -3,9 +3,10 @@
  * TEST SUPPORT (end-to-end replay): what a scenario checks at every step, and how.
  *
  * PRIVACY. A figure that comes from the aUEC balance (a balance, a net, a fee, what the margin leaves unexplained, a
- * ratio of the calibration) reaches the model only when the player agreed (`include_balance`). The sweeps below call every
- * output the model or the other Views can read, WITHOUT the balance, and return what they said as text, so a scenario
- * asserts that none of its figures is there. A check that finds nothing proves nothing unless the same figure IS in
+ * ratio of the calibration) is shown by default, and reaches nobody when the player hid it: `include_balance: false`, or
+ * the server started with SC_BALANCE=hidden and the caller said nothing. The sweeps below call every output the model or
+ * the other Views can read, in BOTH hiding modes, and return what they said as text, so a scenario asserts that none of
+ * its figures is there. A check that finds nothing proves nothing unless the same figure IS in
  * the output that has the balance: `expectPresent` is the positive control and every scenario uses it.
  *
  * Figures are matched as whole numbers (`(?<![0-9])N(?![0-9])`): the digits of an epoch time are not a balance.
@@ -18,7 +19,7 @@ import type { ReplayWorld } from "./world.js";
 
 export const figure = (n: number): RegExp => new RegExp(`(?<![0-9])${Math.abs(n)}(?![0-9])`);
 
-/** The tools the model can call that read the live game or the saved sessions, with no `include_balance`. */
+/** The tools the model can call that read the live game or the saved sessions (the arguments carry no `include_balance`). */
 const MODEL_TOOLS: [string, Record<string, unknown>][] = [
   ["sc_session_current", {}],
   ["sc_session_list", {}],
@@ -51,13 +52,30 @@ export function channelOf(poll: any): any {
   };
 }
 
-/** Calls everything that may be read without the balance and returns it as text. */
+/**
+ * Calls everything that may be read with the amounts hidden and returns it as text. Two ways of hiding, both swept:
+ * `include_balance: false` on a server that shows by default, then a server that starts hidden (SC_BALANCE=hidden)
+ * with no argument at all. The policy is put back whatever happens.
+ */
 export async function sweepWithoutBalance(world: ReplayWorld): Promise<Sweep> {
   const poll = JSON.stringify(await world.poll(false));
   const parts: string[] = [];
   for (const [name, args] of MODEL_TOOLS) {
-    const r = await world.call(name, args);
+    const r = await world.call(name, { ...args, include_balance: false });
     parts.push(r.text, JSON.stringify(r.structured ?? null));
+  }
+  const was = world.balancePolicy.hiddenByDefault;
+  world.balancePolicy.hiddenByDefault = true;
+  try {
+    // A View of a server that starts hidden says nothing (the answer follows the start choice).
+    const bare = await world.call("sc_live_poll", {});
+    parts.push(JSON.stringify(bare.structured ?? null));
+    for (const [name, args] of MODEL_TOOLS) {
+      const r = await world.call(name, args);
+      parts.push(r.text, JSON.stringify(r.structured ?? null));
+    }
+  } finally {
+    world.balancePolicy.hiddenByDefault = was;
   }
   // The View that shows the balance still shares nothing derived from it.
   const channel = JSON.stringify(channelOf(await world.poll(true)));
@@ -68,12 +86,14 @@ export async function sweepWithoutBalance(world: ReplayWorld): Promise<Sweep> {
   return { poll, tools, channel, all: [poll, tools, channel].join("\n") };
 }
 
-/** The same tools, with the balance: the positive control. */
+/** The same tools, with the balance: the positive control (asked explicitly, then by default, which shows it too). */
 export async function sweepWithBalance(world: ReplayWorld): Promise<string> {
   const parts: string[] = [JSON.stringify(await world.poll(true))];
   for (const [name, args] of MODEL_TOOLS) {
     const r = await world.call(name, { ...args, include_balance: true });
     parts.push(r.text, JSON.stringify(r.structured ?? null));
+    const d = await world.call(name, args);
+    parts.push(d.text, JSON.stringify(d.structured ?? null));
   }
   return parts.join("\n");
 }

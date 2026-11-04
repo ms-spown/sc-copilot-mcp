@@ -154,6 +154,11 @@ export class ReplayWorld {
   readonly steps: number[] = [];
   game!: FakeGame;
 
+  /**
+   * The server's start choice for the aUEC amounts (SC_BALANCE). Shared with the tools, which read it at call time: a
+   * test (or a sweep) flips `hiddenByDefault` to play the "start hidden" mode against the same server.
+   */
+  readonly balancePolicy: { hiddenByDefault: boolean } = { hiddenByDefault: false };
   /** What the fake game sends. */
   balance: number;
   ship: ShipSpec = FLYING;
@@ -380,6 +385,7 @@ export class ReplayWorld {
         telemetry: this.telemetry,
         gameLog: this.gameLog,
         connection: this.connection,
+        balance: this.balancePolicy,
       }),
       ...dashboardTools(
         {
@@ -387,6 +393,7 @@ export class ReplayWorld {
           connection: this.connection,
           gameLog: this.gameLog,
           sessions: this.manager,
+          balance: this.balancePolicy,
         },
         {
           plan: async () => planResultFor(this.route),
@@ -394,9 +401,13 @@ export class ReplayWorld {
           minIntervalMs: 0,
         },
       ),
-      ...sessionTools({ sessions: this.manager }),
-      ...sessionDebriefTools({ sessions: this.manager }),
-      ...tradeJournalTools({ gameLog: this.gameLog, scwClient: unusedClient }),
+      ...sessionTools({ sessions: this.manager, balance: this.balancePolicy }),
+      ...sessionDebriefTools({ sessions: this.manager, balance: this.balancePolicy }),
+      ...tradeJournalTools({
+        gameLog: this.gameLog,
+        scwClient: unusedClient,
+        balance: this.balancePolicy,
+      }),
     ];
     const registry = createRegistry(tools, {}, { now: this.clock.now });
     const server = createMcpServer(registry);

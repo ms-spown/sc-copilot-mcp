@@ -148,22 +148,29 @@ describe("Feature: the balance never reaches an answer that did not ask for it",
     });
   });
 
-  it("Given the tool handler, When the balance is not asked, Then neither the text nor the structured content holds a figure", async () => {
-    const telemetry = stubTelemetry();
-    const tools = dashboardTools({
-      telemetry,
-      gameLog: logFile(transportLogText(Date.now() - 118_000)),
-    });
-    const poll = tools.find((t) => t.name === "sc_live_poll")!;
-    const first = await poll.handler({});
-    expect(first.content[0]!.text).toBe("live dashboard poll: live");
-    // The text is fixed and the data are in the structured content, which the host does not add to the model.
-    const all = JSON.stringify(first);
-    for (const word of FORBIDDEN) expect(all, word).not.toContain(word);
-    expect((first.structuredContent as { ledger: { status: string } }).ledger.status).toBe(
-      "loading",
-    );
-  });
+  it.each([
+    ["include_balance=false", undefined, { include_balance: false }],
+    ["SC_BALANCE=hidden and no argument", { hiddenByDefault: true }, {}],
+  ])(
+    "Given the tool handler and %s, Then neither the text nor the structured content holds a figure",
+    async (_label, policy, args) => {
+      const telemetry = stubTelemetry();
+      const tools = dashboardTools({
+        telemetry,
+        gameLog: logFile(transportLogText(Date.now() - 118_000)),
+        ...(policy ? { balance: policy } : {}),
+      });
+      const poll = tools.find((t) => t.name === "sc_live_poll")!;
+      const first = await poll.handler(args);
+      expect(first.content[0]!.text).toBe("live dashboard poll: live");
+      // The text is fixed and the data are in the structured content, which the host does not add to the model.
+      const all = JSON.stringify(first);
+      for (const word of FORBIDDEN) expect(all, word).not.toContain(word);
+      expect((first.structuredContent as { ledger: { status: string } }).ledger.status).toBe(
+        "loading",
+      );
+    },
+  );
 });
 
 describe("Feature: the poll never waits for the game log", () => {

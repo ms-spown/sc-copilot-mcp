@@ -21,13 +21,15 @@ import {
 } from "../tools/registry.js";
 import { DASHBOARD_URI, UI_EXTENSION_ID, UI_MIME_TYPE } from "./constants.js";
 import { waitFor } from "../testing/waitFor.js";
+import type { BalancePolicy } from "../core/balance.js";
+import { HIDDEN_MODES } from "../testing/balanceModes.js";
 
 const empty = {
   defaults: { baseURL: "https://unused.test" },
   get: async () => ({ data: {} }),
 } as unknown as HttpClient;
 
-function clients(telemetry?: Telemetry): ToolClients {
+function clients(telemetry?: Telemetry, balance?: BalancePolicy): ToolClients {
   return {
     uexClient: empty,
     scwClient: empty,
@@ -36,6 +38,7 @@ function clients(telemetry?: Telemetry): ToolClients {
     gameLog: new GameLog({}),
     fleet: new FleetStore("unused-fleet.json"),
     ...(telemetry ? { telemetry } : {}),
+    ...(balance ? { balance } : {}),
   };
 }
 
@@ -90,7 +93,7 @@ const spyTelemetry = (enabled: boolean) => {
   } satisfies Telemetry;
 };
 
-async function liveWorld() {
+async function liveWorld(balance?: BalancePolicy) {
   const game = await startFakeGame();
   cleanup.push(() => game.close());
   const telemetry = createTelemetry({
@@ -101,7 +104,7 @@ async function liveWorld() {
     },
   });
   cleanup.push(() => telemetry.stop());
-  const world = await connect(clients(telemetry), UI_CAPS);
+  const world = await connect(clients(telemetry, balance), UI_CAPS);
   const untilState = (state: string) =>
     waitFor(async () => (await world.call("sc_live_poll")).sc?.["state"] === state, state);
   return { game, telemetry, waitFor, untilState, ...world };
@@ -322,49 +325,82 @@ describe("Feature: the poll answers many Views for the price of one", () => {
     expect(spy.status).toHaveBeenCalledTimes(2);
   });
 
-  it("Given a View that asked for the balance, Then another View that did not ask never receives it", async () => {
+  it.each(HIDDEN_MODES)(
+    "Given a View that asked for the balance and $label, Then another View that did not ask never receives it",
+    async (mode) => {
+      const { game, call, untilState } = await liveWorld(mode.policy);
+      await untilState("connected");
+      game.send(
+        frame(vehicleField({ name: "DRAK_Cutter_1" }), actorField({ health: 80, uec: 424242 })),
+      );
+      await untilState("live");
+      const [withBalance, without] = await Promise.all([
+        call("sc_live_poll", { include_balance: true }),
+        call("sc_live_poll", mode.args),
+      ]);
+      expect(withBalance.sc!["balance"]).toMatchObject({ uec: 424242 });
+      expect(without.sc).not.toHaveProperty("balance");
+      expect(JSON.stringify(without.sc)).not.toContain("424242");
+      // The text of the answer never carries data, so it cannot carry the balance either.
+      expect(withBalance.text).not.toContain("424242");
+      expect(without.text).not.toContain("424242");
+    },
+  );
+
+  it("Given a server that shows the balance by default, Then a View that says nothing gets it, and one that says false does not", async () => {
     const { game, call, untilState } = await liveWorld();
     await untilState("connected");
     game.send(
       frame(vehicleField({ name: "DRAK_Cutter_1" }), actorField({ health: 80, uec: 424242 })),
     );
     await untilState("live");
-    const [withBalance, without] = await Promise.all([
-      call("sc_live_poll", { include_balance: true }),
-      call("sc_live_poll"),
-    ]);
-    expect(withBalance.sc!["balance"]).toMatchObject({ uec: 424242 });
-    expect(without.sc).not.toHaveProperty("balance");
-    expect(JSON.stringify(without.sc)).not.toContain("424242");
-    // The text of the answer never carries data, so it cannot carry the balance either.
-    expect(withBalance.text).not.toContain("424242");
-    expect(without.text).not.toContain("424242");
+    const said = await call("sc_live_poll");
+    expect(said.sc!["balance"]).toMatchObject({ uec: 424242 });
+    const hid = await call("sc_live_poll", { include_balance: false });
+    expect(hid.sc).not.toHaveProperty("balance");
+    expect(JSON.stringify(hid.sc)).not.toContain("424242");
+  });
+
+  it("Given SC_BALANCE=hidden, Then the View can still show the balance by saying so (its toggle), and the page starts hidden", async () => {
+    const { game, call, untilState, client } = await liveWorld({ hiddenByDefault: true });
+    await untilState("connected");
+    game.send(
+      frame(vehicleField({ name: "DRAK_Cutter_1" }), actorField({ health: 80, uec: 424242 })),
+    );
+    await untilState("live");
+    const shown = await call("sc_live_poll", { include_balance: true });
+    expect(shown.sc!["balance"]).toMatchObject({ uec: 424242 });
+    const read = await client.readResource({ uri: DASHBOARD_URI });
+    expect((read.contents[0] as { text: string }).text).toContain('data-balance="hidden"');
   });
 });
 
 describe("Feature: the poll carries the live state as a structured object", () => {
-  it("Given a live game, Then the answer is an object with the state, the age, the ship and the pilot, and no balance by default", async () => {
-    const { game, call, untilState } = await liveWorld();
-    await untilState("connected");
-    game.send(
-      frame(
-        vehicleField({ name: "DRAK_Cutter_1", speed: 120, lights: { shld: "nominal" } }),
-        actorField({ health: 0, uec: 8675309 }),
-      ),
-    );
-    await untilState("live");
-    const { sc } = await call("sc_live_poll", { include_static: true });
-    expect(sc).toMatchObject({ v: 1, enabled: true, state: "live" });
-    expect(sc!["frame_age_ms"]).toBeGreaterThanOrEqual(0);
-    expect(sc!["ship"].instruments.speed_ms).toBeCloseTo(120);
-    expect(sc!["ship"].name).toBe("DRAK_Cutter_1");
-    expect(sc!["pilot"].health).toMatchObject({ current: 0 });
-    expect(sc!["pilot"]).not.toHaveProperty("uec_balance");
-    expect(sc!["ship"]).not.toHaveProperty("unverified");
-    expect(JSON.stringify(sc)).not.toContain("8675309");
-    expect(sc!["not_in_stream"]).toContain("shield_level");
-    expect(sc!["session"]).toMatchObject({ started_at: null, flight_ms_is_estimate: true });
-  });
+  it.each(HIDDEN_MODES)(
+    "Given a live game and $label, Then the answer is an object with the state, the age, the ship and the pilot, and no balance",
+    async (mode) => {
+      const { game, call, untilState } = await liveWorld(mode.policy);
+      await untilState("connected");
+      game.send(
+        frame(
+          vehicleField({ name: "DRAK_Cutter_1", speed: 120, lights: { shld: "nominal" } }),
+          actorField({ health: 0, uec: 8675309 }),
+        ),
+      );
+      await untilState("live");
+      const { sc } = await call("sc_live_poll", { include_static: true, ...mode.args });
+      expect(sc).toMatchObject({ v: 1, enabled: true, state: "live" });
+      expect(sc!["frame_age_ms"]).toBeGreaterThanOrEqual(0);
+      expect(sc!["ship"].instruments.speed_ms).toBeCloseTo(120);
+      expect(sc!["ship"].name).toBe("DRAK_Cutter_1");
+      expect(sc!["pilot"].health).toMatchObject({ current: 0 });
+      expect(sc!["pilot"]).not.toHaveProperty("uec_balance");
+      expect(sc!["ship"]).not.toHaveProperty("unverified");
+      expect(JSON.stringify(sc)).not.toContain("8675309");
+      expect(sc!["not_in_stream"]).toContain("shield_level");
+      expect(sc!["session"]).toMatchObject({ started_at: null, flight_ms_is_estimate: true });
+    },
+  );
 
   it("Given session markers, Then they live in memory, reset the counters and are returned by the poll", async () => {
     const { game, call, untilState } = await liveWorld();

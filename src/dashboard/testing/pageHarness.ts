@@ -273,6 +273,13 @@ export interface PageWorld {
 }
 
 export interface WorldOptions {
+  /**
+   * How the page is built to start. The server's default is SHOWN; this harness defaults to HIDDEN on purpose: the
+   * existing suites test the hiding guarantees (nothing derived from the balance in the page, the channel, the
+   * messages) and show the amounts by clicking, which is the hidden start's path. The shown start has its own suite
+   * (balanceDefault.page.test.ts) and passes `balanceHidden: false`.
+   */
+  balanceHidden?: boolean;
   theme?: "light" | "dark";
   modes?: string[];
   scenario?: Scenario;
@@ -508,7 +515,10 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
 
   const advance = (ms: number) => vclock.advance(ms);
 
-  const html = dashboardHtml();
+  const html = dashboardHtml({ balanceHidden: options.balanceHidden !== false });
+  // The page says how the server starts; the fake document has no parser, so the attribute is copied from the markup.
+  const start = /data-balance="(\w+)"/.exec(html);
+  if (start) root.setAttribute("data-balance", start[1]!);
   const script = extractElement(html, "script");
   if (!script) throw new Error("no script in the page");
   vm.runInNewContext(
