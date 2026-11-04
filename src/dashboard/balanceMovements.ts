@@ -40,10 +40,10 @@ import {
  * aUEC, to the balance change of the window.
  *
  * ASSUMPTIONS, not measured against the real game (the log has no balance; only a capture of both at once could
- * measure them): see the MOVEMENT_* constants. What WAS measured, on 95 real logs of the reference install: contract
- * ends (131 completed) never lie within 30 s of a shop or commerce line; the "Contract Complete" notice comes up to 3.1 s
- * after `MissionEnded`; cargo purchases of one settlement are at least 10 s apart (hence the 20 s cluster); only 12 % of
- * item lines follow another one within 4 s.
+ * measure them): see the MOVEMENT_* constants. What WAS measured, on 95 real logs of the reference install: none of the
+ * 57 contract ends (any state) found in logs that also hold commerce lines lies within 30 s of a shop or commerce line;
+ * the "Contract Complete" notice comes up to 3.1 s after `MissionEnded`; cargo purchases of one settlement are at least
+ * 10 s apart (consistent with the 20 s cluster); only 12 % of item lines follow another one within 4 s.
  */
 
 // -------------------------------------------------------------------------------------------------
@@ -823,10 +823,18 @@ export function buildMovementsSection(
     fromInclusive: useLogin,
     to: input.nowMs,
   });
+  // The session began before the first balance the server saw: the figures miss what happened in between.
+  if (login !== null && login < oldest) e.coverage.starts_before_history = true;
   const newestFirst = [...e.movements].reverse();
   return {
     v: 1,
-    window: { from: iso(from), to: iso(input.nowMs), basis: useLogin ? "session" : "history" },
+    // `to` is the newest balance change seen, NOT the clock: the section must not change while the balance does not, or
+    // the ledger's hash would change at every poll and the delta protocol would resend it each time.
+    window: {
+      from: iso(from),
+      to: iso(input.history[input.history.length - 1]!.at),
+      basis: useLogin ? "session" : "history",
+    },
     total_auec: e.total_auec,
     count: e.movements.length,
     totals: e.totals,

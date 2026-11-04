@@ -596,9 +596,10 @@ same thing. Each figure now has one meaning:
   in the balance's sign. **Tolerances, and what is measured:** 3 s before / 20 s after for rewards and costs (the 3 s is
   measured: on the 95 logs of the reference install the "Contract Complete" notice comes 0 to 3.1 s after `MissionEnded`;
   the 20 s is an assumption, twice the ledger's settle delay), 2 s before / 8 s after for transactions (the commerce
-  model's assumption), exact amounts within the larger of 1 aUEC and 0.1 %. Measured on those logs too: the 131 completed
-  contract ends never lie within 30 s of a shop or commerce line (so rewards and sales do not compete in practice), cargo
-  purchases of a settlement are at least 10 s apart (hence the 20 s cluster), only 12 % of item lines follow another within
+  model's assumption), exact amounts within the larger of 1 aUEC and 0.1 %. Measured on those logs too: none of the 57
+  contract ends (any state) found in logs that also hold commerce lines lies within 30 s of a shop or commerce line (so
+  rewards and sales do not seem to compete), cargo purchases of a settlement are at least 10 s apart (consistent with the
+  20 s cluster), only 12 % of item lines follow another within
   4 s, and insurance claim requests are mostly isolated (155 of 187 bursts are single lines). What could NOT be measured:
   the delay between a log line and the balance change it causes (the log has no balance: it needs a capture of both at
   once), and what insurance or hangar requests really cost. Every amount here is derived from the balance: built only when

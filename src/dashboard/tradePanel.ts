@@ -795,6 +795,18 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
             : "une récompense ou la vente d’autre chose ?") +
           ") : la variation du solde n’est pas le bénéfice de ce seul trajet.",
       );
+    // Fees measured in a window that also holds another possible cause (a shop item, a contract reward, an insurance or
+    // hangar cost): the "mesuré" tag stays, but the card must say they may include it, whatever the size of the gap.
+    const dec = ctx.decomposition;
+    if (dec && dec.fees_doubtful && warns.join(" ").indexOf(L.movementsWarningText(dec)) < 0)
+      warns.push(
+        "Les frais mesurés tombent dans une fenêtre qui contient aussi une autre cause possible (achat d’objet, récompense ou assurance) : ils peuvent l’inclure.",
+      );
+    if (dec && dec.unmatched_transactions > 0 && m && m.fees.total !== null)
+      warns.push(
+        dec.unmatched_transactions +
+          " ligne(s) du journal n’ont trouvé aucun mouvement du solde correspondant : les frais mesurés sont à lire avec prudence.",
+      );
     setText(warn, warns.length ? "Attention : " + warns.join(" ") : "");
     show(warn, warns.length > 0);
 

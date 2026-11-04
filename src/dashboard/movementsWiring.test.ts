@@ -22,7 +22,12 @@ import {
 import type { PageWorld } from "./testing/pageHarness.js";
 import { Scenario } from "./testing/scenario.js";
 import { buildLedgerPayload, EMPTY_LEDGER } from "./ledger.js";
-import { movementBalanceAt, movementsLedger, movementsStory } from "./testing/movementsScenario.js";
+import {
+  doubtfulFeeLedger,
+  movementBalanceAt,
+  movementsLedger,
+  movementsStory,
+} from "./testing/movementsScenario.js";
 import { VIEW_FUNCTIONS } from "./viewLogic.js";
 import * as VL from "./viewLogic.js";
 
@@ -114,6 +119,34 @@ describe("Feature: the server builds nothing about the movements without the bal
       nowMs: NOW,
     });
     expect(payload).not.toHaveProperty("movements");
+  });
+});
+
+describe("Feature: the section does not change while the balance does not", () => {
+  it("Given two polls a few seconds apart and no new balance change, Then the whole ledger is identical (so the delta protocol omits it)", () => {
+    const a = movementsLedger(EPOCH + 300_000, EPOCH, true, PLAN);
+    const b = movementsLedger(EPOCH + 303_000, EPOCH, true, PLAN);
+    expect(JSON.stringify(b.movements)).toBe(JSON.stringify(a.movements));
+    expect(hashText(JSON.stringify(b))).toBe(hashText(JSON.stringify(a)));
+  });
+});
+
+describe("Feature: fees measured next to another possible cause are said to be doubtful", () => {
+  it("Given a shop item bought inside the purchase window, Then the 2 % warning stays silent but the card says the fees may include it", async () => {
+    const scenario = new Scenario();
+    scenario.uec = movementBalanceAt;
+    scenario.ledger = (include, nowMs) => doubtfulFeeLedger(nowMs, scenario.epoch, include, PLAN);
+    const w = await startPage({ scenario });
+    await w.advance(215 * SECOND);
+    await fullscreen(w);
+    findButton(w.root, "Afficher le solde").click();
+    await w.advance(3 * SECOND);
+    const t = card(w);
+    expect(t).toMatch(/Frais\s*mesuré/);
+    expect(t).toContain(
+      "Attention : Les frais mesurés tombent dans une fenêtre qui contient aussi une autre cause possible",
+    );
+    expect(NBSP_FREE(visibleText(block(w)))).toMatch(/Frais sur l’achat\s*ambigu/);
   });
 });
 

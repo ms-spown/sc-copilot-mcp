@@ -156,7 +156,7 @@ export function movementsLedger(
     base: {
       ...EMPTY_LEDGER,
       status: "ok",
-      asOf: nowMs,
+      asOf: epoch,
       contracts: s.contract.endedMs !== null && s.contract.endedMs <= nowMs ? [s.contract] : [],
     },
     history: s.history,
@@ -164,6 +164,46 @@ export function movementsLedger(
     plan,
     trades: s.transactions,
     movementEvents: s.events,
+    nowMs,
+  });
+}
+
+/**
+ * A story where a shop item (500 aUEC, 25 s) is bought INSIDE the buy settlement's window: the commerce model's fee
+ * reconciliation cannot know about it and absorbs it (19 968 instead of 19 468), so the gap with the margin is zero and
+ * the 2 % warning never fires. Only the explainer sees it, and flags the fee as doubtful.
+ */
+export function doubtfulFeeLedger(
+  nowMs: number,
+  epoch: number,
+  includeBalance: boolean,
+  plan?: PlanForLedger,
+): LedgerPayload {
+  const loop = Math.max(0, Math.floor((nowMs - epoch) / (TRADE_LOOP_SECONDS * 1000)));
+  const base = epoch + loop * TRADE_LOOP_SECONDS * 1000;
+  const f = TRADE_FIGURES;
+  const afterBuys = f.start - f.buys[0] - f.buys[1] - f.buyFee - 500;
+  const steps: [number, number][] = [
+    [6, f.start],
+    [20.1, f.start - f.buys[0]],
+    [22.1, f.start - f.buys[0] - f.buys[1]],
+    [22.6, f.start - f.buys[0] - f.buys[1] - f.buyFee],
+    [25.3, afterBuys],
+    [200.1, afterBuys + f.sells[0]],
+    [202.1, afterBuys + f.sells[0] + f.sells[1]],
+    [202.6, afterBuys + f.sells[0] + f.sells[1] - f.sellFee],
+  ];
+  const lines = [
+    ...tradeLines(base),
+    itemBuyLine(base, 25, 500),
+    itemSuccessLine(base, 25.2),
+  ].filter((l) => Date.parse(l.slice(1, l.indexOf(">"))) <= nowMs);
+  return buildLedgerPayload({
+    base: { ...EMPTY_LEDGER, status: "ok", asOf: epoch },
+    history: historyFrom(base, steps, nowMs),
+    includeBalance,
+    plan,
+    trades: journalTransactions(lines, nowMs),
     nowMs,
   });
 }

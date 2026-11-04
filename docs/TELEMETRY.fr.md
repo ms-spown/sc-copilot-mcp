@@ -625,9 +625,10 @@ deux lignes ne parlaient pas de la même chose. Chaque chiffre a désormais un s
   les 95 journaux de l'installation de référence, l'avis « Contract Complete » arrive 0 à 3,1 s après `MissionEnded` ;
   les 20 s sont une hypothèse, le double du délai de stabilisation du carnet), 2 s avant / 8 s après pour les
   transactions (hypothèse du modèle de commerce), montants exacts à plus ou moins le plus grand de 1 aUEC et 0,1 %.
-  Mesuré aussi sur ces journaux : les 131 fins de contrat terminées ne tombent jamais à moins de 30 s d'une ligne de
-  boutique ou de commerce (récompenses et ventes ne se disputent donc pas en pratique), les achats de marchandise d'un
-  règlement sont espacés d'au moins 10 s (d'où le groupe de 20 s), seules 12 % des lignes d'objets suivent une autre à
+  Mesuré aussi sur ces journaux : aucune des 57 fins de contrat (tous états) trouvées dans des journaux qui
+  contiennent aussi des lignes de commerce ne tombe à moins de 30 s d'une ligne de boutique ou de commerce (récompenses et
+  ventes ne semblent donc pas se disputer), les achats de marchandise d'un règlement sont espacés d'au moins 10 s
+  (compatible avec le groupe de 20 s), seules 12 % des lignes d'objets suivent une autre à
   moins de 4 s, et les demandes de réclamation d'assurance sont surtout isolées (155 des 187 rafales sont une seule
   ligne). Ce qui n'a PAS pu être mesuré : le délai entre une ligne du journal et la variation du solde qu'elle cause
   (le journal n'a pas de solde : il faut une capture des deux en même temps), et ce que coûtent vraiment une assurance
