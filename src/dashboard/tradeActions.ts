@@ -836,10 +836,60 @@ export function tradeSafeName(value: any): string {
 }
 
 /**
+ * The arguments of the `uex_plan_trade` call that reproduces the card: the planner the dashboard runs (planTrips) is the one the
+ * tool runs, so the same request gives the same options. Built from the request the page sent and what the answer says it used
+ * (the hold, the flown ship, the stop time). A budget that is the player's balance is never written here (a note says to read it).
+ * view: { objective, request (the arguments sent to sc_trade_suggest), answer (the cleaned answer) }
+ */
+export function tradeRecipeArgs(view: any): any {
+  const fl = view && view.flags && typeof view.flags === "object" ? view.flags : {};
+  const rq =
+    view && view.request && typeof view.request === "object"
+      ? view.request
+      : {
+          avoid_pyro: fl.avoidPyro === true,
+          armistice_only: fl.armistice === true,
+          min_reports: fl.reports === true ? 1 : 0,
+        };
+  const an = view && view.answer && typeof view.answer === "object" ? view.answer : {};
+  const args: any = { objective: view.objective };
+  if (typeof an.cargo_scu === "number" && an.cargo_scu >= 1) args.cargo_scu = an.cargo_scu;
+  // The flown ship gives the quantum speed (and its spool-up) in both places, from the same wiki sheet.
+  if (an.ship && an.speed_known === true) args.ship_name = tradeSafeName(an.ship);
+  if (rq.budget_private !== true && typeof rq.budget === "number" && rq.budget > 0)
+    args.budget = Math.round(rq.budget);
+  if (rq.origin) args.origin_terminal_name = tradeSafeName(rq.origin);
+  if (rq.avoid_pyro === true) args.avoid_pyro = true;
+  if (rq.armistice_only === true) args.armistice_only = true;
+  if (typeof rq.min_reports === "number" && rq.min_reports > 0) args.min_reports = rq.min_reports;
+  if (typeof an.stop_minutes === "number" && an.stop_minutes > 0)
+    args.stop_minutes = an.stop_minutes;
+  args.limit = 8;
+  return args;
+}
+
+/**
  * The text "Demander à l'agent" posts into the conversation. Built here from the cleaned option and the chosen flags,
  * never from the free text of the tool, and with NO figure derived from the balance when `view.priv` is true.
- * view: { objective, flags: {avoidPyro, armistice, reports, roundTrip}, priv, from (origin text for "Et ensuite"), ship }
+ * view: { objective, flags: {avoidPyro, armistice, reports, roundTrip}, priv, from (origin text for "Et ensuite"), ship,
+ *         showBalance, request (the arguments sent to sc_trade_suggest), answer (the cleaned answer), ageMs (since it was computed) }
+ * It carries the exact reproduction recipe (tradeRecipeArgs) and the card's own figures, so that the agent compares like with
+ * like. The figures that derive from a budget that is the balance are left out (priv), and the balance is never written.
  */
+/** The recipe as one call, `name(key=value, ...)`: no brace, no bracket, strings in quotes (they went through tradeSafeName). */
+export function tradeRecipeText(view: any): string {
+  const args = tradeRecipeArgs(view);
+  return (
+    "uex_plan_trade(" +
+    Object.keys(args)
+      .map(
+        (k) => k + "=" + (typeof args[k] === "string" ? JSON.stringify(args[k]) : String(args[k])),
+      )
+      .join(", ") +
+    ")"
+  );
+}
+
 export function tradeAgentMessage(L: any, o: any, view: any): string {
   const a = o.legs[0];
   const b = o.legs[1];
@@ -884,7 +934,9 @@ export function tradeAgentMessage(L: any, o: any, view: any): string {
   );
   if (view.priv) {
     parts.push(
-      "Mon budget est celui de mon solde : je ne le communique pas, donc les quantités, les totaux et le gain par heure sont omis.",
+      view.showBalance === true
+        ? "Mon budget est celui de mon solde : je ne l’écris pas dans ce message, lis-le toi-même et passe-le en budget ; les quantités, les totaux et le gain par heure du tableau de bord sont omis ici."
+        : "Mon budget est celui de mon solde : je ne le communique pas, donc les quantités, les totaux et le gain par heure sont omis.",
     );
     if (o.cycle_minutes !== null) parts.push("Cycle estimé : " + o.cycle_minutes + " min.");
   } else {
@@ -919,10 +971,62 @@ export function tradeAgentMessage(L: any, o: any, view: any): string {
   if (view.flags && view.flags.reports) wanted.push("relevés de joueurs exigés");
   if (view.flags && view.flags.roundTrip) wanted.push("aller-retour seulement");
   if (wanted.length) parts.push("Contraintes choisies : " + wanted.join(", ") + ".");
+  // The figures of each step, so that nothing has to be guessed back (none when they derive from a budget that is the balance).
+  if (!view.priv) {
+    for (let i = 0; i < o.legs.length; i++) {
+      const l = o.legs[i];
+      parts.push(
+        "Étape " +
+          (i + 1) +
+          " : " +
+          q(l.commodity) +
+          ", " +
+          L.fmtNum(l.scu) +
+          " SCU, achat " +
+          L.fmtNum(l.buy_price) +
+          ", vente " +
+          L.fmtNum(l.sell_price) +
+          (l.age_days !== null && l.age_days !== undefined
+            ? ", prix vieux de " + L.fmtNum(l.age_days, 1) + " j"
+            : "") +
+          ", " +
+          (l.report_status === "reported"
+            ? "relevés de joueurs"
+            : l.report_status === "estimate"
+              ? "estimation UEX"
+              : "relevés non vérifiés") +
+          ".",
+      );
+    }
+    if (typeof o.cost === "number")
+      parts.push("Mise de départ : environ " + L.fmtNum(o.cost) + " aUEC.");
+  }
+  const recipe = tradeRecipeArgs(view);
   parts.push(
-    "Vérifie-la avec uex_get_trade_routes et uex_plan_trade (prix, âge des données, stocks), dis-moi ce qui peut mal tourner et propose une meilleure alternative si elle existe. Ne lis pas mon solde.",
+    "Pour comparer à armes égales, rejoue exactement l’appel du tableau de bord : " +
+      tradeRecipeText(view) +
+      (recipe.origin_terminal_name
+        ? " (si le départ est une planète ou un système, passe-le dans origin_planet_name ou origin_system_name)"
+        : "") +
+      (view.request && view.request.budget_private === true
+        ? " ; ajoute-y mon budget : " +
+          (view.showBalance === true
+            ? "mon solde actuel (lis-le avec sc_live_state)"
+            : "mon solde est masqué, rejoue sans budget et dis-le")
+        : view.request && typeof view.request.budget === "number"
+          ? ""
+          : " (sans budget)") +
+      ". Le tableau de bord n’affiche que les options, pas les chains" +
+      (view.ageMs >= 60000
+        ? ", et il a calculé cette route il y a " + Math.round(view.ageMs / 60000) + " min"
+        : "") +
+      ".",
   );
-  return parts.join(" ").slice(0, 1500);
+  parts.push(
+    "Compare le premier résultat avec les chiffres du tableau de bord ci-dessus et dis explicitement ce qui diffère et pourquoi (stock, âge des prix, hypothèses) avant de donner ton verdict ; dis-moi ensuite ce qui peut mal tourner et propose une meilleure alternative si elle existe." +
+      (view.showBalance === true ? "" : " Ne lis pas mon solde."),
+  );
+  return parts.join(" ").slice(0, 2600);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -980,6 +1084,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
     resultAt: 0,
     resultObjective: "",
     resultPriv: false,
+    resultRequest: null,
     waitUntil: 0,
     waitRetries: 0,
     busy: false,
@@ -1512,6 +1617,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
         S.resultAt = stamp();
         S.resultObjective = objective;
         S.resultPriv = built.priv || a.private === true;
+        S.resultRequest = built.args;
         S.resultHold = { source: built.cargoSource, scu: a.cargo_scu };
         S.appliedId = "";
         S.waitRetries = 0;
@@ -1604,6 +1710,12 @@ export function tradeActionsPanel(doc: any, L: any): any {
       objective: fromNext ? "profit_per_hour" : S.resultObjective,
       flags: question(),
       priv: fromNext ? S.next.priv : S.resultPriv,
+      showBalance: H.showBalance === true,
+      request: fromNext ? S.next.request : S.resultRequest,
+      answer: fromNext ? S.next.result : S.result,
+      ageMs: fromNext
+        ? stamp() - S.next.at + 1000 * ((S.next.result && S.next.result.age_s) || 0)
+        : stamp() - S.resultAt + 1000 * ((S.result && S.result.age_s) || 0),
       from: fromNext ? S.next.origin : "",
     });
     try {
@@ -1638,6 +1750,8 @@ export function tradeActionsPanel(doc: any, L: any): any {
       retries: 0,
       source: built.cargoSource,
       hold: "",
+      request: built.args,
+      at: stamp(),
     };
     // Not a render inside a render: the next one (or this timer) shows it.
     later(refresh, 0);
@@ -2105,6 +2219,8 @@ export const TRADE_ACTIONS_VIEW_FUNCTIONS = [
   tradeGoodsLine,
   tradeCardModel,
   tradeSafeName,
+  tradeRecipeArgs,
+  tradeRecipeText,
   tradeAgentMessage,
   tradeNextWanted,
   tradeActionsPanel,

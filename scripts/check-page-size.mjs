@@ -32,7 +32,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // current play session and the older ones, the folded "Dernier trajet connu, hors session" block, and the session's trade section
 // handed to the Debrief button, "Et ensuite ?" and the alert boxes; the budget is that size plus about 5 % (420 kB), rounded. Same
 // status: our own guard, nothing was removed to fit it, the host's own limit is still unproven.
-const BUDGET_BYTES = 420_000;
+// 2026-11-04 (prominent header balance F8, recipe of the agent message F9, fixed messages F6): 418.3 kB with the bigger header
+// "Solde" zone, the recipe builder and the per-step figures of the message to the agent; the budget is that size plus about 5 %
+// (439 kB), rounded. Same status: our own guard, nothing was removed to fit it, the host's own limit is still unproven.
+const BUDGET_BYTES = 439_000;
 
 const page = await import(pathToFileURL(path.join(root, "dist", "dashboard", "page.js")).href);
 const bytes = Buffer.byteLength(page.dashboardHtml(), "utf8");

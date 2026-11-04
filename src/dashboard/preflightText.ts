@@ -112,7 +112,10 @@ const VERDICT_WORD = {
   unknown: "impossible de vérifier",
 } as const;
 
-/** The message to the agent. Fixed wording; the only variable parts are numbers, codes and quoted names. */
+/**
+ * The message to the agent. Fixed wording; the only variable parts are numbers, codes and quoted names. It says nothing about the
+ * balance: the page adds "Ne lis pas mon solde." at click time, only when the player hid the balance (tradePreflight.ts).
+ */
 function agentMessage(r: PreflightResult, margin: string): string {
   const p = r.plan;
   const parts = [
@@ -128,8 +131,14 @@ function agentMessage(r: PreflightResult, margin: string): string {
     parts.push(
       `${l.side === "buy" ? "Achat" : "Vente"} : ${legLines(l, r.thresholds.drifted_pct).join(" ; ")}.`,
     );
+  // The exact reading the check made, as ready calls: the same terminal, the same goods, the same side.
+  if (p && p.commodity && p.buy_terminal && p.sell_terminal) {
+    parts.push(
+      `Pour relire les mêmes prix : uex_get_commodity_prices(commodity_name=${safeName(p.commodity)}, terminal_name=${safeName(p.buy_terminal)}, side="buy") puis uex_get_commodity_prices(commodity_name=${safeName(p.commodity)}, terminal_name=${safeName(p.sell_terminal)}, side="sell").`,
+    );
+  }
   parts.push(
-    "Vérifie avec uex_get_commodity_prices et uex_get_trade_routes, dis-moi si le trajet vaut encore la peine et propose une meilleure alternative si elle existe. Ne lis pas mon solde.",
+    "Compare avec les chiffres du tableau de bord ci-dessus et dis explicitement ce qui diffère et pourquoi (stock, âge des prix, relevés) avant de donner ton verdict ; dis-moi ensuite si le trajet vaut encore la peine et propose une meilleure alternative si elle existe.",
   );
   return parts.join(" ").slice(0, 1500);
 }

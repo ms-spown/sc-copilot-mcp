@@ -411,9 +411,12 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     R.acctValue = el("span", "acct-value", "••••••");
     R.acctNote = el("span", "acct-note", "");
     R.btnBalance = button("Afficher le solde", () => toggleBalance(), "mini");
-    add(R.acct, R.acctLabel, R.acctValue, R.acctNote, R.btnBalance);
+    // The figure is the first thing of the header and the biggest: label, figure and its note in a column, the control beside it.
+    R.acctMain = el("div", "acct-main");
+    add(R.acctMain, R.acctLabel, R.acctValue, R.acctNote);
+    add(R.acct, R.acctMain, R.btnBalance);
     add(R.topActions, R.age, R.btnAnalyse, R.health.help, R.btnOrder, R.btnMode);
-    add(R.top, R.status, R.verdict, R.acct, R.topActions);
+    add(R.top, R.acct, R.status, R.verdict, R.topActions);
     // The two tabs of the page: the dashboard and the Sessions view. Shown in full screen, and whenever the Sessions view is
     // the one on screen (so that the way back is always there).
     R.tabs = el("div", "tabs");
@@ -2067,6 +2070,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       now,
       clock,
       balance: bal ? bal.uec : null,
+      // Read at click time by "Demander à l'agent": the one instruction about the balance is said only when it is hidden.
+      showBalance,
       sheetCargo:
         specs && specs.status === "ready" && typeof specs.cargo_scu === "number"
           ? specs.cargo_scu

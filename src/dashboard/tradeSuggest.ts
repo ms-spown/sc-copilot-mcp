@@ -257,6 +257,8 @@ export interface FlownShip {
   name: string | null;
   cargoScu: number | null;
   quantumSpeedMs: number | null;
+  /** The sheet's spool-up: the planner then times a flight as `ship_name` does (it would use its 10 s default otherwise). */
+  spoolSeconds?: number | null;
 }
 
 export interface SuggestDeps {
@@ -527,7 +529,7 @@ export class TradeSuggestService {
       !!input.budget_private,
       input.cargo_scu ?? null,
       (input.origin ?? "").trim().toLowerCase(),
-      ship ? [ship.name, ship.cargoScu, ship.quantumSpeedMs] : null,
+      ship ? [ship.name, ship.cargoScu, ship.quantumSpeedMs, ship.spoolSeconds ?? null] : null,
     ]);
   }
 
@@ -548,6 +550,7 @@ export class TradeSuggestService {
         cargoScu: cargo,
         ...(input.budget !== undefined ? { budget: input.budget } : {}),
         ...(ship?.quantumSpeedMs ? { quantumSpeedMs: ship.quantumSpeedMs } : {}),
+        ...(ship?.quantumSpeedMs && ship.spoolSeconds ? { spoolSeconds: ship.spoolSeconds } : {}),
         ...(origin ? { origin } : {}),
         ...(input.avoid_pyro ? { avoidPyro: true } : {}),
         ...(input.armistice_only ? { armisticeOnly: true } : {}),

@@ -6,6 +6,38 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed (the fixed messages follow the balance choice, F6)
+- **No more "Ne lis pas mon solde" appended to every click while the balance is shown.** Every fixed message the page posts now
+  reads the player's choice at the click: shown, it says nothing about the balance and names no `include_balance` (it also drops
+  the old "Le serveur applique mon choix pour les montants."); hidden (the toggle, `SC_BALANCE=hidden`), the instruction stays
+  exactly as before. Concerned: "Demander à l'agent" of a route (it was hard-coded), the pre-flight message (hard-coded server
+  side, now added by the page at click time) and the contextual "Ask Claude" messages. The balance itself is still never in these
+  messages. The prompts and the server instructions already say the balance comes by default (a test pins it).
+
+### Changed (the agent gets the card's own request, F9)
+- **The agent and the dashboard now find the same routes.** Both run the same planner (`planTrips`), but "Demander à l'agent" used to
+  send none of the request (hold, budget, objective, origin, constraints, stop time, flown ship): the agent re-ran
+  `uex_plan_trade` with its own defaults (full stock, no budget) and got another plan. The message now carries the exact recipe as
+  a ready call, `uex_plan_trade(objective=..., cargo_scu=..., ship_name=..., budget=..., origin_terminal_name=..., avoid_pyro=...,
+  min_reports=..., stop_minutes=..., limit=8)`, the figures of each step (SCU, buy and sell, price age, reports, starting cost), how
+  old the card's computation is, and the order to compare the agent's first result with those figures and say what differs and
+  why before a verdict. The same goes for "Et ensuite ?" (its origin), the pre-flight (the exact `uex_get_commodity_prices` calls of
+  the check) and the debrief. A budget that is the balance is never written (the message says to read it, or to go without when
+  it is hidden); the figures that derive from it stay omitted. The message cap goes from 1500 to 2600 characters (the recipe and the
+  steps need room; the names are still quoted as data, and no brace, bracket or backtick can appear).
+- **One real difference found and removed:** the card sent the flown ship's quantum speed but not its spool-up, so the planner used
+  its 10 s default while `ship_name` uses the wiki sheet's (6.9 s for a Cutlass Black): same prices and hold, a different cycle and
+  profit per hour. `TripRequest` gained an optional `spoolSeconds`, the flown ship carries the sheet's, the card sends it. No tool name or
+  input schema changed. A test runs both entry points on one synthetic UEX market and shows the recipe gives the card's first
+  option and figures, and that without the spool-up they differ.
+
+### Changed (the account balance is obvious, F8)
+- **The header's "Solde" is now the first, biggest element of the header** (compact and full screen): a bordered box with a large
+  figure, a green border and dot when live, a dashed amber border and "dernier solde connu · il y a 15 h" in amber when it is the last
+  known balance, a muted "Solde inconnu" with the reason, dots and "masqué" when hidden. Same data, same rules. Page size 418.3 kB
+  with these three changes; the internal budget of `check:page-size` goes from 420 kB to 439 kB (about 5 %, our own guard, nothing
+  removed to fit it).
+
 ### Added (a Sessions view: the dedicated tab, with archive and delete per session)
 - **Marc's request:** "on a session line I must be able to click delete, archive, etc., and see the stats when I select it ...
   not many sessions inline, and a dedicated tab for the sessions view."

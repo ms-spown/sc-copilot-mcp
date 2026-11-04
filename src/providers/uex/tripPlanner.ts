@@ -70,6 +70,11 @@ export interface TripRequest {
   shipName?: string;
   /** Quantum speed in m/s; overrides the wiki sheet. */
   quantumSpeedMs?: number;
+  /**
+   * Quantum spool-up in seconds, used only when there is no ship sheet to take it from (a caller that already holds the
+   * sheet's figures, like the dashboard, so that it plans exactly as `ship_name` would). Out of range: the default.
+   */
+  spoolSeconds?: number;
   /** Where to start (all optional). commodityName, terminalName or planetName also enable one-way routes from UEX. */
   origin?: {
     terminalName?: string;
@@ -346,7 +351,11 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
   }
   const model: TravelModel = {
     quantumSpeedMs: req.quantumSpeedMs ?? sheet?.quantum_speed_ms ?? null,
-    spoolSeconds: sheet?.spool_seconds ?? DEFAULT_SPOOL_SECONDS,
+    spoolSeconds:
+      sheet?.spool_seconds ??
+      (typeof req.spoolSeconds === "number" && req.spoolSeconds >= 1 && req.spoolSeconds <= 120
+        ? req.spoolSeconds
+        : DEFAULT_SPOOL_SECONDS),
     stopSeconds:
       Math.round(Math.min(120, Math.max(0, req.stopMinutes ?? DEFAULT_STOP_SECONDS / 60))) * 60,
     localHopSeconds: LOCAL_HOP_SECONDS,

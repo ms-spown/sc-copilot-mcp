@@ -322,8 +322,8 @@ for (const shown of [false, true]) {
       // include the balance. Shown: include_balance is not named at all (the server applies the choice).
       if (shown) {
         expect(m).not.toContain("include_balance");
-        expect(m).not.toMatch(/N’inclus pas mon solde|Ne lis pas mon solde/);
-        expect(m).toContain("Le serveur applique mon choix pour les montants.");
+        // Shown, the message says nothing at all about the balance: Claude gets what it needs.
+        expect(m).not.toMatch(/solde|montants|balance/i);
       } else {
         expect(m).toContain("include_balance false");
         expect(m).toMatch(/N’inclus pas mon solde|Ne lis pas mon solde/);

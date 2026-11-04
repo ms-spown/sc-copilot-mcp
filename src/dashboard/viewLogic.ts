@@ -1293,18 +1293,17 @@ export function actionMessage(kind: string, ctx: any): string | null {
   // only: no number, no ship, nothing read from the log or the game, no name, never the balance, and no tool of the dashboard
   // itself. The player's choice is read at CLICK time (`ctx.showBalance`): hidden, every tool call says include_balance false and
   // the message says not to include the balance; shown, include_balance is not named at all (the server applies the player's
-  // choice, which is how the dashboard itself shows its amounts). Without the flag the safe side is taken: hidden.
+  // choice, which is how the dashboard itself shows its amounts). Shown, the message says NOTHING about the balance: Claude
+  // should have all the information it needs. Without the flag the safe side is taken: hidden.
   const shown = !!ctx && ctx.showBalance === true;
   const both = shown ? "" : ", tous deux avec include_balance false";
-  const tail = shown
-    ? " Le serveur applique mon choix pour les montants."
-    : " N’inclus pas mon solde.";
+  const tail = shown ? "" : " N’inclus pas mon solde.";
   if (kind === "analyse") {
     return (
       "Analyse ma situation dans le jeu à partir de la télémétrie en direct : appelle sc_live_state (sections ship, pilot et weapons) et sc_live_events" +
       both +
       ", dis l’âge des données et ce que le flux ne contient pas, puis ce qui demande mon attention." +
-      (shown ? tail : " Ne lis pas mon solde.")
+      (shown ? "" : " Ne lis pas mon solde.")
     );
   }
   if (kind === "bilan") {
@@ -1336,7 +1335,7 @@ export function actionMessage(kind: string, ctx: any): string | null {
     return (
       "Fais le debrief de mon dernier trajet : appelle sc_trade_journal puis sc_session_current" +
       both +
-      ", regarde le prix de vente actuel avec uex_get_price_history (utilise le terminal de vente nommé par le journal ou par moi, sinon demande-le-moi), et dis ce qui a bien marché, ce que je changerais et la prochaine route. Distingue ce qui est mesuré de ce qui est estimé. Si un outil manque, dis-le." +
+      ", regarde le prix de vente actuel avec uex_get_price_history (utilise le terminal de vente nommé par le journal ou par moi, sinon demande-le-moi), et dis ce qui a bien marché, ce que je changerais et la prochaine route. Distingue ce qui est mesuré de ce qui est estimé, et dis explicitement ce qui diffère entre ce que le journal établit et ce que le tableau de bord affichait (prix, quantités, frais) et pourquoi, avant de donner ton verdict. Si un outil manque, dis-le." +
       tail
     );
   }
