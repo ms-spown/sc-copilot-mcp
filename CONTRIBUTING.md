@@ -44,7 +44,7 @@ Changes to the check itself (`src/docs/docsSafety.ts`, `scripts/check-docs-safet
 ## Security rules for contributions
 
 **Files that Claude reads are an instruction channel.** The paste-in block of `docs/USING_WITH_CLAUDE*.md`, the
-tool descriptions in `src/tools/`, the prompts in `src/prompts.ts`, `CLAUDE.md` and the README tell the model
+tool descriptions in `src/tools/`, the prompts in `src/prompts.ts`, the server instructions in `src/instructions.ts`, `CLAUDE.md` and the README tell the model
 what to do. A booby-trapped contribution there would be executed by the model of every user. Therefore:
 
 - No invisible or look-alike characters, in any tracked text file: no zero-width, bidirectional-control, Unicode

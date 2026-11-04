@@ -46,6 +46,7 @@ describe("Feature: prompts the user can pick in Claude", () => {
           "patch_briefing",
           "session_debrief",
           "trade_copilot",
+          "trade_review",
         ].sort(),
       );
       for (const p of prompts) {
@@ -76,6 +77,84 @@ describe("Feature: prompts the user can pick in Claude", () => {
       const text = (r.messages[0].content as { text: string }).text;
       expect(text).not.toContain("Ship:");
       expect(text).toContain("sc_fleet_get");
+    });
+  });
+
+  describe("Scenario: the trade prompts tell Claude what to call, in what order, and what to answer", () => {
+    const render = async (name: string, args: Record<string, string> = {}) => {
+      const c = await connect();
+      const r = await c.getPrompt({ name, arguments: args });
+      return (r.messages[0].content as { text: string }).text;
+    };
+    const inOrder = (text: string, names: string[]) => {
+      const at = names.map((n) => text.indexOf(n));
+      expect(
+        at.every((i) => i >= 0),
+        names.join(" > "),
+      ).toBe(true);
+      expect([...at].sort((x, y) => x - y)).toEqual(at);
+    };
+
+    it("Then haul_plan checks freshness, plans, verifies the best options, and asks for a ranked answer", async () => {
+      const text = await render("haul_plan", { ship: "Caterpillar" });
+      inOrder(text, [
+        "sc_data_status",
+        "sc_fleet_get",
+        "uex_plan_trade",
+        "uex_get_market_status",
+        "uex_get_price_history",
+      ]);
+      expect(text).toMatch(/ranked list of up to 3 options/);
+      expect(text).toMatch(/assumptions/);
+      expect(text).toMatch(/ESTIMATES/);
+      expect(text).toMatch(/next action/);
+      expect(text).toMatch(/never call a route safe/);
+    });
+
+    it("Then trade_review reads the journal, judges the prices, and keeps the margin gross", async () => {
+      const text = await render("trade_review", { sessions: "3" });
+      expect(text).toContain("Log files to read: 3.");
+      inOrder(text, [
+        "sc_log_status",
+        "sc_trade_journal",
+        "uex_get_price_history",
+        "uex_plan_trade",
+      ]);
+      expect(text).toMatch(/GROSS/);
+      expect(text).toMatch(/never net/);
+      expect(text).toMatch(/only after I agree/);
+      expect(text).toMatch(/next action/);
+    });
+
+    it("Then trade_copilot reads the session first, asks before money, plans, verifies, and labels estimates", async () => {
+      const text = await render("trade_copilot", { budget: "500000" });
+      expect(text).toContain("Budget in aUEC: 500000.");
+      inOrder(text, [
+        "sc_session_current",
+        "include_balance",
+        "uex_plan_trade",
+        "uex_get_market_status",
+        "uex_get_price_history",
+      ]);
+      expect(text).toMatch(/Never read them without asking/);
+      expect(text).toMatch(/ESTIMATES/);
+      expect(text).toMatch(/never call a route safe/);
+      expect(text).toMatch(/next action/);
+    });
+
+    it("Then session_debrief also reads the trade journal, without presenting it as net", async () => {
+      const text = await render("session_debrief");
+      inOrder(text, ["sc_log_status", "sc_log_sessions", "sc_trade_journal"]);
+      expect(text).toMatch(/never present it as net/);
+    });
+
+    it("Then every prompt asks for the player's language and forbids inventing a number", async () => {
+      for (const p of PROMPTS) {
+        const args = Object.fromEntries(p.arguments.map((a) => [a.name, "x"]));
+        const text = p.render(args);
+        expect(text, p.name).toMatch(/Answer in the language I write in/);
+        expect(text, p.name).toMatch(/Never invent a number/);
+      }
     });
   });
 

@@ -521,10 +521,14 @@ describe("Feature: code under src/ is checked for hosts and look-alikes, not onl
       "a host with a literal part after a placeholder",
       "const d = `see https://${a}.evil.example/x`;\n",
     ],
-  ])("Given a tool description with %s, When checked, Then it fails", (_name, text) => {
-    expect(has(checkTexts([file("src/tools/example.ts", text)]), "link-host")).toBe(true);
-    expect(has(checkTexts([file("src/prompts.ts", text)]), "link-host")).toBe(true);
-  });
+  ])(
+    "Given a tool description, prompt or server instruction with %s, When checked, Then it fails",
+    (_name, text) => {
+      expect(has(checkTexts([file("src/tools/example.ts", text)]), "link-host")).toBe(true);
+      expect(has(checkTexts([file("src/prompts.ts", text)]), "link-host")).toBe(true);
+      expect(has(checkTexts([file("src/instructions.ts", text)]), "link-host")).toBe(true);
+    },
+  );
 
   it("Given a hidden comment or an active tag in a tool description, When checked, Then it fails", () => {
     expect(
