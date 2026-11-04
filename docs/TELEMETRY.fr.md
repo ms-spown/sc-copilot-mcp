@@ -1286,13 +1286,43 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   comment, son résultat, et **Nouvelle session** comme bouton principal, sans question). **Sessions ▾/▴** est UN seul
   bouton qui ouvre et ferme la liste des sessions passées (pas de bouton Fermer à part) ; la liste montre les **3 dernières**
   (la session en cours comprise) avec l'état de chacune (en cours, chronomètre, terminée : à la main, remplacée par une
-  nouvelle session, ou par une longue inactivité), **Toutes les sessions (N)** montre toutes celles qui sont enregistrées
-  dans le même panneau (et revient), et une session s'ouvre en détail. Une session qui contient quelque chose pose une question, **en ligne à côté du bouton**, avec un bouton
+  nouvelle session, ou par une longue inactivité), **Toutes les sessions (N)** ouvre la
+  **vue Sessions** (ci-dessous), et une session s'ouvre en détail. Une session qui contient quelque chose pose une question, **en ligne à côté du bouton**, avec un bouton
   Annuler et sans minuterie (une question devenue fausse, parce qu'un autre tableau de bord ou le jeu a changé la session,
   est retirée et le dit) ; une action qui ne ferme rien se fait tout de suite. Le résultat s'écrit sous la carte (une
   région vivante, donc annoncée par un lecteur d'écran) et y reste jusqu'à ce qu'une session plus récente soit sur la
   carte ; il ne contient jamais de montant. Deux tableaux de bord de deux conversations montrent la même session, car elle
   vient du serveur.
+- **La vue Sessions** est un onglet du tableau de bord (**Tableau de bord | Sessions**, visibles en plein écran et tant que la
+  vue est à l'écran ; **Toutes les sessions (N)** l'ouvre et demande le plein écran à l'hôte). Elle remplace les sections du
+  tableau de bord tant qu'elle est ouverte et garde l'en-tête (et sa zone du solde). Elle contient : la **liste complète** des
+  sessions enregistrées (jusqu'aux 200 que garde le fichier), des **filtres** (Toutes : toutes celles qui ne sont pas
+  archivées ; En cours ; Terminées ; Archivées, avec leur nombre), les **statistiques entre sessions** et le **détail de la
+  session choisie** (trajets, coupures, boutons du bilan) à côté de la liste (empilés quand c'est étroit). Chaque session
+  terminée a deux actions sur sa ligne : **Archiver** / **Désarchiver** (sans question : la session reste dans le fichier avec
+  tout ce qu'elle contient, elle sort seulement de la liste par défaut, et de la liste de la carte, jusqu'à ce que vous
+  ouvriez « Archivées ») et **Supprimer** (une question en ligne avec Confirmer et Annuler, sans minuterie, Échap annule ; la
+  session est alors **retirée du fichier pour de bon**, son numéro n'est pas réutilisé). La session en cours n'a ni
+  l'une ni l'autre (terminez-la d'abord avec **Terminer** sur la carte) ; archiver la dernière session terminée vide aussi la
+  carte (« Aucune session en cours »). Le résultat de chaque action s'écrit dans une région vivante de la vue, sans
+  aucun montant. Les montants de la liste, du détail et des statistiques suivent le choix du solde comme partout ailleurs
+  (masqué : aucun n'est dessiné, et quitter la vue ou masquer le solde efface ce qu'elle avait dessiné). Côté serveur, c'est un
+  seul outil réservé au tableau de bord, `sc_session_manage` (`id`, `action` : archive, unarchive ou delete ; refusé à un
+  client qui n'a pas déclaré l'extension UI, n'écrit que le fichier du serveur, rien n'est envoyé), et `sc_session_list` a
+  gagné `include_archived` (faux par défaut : une session archivée est absente de la liste par défaut, que Claude lit aussi).
+  Les **statistiques entre sessions
+  laissent de côté les sessions archivées** (totaux, moyennes, meilleure et moins bonne, tendance, « N sessions » : dans la
+  vue et pour Claude), et la vue le dit toujours (« N sessions archivées non comptées ») ; `sc_session_stats` a
+  `include_archived` (faux par défaut) et répond `archived_not_counted`. Ce que le serveur APPREND de vos trajets ne
+  disparaît pas : l'étalonnage des routes (`route_reliability`), les tailles de soute du formulaire de commerce et le dernier
+  solde connu lisent toujours les sessions archivées, donc seule une suppression les en retire (la question le dit). Sans
+  identifiant, `sc_session_current` est la session de la carte (aucune quand la dernière est archivée) ; une session
+  archivée s'ouvre par son identifiant. Une session archivée est gardée dans les bornes du fichier (200 sessions, la limite
+  de taille : les plus anciennes partent d'abord, archivées ou non). Supprimer laisse un trou dans les numéros (1, 3, 4...)
+  exprès : un numéro n'est jamais réutilisé. Supprimer la dernière session terminée pendant que le jeu tourne en fait
+  démarrer une autre aussitôt quand rien avant elle ne tient la carte, et la question le dit. Le fichier reste en version 2 : `archived`
+  est un drapeau facultatif qu'un ancien serveur qui réécrit le fichier perd, comme il perd `ship_losses`, ce qui ramène
+  seulement la session dans sa liste par défaut.
 - **À l'ouverture**, le tableau de bord se rattache à la dernière session et n'en crée aucune : sans session il dit
   « Aucune session en cours » et propose **Démarrer une session** ; une session silencieuse depuis plus que le délai est
   fermée à sa dernière observation ; une session que vous avez terminée n'est jamais remplacée dans votre dos.

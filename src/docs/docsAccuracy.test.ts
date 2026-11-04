@@ -317,6 +317,8 @@ const COVERED_BY: Record<string, { en: string; fr: string } | string> = {
   },
   last_context_at: { en: "the times", fr: "les heures" },
   note: { en: "your note", fr: "votre note" },
+  archived:
+    "allowed: a yes/no flag set by the player (the session is hidden from the default list); no data about the player",
   started_by:
     "allowed: who started the session (the player's click or the game seen starting): a two-word label, no identifier and no data about the player",
   price_refusals: { en: "the count of refused prices", fr: "le nombre de prix refusés" },

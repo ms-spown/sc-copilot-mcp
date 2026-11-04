@@ -469,7 +469,7 @@ describe("Feature: the keyboard meets the sections in the order they are drawn",
     const pin = at(stops, "Épingler : vitesse");
     const shortcuts = at(stops, SHORTCUT_FOLD);
     const fold = at(stops, "Carte Commerce");
-    const session = at(stops, "Sessions");
+    const session = at(stops, "Sessions ");
     expect(pin).toBeGreaterThan(-1);
     expect(shortcuts).toBeGreaterThan(-1);
     expect(fold).toBeGreaterThan(-1);
@@ -487,7 +487,7 @@ describe("Feature: the keyboard meets the sections in the order they are drawn",
     await w.advance(5 * SECOND);
     const stops = tabStops(w);
     const shortcuts = at(stops, "À propos des touches");
-    const session = at(stops, "Sessions");
+    const session = at(stops, "Sessions ");
     const trade = at(stops, "Plus rentable");
     const pin = at(stops, "Épingler : vitesse");
     expect(shortcuts).toBeGreaterThan(-1);

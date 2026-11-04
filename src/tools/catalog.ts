@@ -293,6 +293,8 @@ export const CATALOG: Record<string, CatalogEntry> = {
   sc_session_stats: { ...sessionFile, profiles: ["local", "trade"] },
   sc_session_new: { ...sessionFile, profiles: ["local"] },
   sc_session_end: { ...sessionFile, profiles: ["local"] },
+  // The dashboard's per-session actions (archive, unarchive, delete): app-only, the player's own file.
+  sc_session_manage: { ...sessionFile, profiles: ["local"] },
   // The report of a session (Markdown / CSV): long strings, so a larger bound than the other session tools. The player's
   // labels and note come back in it, cleaned and escaped; still text, still untrusted. sc_session_debrief is the model's
   // (about 28 000 characters); sc_session_export is the dashboard's (app-only, the whole session).

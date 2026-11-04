@@ -111,11 +111,11 @@ npm run build
    chemins UEX utilisés par les outils : ceux qu'il vérifie sont listés dans `scripts/check-sources.mjs`). Dans Claude,
    demandez `sc_data_status`.
 
-## Outils (65)
+## Outils (66)
 
 Claude en voit 52 par défaut : `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll`,
 `sc_live_mark` et `sc_trade_suggest` ne sont listés que lorsque la télémétrie en direct est activée (les quatre
-derniers, et `sc_session_export`, exigent aussi un client capable de les afficher, comme Claude Desktop), et les sept
+derniers, `sc_session_export` et `sc_session_manage`, exigent aussi un client capable de les afficher, comme Claude Desktop), et les huit
 outils `sc_session_*`
 seulement quand elle est activée et que `SC_SESSIONS` n'est pas `off`.
 
@@ -130,7 +130,7 @@ Référence complète des paramètres : **[docs/TOOLS.md](docs/TOOLS.md)** (gén
 | **Patchs et lore**                               | `sc_patch_notes` (notes d'une mise à jour, par section ou mot-clé), `sct_search`, `sct_get_article`, `sc_list_builds`, `sc_diff_versions`                                                                                                                                                                                                                                                                                     |
 | **Votre journal de jeu** (désactivé par défaut)  | `sc_log_context` (ce que vous faites actuellement), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`, `sc_trade_journal` (achats, ventes et transports de fret)                                                                                                                                                                                                                                                                                                                |
 | **Télémétrie en direct** (désactivée par défaut) | `sc_live_status` (toujours listé : l'état et comment l'activer), `sc_live_state`, `sc_live_events` (listés seulement avec `SC_TELEMETRY=on`), `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark`, `sc_trade_suggest` (le tableau de bord en direct, dans Claude Desktop uniquement)                                                                                                                                                                                                                                                                                  |
-| **Sessions de jeu enregistrées** (avec la télémétrie) | `sc_session_current` (la session jusqu'ici, pour vous accompagner et proposer la prochaine route), `sc_session_list`, `sc_session_stats` (efficacité, rythme par heure, tendance, meilleurs trajets), `sc_session_new`, `sc_session_end`, `sc_session_debrief` (le bilan de session à partager ou garder : Markdown par défaut, CSV sur demande, environ 28 000 caractères au plus ; les montants seulement avec le solde), `sc_session_export` (celui du tableau de bord, le bilan entier) ; le tableau de bord a une barre de session et un bouton « Copier le bilan ». Gardées dans un fichier local, voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#sessions-enregistrées) |
+| **Sessions de jeu enregistrées** (avec la télémétrie) | `sc_session_current` (la session jusqu'ici, pour vous accompagner et proposer la prochaine route), `sc_session_list`, `sc_session_stats` (efficacité, rythme par heure, tendance, meilleurs trajets), `sc_session_new`, `sc_session_end`, `sc_session_debrief` (le bilan de session à partager ou garder : Markdown par défaut, CSV sur demande, environ 28 000 caractères au plus ; les montants seulement avec le solde), `sc_session_export` (celui du tableau de bord, le bilan entier), `sc_session_manage` (celui du tableau de bord : archiver, désarchiver ou supprimer une session terminée) ; le tableau de bord a une barre de session, un onglet « Sessions » (la liste complète, des filtres, archiver et supprimer par ligne, le détail et les statistiques) et un bouton « Copier le bilan ». Gardées dans un fichier local, voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#sessions-enregistrées) |
 | **Votre flotte**                                 | `sc_fleet_get`, `sc_fleet_upsert`, `sc_fleet_remove`                                                                                                                                                                                                                                                                                                                                                                          |
 | **Vos propres fichiers de données**              | `sc_local_datasets`, `sc_search_local`, `sc_read_local_collection`                                                                                                                                                                                                                                                                                                                                                            |
 
@@ -146,7 +146,7 @@ listé reste appelable.
 | **core**  | 14     | Le copilote au quotidien : statut, vaisseaux, bases du commerce, missions, notes de patch, flotte |
 | **trade** | 23     | La boîte à outils complète du marché UEX, avec raffinage, objets de boutique, marché des joueurs et contrats de transport |
 | **data**  | 16     | Données de référence, artisanat, minage, historique des patchs, navigation sur le wiki            |
-| **local** | 26     | Votre journal de jeu, la télémétrie et les sessions, votre flotte, vos propres fichiers de données |
+| **local** | 27     | Votre journal de jeu, la télémétrie et les sessions, votre flotte, vos propres fichiers de données |
 
 Le choix des profils et instructions recommandées est détaillé dans
 [docs/USING_WITH_CLAUDE.fr.md](docs/USING_WITH_CLAUDE.fr.md) ; la description de chaque outil précise ce qu'il renvoie

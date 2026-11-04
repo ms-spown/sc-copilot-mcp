@@ -6,6 +6,40 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (a Sessions view: the dedicated tab, with archive and delete per session)
+- **Marc's request:** "on a session line I must be able to click delete, archive, etc., and see the stats when I select it ...
+  not many sessions inline, and a dedicated tab for the sessions view."
+- **A "Sessions" tab** next to "Tableau de bord" (shown in full screen, and whenever the view is on screen so the way back is
+  always there; the arrow keys switch tabs). "Toutes les sessions (N)" under the card's list (the 3 latest) now opens it and asks
+  the host for full screen. It holds the full list (up to the 200 the file keeps; it asks for exactly that many), the filters
+  **Toutes / En cours / Terminées / Archivées** with their counts, the statistics across sessions, and the selected session's
+  detail (trips, breaks, the report controls) next to the list; amounts follow the balance choice (hidden: none is drawn, and
+  leaving the view blanks it).
+- **Per-row actions on every ended session:** **Archiver / Désarchiver** (no question: it stays in the file with everything it
+  holds, hidden from the default list and from the card's list; "Archivées" shows it) and **Supprimer** (an inline question,
+  Confirmer / Annuler, Escape, no timer; then **removed from the file for good**, its number is not reused). The session in
+  progress has neither: end it with "Terminer" first; archiving the last ended session empties the card ("Aucune session en
+  cours"). The result is said in a live region of the view, without any amount.
+- **Server:** one new app-only tool `sc_session_manage` (`id`, `action`: archive, unarchive, delete; refused to a client that did
+  not declare the UI extension, listed only to a View, writes only the server's own file, never the session in progress) and an
+  optional `include_archived` on `sc_session_list` (default false: archived sessions are out of the default list, Claude's too;
+  the statistics still count them). The golden file moved for these two and the tool counts of the README and the capabilities
+  guide are 66 tools (8 session tools). New optional session field `archived`; the file stays version 2 and readable by a
+  2.7.0 server, which drops the flag when it rewrites the file (as it does `ship_losses`): the session is then back in its list.
+- **Audit fixes of the view.** The statistics across sessions now leave ARCHIVED sessions out (totals, averages, best and
+  worst, trend, "N sessions"), the view always says "N sessions archivées non comptées", and `sc_session_stats` gains
+  `include_archived` (default false) and `archived_not_counted`; the route calibration, the hold sizes and the saved balance
+  still read archived sessions (pinned by a test); `sc_session_current` without an id is the card's session. The delete question
+  says the trips stop counting in the statistics and the route calibration, and that a new session starts at once when the game
+  runs and nothing before holds the card. Hiding the balance strips every amount from the answers the view already holds before
+  anything is drawn again (a slow or failing reload can no longer redraw them). "Toutes les sessions" is also offered when
+  archived sessions exist. The delete question focuses "Annuler"; after an action the focus lands on the row (or its neighbour);
+  the tab bar is a tablist with a tabpanel, Home and End; the compact view moves the focus before it hides the bar; a change that
+  only reached memory says "(en mémoire seulement)". SECURITY.md has the row for `sc_session_manage` and its known limit.
+- Page: 411.5 kB, under the 420 kB guardrail. Tests: reducer, manager and tool tests (app-only guard, strict input, open session
+  refused, real deletion, archived hidden by default, older file, answers in every balance mode), page tests through a stateful
+  fake server for the tab, the filters, each action, the question, the detail, 45 sessions and the amounts as whole figures.
+
 ### Fixed (sessions: no phantom session, and a session can be started at any time)
 - **Real feedback after #84:** "I now have no button to create a new session. By default it opens the session created
   automatically at 16:00. If I want a timed session and restart it now, I can't." Cause: the dashboard still made an empty
@@ -31,7 +65,7 @@ versions follow [Semantic Versioning](https://semver.org/).
 - **The game starts a session by itself** when it is launched and connected and there is none in progress (none, the last one
   ended, or quiet for over 3 hours); a session you started is kept; a session you ended stays ended (#84's guarantees hold).
 - **One button for the list:** "Sessions ▾/▴" opens and closes it (the separate "Fermer" is gone, and the label flips at once);
-  the list shows the **3 latest** sessions, "Toutes les sessions (N)" shows all of them in the same panel, and back.
+  the list shows the **3 latest** sessions, "Toutes les sessions (N)" showed all of them in the same panel (it now opens the Sessions view, see Added above).
 - **Tools** (names and input schemas unchanged): `sc_session_new` starts at any time and answers `started`, `restarted` and
   `closed_session`; `sc_session_end` on a session that holds nothing deletes it (`ok: true`, `ended: false`, `reason:
   "discarded"`; the `empty` reason of #84 is gone); the other reasons are `ended`, `already_ended`, `none`.

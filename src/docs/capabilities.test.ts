@@ -93,6 +93,7 @@ describe("Feature: the capabilities guide names real tools and misses none", () 
       "sc_session_end",
       "sc_session_export",
       "sc_session_list",
+      "sc_session_manage",
       "sc_session_new",
       "sc_session_stats",
       "sc_trade_suggest",

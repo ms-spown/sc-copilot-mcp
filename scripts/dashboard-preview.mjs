@@ -22,7 +22,7 @@
 //                 trade=refusal  (the story, then a purchase the game refuses at 400 s because the price moved: the alert; use t=410)
 //                 calib=1  (the route calibration section the server sends with the balance: invented ratios for Laranite on the
 //                 route Port Tressler > Area18 TDD (4 runs), Gold (2 runs, wide spread) and Agricium (8 runs); needs balance=1)
-//                 click=<button label>  (presses it once the page is up, e.g. click=Plus rentable; click=A|B presses A then B, 1.5 s apart)
+//                 click=<button label>  (presses it once the page is up, e.g. click=Plus rentable; click=A|B presses A then B, 1.5 s apart; a label starting with @ matches a button by the start of its aria-label, e.g. click=Sessions ▾|Toutes les sessions (4)|@Archiver la session 3)
 //                 refine=1 (opens "Affiner")  card=1 (opens the details of the first card)
 //                 holds=story  (the hold sizes the server would list: a size from saved runs and a fleet ship; use with specs=none
 //                 and trade=story to see the hold default of a player whose game is closed)
@@ -244,7 +244,7 @@ if (q.get("click") || q.get("refine") || q.get("card")) frame.addEventListener("
   if (q.get("click")) {
     // click=A|B|C presses A, then (1.5 s later) B, then C: e.g. click=Terminer la session|Confirmer la fin
     q.get("click").split("|").forEach((label, i) => setTimeout(() => {
-      const b = [...doc.querySelectorAll("button")].find((x) => x.textContent === label && x.offsetParent !== null);
+      const b = [...doc.querySelectorAll("button")].find((x) => (label.startsWith("@") ? (x.getAttribute("aria-label") || "").startsWith(label.slice(1)) : x.textContent === label) && x.offsetParent !== null);
       if (b) b.click();
     }, i * 1500));
   }
@@ -253,7 +253,7 @@ if (q.get("click") || q.get("refine") || q.get("card")) frame.addEventListener("
 // menu=1: press "Sessions" in the page; menu=detail: then open session 2.
 if (q.get("menu")) frame.addEventListener("load", () => {
   setTimeout(() => {
-    const b = [...frame.contentDocument.querySelectorAll("button")].find((x) => x.textContent.startsWith("Sessions"));
+    const b = [...frame.contentDocument.querySelectorAll("button")].find((x) => /^Sessions [▾▴]/.test(x.textContent));
     if (b) b.click();
   }, 1800);
   if (q.get("menu") === "detail") setTimeout(() => {

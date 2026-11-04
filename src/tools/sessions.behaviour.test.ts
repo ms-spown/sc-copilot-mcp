@@ -417,3 +417,201 @@ describe("Feature: new and end write only the server's own file", () => {
     expect(n.data.data.message).not.toMatch(/Session 1 was closed/);
   });
 });
+
+describe("Feature: sc_session_manage, the Sessions view's own actions (archive, unarchive, delete)", () => {
+  /** The View's call: only a client that declared the UI extension may make it. */
+  const manage = (t: ReturnType<typeof rig>, args: Record<string, unknown>) =>
+    t.registry.call("sc_session_manage", args, { ui: true });
+  const data = (r: { content: { text: string }[] }) => JSON.parse(r.content[0]!.text).data;
+  const stored = () =>
+    JSON.parse(fs.readFileSync(path.join(dir, "sessions.json"), "utf8")).sessions;
+  /** Two sessions: 1 ended by 'Nouvelle session', 2 in progress. */
+  async function two() {
+    const t = rig();
+    await t.play(10);
+    await t.call("sc_session_new");
+    const list = await t.call("sc_session_list");
+    const ids = list.data.data.sessions.map((s: { id: string }) => s.id) as string[];
+    return { t, newest: ids[0]!, oldest: ids[1]! };
+  }
+
+  it("Given the tool, Then it is app-only, strict and absent without a View; a client without the UI extension is refused by name", async () => {
+    const { t, oldest } = await two();
+    expect(t.registry.list().some((x) => x.name === "sc_session_manage")).toBe(false);
+    const listed = t.registry.list({ ui: true }).find((x) => x.name === "sc_session_manage")!;
+    expect(
+      (listed as { _meta?: { ui?: { visibility?: string[] } } })._meta?.ui?.visibility,
+    ).toEqual(["app"]);
+    for (const context of [undefined, {}, { ui: false }]) {
+      const r = await t.registry.call(
+        "sc_session_manage",
+        { id: oldest, action: "delete" },
+        context,
+      );
+      expect(r.isError).toBe(true);
+      expect(r.content[0]!.text).toContain("Unknown tool");
+    }
+    expect(stored()).toHaveLength(2); // nothing was deleted
+    for (const bad of [
+      { id: oldest },
+      { action: "delete" },
+      { id: oldest, action: "wipe" },
+      { id: oldest, action: "archive", extra: 1 },
+      { id: "", action: "archive" },
+    ])
+      expect((await manage(t, bad)).isError, JSON.stringify(bad)).toBe(true);
+  });
+
+  it("Given the session in progress, Then archive, unarchive and delete are all refused (it is ended first), and the file is untouched", async () => {
+    const { t, newest } = await two();
+    for (const action of ["archive", "unarchive", "delete"]) {
+      const d = data(await manage(t, { id: newest, action }));
+      expect([d.ok, d.reason]).toEqual([false, "open_session"]);
+      expect(d.message).toContain("is in progress: end it first (Terminer)");
+    }
+    expect(stored().map((s: { number: number }) => s.number)).toEqual([1, 2]);
+    expect(stored()[1].archived).toBe(false);
+  });
+
+  it("Given an ended session, Then archive keeps it in the file but out of the default list, include_archived shows it, and unarchive brings it back", async () => {
+    const { t, oldest } = await two();
+    const a = data(await manage(t, { id: oldest, action: "archive" }));
+    expect([a.ok, a.reason, a.session.archived]).toEqual([true, "done", true]);
+    expect(a.message).toBe("Session 1 archived.");
+    expect(stored()[0].archived).toBe(true); // kept with everything it holds
+    expect(stored()[0].trips.length).toBeGreaterThan(0);
+    const def = (await t.call("sc_session_list")).data.data;
+    expect(def.sessions.map((s: { number: number }) => s.number)).toEqual([2]);
+    expect([def.total, def.archived]).toEqual([1, 1]);
+    const all = (await t.call("sc_session_list", { include_archived: true })).data.data;
+    expect(
+      all.sessions.map((s: { number: number; archived: boolean }) => [s.number, s.archived]),
+    ).toEqual([
+      [2, false],
+      [1, true],
+    ]);
+    // An archived session still opens by id, and the statistics still count what is kept.
+    expect((await t.call("sc_session_current", { id: oldest })).data.data.session.number).toBe(1);
+    expect(data(await manage(t, { id: oldest, action: "archive" })).reason).toBe("unchanged");
+    const u = data(await manage(t, { id: oldest, action: "unarchive" }));
+    expect([u.ok, u.reason]).toEqual([true, "done"]);
+    expect((await t.call("sc_session_list")).data.data.sessions).toHaveLength(2);
+    expect(data(await manage(t, { id: oldest, action: "unarchive" })).reason).toBe("unchanged");
+  });
+
+  it("Given an archived session, Then the figures across sessions leave it out and say how many; include_archived counts it; the card's session skips it", async () => {
+    const { t, oldest } = await two();
+    const before = (await t.call("sc_session_stats")).data.data;
+    expect(before.sessions).toBe(2);
+    expect(before.archived_not_counted).toBe(0);
+    await manage(t, { id: oldest, action: "archive" });
+    const after = (await t.call("sc_session_stats")).data.data;
+    expect([after.sessions, after.archived_not_counted]).toEqual([1, 1]);
+    expect(after.trips).toBeLessThan(before.trips);
+    const all = (await t.call("sc_session_stats", { include_archived: true })).data.data;
+    expect([all.sessions, all.archived_not_counted, all.trips]).toEqual([2, 0, before.trips]);
+    // Without an id, sc_session_current is the card's session: the last one, or none when it was archived.
+    expect((await t.call("sc_session_current")).data.data.session.number).toBe(2);
+    await t.call("sc_session_end");
+    const last = (await t.call("sc_session_list", { include_archived: true })).data.data
+      .sessions[0];
+    await manage(t, { id: last.id, action: "archive" });
+    expect((await t.call("sc_session_current")).data.data.session).toBeNull();
+    expect((await t.call("sc_session_current", { id: last.id })).data.data.session.number).toBe(2);
+  });
+
+  it("Given an archived session, Then what the server learns from it is NOT dropped: route calibration, the hold sizes and the saved balance still read it", async () => {
+    const tradeTrip: TripInput = {
+      key: "00000000000000bb",
+      kind: "trade",
+      source: "trade_journal",
+      ended_at: new Date(T0 + 3 * MIN).toISOString(),
+      label: "Cargo Gold",
+      commodity: "Gold",
+      scu: 96,
+      net_auec: 12_345,
+      net_kind: "balance_delta",
+    };
+    const t = rig(true, tradeTrip);
+    await t.play(10);
+    await t.call("sc_session_new");
+    const ids = (await t.call("sc_session_list")).data.data.sessions.map(
+      (s: { id: string }) => s.id,
+    );
+    const calibration = async () =>
+      JSON.stringify(
+        (await t.call("sc_session_stats", { include_archived: true })).data.data.route_reliability,
+      );
+    const sizes = JSON.stringify(await t.manager.tradeTripSizes(10));
+    const balance = JSON.stringify(await t.manager.savedBalance());
+    const cal = await calibration();
+    expect(sizes).toContain("96");
+    expect(balance).not.toBe("null");
+    expect(data(await manage(t, { id: ids[1]!, action: "archive" })).ok).toBe(true);
+    expect(await calibration()).toBe(cal);
+    expect(JSON.stringify(await t.manager.tradeTripSizes(10))).toBe(sizes);
+    expect(JSON.stringify(await t.manager.savedBalance())).toBe(balance);
+    // The route calibration is the same without include_archived too: only the displayed figures leave archived ones out.
+    expect(JSON.stringify((await t.call("sc_session_stats")).data.data.route_reliability)).toBe(
+      cal,
+    );
+  });
+
+  it("Given 'delete', Then the session is REMOVED from the file for good (its number is not reused), and an unknown id says so", async () => {
+    const { t, oldest } = await two();
+    const d = data(await manage(t, { id: oldest, action: "delete" }));
+    expect([d.ok, d.reason, d.message]).toEqual([true, "done", "Session 1 deleted."]);
+    expect(stored().map((s: { number: number }) => s.number)).toEqual([2]);
+    expect(JSON.stringify(stored())).not.toContain(oldest);
+    expect((await t.call("sc_session_list", { include_archived: true })).data.data.total).toBe(1);
+    expect((await t.call("sc_session_current", { id: oldest })).data.data.session).toBeNull();
+    const gone = data(await manage(t, { id: oldest, action: "delete" }));
+    expect([gone.ok, gone.reason]).toEqual([false, "not_found"]);
+    // The numbers are not given back: the next session is 3, not 1 (session 2 has been played, so it is closed, not restarted).
+    await t.play(5);
+    await t.call("sc_session_new");
+    expect(stored().map((s: { number: number }) => s.number)).toEqual([2, 3]);
+  });
+
+  it("Given the last session ended and archived, Then the card has no session (an archived one is out of sight), and it is not reopened", async () => {
+    const { t, newest } = await two();
+    await t.call("sc_session_end");
+    expect(data(await manage(t, { id: newest, action: "archive" })).ok).toBe(true);
+    expect((await t.manager.bar(false)).current).toBeNull();
+    // The archived session is the last one, ended by hand: the game running does not reopen it.
+    await t.play(3);
+    expect(stored().map((s: { number: number }) => s.number)).toEqual([1, 2]);
+  });
+
+  it.each([...HIDDEN_MODES, ...SHOWN_MODES])(
+    "Given $label, Then the answers of the view's tool hold no aUEC figure",
+    async (mode) => {
+      const t = rig(true, undefined, mode.policy);
+      await t.play(30);
+      await t.call("sc_session_new");
+      const ids = (await t.call("sc_session_list")).data.data.sessions.map(
+        (s: { id: string }) => s.id,
+      );
+      for (const action of ["archive", "archive", "unarchive", "delete", "delete"]) {
+        const r = await manage(t, { id: ids[1], action });
+        for (const out of [r.content[0]!.text, JSON.stringify(r.structuredContent)]) {
+          expect(out, action).not.toContain(String(BALANCE));
+          expect(out, action).not.toContain("41000");
+        }
+      }
+    },
+  );
+
+  it("Given a file written before the field (or by an older server), Then archived reads as false; a hand-edited value is not trusted", async () => {
+    const t = rig();
+    await t.play(5);
+    await t.call("sc_session_new");
+    const doc = JSON.parse(fs.readFileSync(path.join(dir, "sessions.json"), "utf8"));
+    for (const s of doc.sessions) delete s.archived; // as 2.7.0 wrote it
+    doc.sessions[0].archived = "yes"; // not a boolean
+    fs.writeFileSync(path.join(dir, "sessions.json"), JSON.stringify(doc));
+    const t2 = rig();
+    const list = (await t2.call("sc_session_list", { include_archived: true })).data.data;
+    expect(list.sessions.every((s: { archived: boolean }) => s.archived === false)).toBe(true);
+  });
+});

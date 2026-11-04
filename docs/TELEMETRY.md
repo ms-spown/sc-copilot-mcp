@@ -1202,13 +1202,39 @@ compares what the plan promised with what you really got (`src/providers/session
   each after a question), and **terminée** ("terminée à 16:10", how it ended, its result, and **Nouvelle session** as the
   main button, no question). **Sessions ▾/▴** is ONE button that opens and closes the list of past sessions (no separate
   close button); the list shows the **3 latest** sessions (the current one included) with the state of each (in progress,
-  chronometer, ended: by hand, replaced by a new session, or by a long inactivity), **Toutes les sessions (N)** shows all
-  the saved ones in the same panel (and back), and a session opens for its detail. A session that holds something asks
+  chronometer, ended: by hand, replaced by a new session, or by a long inactivity), **Toutes les sessions (N)** opens the
+  **Sessions view** (below), and a session opens for its detail. A session that holds something asks
   first, **inline next to the button**, with a cancel and no timer (a question that is no longer true, because another
   dashboard or the game changed the session, is withdrawn and says so); an action that closes nothing is done at once.
   The result is written in a line under the card (a live region, so a screen reader announces it) and stays there until
   a newer session is on the card; it never holds an amount. Two dashboards of two conversations show the same session,
   because it comes from the server.
+- **The Sessions view** is a tab of the dashboard (**Tableau de bord | Sessions**, shown in full screen and whenever the
+  view is on screen; **Toutes les sessions (N)** opens it and asks the host for full screen). It replaces the dashboard's
+  sections while it is open and keeps the header (and its balance zone). It holds: the **full list** of the saved sessions
+  (up to the 200 the file keeps), **filters** (Toutes: every session that is not archived; En cours; Terminées; Archivées,
+  each with its count), the **statistics across sessions**, and the **selected session's detail** (trips, breaks, the
+  report controls) next to the list (stacked when narrow). Every ended session has two actions on its line:
+  **Archiver** / **Désarchiver** (no question: the session stays in the file with everything it holds, it only leaves the
+  default list, and the card's own list, until you open "Archivées") and **Supprimer** (an inline question with Confirmer
+  and Annuler, no timer, Escape cancels; the session is then **removed from the file for good**, its number is not reused).
+  The session in progress has neither (end it with **Terminer** on the card first); archiving the last ended session also
+  empties the card ("Aucune session en cours"). The result of each action is written in a live region of the view, without
+  any amount. The amounts of the list, the detail and the statistics follow the balance choice like everywhere else (hidden:
+  none is drawn, and leaving the view or hiding the balance blanks what it drew). Server side these are one app-only tool,
+  `sc_session_manage` (`id`, `action`: archive, unarchive or delete; refused to a client that did not declare the UI
+  extension, writes only the server's own file, nothing is sent anywhere), and `sc_session_list` gained `include_archived`
+  (default false: an archived session is left out of the default list that Claude reads too). The **statistics across sessions
+  leave archived sessions out** (totals, averages, best and worst, trend, "N sessions": in the view and for Claude), and
+  the view always says so ("N sessions archivées non comptées"); `sc_session_stats` has `include_archived` (default false)
+  and answers `archived_not_counted`. What the server LEARNS from your runs does not leave: the route calibration
+  (`route_reliability`), the hold sizes of the commerce form and the last known balance still read archived sessions, so
+  only a deletion removes them from those (the delete question says so). Without an id `sc_session_current` is the card's
+  session (none when the last one is archived); an archived one opens by its id. An archived session is kept within the
+  file's bounds (200 sessions, the soft size limit: the oldest go first, archived or not). Deleting leaves a gap in the
+  numbers (1, 3, 4...) on purpose: a number is never reused. Deleting the last ended session while the game runs starts
+  a new one at once when nothing before it holds the card, and the question says so. The file keeps version 2: `archived` is an optional flag that an older server which
+  rewrites the file drops, as it does `ship_losses`, which only brings the session back into its default list.
 - **When it opens**, the dashboard attaches to the last session and makes none: with no session it says "Aucune session
   en cours" and offers **Démarrer une session**; a session quiet for more than the gap is closed at its last sighting; a
   session you ended is never replaced behind your back.

@@ -125,9 +125,9 @@ describe("scoping: SCMCP_TOOLS, SCMCP_PROFILES", () => {
       .sort();
 
   it("advertises everything by default, except the optional tools whose feature is off", () => {
-    // Live telemetry is off by default: sc_live_state, sc_live_events, the four dashboard tools and the seven
+    // Live telemetry is off by default: sc_live_state, sc_live_events, the four dashboard tools and the eight
     // session tools are not listed (sc_live_status is).
-    expect(names({})).toHaveLength(allTools(clientsWith()).length - 13);
+    expect(names({})).toHaveLength(allTools(clientsWith()).length - 14);
     expect(names({})).toContain("sc_live_status");
     expect(names({})).not.toContain("sc_live_state");
   });

@@ -107,11 +107,11 @@ npm run build
    kind and the `Game.log` header (it does not cover every UEX path the tools use: the ones it checks are listed in
    `scripts/check-sources.mjs`). In Claude, ask for `sc_data_status`.
 
-## Tools (65)
+## Tools (66)
 
 Claude sees 52 of them by default: `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll`,
-`sc_live_mark` and `sc_trade_suggest` are listed only when live telemetry is on (the last four, and `sc_session_export`,
-also need a client that can show them, such as Claude Desktop), and the seven `sc_session_*` tools only when it is on and `SC_SESSIONS` is not `off`.
+`sc_live_mark` and `sc_trade_suggest` are listed only when live telemetry is on (the last four, `sc_session_export` and `sc_session_manage`,
+also need a client that can show them, such as Claude Desktop), and the eight `sc_session_*` tools only when it is on and `SC_SESSIONS` is not `off`.
 
 Full parameter reference: **[docs/TOOLS.md](docs/TOOLS.md)** (generated from the code). By theme:
 
@@ -124,7 +124,7 @@ Full parameter reference: **[docs/TOOLS.md](docs/TOOLS.md)** (generated from the
 | **Patches and lore**                   | `sc_patch_notes` (notes of an update, by section or keyword), `sct_search`, `sct_get_article`, `sc_list_builds`, `sc_diff_versions`                                                                                                                                                                                                                                                             |
 | **Your game log** (off by default)     | `sc_log_context` (what you are doing now), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`, `sc_trade_journal` (what you bought and sold, cargo runs)                                                                                                                                                                                                                                                                                           |
 | **Live telemetry** (off by default)    | `sc_live_status` (always listed: state and how to enable), `sc_live_state`, `sc_live_events` (listed only when `SC_TELEMETRY=on`), `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark`, `sc_trade_suggest` (the live dashboard, in Claude Desktop only)                                                                                                                                                                                                                                                               |
-| **Saved play sessions** (with telemetry) | `sc_session_current` (the session so far, to accompany you and propose the next run), `sc_session_list`, `sc_session_stats` (efficiency, rate per hour, trend, best routes), `sc_session_new`, `sc_session_end`, `sc_session_debrief` (the session report to share or keep: Markdown by default, CSV on request, about 28,000 characters at most; amounts only with the balance), `sc_session_export` (the dashboard's own, the whole report); the dashboard has a session bar and a "Copier le bilan" control. Kept in a local file, see [docs/TELEMETRY.md](docs/TELEMETRY.md#saved-sessions) |
+| **Saved play sessions** (with telemetry) | `sc_session_current` (the session so far, to accompany you and propose the next run), `sc_session_list`, `sc_session_stats` (efficiency, rate per hour, trend, best routes), `sc_session_new`, `sc_session_end`, `sc_session_debrief` (the session report to share or keep: Markdown by default, CSV on request, about 28,000 characters at most; amounts only with the balance), `sc_session_export` (the dashboard's own, the whole report), `sc_session_manage` (the dashboard's own: archive, unarchive or delete one ended session); the dashboard has a session bar, a "Sessions" tab (the full list, filters, archive and delete per row, the detail and the statistics) and a "Copier le bilan" control. Kept in a local file, see [docs/TELEMETRY.md](docs/TELEMETRY.md#saved-sessions) |
 | **Your fleet**                         | `sc_fleet_get`, `sc_fleet_upsert`, `sc_fleet_remove`                                                                                                                                                                                                                                                                                                                                            |
 | **Your own data files**                | `sc_local_datasets`, `sc_search_local`, `sc_read_local_collection`                                                                                                                                                                                                                                                                                                                              |
 
@@ -139,7 +139,7 @@ at startup instead of listing nothing. Scoping is for speed, not security: an un
 | **core**  | 14    | The everyday copilot: status, ships, trade basics, missions, patch notes, your fleet |
 | **trade** | 23    | The full UEX market toolbox, with refining, shop items, the player market and hauling contracts |
 | **data**  | 16    | Reference data, crafting, mining, patch history, wiki browsing                       |
-| **local** | 26    | Your game log, live telemetry and sessions, your fleet, your own data files          |
+| **local** | 27    | Your game log, live telemetry and sessions, your fleet, your own data files          |
 
 When to use which is in [docs/USING_WITH_CLAUDE.md](docs/USING_WITH_CLAUDE.md); each tool's description says
 what it returns and its limits.

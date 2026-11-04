@@ -187,6 +187,16 @@ export const SessionSchema = z.object({
     .default(null)
     .transform((v): "player" | "game" | null => (v === "player" || v === "game" ? v : null)),
   /**
+   * The player archived this (ended) session: kept in the file with everything it holds, but hidden from the default list
+   * (the dashboard's "Archivées" filter shows it again). Additive and optional (a file written before it reads as false; the
+   * format stays version 2): an older server that rewrites the file drops it, as it does `ship_losses`, and the session is
+   * then back in its default list.
+   */
+  archived: z
+    .unknown()
+    .default(false)
+    .transform((v): boolean => v === true),
+  /**
    * Transactions the game refused during this session because the price moved (TransactionCostMismatch): a count of
    * events, no amount. Additive and optional (a file written before it reads as 0; the format stays version 2).
    * `price_refusal_last_at` is the watermark that keeps the count idempotent: only a refusal NEWER than it is added, so

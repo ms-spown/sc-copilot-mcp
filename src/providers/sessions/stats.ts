@@ -96,6 +96,8 @@ export interface SessionSummary {
    * nothing (the end deletes it), so the dashboard asks no question for a short one.
    */
   empty: boolean;
+  /** The player archived this ended session: kept, but hidden from the default list. */
+  archived: boolean;
   /**
    * When the game wrote its quit line during this OPEN session (it resumes if the game comes back within the gap); null
    * once it was seen again, when it is ended, or when the game wrote no quit line.
@@ -218,6 +220,7 @@ export function summarizeSession(s: Session): SessionSummary {
     ended_at: s.ended_at,
     last_activity_at: s.last_activity_at,
     empty: s.ended_at === null && (isEmpty(s) || isUntouched(s)),
+    archived: s.archived === true,
     // The quit line counts only while nothing was seen after it (a game back within the resume gap keeps the old line).
     game_closed_at:
       s.ended_at === null && s.quit_at !== null && ms(s.quit_at) >= ms(s.last_activity_at) - 5000

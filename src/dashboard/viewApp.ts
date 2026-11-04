@@ -26,6 +26,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   let view = L.initialViewState();
   let hostCtx: any = {};
   let displayMode = "inline";
+  // The tab on screen: "dash" (the dashboard) or "sessions" (the Sessions view, see sessionPanel.ts, `tab`).
+  let viewTab = "dash";
   let availableModes: string[] = ["inline"];
   // The balance: `showBalance` is what this View draws and asks for NOW; `balancePref` is the player's own choice (null:
   // none yet, so the server's start choice applies). A View that follows another one never gets the balance (it is not
@@ -412,6 +414,33 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     add(R.acct, R.acctLabel, R.acctValue, R.acctNote, R.btnBalance);
     add(R.topActions, R.age, R.btnAnalyse, R.health.help, R.btnOrder, R.btnMode);
     add(R.top, R.status, R.verdict, R.acct, R.topActions);
+    // The two tabs of the page: the dashboard and the Sessions view. Shown in full screen, and whenever the Sessions view is
+    // the one on screen (so that the way back is always there).
+    R.tabs = el("div", "tabs");
+    R.tabs.setAttribute("role", "tablist");
+    R.tabs.setAttribute("aria-label", "Vues du tableau de bord");
+    R.tabDash = button("Tableau de bord", () => setViewTab("dash"), "small");
+    R.tabSessions = button("Sessions", () => setViewTab("sessions"), "small");
+    for (const t of [R.tabDash, R.tabSessions]) {
+      t.setAttribute("role", "tab");
+      t.addEventListener("keydown", (e: any) => {
+        if (!e) return;
+        // Left and right swap tabs; Home is the first tab, End the last (there are two).
+        const pick =
+          e.key === "ArrowRight" || e.key === "End"
+            ? R.tabSessions
+            : e.key === "ArrowLeft" || e.key === "Home"
+              ? R.tabDash
+              : null;
+        if (pick) {
+          setViewTab(pick === R.tabSessions ? "sessions" : "dash");
+          pick.focus();
+        }
+      });
+    }
+    R.tabSessions.setAttribute("id", "sc-tab-sessions");
+    R.tabSessions.setAttribute("aria-controls", "sc-view-sessions");
+    add(R.tabs, R.tabDash, R.tabSessions);
     R.toastTop = el("div", "toast toast-top", "");
     R.toastTop.setAttribute("aria-hidden", "true");
 
@@ -925,14 +954,27 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     add(R.colPilot, R.ledger.card);
 
     // Saved play sessions (sessionPanel.ts): the bar under the header; the data live on the server.
-    R.sessions = L.sessionPanel(doc, L, {
+    const sessionApi = {
       call: callSessionTool,
       copy: copyText,
       download: downloadText,
       canDownload: canDownload,
       refresh: () => pollFresh(),
       say: (text: string) => feedback(text),
-    });
+      // "Toutes les sessions" of the card's list leads to the Sessions view.
+      openView: () => openSessionsView(),
+      // The Sessions view archived or deleted something: the card's own list reads again.
+      changed: () => R.sessions.reload(),
+    };
+    R.sessions = L.sessionPanel(doc, L, sessionApi);
+    // The Sessions view (the dedicated tab): the same panel in its view form, with every saved session, filters, the actions
+    // of each row and the selected session's detail next to the list. Shown only when its tab is the one on screen.
+    R.sessionsView = L.sessionPanel(doc, L, Object.assign({ tab: true }, sessionApi));
+    show(R.sessionsView.root, false);
+    // The Sessions tab controls the view, which is its tab panel (labelled by the tab).
+    R.sessionsView.root.setAttribute("id", "sc-view-sessions");
+    R.sessionsView.root.setAttribute("role", "tabpanel");
+    R.sessionsView.root.setAttribute("aria-labelledby", "sc-tab-sessions");
 
     // Commerce card (tradePanel.ts): full width at the top of the cockpit, a compact line under the small view.
     // Its action bar (tradeActions.ts) is a separate component in a slot of the card; in the small view only a
@@ -985,6 +1027,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     add(
       root,
       R.top,
+      R.tabs,
       R.toastTop,
       R.supersede,
       R.notice,
@@ -1001,6 +1044,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       R.trade.line,
       R.tradeActions.opener,
       R.full,
+      R.sessionsView.root,
       R.sr,
       R.tip,
     );
@@ -1669,7 +1713,39 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     }
   }
 
+  /** The tab on screen: the dashboard, or the Sessions view (which reads the sessions while it is shown). */
+  function setViewTab(tab: string) {
+    viewTab = tab === "sessions" ? "sessions" : "dash";
+    R.sessionsView.setActive(viewTab === "sessions");
+    renderModeUi();
+    render();
+  }
+
+  /** "Toutes les sessions": the Sessions view, in full screen when the host allows it (else where the page is). */
+  function openSessionsView() {
+    setViewTab("sessions");
+    if (displayMode !== "fullscreen" && availableModes.indexOf("fullscreen") >= 0)
+      void requestMode("fullscreen");
+  }
+
   function renderModeUi() {
+    setAttr(root, "data-view", viewTab);
+    const tabsOn = displayMode === "fullscreen" || viewTab === "sessions";
+    // The tab bar is about to be hidden (back to the dashboard, in the compact view): the focus must not be lost with it.
+    if (!tabsOn) {
+      for (let n = doc.activeElement; n; n = n.parentNode) {
+        if (n === R.tabs) {
+          R.sessions.focusEntry();
+          break;
+        }
+      }
+    }
+    show(R.tabs, tabsOn);
+    setAttr(R.tabDash, "aria-selected", viewTab === "dash" ? "true" : "false");
+    setAttr(R.tabSessions, "aria-selected", viewTab === "sessions" ? "true" : "false");
+    setAttr(R.tabDash, "tabindex", viewTab === "dash" ? "0" : "-1");
+    setAttr(R.tabSessions, "tabindex", viewTab === "sessions" ? "0" : "-1");
+    show(R.sessionsView.root, viewTab === "sessions");
     setAttr(root, "data-mode", displayMode);
     setText(R.btnMode, displayMode === "fullscreen" ? "Réduire" : "Plein écran");
     show(R.btnMode, availableModes.indexOf("fullscreen") >= 0);
@@ -1887,7 +1963,13 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       keyed: flightOn(),
     });
     renderAlerts(now, conds, !info.grey, L.lossLeads(refusal, conds, now));
-    R.sessions.render(view.poll && view.poll.sessions, { showBalance, now });
+    // `running`: the stream is live (the game is running), which the delete question of the Sessions view takes into account.
+    const gameRuns = !!(
+      view.poll &&
+      (view.poll.state === "live" || view.poll.state === "connected")
+    );
+    R.sessions.render(view.poll && view.poll.sessions, { showBalance, now, running: gameRuns });
+    R.sessionsView.render(view.poll && view.poll.sessions, { showBalance, now, running: gameRuns });
     R.ledger.render(view.poll && view.poll.ledger, {
       showBalance,
       fullscreen: displayMode === "fullscreen",
@@ -2686,6 +2768,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     if (R.tradeActions) R.tradeActions.dispose();
     // A report held for hand copying (it may hold amounts) does not survive the page.
     if (R.sessions && R.sessions.dropExport) R.sessions.dropExport();
+    if (R.sessionsView && R.sessionsView.dropExport) R.sessionsView.dropExport();
     if (R.preflight) R.preflight.dispose();
     if (timer !== null) win.clearTimeout(timer);
     timer = null;
