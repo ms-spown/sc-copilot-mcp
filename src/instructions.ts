@@ -8,8 +8,8 @@
  * - the rules that must never be lost come first (a client may cut the end);
  * - every tool name in it exists in the registry (a renamed tool cannot silently break it);
  * - no host, no link, no secret; it describes the server, it does not argue with the user.
- * Clients that ignore this field (Claude Desktop at the time of writing) fall back on the block of
- * docs/USING_WITH_CLAUDE.md, which carries the same safety rules.
+ * Clients that ignore this field (Claude Desktop and claude.ai are reported to, in open issues of November 2026; not
+ * verified here) fall back on the block of docs/USING_WITH_CLAUDE.md, which carries the same safety rules.
  */
 export const MAX_INSTRUCTIONS_LENGTH = 3500;
 

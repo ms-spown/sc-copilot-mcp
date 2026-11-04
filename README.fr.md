@@ -7,7 +7,8 @@
 
 Un serveur local en **lecture seule** basé sur le [Model Context Protocol](https://modelcontextprotocol.io) qui
 transforme Claude en copilote Star Citizen : marché et routes commerciales, vaisseaux, missions, artisanat
-(crafting), minage, patch en cours, derniers événements enregistrés par votre jeu et gestion de votre flotte.
+(crafting), minage, patch en cours, derniers événements enregistrés par votre jeu, gestion de votre flotte et,
+seulement si vous l'activez, ce que votre vaisseau rapporte en direct.
 
 Il tourne sur votre PC via stdio. Il ne touche pas au jeu : il ne lit jamais la mémoire du jeu, n'envoie aucune
 touche, n'automatise rien et n'écrit jamais dans le dossier du jeu. Le seul fichier du jeu qu'il peut lire est le
@@ -36,7 +37,7 @@ touche, n'automatise rien et n'écrit jamais dans le dossier du jeu. Le seul fic
 | Votre vaisseau, en direct (désactivé par défaut) | « Mon train d'atterrissage est-il sorti ? Combien d'hydrogène reste-t-il ? » | `sc_live_status`, `sc_live_state`, `sc_live_dashboard` |
 | Fraîcheur | « Ces données sont-elles à jour ? » | `sc_data_status` |
 
-Six prompts prêts à l'emploi les enchaînent pour vous (voir [Prompts](#prompts)). Toutes les capacités, avec leur
+Sept prompts prêts à l'emploi les enchaînent pour vous (voir [Prompts](#prompts)). Toutes les capacités, avec leur
 source, leur fraîcheur, leurs limites et leurs prérequis : **[docs/CAPABILITIES.md](docs/CAPABILITIES.md)** (en anglais).
 
 ## Ce que vous obtenez
@@ -83,7 +84,14 @@ npm run build
    `--apply` sauvegarde d'abord `claude_desktop_config.json` vers un fichier horodaté `.bak-…`, puis ajoute ou met à
    jour uniquement `mcpServers["sc-copilot"]`. Vos autres serveurs ne sont ni affichés ni modifiés, et aucun secret n'y
    est inscrit. Omettez `--install-dir` pour laisser la lecture du journal de jeu désactivée. Redémarrez Claude Desktop
-   ensuite. Sur macOS ou Linux, passez `--config <path>`, ou ajoutez la même entrée manuellement :
+   ensuite. **Relancer l'installateur remplace le `env` de cette entrée** : seuls `SCMCP_PROFILES`, le réglage du
+   journal que vous passez et `SC_TELEMETRY` survivent. Toute autre variable ajoutée à la main (`SC_SESSIONS=off`,
+   `SC_SESSION_GAP_HOURS`, `SCMCP_SESSIONS_FILE`, `SCMCP_FLEET_FILE`, `SCMCP_TOOLS`) est supprimée, donc
+   `SC_SESSIONS=off` redevient silencieusement inactif : remettez-les dans le `env` de l'entrée ensuite, ou modifiez
+   l'entrée à la main plutôt que de relancer l'installateur (la simulation montre la nouvelle entrée avant toute
+   écriture). Après un `git pull` et un `npm run build`, l'entrée existante continue de fonctionner : relancez
+   l'installateur seulement pour changer l'entrée elle-même.
+   Sur macOS ou Linux, passez `--config <path>`, ou ajoutez la même entrée manuellement :
 
    ```json
    {
@@ -100,13 +108,16 @@ npm run build
 3. **Vérification.** `npm run doctor` vérifie votre installation (Node, compilation, jeton, configuration Claude,
    journal de jeu, fichier de flotte) et explique comment corriger chaque problème ; rien n'est envoyé sur le réseau et
    aucun secret n'est affiché. `npm run check:sources` interroge chaque source de données sur sa version et vérifie les
-   fichiers et champs attendus par les outils. Dans Claude, demandez `sc_data_status`.
+   principaux points d'accès UEX, chaque type de fichier SCMDB et l'en-tête de `Game.log` (il ne couvre pas tous les
+   chemins UEX utilisés par les outils : ceux qu'il vérifie sont listés dans `scripts/check-sources.mjs`). Dans Claude,
+   demandez `sc_data_status`.
 
 ## Outils (65)
 
 Claude en voit 52 par défaut : `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll`,
 `sc_live_mark` et `sc_trade_suggest` ne sont listés que lorsque la télémétrie en direct est activée (les quatre
-derniers exigent aussi un client capable de les afficher, comme Claude Desktop), et les sept outils `sc_session_*`
+derniers, et `sc_session_export`, exigent aussi un client capable de les afficher, comme Claude Desktop), et les sept
+outils `sc_session_*`
 seulement quand elle est activée et que `SC_SESSIONS` n'est pas `off`.
 
 Référence complète des paramètres : **[docs/TOOLS.md](docs/TOOLS.md)** (générée depuis le code). Par thème :
@@ -136,7 +147,7 @@ listé reste appelable.
 | **core**  | 14     | Le copilote au quotidien : statut, vaisseaux, bases du commerce, missions, notes de patch, flotte |
 | **trade** | 23     | La boîte à outils complète du marché UEX, avec raffinage, objets de boutique, marché des joueurs et contrats de transport |
 | **data**  | 16     | Données de référence, artisanat, minage, historique des patchs, navigation sur le wiki            |
-| **local** | 24     | Votre journal de jeu, la télémétrie et les sessions, votre flotte, vos propres fichiers de données |
+| **local** | 26     | Votre journal de jeu, la télémétrie et les sessions, votre flotte, vos propres fichiers de données |
 
 Le choix des profils et instructions recommandées est détaillé dans
 [docs/USING_WITH_CLAUDE.fr.md](docs/USING_WITH_CLAUDE.fr.md) ; la description de chaque outil précise ce qu'il renvoie
@@ -150,6 +161,7 @@ données :
 
 | Prompt            | Fonction                                                                                                                                                  |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trade_copilot`   | Lit votre session enregistrée, la compare aux routes UEX en direct et propose la prochaine tournée, avec le raisonnement ; demande la télémétrie et les sessions enregistrées |
 | `haul_plan`       | Les 3 meilleures options de transport pour l'un de vos vaisseaux, classées par profit horaire estimé, avec les risques (peu de relevés, données anciennes, marchés saturés, profit suspect, cargaison illégale) |
 | `patch_briefing`  | Ce que la dernière mise à jour a changé et ce que cela implique pour vous et votre flotte                                                                 |
 | `session_debrief` | Ce que vous avez fait lors de votre dernière session d'après votre journal de jeu, et quoi faire ensuite                                                  |
@@ -164,13 +176,14 @@ données :
 | `UEXTOKEN`                                                       | Jeton bearer UEX dans `.env`. Envoyé uniquement aux hôtes UEX                                                                                                                              |
 | `SCMCP_PROFILES`, `SCMCP_TOOLS`                                  | Quels outils exposer (voir ci-dessus)                                                                                                                                                      |
 | `SC_INSTALL_DIR`                                                 | Dossier d'un canal tel que `…\StarCitizen\LIVE` : active `sc_log_*` sur son `Game.log`. Désactivé si non défini                                                                            |
-| `SC_SESSIONS`                                                    | `off` désactive les sessions de jeu enregistrées en gardant la télémétrie (aucun fichier créé ni lu). Elles n'existent qu'avec `SC_TELEMETRY=on` (voir plus bas) |
+| `SC_SESSIONS`                                                    | `off` (aussi `0`, `false`, `no`) désactive les sessions de jeu enregistrées en gardant la télémétrie (aucun fichier créé ni lu). Elles n'existent qu'avec `SC_TELEMETRY=on` (voir plus bas) |
 | `SCMCP_SESSIONS_FILE`                                            | Fichier de sessions (par défaut `%LOCALAPPDATA%\sc-copilot-mcp\data\sessions.json`) |
 | `SC_SESSION_GAP_HOURS`                                           | Silence après lequel la partie suivante est une nouvelle session (par défaut 3, de 0,25 à 48) |
-| `SC_TELEMETRY`                                                   | `on` active la télémétrie en direct optionnelle, côté serveur. Désactivée si absente (voir plus bas)                                                            |
+| `SC_TELEMETRY`                                                   | `on` (aussi `1`, `true`, `yes`) active la télémétrie en direct optionnelle, côté serveur. Désactivée si absente (voir plus bas)                                                            |
 | `SC_GAME_LOG_PATH`                                               | Un fichier `.log` précis à la place (seuls les fichiers `.log` sont acceptés)                                                                                                              |
 | `SCMCP_FLEET_FILE`                                               | Fichier de flotte (par défaut `%APPDATA%\sc-copilot-mcp\fleet.json`)                                                                                                                       |
-| `SCMCP_CACHE_DIR`, `SCMCP_DATA_DIR`, `SCMCP_CONFIG_DIR`          | Dossiers de cache (réponses HTTP, dumps, SCMDB), de données (snapshots wiki) et de configuration. Par utilisateur par défaut (`%LOCALAPPDATA%` / `%APPDATA%` sous Windows, XDG sous Linux) |
+| `SCMCP_CACHE_DIR`, `SCMCP_DATA_DIR`, `SCMCP_CONFIG_DIR`          | Dossiers de cache (réponses HTTP, dumps, SCMDB : peut être supprimé), de données (snapshots wiki et `sessions.json` : à garder) et de configuration. Par utilisateur par défaut (`%LOCALAPPDATA%` / `%APPDATA%` sous Windows, XDG sous Linux) |
+| `SCMCP_SNAPSHOT_DIR`, `SCMCP_BUILD_CACHE_DIR`                    | Remplace le dossier des snapshots wiki et celui où sont mis en cache les builds de dumps de patch |
 | `SCMCP_UEX_BASE_URL`, `SCMCP_SCW_BASE_URL`, `SCMCP_SCT_BASE_URL` | Remplace une URL de base d'API. Doit être en https sur un hôte autorisé, sinon le serveur refuse de démarrer                                                                               |
 | `SCMCP_SCMDB_REPO`, `SCMCP_DATA_REPO`, `SCMCP_DATA_REPO_PATH`    | Dépôts d'où sont lus SCMDB et les dumps de patch                                                                                                                                           |
 | `SCMCP_GITHUB_TOKEN`                                             | Optionnel, augmente la limite de requêtes GitHub. Dédié : un `GITHUB_TOKEN` ambiant n'est jamais utilisé                                                                                   |
@@ -207,17 +220,21 @@ du format ; `npm run check:sources` vérifie que l'en-tête se parse toujours.
 
 Le jeu contient un serveur de télémétrie local non documenté. Si vous le choisissez, ce serveur peut le lire pour que
 Claude réponde sur votre vaisseau et votre personnage à l'instant : vitesse, altitude, hydrogène, train
-d'atterrissage, alimentation, voyants, santé, faim, soif.
+d'atterrissage, alimentation, voyants, santé, faim, soif. **Lisez les [risques](docs/TELEMETRY.fr.md#risques) avant de
+l'activer** : c'est une fonction non documentée du jeu, et le risque est le vôtre. Le reste est dans
+[docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md) (la page s'ouvre sur un court bloc « À lire en premier »).
 
 - **Désactivée tant que vous n'activez pas deux choses :** `SC_TELEMETRY=on` dans l'entrée du serveur, et
   `GRPC_CLIENT_SERVER_ENABLED=true` dans l'environnement du RSI Launcher. Rien n'est réglé par l'installation ni par
   une mise à jour. Sans le premier, aucune connexion n'est jamais tentée.
 - **Une commande :** `npm run telemetry -- status` montre les deux interrupteurs sans rien changer.
   `npm run telemetry -- enable` est une simulation, `npm run telemetry -- enable --apply` l'exécute et
-  `npm run telemetry -- disable --apply` annule ce qu'elle a réglé. Quittez ensuite complètement le RSI Launcher
-  (icône de la barre des tâches comprise) et relancez-le.
+  `npm run telemetry -- disable --apply` annule ce qu'elle a réglé (elle ne supprime pas vos sessions enregistrées :
+  voir le point suivant). Quittez ensuite complètement le RSI Launcher (icône de la barre des tâches comprise) et
+  relancez-le.
 - **Ce qu'elle ne fait jamais :** parler à autre chose que `127.0.0.1:2942`, envoyer au jeu autre chose qu'une requête
-  vide, ni journaliser, stocker ou envoyer les trames. Tout reste en mémoire.
+  vide, ni journaliser, écrire ou envoyer les trames.
+- **Ce qu'elle enregistre, et où.** Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais écrites. La seule exception est le résumé de session (le solde au départ et à la dernière observation, et pour chaque trajet le coût, le revenu, la marge, les frais et le net) : il est gardé dans un fichier local, `sessions.json`, seulement quand la télémétrie est activée, il n'est jamais envoyé nulle part par ce serveur, `SC_SESSIONS=off` le désactive, et supprimer `sessions.json` ainsi que les copies `.bak` et `.corrupt` à côté de lui l'efface. Le fichier est dans `%LOCALAPPDATA%\sc-copilot-mcp\data` (voir [Sessions enregistrées](docs/TELEMETRY.fr.md#sessions-enregistrées)).
 - **Ce qu'elle ne voit pas :** position, valeur des boucliers, coque, chaleur, munitions, répartition de puissance ou
   carburant quantique. Une santé à 0 veut dire à terre ou mort. Le solde aUEC n'est pas transmis à Claude sans votre
   accord (`include_balance`).
@@ -229,14 +246,18 @@ d'atterrissage, alimentation, voyants, santé, faim, soif.
   suivent. Chaque valeur indique son âge, rien n'est inventé, le solde aUEC reste masqué tant que vous ne cliquez pas,
   et rien n'est envoyé au jeu. Le cadran de vitesse utilise les limites du vaisseau prises sur le Star Citizen Wiki
   quand une seule fiche correspond au vaisseau (étiquetée « wiki »), et le dit quand il garde sa propre échelle. Claude
-  Code ne l'affiche pas. Voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#tableau-de-bord-en-direct).
+  Code ne l'affiche pas. Voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#tableau-de-bord-en-direct). **Non vérifié :**
+  la mise en page a été testée dans un navigateur contre un faux hôte, et une page de test jetable a été affichée dans
+  Claude Desktop, mais le mainteneur n'a pas encore vu ce tableau de bord lui-même dans Claude Desktop (voir
+  [docs/ROADMAP.md](docs/ROADMAP.md)).
 - **Un carnet de transport (optionnel, il faut le journal de jeu).** Dans ce tableau de bord, les contrats de la
-  session avec leurs étapes de chargement et de livraison et, une fois le solde affiché, la variation brute du solde
-  sur chaque contrat terminé ; le journal de jeu ne contient ni quantité ni récompense. Voir
+  session avec leurs étapes de chargement et de livraison (quand le journal les contient : absentes des journaux du
+  build 4.10 de l'installation de référence) et, une fois le solde affiché, la variation brute du solde sur chaque
+  contrat terminé ; le journal de jeu ne contient ni quantité ni récompense. Voir
   [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#carnet-de-transport).
 - **Lisez d'abord les risques.** C'est une fonction non documentée du jeu. À notre connaissance, CIG ne l'a ni
-  autorisée ni interdite, les conditions de RSI s'appliquent à vous, et le risque est le vôtre. Tout est dans
-  [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md).
+  autorisée ni interdite, les conditions de RSI s'appliquent à vous, et le risque est le vôtre. Le détail est dans
+  [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#risques), et le reste de cette page explique tout ce qui précède.
 
 ## Limites à connaître
 
@@ -261,6 +282,7 @@ d'atterrissage, alimentation, voyants, santé, faim, soif.
 
 - [docs/CAPABILITIES.md](docs/CAPABILITIES.md) : tout ce que le serveur sait faire, par besoin
 - [docs/TOOLS.md](docs/TOOLS.md) : chaque outil et chaque paramètre (généré)
+- [docs/ROADMAP.md](docs/ROADMAP.md) : où en est le projet, ce qui vient ensuite, ce qui est vérifié et ce qui ne l'est pas
 - [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md) : la télémétrie en direct optionnelle, ses données et ses risques
 - [docs/USING_WITH_CLAUDE.fr.md](docs/USING_WITH_CLAUDE.fr.md) : le bloc à coller dans un projet Claude, ce que le serveur
   dit déjà à Claude de lui-même, et un test canari pour le vérifier
@@ -276,10 +298,12 @@ Consultez [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). Premières étapes
 ## Développement
 
 ```bash
-npm ci --ignore-scripts && npm run lint && npm test && npm run build && npm run audit:prod
+npm ci --ignore-scripts
+npm run lint && npm run format:check && npm run typecheck && npm test && npm run build && npm run check:docs && npm run check:page-size && npm run test:built && npm run audit:prod
 ```
 
-Voir [CONTRIBUTING.md](CONTRIBUTING.md), y compris la procédure lors d'un nouveau patch. Modèle de sécurité :
+La chaîne `&&` fonctionne dans cmd, Git Bash et PowerShell 7 ; dans Windows PowerShell 5.1, lancez les commandes une par
+ligne. Voir [CONTRIBUTING.md](CONTRIBUTING.md), y compris la procédure lors d'un nouveau patch. Modèle de sécurité :
 [SECURITY.md](SECURITY.md).
 
 ## Crédits et mentions légales

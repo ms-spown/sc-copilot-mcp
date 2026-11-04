@@ -11,7 +11,7 @@ export const SERVER_SWITCH = "SC_TELEMETRY";
 /** Game side: set in the environment of the RSI Launcher, which StarCitizen.exe inherits. */
 export const GAME_SWITCH = "GRPC_CLIENT_SERVER_ENABLED";
 
-/** Short warning shown by `npm run telemetry -- enable`. The full text is docs/TELEMETRY.md (written in a later milestone). */
+/** Short warning shown by `npm run telemetry -- enable`. The full text is docs/TELEMETRY.md. */
 export const TELEMETRY_WARNING: string[] = [
   "Warning: this uses an undocumented feature of the game (a local gRPC server).",
   "To our knowledge CIG has neither allowed nor forbidden it. The risk is yours; nothing here is a guarantee.",

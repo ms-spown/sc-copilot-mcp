@@ -21,13 +21,15 @@ extension; a host that does declare it and exposes them to the model is outside 
 ### What it does not do
 
 - It is read-only toward the game and toward every remote service. The only things it writes are local: the
-  cache, the wiki snapshots and your fleet file ([SECURITY.md](../SECURITY.md)).
+  cache, the wiki snapshots, your fleet file and, only with live telemetry on, your saved play sessions
+  (`sessions.json`, see [section 9](#9-live-telemetry) and [SECURITY.md](../SECURITY.md)).
 - It never scrapes RSI, Erkul, SPViewer or SC Trade Tools, never reads game memory, never sends keys, never
   automates the game and never writes in the game folder.
 - It has no remote write tool, including UEX data submission, and no extraction of game files.
 - It sends no analytics or usage reports. The hosts it may contact are fixed in the code (see
   [Profiles and settings](#12-profiles-settings-and-local-data-files)).
-- A visual MCP App may come later; it is optional and does not exist yet.
+- The live dashboard is an optional MCP App, shown by Claude Desktop only and only with live telemetry on
+  ([section 9](#9-live-telemetry)).
 
 ### How to read the provenance
 
@@ -224,7 +226,7 @@ This section is a summary. See also [TELEMETRY.md](TELEMETRY.md): that page hold
 | Freshness | Every snapshot carries `frame_age_ms`, the age of the last frame, and Claude is told to say it. Events live in memory only, from the moment the reader started, and are inferred by this server because the game sends almost none |
 | Limits | Reliable in the field test: speed, altitude (only inside a planet's frame), heading (same), g-force, hydrogen and boost, landing gear, flight modes, nine power on/off flags, warning lights, weapons per seat, countermeasure counts, pilot vitals. Absent from the stream: position, shield level, hull, heat, ammo, power distribution, quantum fuel, and any death event (health 0 means down or dead). A field the game does not send is left out or listed as not available, never shown as zero. Ground vehicles send no vehicle data. Events carry a `confidence` of `confirmed` or `unverified`; a missing event proves nothing. The complete tables, including what is present but not verified, are in [TELEMETRY.md](TELEMETRY.md#what-the-stream-contains) |
 | Prerequisites | Off by default, and two explicit switches are needed: `SC_TELEMETRY=on` in the `env` of the server entry, and `GRPC_CLIENT_SERVER_ENABLED=true` in the environment of the RSI Launcher (a game-side variable that this server never sets itself). Without the first, no connection is attempted and no telemetry code is loaded. A helper command, `npm run telemetry -- status`, shows both switches; the steps are in [TELEMETRY.md](TELEMETRY.md#two-switches-both-explicit) |
-| Local or network | Local only: `127.0.0.1` port 2942, fixed in the code. Frames are kept in memory and never logged, written or sent anywhere by this server |
+| Local or network | Local only: `127.0.0.1` port 2942, fixed in the code. Frames and raw log lines stay in memory and are never written. The one exception is the session summary (the balance at the start and at the last sighting, and for each trip the cost, revenue, margin, fees and net): it is kept in a local file, `sessions.json`, only when telemetry is on, it is never sent anywhere by this server, `SC_SESSIONS=off` disables it, and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it. |
 
 What to know before you switch it on:
 
@@ -282,7 +284,7 @@ Call it first when a question depends on the current patch, or when another tool
 | Example questions | "Plan my next hauling run" (Prépare ma prochaine route de transport) ; "Give me a briefing on the latest patch" (Fais-moi un point sur le dernier patch) ; "Debrief my last session" (Fais le bilan de ma dernière session) ; "Prepare a mining run for Quantainium" (Prépare un minage de Quantainium) ; "Find missions that pay in Pyro" (Trouve des missions qui paient à Pyro) |
 | Tools | Prompts are not tools. `haul_plan` (arguments `ship`, `origin`, `budget`) picks the best three trade options for one of your ships, ranked by estimated profit per hour, and flags the risks. `patch_briefing` (`version`) covers the newest update. `session_debrief` (no argument) summarises your last session from the game log, with the trade journal when you traded, and offers the shareable report (`sc_session_debrief`). `trade_review` (`sessions`) reviews your recent purchases and sales: cargo runs with their gross margin, whether the sale prices were good, the next run. `mining_prep` (`ore`, required) covers one ore. `mission_hunt` (`where`, `faction`, `min_reward`, `blueprint`) searches missions. `trade_copilot` (`budget`) reads your current session with `sc_session_current`, compares it with `uex_get_trade_routes` and proposes the next run, explaining why |
 | Source | The tools each prompt names: UEX, SCMDB, the wikis, your game log and your fleet |
-| Freshness | As for the tools they call. `haul_plan` and `patch_briefing` begin with `sc_data_status`; all six tell Claude to quote the version, channel and data age from each answer's provenance |
+| Freshness | As for the tools they call. `haul_plan` and `patch_briefing` begin with `sc_data_status`; all seven tell Claude to quote the version, channel and data age from each answer's provenance |
 | Limits | A prompt only builds the instruction text; the quality of the answer depends on the data behind each tool. `haul_plan` and `session_debrief` mention live telemetry as an option, and only after asking you: the balance is used as a budget only if you agree, and telemetry cannot describe an earlier session. `mission_hunt` reminds Claude that rewards are datamined and that PTU data is used only on request |
 | Prerequisites | A client that supports MCP prompts. The log, fleet and telemetry steps of a prompt need those features to be set up |
 | Local or network | The prompt itself is local; the tools it names follow their own sections |
@@ -295,7 +297,9 @@ Choose what the server advertises with `SCMCP_PROFILES` (comma-separated; unset 
 `sc_data_status` is always added. `SCMCP_TOOLS` (explicit tool names) wins over profiles. An unknown tool or
 profile name stops the server at startup instead of listing nothing. Scoping is for speed (a client that sees
 many tools spends a round trip choosing), not security: a tool that is not listed can still be called by name.
-The two telemetry tools stay hidden while telemetry is off, even when named in `SCMCP_TOOLS`.
+The thirteen telemetry and session tools stay hidden while telemetry is off, even when named in `SCMCP_TOOLS`. Naming
+`sc_live_dashboard` there also adds the tools the page needs (`sc_live_poll`, `sc_live_mark`, `sc_trade_suggest` and the
+session tools of its session bar).
 
 | Profile | Tools | For |
 | --- | --- | --- |
@@ -317,7 +321,7 @@ to the package (never one from the working directory), not in the Claude configu
 | `SC_TELEMETRY` | Server switch of the live telemetry ([section 9](#9-live-telemetry)). `on`, `1`, `true` or `yes` mean on; anything else means off |
 | `SC_SESSIONS`, `SCMCP_SESSIONS_FILE`, `SC_SESSION_GAP_HOURS` | Saved play sessions ([section 9](#9-live-telemetry)): `SC_SESSIONS=off` switches them off, the file can be moved, and the quiet time (default 3 hours) after which a new session starts can be set |
 | `SCMCP_FLEET_FILE` | Fleet file ([section 8](#8-your-fleet)) |
-| `SCMCP_CACHE_DIR`, `SCMCP_DATA_DIR`, `SCMCP_CONFIG_DIR` | Cache, data (wiki snapshots) and config folders. Defaults are per user |
+| `SCMCP_CACHE_DIR`, `SCMCP_DATA_DIR`, `SCMCP_CONFIG_DIR` | Cache (can be deleted), data (wiki snapshots and `sessions.json`: keep it) and config folders. Defaults are per user |
 | `SCMCP_SNAPSHOT_DIR`, `SCMCP_BUILD_CACHE_DIR` | Override the snapshot folder and the folder where patch-dump builds are cached |
 | `SCMCP_UEX_BASE_URL`, `SCMCP_SCW_BASE_URL`, `SCMCP_SCT_BASE_URL` | Override an API base. It must be https on an allowlisted host or the server refuses to start |
 | `SCMCP_SCMDB_REPO`, `SCMCP_DATA_REPO`, `SCMCP_DATA_REPO_PATH` | Where SCMDB and the patch dumps are read from |

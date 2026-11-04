@@ -1,5 +1,8 @@
 # MCP App feasibility spike (milestone 4)
 
+Historical note: a record of the feasibility test of 3 November 2026, kept as written. It is not a description of the
+current dashboard, and the test page it mentions was not the dashboard (see [ROADMAP.md](ROADMAP.md) for what is verified).
+
 Question: can this server show a live dashboard inside Claude Desktop as an MCP App, in an install mode a player can
 actually use, without a web server of our own? Answer: **yes, in the plain `claude_desktop_config.json` mode**, with
 the limits below. Date of the test: 3 November 2026.

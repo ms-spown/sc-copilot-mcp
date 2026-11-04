@@ -6,6 +6,36 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed (documentation)
+- What is saved: the pages no longer say that everything stays in memory, that the server "stores nothing new" or that
+  the only writes are the fleet list and the caches. One reviewed sentence now says the same thing in the README, the
+  telemetry page, CAPABILITIES, ARCHITECTURE, SECURITY and rule 5 of the block to paste into Claude (English and French):
+  frames and raw log lines are never written; the session summary (`sessions.json`) is the one exception, only with
+  telemetry on, never sent by this server, off with `SC_SESSIONS=off`, erased by deleting the file and its copies.
+  `npm run telemetry -- disable --apply` is now said to leave `sessions.json` in place; `enable --session` needs
+  `--apply`; the reader's five idle minutes are said to be suspended while saved sessions follow the game.
+- Counts and tables: the `local` profile has 26 tools (not 24); there are seven prompts (`trade_copilot` was missing from
+  the README tables); `sc_session_export` is UI-only; the thirteen telemetry and session tools are hidden while telemetry
+  is off; "the three dashboard tools" is "the dashboard tools"; the roadmap is for 2.4.0 and its "Next" list no longer
+  holds what shipped in 2.3.0 and 2.4.0; the server manual is "about 3,500 characters (limit 3,500)".
+- Commands and paths: re-running `npm run install:claude` replaces the entry's `env` (only `SCMCP_PROFILES`, the log
+  setting and `SC_TELEMETRY` survive) and the README says so; TROUBLESHOOTING no longer tells users to delete the whole
+  `%LOCALAPPDATA%\sc-copilot-mcp` folder (`cache\` can go, `data\` holds `sessions.json`); `check:sources` is described as
+  checking the main UEX endpoints, not every path the tools use; the full verification chain of CONTRIBUTING.md is the one
+  named in the README and CLAUDE.md; the configuration tables list `SCMCP_SNAPSHOT_DIR` and `SCMCP_BUILD_CACHE_DIR`.
+- Honesty about the dashboard: the README says the maintainer has not yet seen the dashboard itself inside Claude Desktop;
+  CAPABILITIES no longer says the MCP App "does not exist yet"; `docs/MCP_APP_SPIKE.md` is marked as a historical note.
+- French: README.fr gets the telemetry sentence in its introduction, the ROADMAP link and the "absent from build 4.10
+  logs" caveat; the health strip says "carnet de transport" like the rest of the dashboard (it said "grand livre").
+- A "Read this first" block opens `docs/TELEMETRY.md` and `docs/TELEMETRY.fr.md` (what it is, the two switches, the risks,
+  what is unverified, how to turn it off, what is saved and how to erase it).
+
+### Added
+- `src/docs/docsAccuracy.test.ts`: the README tool, prompt and profile counts against the registry (English and French);
+  the numbers, outline and linked documents of each English/French pair; the reviewed "what is saved" sentence in every page
+  that carries it; every `npm run` command named in a page against `package.json`; every relative link and `#anchor` of
+  every Markdown file; the roadmap's version and the manual's size against the code.
+
 ## [2.4.0] - 2026-11-04
 
 ### Changed

@@ -44,8 +44,11 @@ Claude ── MCP (stdio) ──► src/server.ts ──► tools/registry.ts �
 | SCMDB | `providers/scmdb/` (`store.ts` downloads and validates, `queries.ts` answers) | Cached by commit SHA |
 | Game log | `providers/gamelog/` (`parser.ts` pure, `reader.ts` I/O, `context.ts` derived views) | Off by default; read-only |
 | Fleet | `providers/fleet/` (`store.ts`, `resolve.ts`) | Local JSON file |
-| Live telemetry | `providers/telemetry/` (`wire.ts` + `decode.ts` + `schema.ts` decode, `normalize.ts` flat state, `handler.ts` + `events.ts` debounced events, `reader.ts` HTTP/2 stream, `service.ts` lazy single reader, `index.ts` the only door) | Off unless `SC_TELEMETRY=on`; loopback only; memory only; see [TELEMETRY.md](TELEMETRY.md) |
+| Live telemetry | `providers/telemetry/` (`wire.ts` + `decode.ts` + `schema.ts` decode, `normalize.ts` flat state, `handler.ts` + `events.ts` debounced events, `reader.ts` HTTP/2 stream, `service.ts` lazy single reader, `index.ts` the only door) | Off unless `SC_TELEMETRY=on`; loopback only; frames in memory only; see [TELEMETRY.md](TELEMETRY.md) |
 | Live dashboard | `dashboard/` (`poll.ts` the poll payload, `service.ts` shared cache and session markers, `plan.ts`, `ledger*.ts` the transport ledger, `specs.ts` the ship sheet lookup from the wiki (background, cached by class name), `viewLogic.ts` pure View logic, `specsView.ts` + `specsStyles.ts` the pure View logic and styles of the sheet gauges, `viewApp.ts` the View, `page.ts` the one HTML page, `testing/` fake host and scenario), tools in `tools/dashboard.ts` | An MCP App on top of the telemetry; see below |
+| Saved sessions | `providers/sessions/` (`store.ts` the file, its lock and its copies, `reducer.ts` the pure rules, `trips.ts`, `stats.ts`, `manager.ts` follows the game, `calibration.ts` route reliability, `debrief.ts` the report, `config.ts` the paths and switches), tools in `tools/sessions.ts` and `tools/sessionDebrief.ts` | `sessions.json`, only with `SC_TELEMETRY=on` and `SC_SESSIONS` not `off`; see "Persistence" below |
+| Pre-flight check | `providers/uex/preflight.ts` (re-reads the prices of the plan in force), `dashboard/tradePreflight.ts`, `dashboard/tradeSuggest.ts` | Behind the app-only `sc_trade_suggest`; throttled; see [TELEMETRY.md](TELEMETRY.md#before-leaving-the-pre-flight-check-and-the-price-that-moved) |
+| Agent surface | `src/instructions.ts` (the server `instructions`, length-bounded by a test), `src/prompts.ts` (the prompts) | What Claude is told by the server itself; the pasted block of [USING_WITH_CLAUDE.md](USING_WITH_CLAUDE.md) repeats and extends it |
 | Patch dumps | `providers/dumps/` | Legacy; history is thin |
 
 ## Optional features that are off by default
@@ -61,21 +64,26 @@ ask for by installing the server:
   production code path has no way to take an address from the environment.
 - Tools that need the feature set `advertised` (`ToolDefinition.advertised`): they are left out of `tools/list` while
   it is off. A tool that must always be there to explain the feature (`sc_live_status`) is always listed.
-- Everything the feature reads stays in memory. Names that come from the stream are only passed on if they look like
-  a game identifier. Anything that reaches the conversation and is personal (the aUEC balance) is withheld unless the
+- Frames stay in memory; the session summaries are the one exception (see "Persistence" below). Names that come from
+  the stream are only passed on if they look like a game identifier. Anything that reaches the conversation and is personal (the aUEC balance) is withheld unless the
   caller asks for it.
 - `npm run check:telemetry-silence` listens on the port itself and proves that the built server makes no connection
   when the switch is off and does when it is on.
 
+## Persistence
+
+The session file is the only place a derived balance is written. Frames and raw log lines stay in memory and are never written. The one exception is the session summary (the balance at the start and at the last sighting, and for each trip the cost, revenue, margin, fees and net): it is kept in a local file, `sessions.json`, only when telemetry is on, it is never sent anywhere by this server, `SC_SESSIONS=off` disables it, and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it. `providers/sessions/store.ts` writes it under a lock file, through a temporary file and an atomic rename, bounded in bytes; `providers/sessions/manager.ts` keeps the telemetry reader alive while the game is believed to be running, so the reader's five idle minutes no longer apply then. The other writes are the HTTP and dump caches (`cache/`, safe to delete), the wiki snapshots (`data/snapshots`) and the fleet file. Details and the wipe procedure: [TELEMETRY.md](TELEMETRY.md#saved-sessions).
+
 ## The live dashboard (an MCP App)
 
 `sc_live_dashboard` points at a resource of type ui: one self-contained HTML page that the client renders in an iframe
-and that talks to the host with JSON-RPC over `postMessage` (hand-written, no package). The page calls two tools
+and that talks to the host with JSON-RPC over `postMessage` (hand-written, no package). The page calls tools
 that only it may call (`visibility: ["app"]`): `sc_live_poll` (state, events, session counters as
-`structuredContent`), `sc_live_mark` (session markers, in memory) and `sc_trade_suggest` (the commerce action bar: the
-trade planner behind a throttle and a short cache, see `src/dashboard/tradeSuggest.ts`).
+`structuredContent`), `sc_live_mark` (session markers, in memory), `sc_trade_suggest` (the commerce action bar: the
+trade planner behind a throttle and a short cache, see `src/dashboard/tradeSuggest.ts`) and `sc_session_export` (the
+session report, when sessions are on).
 
-- **Conditional surface.** `ToolDefinition.requiresUi` and `registry.list(context)`: the three tools are listed only
+- **Conditional surface.** `ToolDefinition.requiresUi` and `registry.list(context)`: the dashboard tools are listed only
   when telemetry is on AND the client declared `capabilities.extensions["io.modelcontextprotocol/ui"]` with the HTML
   MIME type. `server.ts` announces the `resources` capability, and serves `resources/list` and `resources/read`, only
   when there is a resource to serve (telemetry on). With telemetry off the server is unchanged.

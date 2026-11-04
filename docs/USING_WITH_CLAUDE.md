@@ -3,20 +3,21 @@
 English · [Français](USING_WITH_CLAUDE.fr.md)
 
 Paste the block below into your Claude project's instructions (or your custom instructions) so Claude picks
-the right tool and reads the provenance. It is short on purpose.
+the right tool and reads the provenance. It is long because it repeats most of the server's own manual, which some
+clients do not pass to Claude (see below).
 
 ## Do I still need the block?
 
 The server also sends Claude an operating manual when the client connects (the MCP `instructions` field, about
-3,200 characters, written in `src/instructions.ts`): the honesty rules, which trade tool for which question, the
+3,500 characters, the limit being 3,500, written in `src/instructions.ts`): the honesty rules, which trade tool for which question, the
 live and dashboard rules, the connection state rule, and how to accompany a run. Whether your client passes it to
 Claude varies: Claude Code does; Claude Desktop and claude.ai were reported not to, in open issues of
-November 2026. Do not guess: run the canary test at the end of this page before you shorten anything.
+November 2026 (not verified here). Do not guess: run the canary test at the end of this page before you shorten anything.
 
 What the manual already carries, so the pasted block need not repeat it: rule 1 (provenance and freshness), rule 2
 (untrusted text), rule 4 (errors), the trade tool choice in rule 3 (the price, planner, history, market status,
 refining, item, marketplace, journal and saved-session tools), the core of rules 6 and 7 (no safety claim, balance only after
-asking, connection state, no second dashboard, never `sc_live_poll` or `sc_live_mark`) and the way to accompany.
+asking, connection state, no second dashboard, never `sc_live_poll`, `sc_live_mark` or `sc_trade_suggest`) and the way to accompany.
 What it does not carry, and the block must keep: the other lines of rule 3 (ships, patches, missions, wiki, game
 log), rule 5, and the details of rules 6 and 7 (what the stream lacks, on foot or seated, the dashboard balance).
 
@@ -40,8 +41,8 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
    - Where to buy or rent a ship: uex_get_ship_prices. Ship specs: scw_get_vehicle.
    - Trading: uex_get_trade_routes needs an ORIGIN (commodity, terminal or planet); pass ship_name (a ship
      from sc_fleet_get) or cargo_capacity so profit is computed for the cargo that fits. Check the reports
-     behind a price. uex_plan_trade ranks round trips, two-leg chains and routes by ESTIMATED profit per hour
-     (travel time is an estimate; say so), uex_get_price_history tells whether a price is high or low for a
+     behind a price. uex_plan_trade returns round trips and routes and, in a separate list, two-leg chains, each
+     list ranked by ESTIMATED profit per hour (travel time is an estimate; say so), uex_get_price_history tells whether a price is high or low for a
      terminal (about 10 points: short history), uex_get_market_status warns of shortage or saturation.
      uex_get_commodity_prices for where one commodity buys and sells; the other uex_* tools
      (trade profile) for terminals, averages, ranking and player ads.
@@ -77,7 +78,13 @@ You have the Star Citizen tools from the "sc-copilot" server. Rules:
      buy and where, where to sell, SCU, cost, profit, why it fits, the risks), after checking uex_get_price_history and
      uex_get_market_status. To debrief a run, use sc_trade_journal (gross margin) and the sell price now.
 4. If a tool returns an error or "ambiguous" candidates, say so and ask; do not invent a value.
-5. Nothing here writes to the game or to any website. The only writes are the local fleet list and caches.
+5. Nothing here writes to the game or to any website. The only writes are local files: caches, wiki snapshots
+   (scw_snapshot_save), the fleet list and, only with live telemetry on, the saved play session. Frames and raw log
+   lines stay in memory and are never written. The one exception is the session summary (the balance at the start and
+   at the last sighting, and for each trip the cost, revenue, margin, fees and net): it is kept in a local file,
+   sessions.json, only when telemetry is on, it is never sent anywhere by this server, SC_SESSIONS=off disables it, and
+   deleting sessions.json and the .bak and .corrupt copies next to it erases it. If the player asks what is stored, say
+   so; never claim that nothing is kept.
 6. Live telemetry (sc_live_status, sc_live_state, sc_live_events) exists only if the player turned it on.
    Call sc_live_status first: it says off, waiting or live, and how to enable it. In waiting or connected there is
    simply no data for now (menus, loading screens, character not yet spawned, or a game started without the
