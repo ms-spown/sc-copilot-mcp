@@ -126,8 +126,6 @@ export interface ShipLossSummary {
   zone: string | null;
   /** null: the trade journal was not readable when it was recorded (unknown, never zero). */
   cargo_scu: number | null;
-  cargo_buys: number;
-  unconfirmed_buys: number;
 }
 
 const isTrip = (t: Trip) => t.kind !== "contract";
@@ -225,7 +223,7 @@ export function summarizeSession(s: Session): SessionSummary {
     last_location: s.last_location,
     last_commodity: s.last_commodity,
     price_refusals: s.price_refusals ?? 0,
-    // Copied by name: the hash of the ship and the paid amount stay out of the part every reader gets.
+    // Copied by name: the paid amount stays out of the part every reader gets.
     ship_losses: (s.ship_losses ?? []).map((l) => ({
       at: l.at,
       ship_class: l.ship_class,
@@ -233,8 +231,6 @@ export function summarizeSession(s: Session): SessionSummary {
       causer: l.causer,
       zone: l.zone,
       cargo_scu: l.cargo_scu,
-      cargo_buys: l.cargo_buys,
-      unconfirmed_buys: l.unconfirmed_buys,
     })),
     note: s.note,
     money: {

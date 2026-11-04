@@ -119,33 +119,23 @@ export type Interruption = z.infer<typeof InterruptionSchema>;
 export const MAX_SHIP_LOSSES = 20;
 
 /**
- * The player's own ship destroyed with him aboard (providers/gamelog/shipLoss.ts), as the session keeps it. A time, the ship
- * MODEL, a short hash of its entity id (never the id), a cause code, the kind of causer (never a name), a place token, and the
- * cargo PRESUMED lost with it: SCU, and the aUEC PAID for it (the purchase price, not the value: balance-derived, so withheld
- * like any other money figure). The value lost, the insurance and the killer are not in the log and are not stored.
+ * The player's own ship destroyed with him aboard (providers/gamelog/shipLoss.ts), as the session keeps it. ONLY: the time,
+ * the ship MODEL, a cause code, the kind of causer (never a name), a place token, and the cargo PRESUMED lost with it: SCU,
+ * and the aUEC PAID for it (the purchase price, not the value: balance-derived, so withheld like any other money figure).
+ * NOTHING derived from a ship's identifier is stored (the hash that links a purchase to its ship lives in memory only), nor
+ * a count of purchase lines, nor a key of the run. The value lost, the insurance and the killer are not in the log.
  * Additive and optional: a file written before it reads as an empty list, and the format stays version 2.
  */
 export const ShipLossSchema = z.object({
   at: iso,
-  ship_ref: z.string().regex(/^[0-9a-f]{12}$/),
   ship_class: cleanText(60).nullable().default(null),
   cause: z.enum(["collision", "combat", "self_destruct", "unknown"]).default("unknown"),
   causer: z.enum(["self", "other", "npc", "unknown"]).default("unknown"),
   zone: cleanText(60).nullable().default(null),
-  via: z.enum(["actor_state_dead", "actor_death"]).default("actor_state_dead"),
   /** null: no trade journal was available (unknown, never zero). */
   cargo_scu: z.number().finite().min(0).nullable().default(null),
-  cargo_buys: count.default(0),
-  /** Purchases for this ship the journal could not confirm: not counted in the SCU. */
-  unconfirmed_buys: count.default(0),
   /** aUEC PAID for the SCU above. From the balance's side: never shown without it. */
   cargo_paid_auec: money.default(null),
-  /** The trade run (the key of its trip) the lost purchases belong to; null when there is no cargo. */
-  run_key: z
-    .string()
-    .regex(/^[0-9a-f]{6,32}$/)
-    .nullable()
-    .default(null),
 });
 export type ShipLossRecord = z.infer<typeof ShipLossSchema>;
 export type ShipLossInput = z.input<typeof ShipLossSchema>;

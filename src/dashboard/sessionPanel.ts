@@ -134,7 +134,6 @@ export function sessionSummaryNormalize(raw: any, allowMoney: boolean): any {
         cause: ["collision", "combat", "self_destruct"].indexOf(x.cause) >= 0 ? x.cause : "unknown",
         causer: ["self", "other", "npc"].indexOf(x.causer) >= 0 ? x.causer : "unknown",
         cargo_scu: sessionNum(x.cargo_scu),
-        unconfirmed_buys: sessionCount(x.unconfirmed_buys, 9999),
       })),
     money: sessionMoney(raw.money, allowMoney),
   };

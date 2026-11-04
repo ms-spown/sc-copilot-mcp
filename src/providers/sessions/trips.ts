@@ -218,25 +218,17 @@ export class TradeRunTripSource implements TripSource {
         ...planFacts(link !== null ? plan : undefined),
       });
     }
-    // A ship lost with cargo interrupts a run that never completes (so never becomes a trip): the loss belongs to the session,
-    // and names the run it interrupted by the key such a run's trip would have.
-    const ship_losses: ShipLossInput[] = lost.map((l) => {
-      const view = section.ship_losses?.find((v) => v.at === l.at);
-      return {
-        at: l.at,
-        ship_ref: l.ship_ref,
-        ship_class: l.ship_class,
-        cause: l.cause,
-        causer: l.causer,
-        zone: l.zone,
-        via: l.via,
-        cargo_scu: l.cargo ? l.cargo.scu : null,
-        cargo_buys: l.cargo ? l.cargo.buys : 0,
-        unconfirmed_buys: l.cargo ? l.cargo.unconfirmed_buys : 0,
-        cargo_paid_auec: l.cargo && l.cargo.scu > 0 ? l.cargo.paid_auec : l.cargo ? 0 : null,
-        run_key: view?.run_id ? hash(`run|${view.run_id}`) : null,
-      };
-    });
+    // A ship lost with cargo interrupts a run that never completes (so never becomes a trip): the loss belongs to the session.
+    // Only what the file may keep goes out: nothing derived from the ship's identifier (its hash stays in memory).
+    const ship_losses: ShipLossInput[] = lost.map((l) => ({
+      at: l.at,
+      ship_class: l.ship_class,
+      cause: l.cause,
+      causer: l.causer,
+      zone: l.zone,
+      cargo_scu: l.cargo ? l.cargo.scu : null,
+      cargo_paid_auec: l.cargo && l.cargo.scu > 0 ? l.cargo.paid_auec : l.cargo ? 0 : null,
+    }));
     return {
       trips,
       context: null,

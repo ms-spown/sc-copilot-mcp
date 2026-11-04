@@ -5,6 +5,7 @@ import {
   sweepWithBalance,
   sweepWithoutBalance,
 } from "../testing/replay/audit.js";
+import { entityRef } from "../providers/gamelog/shipLossParse.js";
 import { buyLine, HANDLE } from "../testing/replay/lines.js";
 import { useWorld } from "../testing/replay/story.js";
 
@@ -71,7 +72,11 @@ describe("Feature: a ship destroyed with cargo bought for it", () => {
       cause: "collision",
       ship_class: "TEST_Hauler",
     });
-    expect(file.sessions[0]!.ship_losses[0]!.run_key).toMatch(/^[0-9a-f]{16}$/);
+    // only what the file may keep: no key derived from the ship's identifier, no count of purchases
+    expect(Object.keys(file.sessions[0]!.ship_losses[0]!).sort()).toEqual(
+      ["at", "cargo_paid_auec", "cargo_scu", "cause", "causer", "ship_class", "zone"].sort(),
+    );
+    expect(w.sessionsBytes()).not.toContain(entityRef(SHIP));
     const revision = file.revision;
     await w.playTo(420);
     expect(w.sessionsJson().sessions[0]!.ship_losses).toHaveLength(1); // not counted again on later looks

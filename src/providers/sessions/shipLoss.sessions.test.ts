@@ -12,6 +12,7 @@ import * as ViewLogic from "../../dashboard/viewLogic.js";
 import * as Preflight from "../../dashboard/tradePreflight.js";
 import { parseLog } from "../gamelog/parser.js";
 import { buildShipLosses } from "../gamelog/shipLoss.js";
+import { entityRef } from "../gamelog/shipLossParse.js";
 import { buildTradeJournal } from "../gamelog/trade.js";
 import { buildDebrief } from "./debrief.js";
 import { session } from "./fixtures.testing.js";
@@ -45,17 +46,12 @@ const obs = (over: Partial<Observation> & { now: number }): Observation => ({
 });
 const loss = (over: Partial<ShipLossInput> = {}): ShipLossInput => ({
   at: new Date(T0 + 5 * MIN).toISOString(),
-  ship_ref: "abcdef012345",
   ship_class: "TEST_Hauler",
   cause: "collision",
   causer: "self",
   zone: "test_zone_001",
-  via: "actor_state_dead",
   cargo_scu: 640,
-  cargo_buys: 2,
-  unconfirmed_buys: 0,
   cargo_paid_auec: PAID,
-  run_key: null,
   ...over,
 });
 const hasPaid = (value: unknown) => {
@@ -95,16 +91,13 @@ describe("Feature: the session keeps each destroyed ship once", () => {
     observe(s, obs({ now: T0 }), cfg);
     const bad = [
       loss({ at: new Date(T0 - 60 * MIN).toISOString() }),
-      loss({ ship_ref: "not a hash" }),
+      loss({ cause: "bogus" as never }),
       loss({ at: "not a date" }),
     ];
     observe(s, obs({ now: T0 + 2 * MIN, shipLosses: bad }), cfg);
     expect(latest(s)!.ship_losses).toEqual([]);
     const many = Array.from({ length: MAX_SHIP_LOSSES + 5 }, (_, i) =>
-      loss({
-        ship_ref: i.toString(16).padStart(12, "0"),
-        at: new Date(T0 + (3 + i) * 1000).toISOString(),
-      }),
+      loss({ at: new Date(T0 + (3 + i) * 1000).toISOString() }),
     );
     observe(s, obs({ now: T0 + 10 * MIN, shipLosses: many }), cfg);
     expect(latest(s)!.ship_losses).toHaveLength(MAX_SHIP_LOSSES);
@@ -126,7 +119,6 @@ describe("Feature: the aUEC paid for the cargo presumed lost follows the balance
     const shut = withoutMoney(full);
     expect(shut.money).toBe("withheld");
     expect(hasPaid(shut)).toBe(false);
-    expect(JSON.stringify(shut)).not.toContain("abcdef012345"); // not even the ship's hash
     expect(shut.ship_losses[0]!.cargo_scu).toBe(640);
   });
 
@@ -218,7 +210,11 @@ describe("Feature: the aUEC paid for the cargo presumed lost follows the balance
     expect(got.trips).toEqual([]); // an interrupted run never becomes a trip
     expect(got.ship_losses).toHaveLength(1);
     expect(got.ship_losses![0]).toMatchObject({ cargo_scu: 640, cargo_paid_auec: PAID });
-    expect(got.ship_losses![0]!.run_key).toMatch(/^[0-9a-f]{16}$/);
+    // nothing derived from a ship's identifier (nor a key of the run) leaves the trip source
+    expect(Object.keys(got.ship_losses![0]!).sort()).toEqual(
+      ["at", "cargo_paid_auec", "cargo_scu", "cause", "causer", "ship_class", "zone"].sort(),
+    );
+    expect(JSON.stringify(got.ship_losses)).not.toContain(entityRef("700000000555"));
     // and the reducer stores it
     const s = emptyState();
     observe(s, obs({ now: Date.parse("2026-11-04T17:59:00Z") }), cfg);

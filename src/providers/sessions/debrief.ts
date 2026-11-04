@@ -764,17 +764,12 @@ function withoutMoneyFields(s: Session): Session {
     // Copied by name: the aUEC paid for the cargo presumed lost is a balance figure and is not carried over.
     ship_losses: (s.ship_losses ?? []).map((l) => ({
       at: l.at,
-      ship_ref: l.ship_ref,
       ship_class: l.ship_class,
       cause: l.cause,
       causer: l.causer,
       zone: l.zone,
-      via: l.via,
       cargo_scu: l.cargo_scu,
-      cargo_buys: l.cargo_buys,
-      unconfirmed_buys: l.unconfirmed_buys,
       cargo_paid_auec: null,
-      run_key: l.run_key,
     })),
     trips: s.trips.map((t): Trip => ({
       key: t.key,
@@ -843,8 +838,6 @@ function shipLossLines(s: Session, money: boolean): string[] {
           : "";
       parts.push(`cargo présumé perdu : ${fmtDec(l.cargo_scu, 2)}${NBSP}SCU${paid} (non confirmé)`);
     }
-    if (l.unconfirmed_buys > 0)
-      parts.push(`${l.unconfirmed_buys} achat(s) non confirmé(s) non compté(s)`);
     out.push(`- ${parts.join(" · ")}`);
   }
   out.push(

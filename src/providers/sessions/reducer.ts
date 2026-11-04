@@ -290,7 +290,14 @@ function countRefusals(cur: Session, list: readonly { at: string }[] | undefined
 }
 
 /**
- * Adds the ships destroyed with the player aboard that this session does not hold yet (one per ship, by its hash), inside the
+ * What makes two stored losses the same one: the time to the second, the model and the place. No identifier of any ship is
+ * stored, so none can be used (two real losses of the same model in the same place in the same second do not happen).
+ */
+const lossKey = (l: { at: string; ship_class: string | null; zone: string | null }): string =>
+  `${Math.round(ms(l.at) / 1000)}|${l.ship_class ?? ""}|${l.zone ?? ""}`;
+
+/**
+ * Adds the ships destroyed with the player aboard that this session does not hold yet (one per loss, by `lossKey`), inside the
  * session. Idempotent like the refusals: the same list again, or seen by a second server process, adds nothing. A loss
  * stored while the trade journal was not readable (its cargo unknown) is completed when a later look knows the cargo; a known
  * cargo is never replaced. The list is bounded: the oldest go first.
@@ -306,7 +313,8 @@ function recordLosses(cur: Session, list: readonly ShipLossInput[] | undefined):
     if (!parsed.success) continue;
     const at = ms(parsed.data.at);
     if (at < from || at > to) continue;
-    const i = held.findIndex((x) => x.ship_ref === parsed.data.ship_ref);
+    const key = lossKey(parsed.data);
+    const i = held.findIndex((x) => lossKey(x) === key);
     if (i >= 0) {
       if (held[i]!.cargo_scu === null && parsed.data.cargo_scu !== null) {
         held[i] = parsed.data;

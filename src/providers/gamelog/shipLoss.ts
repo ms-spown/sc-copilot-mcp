@@ -60,7 +60,10 @@ export interface ShipLossCargo {
 export interface ShipLoss {
   /** ISO time of the destruction line. */
   at: string;
-  /** A short hash of the ship's entity id (12 hex): the same ship twice is one loss. Not the game's identifier. */
+  /**
+   * A short hash of the ship's entity id (12 hex): the same ship twice is one loss, and it links a purchase to its ship. MEMORY
+   * ONLY: it is never stored in the sessions file, sent to a View or put in an export.
+   */
   ship_ref: string;
   /** The ship model ("DRAK_Dragonfly"), or null when the line did not give a clean one. */
   ship_class: string | null;

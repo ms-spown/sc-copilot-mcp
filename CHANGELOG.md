@@ -38,9 +38,12 @@ versions follow [Semantic Versioning](https://semver.org/).
   Value lost, insurance and killer are shown as "non journalisés"; the cargo attribution is labelled as verified on 2025-build
   logs only. Suicides, routine insurance claims, other actors' deaths and AI vehicles the player destroyed are not counted.
 - Sessions file: a new additive `ship_losses` list per session (format version stays 2; an older file reads as empty).
-  The aUEC paid is a balance figure: withheld from the bar, the list, the stats, the poll, the channel between Views and the
-  debrief unless the balance is allowed. The privacy sentence (README, SECURITY, CAPABILITIES, TELEMETRY, ARCHITECTURE and
-  the block for Claude, English and French) names the new category.
+  It keeps only the time, the ship model, the cause, the kind of causer, the place and the cargo presumed lost; nothing
+  derived from a ship's identifier is written (the hash that links a purchase to its ship stays in memory), and a loss is
+  de-duplicated by time, model and place. The aUEC paid is a balance figure: withheld from the bar, the list, the stats,
+  the poll, the channel between Views and the debrief unless the balance is allowed. The reviewed privacy sentence
+  (README, SECURITY, CAPABILITIES, TELEMETRY, ARCHITECTURE and the block for Claude, English and French) adds "ship
+  losses: time, model, cause, place, presumed cargo".
 - A loss with cargo ends the run in the commerce model and in the journal's cargo runs, so a later sale of the same goods
   is not paired with the lost cargo.
 
