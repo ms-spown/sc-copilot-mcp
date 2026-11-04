@@ -17,7 +17,10 @@ import { sessionBarStripBalance } from "../../dashboard/sessionPanel.js";
 import { sharablePoll } from "../../dashboard/viewLogic.js";
 import type { ReplayWorld } from "./world.js";
 
-export const figure = (n: number): RegExp => new RegExp(`(?<![0-9])${Math.abs(n)}(?![0-9])`);
+// A figure is a whole number on its own: not a part of a longer number, and not a decimal fraction such as the milliseconds
+// of a clock time ("12:32:46.700Z" holds 700 once in a thousand runs, which made a replay test fail by chance on CI).
+// An amount in JSON follows a ":" or a space, never a ".", so a real leak is still found.
+export const figure = (n: number): RegExp => new RegExp(`(?<![0-9.])${Math.abs(n)}(?![0-9])`);
 
 /** The tools the model can call that read the live game or the saved sessions (the arguments carry no `include_balance`). */
 const MODEL_TOOLS: [string, Record<string, unknown>][] = [
