@@ -16,7 +16,7 @@ Claude ── MCP (stdio) ──► src/server.ts ──► tools/registry.ts �
 | Tools | `src/tools/` | One file per group. A tool is its definition (name, description, schema) **and** its handler, together | Talk HTTP directly: they receive clients |
 | Registry | `src/tools/registry.ts`, `catalog.ts` | Dispatch, error results, the `{provenance, data}` envelope, profiles | Know any source's details |
 | Providers | `src/providers/<source>/` | Everything about one source: client, parsing, validation, queries | Format answers for Claude |
-| Core | `src/core/` | Shared plumbing: guarded HTTP, cache, provenance, untrusted text, paths, config, errors | Depend on a provider |
+| Core | `src/core/` | Shared plumbing: guarded HTTP, cache, provenance, untrusted text, paths, config, errors, the balance policy (`balance.ts`) | Depend on a provider |
 
 ## Cross-cutting rules (each is enforced somewhere)
 
@@ -42,10 +42,10 @@ Claude ── MCP (stdio) ──► src/server.ts ──► tools/registry.ts �
 | Star Citizen Wiki API | `providers/wiki/` | Pagination quirks, snapshots |
 | starcitizen.tools | `providers/sctools/`, `tools/patchnotes.ts`, `core/text.ts` | MediaWiki; `Update:` pages are patch notes |
 | SCMDB | `providers/scmdb/` (`store.ts` downloads and validates, `queries.ts` answers) | Cached by commit SHA |
-| Game log | `providers/gamelog/` (`parser.ts` pure, `reader.ts` I/O, `context.ts` derived views) | Off by default; read-only |
+| Game log | `providers/gamelog/` (`parser.ts` pure, `reader.ts` I/O, `context.ts` derived views, `shipLoss.ts` + `shipLossParse.ts` the ship loss tracker) | Off by default; read-only |
 | Fleet | `providers/fleet/` (`store.ts`, `resolve.ts`) | Local JSON file |
 | Live telemetry | `providers/telemetry/` (`wire.ts` + `decode.ts` + `schema.ts` decode, `normalize.ts` flat state, `handler.ts` + `events.ts` debounced events, `reader.ts` HTTP/2 stream, `service.ts` lazy single reader, `index.ts` the only door) | Off unless `SC_TELEMETRY=on`; loopback only; frames in memory only; see [TELEMETRY.md](TELEMETRY.md) |
-| Live dashboard | `dashboard/` (`poll.ts` the poll payload, `service.ts` shared cache and session markers, `plan.ts`, `ledger*.ts` the transport ledger, `specs.ts` the ship sheet lookup from the wiki (background, cached by class name), `viewLogic.ts` pure View logic, `specsView.ts` + `specsStyles.ts` the pure View logic and styles of the sheet gauges, `viewApp.ts` the View, `page.ts` the one HTML page, `testing/` fake host and scenario), tools in `tools/dashboard.ts` | An MCP App on top of the telemetry; see below |
+| Live dashboard | `dashboard/` (`poll.ts` the poll payload, `service.ts` shared cache and session markers, `plan.ts`, `ledger*.ts` the transport ledger, `specs.ts` the ship sheet lookup from the wiki (background, cached by class name), `viewLogic.ts` pure View logic, `specsView.ts` + `specsStyles.ts` the pure View logic and styles of the sheet gauges, `viewApp.ts` the View, `shortcutsPanel.ts` + `shortcutsSources.ts` the context shortcuts and the sources of their keys, `commodityNames.ts` the names of goods looked up in the wiki (background, bounded), `page.ts` the one HTML page, `testing/` fake host and scenario), tools in `tools/dashboard.ts` | An MCP App on top of the telemetry; see below |
 | Saved sessions | `providers/sessions/` (`store.ts` the file, its lock and its copies, `reducer.ts` the pure rules, `trips.ts`, `stats.ts`, `manager.ts` follows the game, `calibration.ts` route reliability, `debrief.ts` the report, `config.ts` the paths and switches), tools in `tools/sessions.ts` and `tools/sessionDebrief.ts` | `sessions.json`, only with `SC_TELEMETRY=on` and `SC_SESSIONS` not `off`; see "Persistence" below |
 | Pre-flight check | `providers/uex/preflight.ts` (re-reads the prices of the plan in force), `dashboard/tradePreflight.ts`, `dashboard/tradeSuggest.ts` | Behind the app-only `sc_trade_suggest`; throttled; see [TELEMETRY.md](TELEMETRY.md#before-leaving-the-pre-flight-check-and-the-price-that-moved) |
 | Agent surface | `src/instructions.ts` (the server `instructions`, length-bounded by a test), `src/prompts.ts` (the prompts) | What Claude is told by the server itself; the pasted block of [USING_WITH_CLAUDE.md](USING_WITH_CLAUDE.md) repeats and extends it |

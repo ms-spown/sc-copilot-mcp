@@ -177,6 +177,7 @@ données :
 | `SC_INSTALL_DIR`                                                 | Dossier d'un canal tel que `…\StarCitizen\LIVE` : active `sc_log_*` sur son `Game.log`. Désactivé si non défini                                                                            |
 | `SC_SESSIONS`                                                    | `off` (aussi `0`, `false`, `no`) désactive les sessions de jeu enregistrées en gardant la télémétrie (aucun fichier créé ni lu). Elles n'existent qu'avec `SC_TELEMETRY=on` (voir plus bas) |
 | `SC_BALANCE`                                                     | `hidden` démarre le serveur avec les montants en aUEC masqués : le tableau de bord démarre masqué et les outils répondent sans montants (un `include_balance: true` est ignoré) ; un clic sur « Afficher le solde » le lève jusqu'au redémarrage du serveur. Absent ou `shown` : les montants sont affichés (par défaut). Une valeur inconnue les masque et le dit sur stderr |
+| `SC_COMMODITY_NAMES`                                             | `off` (aussi `0`, `false`, `no`) empêche le tableau de bord de demander à la liste publique des marchandises du wiki le nom de votre cargaison (par défaut : actif, seulement avec la télémétrie activée ; toute autre valeur ne change rien) |
 | `SCMCP_SESSIONS_FILE`                                            | Fichier de sessions (par défaut `%LOCALAPPDATA%\sc-copilot-mcp\data\sessions.json`) ; `npm run sessions -- wipe --apply` le supprime avec ses copies (simulation sans `--apply`) |
 | `SC_SESSION_GAP_HOURS`                                           | Silence après lequel la partie suivante est une nouvelle session (par défaut 3, de 0,25 à 48) |
 | `SC_TELEMETRY`                                                   | `on` (aussi `1`, `true`, `yes`) active la télémétrie en direct optionnelle, côté serveur. Désactivée si absente (voir plus bas)                                                            |
@@ -254,6 +255,11 @@ l'activer** : c'est une fonction non documentée du jeu, et le risque est le vô
   touches par défaut sont affichées, marquées « défaut », tirées de sources publiques et non vérifiées en jeu sur la
   4.10 ; les autres actions n'ont pas de touche. Elle ne prétend jamais que les phares sont éteints ni qu'il fait
   sombre, et c'est un simple affichage. Voir [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#raccourcis-selon-le-contexte).
+- **Pertes de vaisseau (dans ce tableau de bord, nécessite le journal du jeu).** Quand votre vaisseau est détruit avec
+  vous à bord, les alertes le disent, la carte de commerce marque le trajet qu'il a interrompu, et la session enregistrée
+  et son rapport le gardent, avec la cargaison présumée perdue (SCU et aUEC payés, pas la valeur). La valeur perdue,
+  l'assurance et le responsable ne sont pas dans `Game.log` et sont affichés « non journalisés ». Voir
+  [docs/CAPABILITIES.md](docs/CAPABILITIES.md).
 - **Un carnet de transport (optionnel, il faut le journal de jeu).** Dans ce tableau de bord, les contrats de la
   session avec leurs étapes de chargement et de livraison (quand le journal les contient : absentes des journaux du
   build 4.10 de l'installation de référence) et, une fois le solde affiché, la variation brute du solde sur chaque

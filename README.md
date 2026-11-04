@@ -168,6 +168,7 @@ the right tools in the right order and telling Claude to state how fresh the dat
 | `SC_INSTALL_DIR`                                                 | A channel folder such as `…\StarCitizen\LIVE`: enables `sc_log_*` on its `Game.log`. Off if unset                                                               |
 | `SC_SESSIONS`                                                    | `off` (also `0`, `false`, `no`) switches the saved play sessions off while telemetry stays on (no file created or read). They exist only with `SC_TELEMETRY=on` (see below) |
 | `SC_BALANCE`                                                     | `hidden` starts the server with the aUEC amounts hidden: the dashboard starts hidden and the tools answer without amounts (an `include_balance: true` is ignored); a click on "Afficher le solde" lifts it until the server restarts. Unset or `shown`: amounts are shown (the default). A value it does not know hides them and says so on stderr |
+| `SC_COMMODITY_NAMES`                                             | `off` (also `0`, `false`, `no`) stops the dashboard from asking the wiki's public commodity list for the names of your cargo (default: on, only with telemetry on; any other value changes nothing) |
 | `SCMCP_SESSIONS_FILE`                                            | Session file (default `%LOCALAPPDATA%\sc-copilot-mcp\data\sessions.json`); `npm run sessions -- wipe --apply` deletes it and its copies (a dry run without `--apply`) |
 | `SC_SESSION_GAP_HOURS`                                           | Quiet time after which the next play period is a new session (default 3, from 0.25 to 48) |
 | `SC_TELEMETRY`                                                   | `on` (also `1`, `true`, `yes`) switches the optional live telemetry on, server side. Off if unset (see below)                                                   |
@@ -238,6 +239,10 @@ short "Read this first" block).
   "défaut", taken from public sources and not checked in the game on 4.10; the other actions have no key. It never
   claims the lights are off or that it is dark, and a display only. See
   [docs/TELEMETRY.md](docs/TELEMETRY.md#context-shortcuts).
+- **Ship losses (in that dashboard, needs the game log).** When your ship is destroyed with you aboard, the alerts say
+  so, the commerce card marks the run it interrupted, and the saved session and its report keep it, with the cargo
+  presumed lost (SCU and aUEC paid, not the value). The value lost, the insurance and the killer are not in
+  `Game.log` and are shown as "non journalisés". See [docs/CAPABILITIES.md](docs/CAPABILITIES.md).
 - **A transport ledger (optional, needs the game log).** In that dashboard, the contracts of the session with their
   pickup and drop-off steps (when the log carries them: absent from the build 4.10 logs of the reference install) and, once you show the balance, the raw balance change over each completed contract; the
   game log has no quantity and no reward. See [docs/TELEMETRY.md](docs/TELEMETRY.md#transport-ledger).
