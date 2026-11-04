@@ -7,7 +7,6 @@ import {
   findAll,
   findButton,
   startPage,
-  TEST_TOKEN,
   visibleText,
   type FakeNode,
   type PageWorld,
@@ -257,14 +256,14 @@ describe("Feature: the server's state is followed, and the player's own click is
     findButton(w.root, "Afficher le solde").click();
     await w.advance(3 * SECOND);
     const shown = w.host.log.polls.find((p) => p.choice === "shown");
-    expect(shown?.token).toBe(TEST_TOKEN);
+    expect(shown?.token).toBe(w.token);
     expect(shown?.refused).toBeUndefined();
     findButton(w.root, FULL).click();
     await w.advance(100);
     findButton(w.root, "Route avec mon solde et ce vaisseau").click();
     await w.advance(2 * SECOND);
     const once = w.host.log.polls.find((p) => p.once);
-    expect(once?.token).toBe(TEST_TOKEN);
+    expect(once?.token).toBe(w.token);
   });
 
   it("Given a page without a token, Then its click on Afficher is refused by the server and it stays hidden", async () => {

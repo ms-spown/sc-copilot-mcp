@@ -6,6 +6,7 @@
  * the test fails at once instead of passing by luck.
  */
 import vm from "node:vm";
+import { randomBytes } from "node:crypto";
 import { dashboardHtml } from "../page.js";
 import { createFakeHost, type FakeHost } from "./fakeHost.js";
 import { Scenario } from "./scenario.js";
@@ -270,10 +271,9 @@ export interface PageWorld {
   bus: FakeBus | null;
   /** The page is being hidden for good. */
   firePageHide: () => void;
+  /** The token this page carries (random per page, like the real one per process); empty when the page has none. */
+  token: string;
 }
-
-/** The token of the test page (the real one is random per server process). */
-export const TEST_TOKEN = "0123456789abcdef0123456789abcdef";
 
 export interface WorldOptions {
   /**
@@ -287,7 +287,7 @@ export interface WorldOptions {
   omitBalanceAttribute?: boolean;
   /** The server's runtime choice, shared by the pages of one process. Default: follows `balanceHidden`. */
   balanceServer?: { hidden: boolean; source?: "click" | "config" };
-  /** The token carried by the page (and accepted by the fake server). Default: a fixed test token. */
+  /** The token carried by the page (and accepted by the fake server). Default: a random one; "" gives a page with none. */
   balanceToken?: string;
   theme?: "light" | "dark";
   modes?: string[];
@@ -331,6 +331,8 @@ export function extractElement(html: string, tag: string): string | null {
 }
 
 export async function startPage(options: WorldOptions = {}): Promise<PageWorld> {
+  // Random per page (never a constant): `""` asked for gives a page without a token.
+  const token = options.balanceToken ?? randomBytes(16).toString("hex");
   const scenario = options.scenario ?? new Scenario();
   const vclock = options.clock ?? new VirtualClock(scenario.epoch);
   const clock = vclock;
@@ -509,7 +511,7 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     availableDisplayModes: options.modes,
     legacyFullPolls: options.legacyFullPolls,
     balanceServer: options.balanceServer ?? { hidden: options.balanceHidden !== false },
-    balanceToken: options.balanceToken ?? TEST_TOKEN,
+    balanceToken: token,
     ...(options.suggest ? { suggest: options.suggest } : {}),
     deliver: (message) => fireMessage(message, parent),
   });
@@ -526,15 +528,14 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
 
   const advance = (ms: number) => vclock.advance(ms);
 
-  const html = dashboardHtml({
-    balanceHidden: options.balanceHidden !== false,
-    token: options.balanceToken ?? TEST_TOKEN,
-  });
-  // The page says how the server starts; the fake document has no parser, so the attribute is copied from the markup.
-  const start = /data-balance="(\w+)"/.exec(html);
-  if (start && !options.omitBalanceAttribute) root.setAttribute("data-balance", start[1]!);
-  const tok = /data-token="(\w+)"/.exec(html);
-  if (tok) root.setAttribute("data-token", tok[1]!);
+  // The evaluated script comes from the page built with NO option: nothing the tests choose (a flag, a token) flows into
+  // the code that is run. The page's own attributes are put on the fake root here, as the real document would have them
+  // (the fake document has no parser); `dashboardHtml`'s attributes have their own test (viewPage.test.ts).
+  const html = dashboardHtml();
+  if (!options.omitBalanceAttribute) {
+    root.setAttribute("data-balance", options.balanceHidden !== false ? "hidden" : "shown");
+  }
+  if (token) root.setAttribute("data-token", token);
   const script = extractElement(html, "script");
   if (!script) throw new Error("no script in the page");
   vm.runInNewContext(
@@ -576,5 +577,6 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
       Object.values(docListeners).reduce((n, l) => n + l.length, 0) +
       observers.filter((o) => o.live).length,
     bus,
+    token,
   };
 }
