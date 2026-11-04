@@ -180,6 +180,46 @@ export function tradeCleanLeg(raw: any): any {
   };
 }
 
+/**
+ * The reliability block of an option (written by the server, dashboard/routeReliability.ts), rebuilt field by field: a level
+ * from a closed list, bounded sentences, at most 5 reasons and 4 lines. null when it is missing or has no usable level, and the
+ * card then simply shows no block.
+ */
+export function tradeCleanReliability(raw: any): any {
+  if (!raw || typeof raw !== "object") return null;
+  const level = tradeOneOf(raw.level, ["reported", "partial", "estimate", "unchecked"], "");
+  if (level === "") return null;
+  const reasons = (Array.isArray(raw.reasons) ? raw.reasons : [])
+    .slice(0, 5)
+    .map((r: any) => ({
+      text: r && typeof r === "object" ? tradeText(r.text, 800) : "",
+      source: r && typeof r === "object" ? tradeText(r.source, 260) : "",
+    }))
+    .filter((r: any) => r.text !== "");
+  const trial =
+    raw.trial && typeof raw.trial === "object"
+      ? {
+          lines: (Array.isArray(raw.trial.lines) ? raw.trial.lines : [])
+            .slice(0, 4)
+            .map((s: any) => tradeText(s, 320))
+            .filter((s: string) => s !== ""),
+        }
+      : null;
+  return {
+    level,
+    label: tradeText(raw.label, 40),
+    why: tradeText(raw.why, 60),
+    reasons,
+    others: (Array.isArray(raw.others) ? raw.others : [])
+      .slice(0, 6)
+      .map((s: any) => tradeText(s, 60))
+      .filter((s: string) => s !== ""),
+    limits: tradeText(raw.limits, 320),
+    trial: trial && trial.lines.length > 0 ? trial : null,
+    better: raw.better_than_first === true,
+  };
+}
+
 /** One option (or chain), or null when it is not usable. Unknown fields are dropped. */
 export function tradeCleanOption(raw: any): any {
   if (!raw || typeof raw !== "object") return null;
@@ -227,6 +267,7 @@ export function tradeCleanOption(raw: any): any {
       factors,
     },
     cost: cost === null ? null : Math.round(cost),
+    reliability: tradeCleanReliability(raw.reliability),
   };
 }
 
@@ -755,6 +796,9 @@ export function tradeCardModel(L: any, o: any, objective: string): any {
       unit: want === "trip" ? "aUEC par trajet" : "aUEC par trajet (durée inconnue)",
     };
   }
+  // The figure rests on assumptions: the level of the evidence, and the one reason that weighs most, sit next to it.
+  const rel = o.reliability;
+  if (rel) big.unit += " (" + (rel.why || rel.label.toLowerCase()) + ")";
   const facts: any[] = [];
   if (big.kind !== "trip")
     facts.push({ label: "Par trajet", value: gain(o.profit_per_trip) + "\u00a0aUEC" });
@@ -829,6 +873,33 @@ export function tradeCardModel(L: any, o: any, objective: string): any {
     facts: facts.slice(0, 4),
     badges: badges.slice(0, 5),
     details: details.slice(0, 6),
+    rel: rel ? tradeReliabilityModel(rel) : null,
+  };
+}
+
+/**
+ * The reliability block as plain data. The level is a WORD first (the symbol is decoration, hidden from screen readers, and the
+ * colour is a third cue), so it is never conveyed by colour alone.
+ */
+export function tradeReliabilityModel(rel: any): any {
+  const icon =
+    rel.level === "reported"
+      ? "●"
+      : rel.level === "partial"
+        ? "◐"
+        : rel.level === "estimate"
+          ? "○"
+          : "?";
+  const more = rel.others.length > 0 ? "Autres points : " + rel.others.join(", ") + "." : "";
+  return {
+    level: rel.level,
+    icon,
+    title: "Fiabilité : " + rel.label,
+    better: rel.better ? "Mieux vérifiée que la première de la liste" : "",
+    reasons: rel.reasons,
+    more,
+    trial: rel.trial,
+    limits: rel.limits,
   };
 }
 
@@ -1076,10 +1147,33 @@ export function tradeAgentMessage(L: any, o: any, view: any): string {
       " et dis explicitement ce qui diffère et pourquoi (stock, âge des prix, hypothèses) avant de donner ton verdict ; dis-moi ensuite ce qui peut mal tourner et propose une meilleure alternative si elle existe." +
       (view.showBalance === true ? "" : " Ne lis pas mon solde."),
   );
-  // Fit: the figures of the steps go first when the message is too long; everything else is bounded (names are cut at 60).
+  // The dashboard's own reliability reading (server-written French, no name in it): the level always, and, when no figure derives from
+  // the balance, its top reasons and the prudent first run. They go right after the steps when the message is too long.
+  const rl = o.reliability;
+  const relLines: string[] = [];
+  if (rl) {
+    parts.push(
+      "Fiabilité selon le tableau de bord (heuristique, jamais une garantie) : " +
+        rl.label +
+        (rl.why && rl.label.toLowerCase() !== rl.why ? " (" + rl.why + ")" : "") +
+        ".",
+    );
+    if (!view.priv) {
+      for (let i = 0; i < rl.reasons.length && i < 3; i++)
+        relLines.push("Point relevé : " + rl.reasons[i].text.slice(0, 300));
+      if (rl.trial && rl.trial.lines.length > 1)
+        relLines.push(
+          "Trajet de test proposé : " + rl.trial.lines[0] + " " + rl.trial.lines[1].slice(0, 160),
+        );
+    }
+  }
+  // Fit: the figures of the steps go first when the message is too long, then the reliability lines; everything else is bounded
+  // (names are cut at 60). The recipe and the closing order are never cut.
   const kept = steps.slice();
-  const whole = () => parts.concat(kept, rest).join(" ");
+  const keptRel = relLines.slice();
+  const whole = () => parts.concat(kept, keptRel, rest).join(" ");
   while (kept.length > 0 && whole().length > 2600) kept.pop();
+  while (keptRel.length > 0 && whole().length > 2600) keptRel.pop();
   return whole();
 }
 
@@ -1212,6 +1306,37 @@ export function tradeActionsPanel(doc: any, L: any): any {
       c.badges.push(b);
       add(badges, b);
     }
+    // "Fiabilité": the level is always visible (the summary), the reasons, the prudent first run and the limits are folded.
+    c.rel = el("details", "ta-rel");
+    const relSum = el("summary", "ta-rel-sum");
+    c.relIcon = el("span", "ta-rel-icon", "");
+    c.relIcon.setAttribute("aria-hidden", "true");
+    c.relTitle = el("span", "ta-rel-title", "");
+    c.relBetter = el("span", "tr-tag ta-rel-better", "");
+    add(relSum, c.relIcon, c.relTitle, c.relBetter);
+    const relBody = el("div", "ta-rel-body");
+    c.relReasons = [];
+    const relList = el("ul", "ta-rel-list");
+    for (let i = 0; i < 5; i++) {
+      const li = el("li", "ta-rel-item");
+      const text = el("span", "ta-rel-text", "");
+      const source = el("span", "ta-rel-src", "");
+      add(li, text, source);
+      c.relReasons.push({ root: li, text, source });
+      add(relList, li);
+    }
+    c.relMore = el("p", "ta-rel-more", "");
+    c.relTrial = [];
+    const relTrial = el("div", "ta-rel-trial");
+    for (let i = 0; i < 4; i++) {
+      const p = el("p", i === 0 ? "ta-rel-trial-head" : "ta-rel-trial-line", "");
+      c.relTrial.push(p);
+      add(relTrial, p);
+    }
+    c.relLimits = el("p", "ta-rel-limits", "");
+    add(relBody, relList, c.relMore, relTrial, c.relLimits);
+    c.relTrialBox = relTrial;
+    add(c.rel, relSum, relBody);
     // Estimated / measured / ratio side by side (calibrationCompare in calibrationPanel.ts): the estimate is always there once
     // the block is shown; the measured and the ratio come from the player's own saved runs, so the whole block exists only
     // while the balance is shown and is emptied (not just hidden) when it is not.
@@ -1275,7 +1400,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
       add(c.moreBody, p);
     }
     add(c.more, c.moreSum, c.moreBody);
-    add(c.root, top, facts, badges, c.calib, actions, c.more);
+    add(c.root, top, facts, badges, c.rel, c.calib, actions, c.more);
     return c;
   };
 
@@ -1898,6 +2023,34 @@ export function tradeActionsPanel(doc: any, L: any): any {
     paintCompare(c, null);
   }
 
+  /** The "Fiabilité" block of a card; with no block (an answer from an older server) the whole thing is hidden. */
+  function fillReliability(c: any, rel: any) {
+    show(c.rel, !!rel);
+    if (!rel) return;
+    setAttr(c.rel, "data-level", rel.level);
+    setText(c.relIcon, rel.icon);
+    setText(c.relTitle, rel.title);
+    show(c.relBetter, rel.better !== "");
+    setText(c.relBetter, rel.better);
+    for (let i = 0; i < c.relReasons.length; i++) {
+      const r = rel.reasons[i];
+      show(c.relReasons[i].root, !!r);
+      if (r) {
+        setText(c.relReasons[i].text, r.text);
+        setText(c.relReasons[i].source, r.source === "" ? "" : "(" + r.source + ")");
+      }
+    }
+    show(c.relMore, rel.more !== "");
+    setText(c.relMore, rel.more);
+    show(c.relTrialBox, !!rel.trial);
+    for (let i = 0; i < c.relTrial.length; i++) {
+      const t = rel.trial ? rel.trial.lines[i] : undefined;
+      show(c.relTrial[i], t !== undefined);
+      if (t !== undefined) setText(c.relTrial[i], t);
+    }
+    setText(c.relLimits, rel.limits);
+  }
+
   function fillCard(c: any, o: any, objective: string, rank: string, hero: boolean) {
     c.option = o;
     show(c.root, !!o);
@@ -1936,6 +2089,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
       show(c.lines[i], d !== undefined);
       if (d !== undefined) setText(c.lines[i], d);
     }
+    fillReliability(c, m.rel);
     // Only while the balance is shown (the ratios come from it), and for the first leg: a plan holds one commodity.
     const cal =
       tradeBalanceNumber(H.balance) !== null && H.calibration
@@ -2254,6 +2408,7 @@ export const TRADE_ACTIONS_VIEW_FUNCTIONS = [
   tradeNum,
   tradeOneOf,
   tradeCleanLeg,
+  tradeCleanReliability,
   tradeCleanOption,
   tradeSuggestClean,
   tradeBalanceNumber,
@@ -2272,6 +2427,7 @@ export const TRADE_ACTIONS_VIEW_FUNCTIONS = [
   tradeExposureWord,
   tradeGoodsLine,
   tradeCardModel,
+  tradeReliabilityModel,
   tradeSafeName,
   tradeRecipeArgs,
   tradeRecipeText,

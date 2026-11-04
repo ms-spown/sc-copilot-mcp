@@ -15,7 +15,7 @@
 //                 the figures of a real run: see src/dashboard/testing/tradeScenario.ts; its loop lasts 600 s, the run is
 //                 settled from t=215; it implies plan=full: a plan with prices and a price curve; none = no journal)
 //                 transport=story|off|loading|unreadable|empty|none   (the transport ledger; story by default, none = no field)
-//                 suggest=ok|wait|error|empty|nospeed|reported|slow  (what the commerce action bar's tool answers: invented
+//                 suggest=ok|wait|error|empty|nospeed|reported|mixed|slow  (mixed = some options reported by players, to see the "Mieux vérifiée" marker; what the commerce action bar's tool answers: invented
 //                 routes from src/dashboard/testing/suggestFixtures.ts, no UEX; slow = 4 s of virtual waiting)
 //                 preflight=valid|watch|drifted|unknown|estimate|wait  (what the pre-flight check of the plan answers: invented verdicts from
 //                 src/dashboard/testing/preflightFixtures.ts, no UEX; press it with click=Vérifier avant de partir; needs a plan: plan=1 or trade=...)
@@ -23,7 +23,7 @@
 //                 calib=1  (the route calibration section the server sends with the balance: invented ratios for Laranite on the
 //                 route Port Tressler > Area18 TDD (4 runs), Gold (2 runs, wide spread) and Agricium (8 runs); needs balance=1)
 //                 click=<button label>  (presses it once the page is up, e.g. click=Plus rentable; click=A|B presses A then B, 1.5 s apart; a label starting with @ matches a button by the start of its aria-label, e.g. click=Sessions ▾|Toutes les sessions (4)|@Archiver la session 3)
-//                 refine=1 (opens "Affiner")  card=1 (opens the details of the first card)
+//                 refine=1 (opens "Affiner")  card=1 (opens the details of the first card)  rel=1|all (opens the "Fiabilité" block of the first card, or of all)
 //                 holds=story  (the hold sizes the server would list: a size from saved runs and a fleet ship; use with specs=none
 //                 and trade=story to see the hold default of a player whose game is closed)
 //                 fw=<px>  (width of the frame in full screen, to see a narrow host at 360 px in a window that cannot be that narrow)
@@ -255,7 +255,7 @@ if (q.get("balance")) frame.addEventListener("load", () => setTimeout(() => {
   if (b) b.click();
 }, 1200));
 // click=<label>, refine=1, card=1: drive the page the way the player would (same-origin frame).
-if (q.get("click") || q.get("refine") || q.get("card")) frame.addEventListener("load", () => setTimeout(() => {
+if (q.get("click") || q.get("refine") || q.get("card") || q.get("rel")) frame.addEventListener("load", () => setTimeout(() => {
   const doc = frame.contentDocument;
   if (q.get("refine")) doc.querySelectorAll("details.ta-refine").forEach((d) => { d.open = true; });
   if (q.get("click")) {
@@ -265,6 +265,7 @@ if (q.get("click") || q.get("refine") || q.get("card")) frame.addEventListener("
       if (b) b.click();
     }, i * 1500));
   }
+  if (q.get("rel")) setTimeout(() => doc.querySelectorAll("details.ta-rel").forEach((d, i) => { if (q.get("rel") === "all" || i === 0) d.open = true; }), 7000);
   if (q.get("card")) setTimeout(() => doc.querySelectorAll("details.ta-more").forEach((d, i) => { if (i === 1) d.open = true; }), 400);
 }, 3000));
 // menu=1: press "Sessions" in the page; menu=detail: then open session 2.

@@ -33,6 +33,7 @@ import {
   type SafetyHeuristic,
   type TerminalPlace,
 } from "./places.js";
+import { legMarket, parseMarketRows, type LegMarket, type MarketRow } from "./legMarket.js";
 import { pickRow } from "./resolve.js";
 import { fetchShipSheet, type ShipSheet } from "./shipSheet.js";
 import {
@@ -130,6 +131,11 @@ export interface LegView {
   reports: { origin: number | null; destination: number | null };
   is_estimate: boolean | null;
   estimated_sides: ("origin" | "destination")[];
+  /**
+   * What UEX's per-commodity answer adds about this leg (price range, stock, inventory of the buyer, same-price terminals,
+   * reports on the commodity). null when that answer was not read for this commodity.
+   */
+  market: LegMarket | null;
 }
 
 export interface PlaceView {
@@ -138,6 +144,8 @@ export interface PlaceView {
   terminal_id: number;
   system: string | null;
   planet: string | null;
+  /** The body the terminal is on: its moon when it has one, else its planet (UEX orbit ids do not tell them apart). */
+  body: string | null;
   kind: string | null;
   armistice_zone: boolean | null;
   jurisdiction: string | null;
@@ -214,6 +222,8 @@ const MAX_POOL = 40;
 const MAX_POOL_MIN_REPORTS = 80;
 const MAX_VERIFY_COMMODITIES = 12;
 const MAX_VERIFY_COMMODITIES_MIN_REPORTS = 25;
+/** Extra per-commodity reads for the one-way routes shown (their report counts come with the route, their market facts do not). */
+const MAX_EXTRA_MARKET_COMMODITIES = 4;
 const MAX_TERMINAL_DISTANCE_CALLS = 5;
 const MAX_MATRICES = 3;
 const DEFAULT_DEADLINE_MS = 25_000;
@@ -296,6 +306,7 @@ function placeView(p: TerminalPlace | undefined, terminal: string, id: number): 
     terminal_id: id,
     system: p?.systemName ?? null,
     planet: p?.planetName ?? null,
+    body: p?.moonName ?? p?.planetName ?? null,
     kind: p?.kind ?? null,
     armistice_zone: p?.armistice ?? null,
     jurisdiction: p?.jurisdiction ?? null,
@@ -651,6 +662,7 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
     for (const l of p.legs) if (!needed.has(l.commodityId)) needed.set(l.commodityId, l.commodity);
   }
   const reports = new Map<string, { buy: number | null; sell: number | null }>();
+  const marketRows = new Map<number, MarketRow[]>();
   const failures: string[] = [];
   let stoppedEarly: string | null = null;
   for (const [id, name] of [...needed].slice(0, maxVerify)) {
@@ -674,6 +686,7 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
         failures.push(`${name}: UEX returned no price rows`);
         continue;
       }
+      marketRows.set(id, parseMarketRows(d.rows));
       for (const r of d.rows) {
         const t = toNumber(r.id_terminal);
         if (t === undefined) continue;
@@ -688,6 +701,41 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
         stoppedEarly = `UEX was slow or throttling (${describeFailure(error)}), so the remaining checks were not attempted`;
         break;
       }
+    }
+  }
+  // One-way routes bring their report counts with the row, so the loop above skipped their commodities: the ones that will be
+  // shown get one read each (a few at most, never at the cost of the checks above) for their market facts.
+  if (!stoppedEarly) {
+    const extra = new Map<number, string>();
+    for (const p of [...cyclePlans.slice(0, limit), ...chainPlans.slice(0, limit)]) {
+      if (!routeEvidence.has(p)) continue;
+      for (const l of p.legs) {
+        if (!marketRows.has(l.commodityId)) extra.set(l.commodityId, l.commodity);
+      }
+    }
+    // In parallel (at most MAX_EXTRA_MARKET_COMMODITIES requests), all inside the plan's deadline. Optional facts: a failure
+    // leaves them out (market: null) without a note per commodity.
+    if (left() > 0) {
+      await Promise.all(
+        [...extra].slice(0, MAX_EXTRA_MARKET_COMMODITIES).map(async ([id]) => {
+          try {
+            const res = await withDeadline(
+              fetchWithCache(
+                deps.uexClient,
+                "/commodities_prices",
+                { params: { id_commodity: id } },
+                { record: false },
+              ),
+              left(),
+              "reading market facts",
+            );
+            const d = unwrapData(res.data);
+            if (d.kind === "rows") marketRows.set(id, parseMarketRows(d.rows));
+          } catch {
+            // left out
+          }
+        }),
+      );
     }
   }
   if (failures.length > 0) {
@@ -743,6 +791,7 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
       reports: { origin, destination },
       is_estimate: status === "unverified" ? null : status === "estimate",
       estimated_sides: estimated,
+      market: legMarket(l, marketRows.get(l.commodityId), { now, maxAgeDays, includeStale }),
     };
   };
 
@@ -976,4 +1025,23 @@ async function fuelBlock(client: HttpClient, now: number): Promise<TripPlanResul
     rows_updated_within_7_days: rows ? fresh : null,
     median_age_days: median,
   };
+}
+
+/**
+ * The answer as the MODEL tool (`uex_plan_trade`) returns it: without `market` on the legs and `body` on the places. Those two
+ * exist for the dashboard's reliability block (it calls `planTrips` directly); they make each option 26 to 35 % bigger, and the
+ * tool's answer is cut to a character budget by dropping whole options, so keeping them would return fewer options than before.
+ */
+export function forModelTool(result: TripPlanResult): TripPlanResult {
+  const without = (value: object, key: string): Record<string, unknown> =>
+    Object.fromEntries(Object.entries(value).filter(([k]) => k !== key));
+  const strip = (o: TripOption): TripOption => ({
+    ...o,
+    legs: o.legs.map((l) => ({
+      ...without(l, "market"),
+      from: without(l.from, "body"),
+      to: without(l.to, "body"),
+    })) as unknown as LegView[],
+  });
+  return { ...result, options: result.options.map(strip), chains: result.chains.map(strip) };
 }

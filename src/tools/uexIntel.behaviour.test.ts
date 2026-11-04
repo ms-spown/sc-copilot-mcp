@@ -1,10 +1,12 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { AxiosError } from "axios";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { clearCache, configureDiskCache } from "../core/cache.js";
 import type { HttpClient } from "../core/http.js";
 import { FleetStore } from "../providers/fleet/store.js";
 import { GameLog } from "../providers/gamelog/reader.js";
-import { planTrips } from "../providers/uex/tripPlanner.js";
+import { forModelTool, planTrips } from "../providers/uex/tripPlanner.js";
+import { medicalCase } from "../dashboard/testing/tripOptionFixtures.js";
 import { Scmdb } from "../providers/scmdb/store.js";
 import { CATALOG } from "./catalog.js";
 import { allTools, createRegistry } from "./registry.js";
@@ -619,6 +621,55 @@ describe("Feature: the three tools through the registry", () => {
     expect(out.content[0].text.length).toBeLessThan(60_000);
     expect(b.data.options[0].safety.heuristic).toBe(true);
     expect(b.data.fuel.included).toBe(false);
+  });
+
+  it("uex_plan_trade leaves the dashboard-only fields (market on legs, body on places) out of the model's answer", async () => {
+    const out = await registry(market()).call("uex_plan_trade", {
+      ship_name: "Cutlass Black",
+      avoid_pyro: true,
+      limit: 20,
+    });
+    const b = body(out);
+    const legs = [...b.data.options, ...b.data.chains].flatMap((o: any) => o.legs);
+    expect(legs.length).toBeGreaterThan(0);
+    for (const l of legs) {
+      expect(Object.keys(l)).not.toContain("market");
+      expect(Object.keys(l.from)).not.toContain("body");
+      expect(Object.keys(l.to)).not.toContain("body");
+    }
+    expect(out.content[0].text).not.toContain('"market"');
+    expect(out.content[0].text).not.toContain('"body"');
+  });
+
+  it("uex_plan_trade keeps the number of options it returned before the dashboard fields existed, at the default limit", () => {
+    // 8 options and 8 chains of 2 legs with long names: the answer is cut to a character budget by dropping whole options, so
+    // any field added to the model's answer would silently return fewer of them.
+    const big = (withDashboardFields: boolean) => {
+      const options = Array.from({ length: 8 }, (_, i) => {
+        const o = medicalCase();
+        o.legs.forEach((l) => {
+          l.commodity = `Medical Supplies ${i}`;
+          l.from.terminal = `Admin - Port Tressler (Stanton) ${i}`;
+          l.to.terminal = `TDD - Trade and Development Division - Area18 ${i}`;
+          if (!withDashboardFields) {
+            delete (l as any).market;
+            delete (l.from as any).body;
+            delete (l.to as any).body;
+          }
+        });
+        return o;
+      });
+      return {
+        options,
+        chains: options.map((o) => ({ ...o })),
+        rest: { objective: "profit_per_hour" },
+      } as any;
+    };
+    const before = big(false);
+    const now = forModelTool(big(true));
+    expect(JSON.stringify({ options: now.options, chains: now.chains })).toBe(
+      JSON.stringify({ options: before.options, chains: before.chains }),
+    );
   });
 
   it("uex_plan_trade turns a bad argument into an error result, not a crash", async () => {

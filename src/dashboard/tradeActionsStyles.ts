@@ -82,6 +82,24 @@ export const TRADE_ACTIONS_CSS = `
 .ta-fact-value { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .ta-badges { display: flex; flex-wrap: wrap; gap: 4px var(--sp-2); }
 .ta-badges .tr-tag { white-space: normal; }
+/* Fiabilité: the level is a word in the summary (always visible); its symbol and its colour only repeat it. */
+.ta-rel { font-size: var(--fs-s); border: 1px solid var(--sc-line); border-left-width: 4px; border-radius: var(--r-m); padding: var(--sp-2) var(--sp-3); min-width: 0; }
+.ta-rel[data-level="reported"] { border-left-color: var(--sc-ok); }
+.ta-rel[data-level="partial"] { border-left-color: var(--sc-warn); }
+.ta-rel[data-level="estimate"] { border-left-color: var(--sc-warn); border-left-style: dashed; }
+.ta-rel[data-level="unchecked"] { border-left-color: var(--sc-text3); border-left-style: dotted; }
+.ta-rel-sum { cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--sp-2); font-weight: 650; color: var(--sc-text); }
+.ta-rel-sum:focus-visible { outline: 2px solid var(--sc-ring); outline-offset: 2px; }
+.ta-rel-icon { font-size: var(--fs-m); line-height: 1; }
+.ta-rel-better { white-space: normal; color: var(--sc-ok); }
+.ta-rel-body { margin-top: var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-2); color: var(--sc-text2); }
+.ta-rel-list { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 4px; }
+.ta-rel-item { overflow-wrap: anywhere; }
+.ta-rel-src { display: block; font-size: var(--fs-xs); color: var(--sc-text3); }
+.ta-rel-more, .ta-rel-limits, .ta-rel-trial-line { margin: 0; overflow-wrap: anywhere; }
+.ta-rel-limits { font-size: var(--fs-xs); color: var(--sc-text3); }
+.ta-rel-trial { display: flex; flex-direction: column; gap: 4px; padding: var(--sp-2); border: 1px dashed var(--sc-line); border-radius: var(--r-m); }
+.ta-rel-trial-head { margin: 0; font-weight: 650; color: var(--sc-text); overflow-wrap: anywhere; }
 .ta-card-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .ta-apply { border-color: var(--sc-info); color: var(--sc-info); font-weight: 650; cursor: pointer; }
 .ta-apply[aria-pressed="true"] { background: var(--tint-info); }

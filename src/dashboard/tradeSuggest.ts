@@ -21,6 +21,12 @@ import {
 import type { KnownHold } from "./holds.js";
 import { parsePlan, type Plan } from "./plan.js";
 import { describePreflight } from "./preflightText.js";
+import {
+  safeAssessReliability,
+  markBetterChecked,
+  type Reliability,
+  type ReliabilityContext,
+} from "./routeReliability.js";
 
 /**
  * The server side of the commerce action bar: `sc_trade_suggest`, an app-only tool the View calls without the model.
@@ -174,6 +180,8 @@ export interface SuggestOption {
   };
   /** Absent when the budget is the player's balance. */
   cost?: number;
+  /** How far the figures can be trusted: level, reasons with their source, a prudent first run (dashboard/routeReliability.ts). */
+  reliability: Reliability;
 }
 
 export interface SuggestOk {
@@ -597,10 +605,20 @@ export class TradeSuggestService {
     at: number,
   ): SuggestOk {
     const priv = input.budget_private === true;
-    const options = res.options.slice(0, SUGGEST_MAX_OPTIONS).map((o) => this.option(o, priv, at));
+    const rel: ReliabilityContext = {
+      speedKnown: res.time_model.quantum_speed_ms !== null,
+      stopMinutes: res.time_model.stop_minutes,
+      localHopMinutes: res.time_model.local_hop_minutes,
+      private: priv,
+    };
+    const options = res.options
+      .slice(0, SUGGEST_MAX_OPTIONS)
+      .map((o) => this.option(o, priv, at, rel));
     const chains = input.round_trip_only
       ? []
-      : res.chains.slice(0, SUGGEST_MAX_CHAINS).map((o) => this.option(o, priv, at));
+      : res.chains.slice(0, SUGGEST_MAX_CHAINS).map((o) => this.option(o, priv, at, rel));
+    markBetterChecked(options);
+    markBetterChecked(chains);
     const counts = { reported: 0, estimate: 0, unverified: 0 };
     for (const o of [...options, ...chains]) counts[o.report_status]++;
     const notes = res.notes
@@ -635,7 +653,7 @@ export class TradeSuggestService {
     };
   }
 
-  private option(o: TripOption, priv: boolean, at: number): SuggestOption {
+  private option(o: TripOption, priv: boolean, at: number, rel: ReliabilityContext): SuggestOption {
     const id = randomBytes(16).toString("hex");
     const legs: SuggestLeg[] = o.legs.slice(0, 2).map((l) => {
       const ages = [l.price_age_days.buy, l.price_age_days.sell].filter(
@@ -685,6 +703,7 @@ export class TradeSuggestService {
           .filter((f): f is string => f !== null),
       },
       ...(priv ? {} : { cost: o.trip.peak_investment }),
+      reliability: safeAssessReliability(o, rel),
     };
     this.storePlan(id, option, priv, at, {
       buy: o.legs[0]?.from.terminal_id ?? null,

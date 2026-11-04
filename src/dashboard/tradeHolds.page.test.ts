@@ -468,7 +468,9 @@ describe("Feature: the list is a real, quiet, labelled control", () => {
     // same hold to compare like with like): a ship's capacity is not derived from the balance. Nowhere else.
     for (const m of w.host.log.messages) {
       const text = NBSP_FREE(m);
-      expect(text.match(/\b696\b/g) ?? []).toHaveLength(2); // the recipe, and the card's own step (this budget is typed, not the balance)
+      // the recipe, the card's own step, and the two reliability lines that quote the plan's quantity (the whole stock taken, the
+      // first run "au lieu de 696"); this budget is typed, not the balance
+      expect(text.match(/\b696\b/g) ?? []).toHaveLength(4);
       expect(text).toContain("cargo_scu=696");
     }
     // The channel between Views carries the state of the page (the leading View posts it): not empty, and no quantity.

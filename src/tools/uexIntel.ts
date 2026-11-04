@@ -14,7 +14,7 @@ import {
   type Legend,
 } from "../providers/uex/marketStatus.js";
 import { pickRow } from "../providers/uex/resolve.js";
-import { planTrips, TripPlanError } from "../providers/uex/tripPlanner.js";
+import { forModelTool, planTrips, TripPlanError } from "../providers/uex/tripPlanner.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
 /**
@@ -400,7 +400,7 @@ export function uexIntelTools({
           if (error instanceof TripPlanError) throw new Error(error.message, { cause: error });
           throw error;
         }
-        const { options, chains, ...rest } = result;
+        const { options, chains, ...rest } = forModelTool(result);
         return ok(
           fitted(
             (n) => ({

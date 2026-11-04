@@ -39,6 +39,35 @@ versions follow [Semantic Versioning](https://semver.org/).
   built (420.3 kB as the vitest guard measures it from the sources); the internal budget of `check:page-size` and of
   `pageBudget.test.ts` goes from 420 kB to 440 kB (the larger measure plus about 5 %, our own guard, nothing removed to fit it).
 
+### Added (route reliability: every route card says how far its estimate can be trusted)
+- **Marc's feedback:** the "plus rentable" ranking rests on assumptions the card never showed (a UEX price nobody reported, a
+  sell price at the top of its range, the whole displayed stock bought, a cycle made of fixed stops and a 0 Gm "same orbit"
+  hop), which an agent asked to verify then found one by one. They are now on the card.
+- **A "Fiabilité" block on every card** (options, chains, "Et ensuite ?"): its summary, always visible, gives the level in words
+  (*Relevée par des joueurs*, *Partiellement relevée*, *Relevée, mais prix de plus de 3 jours*, *Estimation non vérifiée*,
+  *Relevés non vérifiés*; a symbol and a border repeat it, colour is never the only cue). Under the big figure the card says the
+  top reason in a few words ("aUEC par heure, estimé (aucun relevé joueur)"; "relevés partiels" when only some prices lack a
+  report). Folded under the summary: up to five reasons in plain French, one per kind, most decisive first, each with its source
+  and the date of the price it rests on; "Autres points" (reasons that did not fit, "marché non lu" when a leg's market facts were
+  not read); a **prudent first run** (a quarter of each leg, 100 to 150 SCU, never more than the leg, valued with the planner's own
+  per-SCU margin and labelled an estimate, with the instruction to check the real price and stock, measure the real sell price and
+  cycle time, and scale up afterwards); and a fixed sentence on what the estimate leaves out. "Demander à l'agent" now carries the
+  level, the top three reasons and the first run (cut before the recipe and the closing order; only the level when the budget is
+  the balance). Rules and thresholds are in `src/dashboard/routeReliability.ts` and `docs/TELEMETRY.md`; they are rules of thumb,
+  never a guarantee, and a signal that was not read never produces a reason nor lifts the level.
+- **Ranking:** the objectives' maths and the order are unchanged (the planner is shared with `uex_plan_trade`); a later card with
+  player reports and a better level than the first card gets a *Mieux vérifiée que la première de la liste* marker (never an
+  estimate). No sort option, no tie-break: exact ties almost never happen, and a silent reorder would change what the objective means.
+- **Planner:** each leg now carries `market` (UEX's recorded low and high of the price at both terminals, the stock shown at the
+  buyer, the inventory level of the seller with UEX's legend percentage, how many terminals show exactly the sell price, how many
+  terminals have a player report on the commodity), read from the per-commodity answer the planner already requested for the report
+  check (no extra call for round trips and chains; one parallel read for each commodity of a shown one-way route, at most four,
+  inside the same deadline) and null when it was not read. Each place carries `body` (its moon, else its planet). **`uex_plan_trade`
+  does not return these two fields** (they made each option 26 to 35 % bigger and its answer is cut to a character budget by dropping
+  whole options: 3 + 3 instead of 4 + 4 at the default limit; a test pins the unchanged answer). Nothing is derived from the balance; for a
+  plan sized from the balance the outlay is left out of the block.
+- **Tool surface:** no tool name or input schema changed (the golden file is untouched); the new fields are only in the answer of the dashboard's app-only tool.
+
 ### Added (a Sessions view: the dedicated tab, with archive and delete per session)
 - **Marc's request:** "on a session line I must be able to click delete, archive, etc., and see the stats when I select it ...
   not many sessions inline, and a dedicated tab for the sessions view."

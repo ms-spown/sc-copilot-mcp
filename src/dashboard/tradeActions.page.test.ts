@@ -715,6 +715,25 @@ describe("Feature: 'Et ensuite ?' after a completed run", () => {
     expect(w.host.log.suggests.filter((a) => a.action === "apply")).toEqual([]);
   });
 
+  it("Given a suggestion after a run, Then its card carries the reliability block like the others", async () => {
+    const w = await bar({ trade: true });
+    withPlan(w);
+    await w.advance(215 * SECOND);
+    await fullscreen(w);
+    await w.advance(2 * SECOND);
+    const box = findAll(
+      w.root,
+      (n) => n.tag === "section" && n.className.split(" ").includes("ta-next"),
+    ).filter(isShown)[0]!;
+    const rel = findAll(
+      box,
+      (n) => n.tag === "details" && n.className.split(" ").includes("ta-rel"),
+    ).filter(isShown);
+    expect(rel).toHaveLength(1);
+    expect(NBSP_FREE(visibleText(rel[0]!))).toContain("Fiabilité : Estimation non vérifiée");
+    expect(NBSP_FREE(visibleText(rel[0]!))).toContain("Premier trajet de test");
+  });
+
   it("Given the player turned the automatic suggestion off, Then nothing is asked at the end of a run", async () => {
     const w = await bar({ trade: true });
     withPlan(w);

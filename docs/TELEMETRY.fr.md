@@ -912,6 +912,44 @@ aucune recherche n'est lancée.
   de vols), toujours étiquetée « (heuristique) » ; UEX n'a aucune donnée de piraterie. Les prix de plus de 7 jours sont
   marqués « périmés ». La vitesse quantique du vaisseau vient de l'état du serveur (la fiche wiki du vaisseau piloté,
   puis la même recherche que `uex_plan_trade`), jamais de la page.
+- **Fiabilité.** Chaque carte (options, chaînes, « Et ensuite ? ») porte un bloc dont le résumé, toujours visible, nomme
+  en toutes lettres le niveau de preuve des prix (un symbole et une bordure le répètent ; la couleur n'est jamais le seul
+  indice) : *Relevée par des joueurs* (chaque prix repose sur au moins un relevé de joueur, aucun de plus de 3 jours),
+  *Partiellement relevée* (certains prix oui, d'autres non ou inconnus), *Relevée, mais prix de plus de 3 jours* (chaque prix
+  a un relevé mais l'un a plus de 3 jours ou n'a pas de date), *Estimation non vérifiée* (aucun relevé de joueur, UEX en
+  comptant 0 sur au moins un prix) ou *Relevés non vérifiés* (la vérification a échoué ou n'a pas eu lieu : rien n'est
+  affirmé dans un sens ni dans l'autre). Sous le grand chiffre, la carte dit en quelques mots la première raison (« aUEC par
+  heure, estimé (aucun relevé joueur) » ; « aucun relevé joueur » seulement quand TOUS les prix sont à 0, sinon « relevés
+  partiels »). Repliés sous le résumé : jusqu'à cinq raisons, une par nature (les tronçons sont fondus dans sa phrase :
+  « Aller : ... », « Retour : ... »), les plus décisives d'abord, chacune avec sa source et la date du prix sur lequel elle
+  repose (« prix mis à jour il y a 2,9 j » : la date d'UEX, pas l'affirmation qu'un joueur l'a relevé) ; puis « Autres points »
+  (les raisons qui n'ont pas tenu, nommées, et « marché non lu » quand les faits de marché d'un tronçon n'ont pas été lus), un
+  *premier trajet prudent* et une phrase fixe sur ce que l'estimation laisse de côté (temps de chargement, carburant, taille
+  des pads, piraterie, effet de tes propres achats et ventes sur le prix). Les raisons sont calculées à partir de données que le
+  planificateur lit déjà et **ne s'affichent que si la donnée est là** (un signal non lu n'est jamais rassurant) : aucun relevé
+  de joueur ; le prix de vente au plus haut de la fourchette connue d'UEX pour ce terminal (elle n'a pas de période indiquée) et,
+  à partir de trois terminaux, combien affichent exactement ce prix ; le plan achète tout le stock affiché (le prix monte
+  quand le stock baisse : non modélisé) ; les deux terminaux sont dans la même orbite chez UEX (0 Gm : le vol est un saut
+  local fixe de 2 minutes et le cycle est une hypothèse, dit plus fort quand ce sont deux corps différents) ; la vente :
+  acheteur à 72-85 % de son inventaire (l'avertissement d'UEX lui-même) ou à son maximum (plus de demande), plan qui vend plus
+  que ce que le terminal demande, ou marge sous 10 % du prix d'achat ; des prix de 2 jours ou plus ; une vitesse quantique
+  inconnue avec un vol long ; une marchandise sur laquelle aucun terminal n'a de relevé (les terminaux sans nombre de relevés
+  sont écartés de ce décompte, jamais lus comme 0). **Non disponibles, donc non affichés :** taille des pads, données de
+  piraterie ou de criminalité, temps de chargement, consommation de carburant, impact réel sur le prix et historique complet
+  des prix (« prix identique depuis 22 jours » demanderait `commodities_prices_history`, environ deux appels par extrémité de
+  tronçon et dix relevés au plus : non demandé ; un prix dont la fourchette connue n'a jamais varié n'est pas relevé non plus :
+  avec 0 relevé, cela redit seulement l'absence de relevé). Le classement n'est **pas** modifié : l'objectif décide toujours de
+  l'ordre ; une carte suivante avec des relevés de joueurs (*Relevée*, *Partiellement relevée*) et un meilleur niveau que la
+  première porte le repère *Mieux vérifiée que la première de la liste*, jamais une estimation. Le *premier trajet prudent* est
+  un quart de chaque tronçon, entre 100 et 150 SCU et jamais plus que le tronçon, valorisé avec la marge par SCU du
+  planificateur (une estimation qui ignore l'impact sur le prix), avec la consigne de vérifier le prix et le stock réels au
+  terminal, de mesurer le vrai prix de vente et la vraie durée du cycle, et de n'augmenter qu'ensuite. « Demander à l'agent »
+  porte le niveau, les trois premières raisons et le premier trajet (coupés avant la recette et l'ordre final si le message
+  est long ; seulement le niveau quand le budget est le solde). Les prix du marché, leurs âges et les nombres de relevés ne
+  dérivent pas du solde et s'affichent toujours ; pour un plan dimensionné par le solde, la mise est omise. Les faits de marché
+  (`market` sur chaque tronçon, `body` sur chaque lieu) sont pour le tableau de bord : `uex_plan_trade` ne les renvoie pas
+  (chaque option grossirait d'un tiers et la réponse de l'outil est coupée à un budget de caractères en retirant des options).
+  Ce sont des règles empiriques aux seuils choisis (3 jours, 2 jours, 10 %, un quart de tronçon), jamais une garantie.
 - **Cartes.** La première est la tête de liste (grand chiffre, contour) ; les autres sont des lignes discrètes ; les
   chaînes (A>B>C, sans retour chiffré) sont à part et non comparables. Chaque carte a *Appliquer comme plan* (le
   serveur construit le plan à partir de sa propre option, par identifiant : l'aller, le retour nommé dans la note ; la
