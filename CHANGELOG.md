@@ -6,6 +6,31 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Route reliability: what your own saved runs say about the planner's profit.** UEX prices are crowdsourced estimates,
+  so a planned profit is a guess; the completed trade runs that carry a planned profit now say how the realised result
+  compares with it, per goods and per route (`src/providers/sessions/calibration.ts`, a pure module). Realised gross
+  margin over planned profit (pooled, with median, minimum and maximum), net over planned profit (only with net and fees
+  both known), fees over turnover; the plan is scaled to the quantity really moved; no figure below 2 runs and the number
+  of runs always shown; a confidence label (`none`, `low`, `medium`, `high`) from the number of runs, the spread and the
+  age; runs older than 60 days or from another patch line are left out, only the last 8 per group count; a figure is
+  never carried from one commodity to another. Shown in `sc_session_stats` (`route_reliability`), as a quiet line under
+  each suggested route of the action bar, in the commerce card's "Si tu refais ce trajet" tile (calibrated net
+  expectation, an estimate), and in a sentence of the server instructions and the `trade_copilot` prompt. Every ratio is
+  derived from the balance: it exists only where the balance is shown (not in the tool without `include_balance`, not in
+  the poll of a View that did not ask, not on the channel between Views, not in `ui/update-model-context` or the message to
+  the agent). Docs EN/FR, SECURITY.
+- Session file version 2: a trade trip also keeps the plan's quantity and terminals, how the plan was tied to the run
+  and how the fees were obtained (all optional, null for older trips). A version 1 file is read as is; a server that
+  only knows version 1 leaves a version 2 file alone.
+
+### Fixed
+- **A planned profit was never saved with a trade run in the real game.** The journal names goods by an id (the first 8
+  characters of a GUID), the plan by a name, so the commerce model's name comparison always said "non vérifié" and the
+  saved trip carried no plan: the efficiency against the plan had nothing to compare. A plan is now also tied to the run
+  by its prices (the run's average buy and sell prices within 40 % of the plan's, the quantity within a factor of 4),
+  recorded as `plan_link: "prices"` and reported as unverified goods by the calibration.
+
 ## [2.2.0] - 2026-11-04
 
 ### Added

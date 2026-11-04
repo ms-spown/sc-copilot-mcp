@@ -9,7 +9,14 @@ import { z } from "zod";
  * Every optional figure is `null` when unknown. A missing figure is never a zero.
  */
 
-export const SESSIONS_VERSION = 1;
+/**
+ * 1: first format. 2: a trade trip may also hold what its plan said (planned quantity, the plan's two terminals) and how
+ * its fees were obtained, for the route calibration (calibration.ts). Every new field is optional with a null default, so
+ * a version 1 file reads as is (MIGRATIONS[1] only changes the number). The number moves anyway: SessionSchema drops
+ * unknown keys, so a server that only knows version 1 must see a "newer" file and leave it alone rather than rewrite it
+ * without the new fields.
+ */
+export const SESSIONS_VERSION = 2;
 /** The file keeps this many sessions; the oldest go first (a very long history is not the purpose). */
 export const MAX_SESSIONS = 200;
 /** Trips kept per session. A session with more keeps the newest and counts the rest in `trips_dropped`. */
@@ -67,6 +74,22 @@ export const TripSchema = z.object({
   net_auec: money.default(null),
   net_kind: z.enum(["balance_delta", "transactions"]).nullable().default(null),
   planned_profit_auec: money.default(null),
+  /**
+   * What the plan in force said about THIS run (set with `planned_profit_auec`, only on the run the plan was matched to):
+   * the planned quantity, and the plan's buy and sell terminals (UEX names, as the route cards name them). They are the
+   * PLAN's places, not observed ones: the journal's shop identifiers are not UEX terminal names. The calibration
+   * compares the realised result with a plan of the same quantity and groups routes by these two names.
+   */
+  planned_scu: z.number().finite().min(0).nullable().default(null),
+  plan_buy_terminal: cleanText(PLACE_MAX).nullable().default(null),
+  plan_sell_terminal: cleanText(PLACE_MAX).nullable().default(null),
+  /**
+   * How the plan was tied to this run: by name (the model could compare the goods' names) or by prices (the log names
+   * goods by an id only, so the run's average prices resembled the plan's). null: no plan, or a trip from before this field.
+   */
+  plan_link: z.enum(["name", "prices"]).nullable().default(null),
+  /** How `fees_auec` was obtained: measured against the balance on both sides, or deduced (gross margin minus net). */
+  fees_method: z.enum(["mesure", "estime"]).nullable().default(null),
 });
 export type Trip = z.infer<typeof TripSchema>;
 

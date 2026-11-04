@@ -151,6 +151,11 @@ export class DashboardService {
     const trades = this.trades ? this.trades() : undefined;
     // Insurance, hangar and session events, for the balance movement explainer (only used with the balance).
     const movementEvents = includeBalance && this.ledger ? this.ledger.movementEvents() : undefined;
+    // How the player's own saved runs compare with their plans: derived from the balance, so only with it.
+    const calibration =
+      includeBalance && this.sessions?.enabled
+        ? await this.sessions.calibrationSection().catch(() => undefined)
+        : undefined;
     return buildLedgerPayload({
       base,
       history,
@@ -159,6 +164,7 @@ export class DashboardService {
       nowMs,
       ...(trades ? { trades } : {}),
       ...(movementEvents ? { movementEvents } : {}),
+      ...(calibration ? { calibration } : {}),
     });
   }
 

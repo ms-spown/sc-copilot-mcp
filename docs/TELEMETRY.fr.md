@@ -799,6 +799,59 @@ meilleure et moins bonne session, meilleurs trajets et marchandises quand ils so
 établir vaut `null`, jamais zéro. Ce sont tous des mesures brutes : le solde bouge aussi avec les achats, les amendes
 et les réparations.
 
+### Fiabilité des routes (calibration)
+
+Les prix d'UEX sont des estimations de la communauté, et pour la plupart des routes personne ne les a relevés
+récemment : le profit du planificateur est donc une conjecture. Vos propres trajets enregistrés sont une preuve. Pour
+chaque cargaison terminée qui porte un profit prévu, le serveur compare ce que le plan promettait et ce que vous avez
+vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
+
+- **Ce qui est comparé.** La marge brute réalisée sur le profit prévu (une marge avant frais, donc comparable), le net sur
+  le profit prévu (seulement quand le net et les frais sont connus : un net sans frais veut dire que le solde a bougé pour
+  une autre raison), et les frais sur le chiffre d'affaires. Le plan est d'abord ramené à la quantité réellement
+  transportée quand la quantité du plan est connue et diffère de plus de 2 % (une soute à moitié pleine n'est pas un
+  mauvais prix) ; une cargaison qui a transporté moins d'un quart ou plus de quatre fois la quantité prévue est écartée. Le
+  ratio typique est groupé (somme du réalisé sur somme du prévu, la formule de l'efficacité face au plan), avec à côté la
+  médiane, le minimum et le maximum des ratios par cargaison.
+- **Groupes et cargaisons retenues.** Par marchandise (nom exact en minuscules, jamais un préfixe, jamais le chiffre d'une
+  autre marchandise) et, quand la cargaison porte les deux terminaux du plan, par route. Un groupe de marchandise réunit
+  toutes ses routes ; le groupe de la route est préféré quand il a 2 cargaisons ou plus. Ne comptent que les cargaisons des
+  60 derniers jours, de la ligne de patch actuelle (les deux premiers nombres de la version du jeu, par exemple 4.10 : une
+  cargaison d'une autre ligne de patch est écartée, une cargaison de version inconnue est gardée et comptée, et si la
+  version actuelle est inconnue rien n'est écarté pour son patch), et seulement les 8 dernières d'un groupe. Ce qui a été
+  écarté, et pourquoi, est compté dans la réponse de l'outil.
+- **Comment un plan est rattaché à une cargaison.** Un plan appliqué marque une cargaison : la première qui se termine
+  après lui. Le journal nomme les marchandises par un identifiant, pas par un nom : le plan est rattaché par le nom quand
+  on peut comparer des noms, sinon par les prix : les prix moyens d'achat et de vente de la cargaison à moins de 40 % de
+  ceux du plan, et une quantité achetée à moins d'un facteur 4 (`plan_link`). C'est une ressemblance, pas une preuve : un
+  tel groupe n'est jamais étiqueté `high`. Pour avoir deux cargaisons d'une route, appliquez son plan deux fois.
+- **Confiance** (`none`, `low`, `medium`, `high`). `none` sous 2 cargaisons : aucun chiffre, seulement le nombre. `low` avec
+  2 ou 3 cargaisons, un écart supérieur à 0,6 (maximum moins minimum des ratios par cargaison, en points du plan) ou une
+  dernière cargaison de plus de 21 jours. `medium` avec 4 à 7 cargaisons. `high` seulement avec 8 cargaisons, un écart d'au
+  plus 0,3, des cargaisons récentes et des marchandises rattachées par le nom. Elle dit combien s'appuyer sur le chiffre ;
+  ce n'est pas une probabilité.
+- **L'attente.** « Net attendu ≈ profit prévu × ratio typique (n trajets) » : le profit prévu fois le ratio net typique
+  quand au moins 2 cargaisons ont leur net et leurs frais, sinon fois le ratio brut typique moins le taux de frais
+  habituel sur le chiffre d'affaires du plan. Une ESTIMATION, toujours avec son nombre de cargaisons et sa confiance ; elle
+  n'affirme aucune cause (un ratio sous 100 % peut venir des prix, de la quantité ou d'une vente lente).
+- **Où cela s'affiche.** `sc_session_stats` (section `route_reliability`, seulement avec `include_balance`) ; une ligne
+  discrète sous chaque route suggérée de la barre d'actions (« Tes N derniers trajets de cette marchandise : réalisé (marge
+  brute) ≈ X % du prévu, frais ≈ Y % », avec son étiquette de confiance, seulement quand il y a des données) ; la tuile
+  « Si tu refais ce trajet » de la carte de commerce, qui préfère le chiffre calibré quand le plan en cours a un groupe de
+  2 cargaisons ou plus ; une phrase dans les instructions du serveur et dans le prompt `trade_copilot` pour que Claude la
+  cite avec son nombre de cargaisons.
+- **Confidentialité.** Un ratio fois le plan révèle le résultat réalisé : la section n'existe que là où le solde est
+  affiché. Elle est absente de l'outil sans `include_balance`, de l'interrogation du tableau de bord (donc de son
+  empreinte) d'une vue qui n'a pas demandé le solde, du canal entre vues, de `ui/update-model-context` et du message de
+  « Demander à l'agent ». La vue l'ignore tant que le solde est masqué, même si un serveur l'avait envoyée.
+- **Enregistré (version 2 du fichier).** Pour un trajet de commerce : la quantité du plan, les deux terminaux du plan (noms
+  UEX : ceux du plan, pas des lieux observés), `plan_link`, et comment les frais ont été obtenus. Jamais de trames, de lignes
+  brutes, de pseudo ni d'identifiants. Un fichier de version 1 est lu tel quel (les nouveaux champs sont inconnus : ces trajets
+  comptent par marchandise, sans mise à l'échelle) ; le numéro de format a bougé pour qu'un serveur qui ne connaît que la
+  version 1 laisse un fichier de version 2 tranquille au lieu de le réécrire sans les nouveaux champs.
+- **Non vérifié.** Rien n'a été observé avec le vrai jeu. Les seuils (60 jours, 8 cargaisons, 21 jours, 40 %, les bornes de
+  confiance) sont notre choix, pas une mesure.
+
 ### Dans le tableau de bord et dans les outils
 
 - **La barre** en haut du tableau de bord montre la session (numéro, état, depuis quand, temps actif), puis les chiffres

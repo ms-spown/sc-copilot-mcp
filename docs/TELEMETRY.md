@@ -757,6 +757,54 @@ average per hour, trend (the last sessions against the ones before, 10 percent t
 routes and goods when known. A figure that cannot be worked out is `null`, never zero. All of them are raw measures: the
 balance also moves with purchases, fines and repairs.
 
+### Route reliability (calibration)
+
+UEX prices are crowdsourced estimates, and for most routes nobody has reported them recently, so the planner's profit is
+a guess. Your own saved runs are evidence. For each completed trade run that carries a planned profit, the server
+compares what the plan promised with what you really got (`src/providers/sessions/calibration.ts`, a pure module).
+
+- **What is compared.** The realised gross margin over the planned profit (a margin before fees, so like for like), the
+  net over the planned profit (only when the net and the fees are both known: a net with no fees means the balance moved
+  for another reason), and the fees over the turnover. The plan is first scaled to the quantity really moved when the
+  plan's quantity is known and differs by more than 2 % (a half-loaded hold is not a bad price); a run that moved less
+  than a quarter or more than four times the planned quantity is left out. The typical ratio is pooled (sum realised over
+  sum planned, the formula of the efficiency against the plan), with the median, the minimum and the maximum of the per-run
+  ratios beside it.
+- **Groups and which runs count.** Per goods (exact name once lower-cased, never a prefix, never the figure of another
+  goods) and, when the run holds the plan's two terminals, per route. A goods group pools all its routes; the route group is
+  preferred when it has 2 runs or more. Only runs of the last 60 days count, from the current patch line (the first two
+  numbers of the game version, for example 4.10: a run of another patch line is left out, a run of unknown version is kept
+  and counted, and with no current version known nothing is left out for its patch), and only the last 8 runs of a group.
+  What was left out, and why, is counted in the answer of the tool.
+- **How a plan is tied to a run.** One applied plan marks one run: the first trade run that ends after it. The journal
+  names goods by an id, not by a name, so the plan is tied to the run by name when names can be compared and otherwise by
+  prices: the run's average buy and sell prices both within 40 % of the plan's, and a bought quantity within a factor of 4
+  (`plan_link`). That is a resemblance, not a proof: such a group is never labelled `high`. To have two runs of a route,
+  apply its plan twice.
+- **Confidence** (`none`, `low`, `medium`, `high`). `none` below 2 runs: no figure at all, only the count. `low` with 2
+  or 3 runs, a spread above 0.6 (maximum minus minimum of the per-run ratios, in points of the plan) or a newest run older
+  than 21 days. `medium` with 4 to 7 runs. `high` only with 8 runs, a spread of at most 0.3, fresh runs and goods tied by
+  name. It says how much to lean on the figure; it is not a probability.
+- **The expectation.** "Net expected is about the planned profit times the typical ratio (n runs)": the planned profit times
+  the typical net ratio when at least 2 runs have their net and fees, otherwise times the typical gross ratio less the
+  usual fee rate on the plan's turnover. An ESTIMATE, always with its number of runs and its confidence; it claims no cause
+  (a ratio below 100 % can come from prices, quantity or a slow sale).
+- **Where it shows.** `sc_session_stats` (section `route_reliability`, only with `include_balance`); a quiet line under each
+  suggested route of the action bar ("Tes N derniers trajets de cette marchandise : réalisé (marge brute) ≈ X % du prévu,
+  frais ≈ Y %", with its confidence tag, only when data exist); the tile "Si tu refais ce trajet" of the commerce card, which
+  prefers the calibrated figure when the plan in force has a group of 2 runs or more; one sentence in the server instructions
+  and in the prompt `trade_copilot` so that Claude quotes it with its number of runs.
+- **Privacy.** A ratio times the plan reveals the realised result, so the section exists only where the balance is shown:
+  absent from the tool without `include_balance`, from the dashboard poll (and so from its hash) of a View that did not ask
+  for the balance, from the channel between Views, from `ui/update-model-context` and from the message of "Demander à l'agent".
+  The View ignores it while the balance is hidden, even if a server sent it.
+- **Stored (file version 2).** For a trade trip: the plan's quantity, the plan's two terminals (UEX names: the plan's, not
+  observed places), `plan_link`, and how the fees were obtained. Never frames, raw lines, handle or identifiers. A version 1 file
+  is read as is (the new fields are unknown, so those trips count by goods, without scaling); the format number moved so
+  that a server that only knows version 1 leaves a version 2 file alone instead of rewriting it without the new fields.
+- **Not verified.** Nothing was observed with the real game. The thresholds (60 days, 8 runs, 21 days, 40 %, the
+  confidence bounds) are our choice, not measured.
+
 ### In the dashboard and in the tools
 
 - **The bar** at the top of the dashboard shows the session (number, state, since when, active time), then the figures

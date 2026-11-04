@@ -1451,7 +1451,12 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const moved = showBalance
       ? L.movementsFromLedger(L, view.poll && view.poll.ledger)
       : { section: null, decomposition: null };
+    // How the player's own runs compare with their plans: derived from the balance, so read only while it is shown.
+    const calibration = showBalance
+      ? L.calibrationFromLedger(L, view.poll && view.poll.ledger)
+      : null;
     R.trade.render({
+      calibration,
       trade: tradeLedger?.trade ?? null,
       ledgerStatus: tradeLedger ? tradeLedger.status : null,
       plan: view.plan,
@@ -1469,7 +1474,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       fullscreen: displayMode === "fullscreen",
     });
     R.tradeActions.render(
-      tradeActionsContext(actionsOn, tradeLedger ? tradeLedger.trade : null, now),
+      tradeActionsContext(actionsOn, tradeLedger ? tradeLedger.trade : null, now, calibration),
     );
     const I = L.instrumentInfo(view.poll, view);
     const sheetIns = view.poll && view.poll.ship && view.poll.ship.instruments;
@@ -1492,7 +1497,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   }
 
   /** What the commerce action bar may use: the balance only while it is shown, and only as a number for its own screen. */
-  function tradeActionsContext(on: boolean, trade: any, now: number): any {
+  function tradeActionsContext(on: boolean, trade: any, now: number, calibration: any): any {
     const specs = view.poll && view.poll.specs;
     const bal = balanceInfo(view.poll);
     return {
@@ -1507,6 +1512,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
           ? specs.cargo_scu
           : null,
       trade,
+      calibration,
       plan: view.plan,
       call: async (name: string, args: any, timeoutMs: number) =>
         request("tools/call", { name, arguments: args }, timeoutMs),

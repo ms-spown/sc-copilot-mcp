@@ -698,7 +698,19 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
         : m.planned_net
           ? m.planned_net.auec
           : null;
-      if (next !== null && next !== undefined) {
+      // The player's own saved runs of this route or goods, when there are enough of them (calibrationPanel.ts).
+      const calibrated =
+        ctx && ctx.calibration ? L.calibrationNextTile(ctx.calibration, plan, m) : null;
+      if (calibrated) {
+        tileValue(
+          tiles.next,
+          "≈ " + tradeAmount(L, calibrated.auec, true),
+          calibrated.auec >= 0 ? "ok" : "bad",
+          calibrated.tag,
+          true,
+          calibrated.sub,
+        );
+      } else if (next !== null && next !== undefined) {
         tileValue(
           tiles.next,
           "≈ " + tradeAmount(L, next, true),

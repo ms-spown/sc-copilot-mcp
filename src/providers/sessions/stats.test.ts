@@ -31,6 +31,11 @@ const trip = (over: Partial<Trip> = {}): Trip => ({
   net_auec: 1000,
   net_kind: "balance_delta",
   planned_profit_auec: null,
+  planned_scu: null,
+  plan_buy_terminal: null,
+  plan_sell_terminal: null,
+  fees_method: null,
+  plan_link: null,
   ...over,
 });
 

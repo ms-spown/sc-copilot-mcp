@@ -28,10 +28,17 @@ import {
   withoutMoney,
   type SessionSummary,
 } from "./stats.js";
+import {
+  buildCalibration,
+  calibrationForPoll,
+  usedSessions,
+  type CalibrationReport,
+  type CalibrationSection,
+} from "./calibration.js";
 import type { SessionStore } from "./store.js";
 import type { TripInput } from "./types.js";
 import type { Session, StoreState } from "./types.js";
-import type { TripSource } from "./trips.js";
+import { planFacts, type TripSource } from "./trips.js";
 
 /**
  * The session manager: the one object that turns what the server sees (the game's log, the telemetry stream, the
@@ -132,6 +139,8 @@ export interface ManagerDeps {
   now?: () => number;
   newId?: () => string;
 }
+
+const NO_PLAN_FACTS = planFacts(undefined);
 
 /** The route plan Claude passed (the commerce model's own shape, dashboard/tradeRun.ts). */
 export type PlanForTrips = TradePlan;
@@ -340,7 +349,17 @@ export class SessionManager {
     }
     return trips.map((t) => {
       const mine = planned !== null && t.key === this.planTripKey;
-      return { ...t, planned_profit_auec: mine ? (t.planned_profit_auec ?? planned) : null };
+      // What the plan said besides the profit goes to the same ONE trip, and to no other (it would make a second run
+      // look planned): the calibration compares a run with the plan it was started from.
+      const facts = mine ? planFacts(p) : NO_PLAN_FACTS;
+      return {
+        ...t,
+        planned_profit_auec: mine ? (t.planned_profit_auec ?? planned) : null,
+        planned_scu: mine ? (t.planned_scu ?? facts.planned_scu) : null,
+        plan_buy_terminal: mine ? (t.plan_buy_terminal ?? facts.plan_buy_terminal) : null,
+        plan_link: mine ? (t.plan_link ?? null) : null,
+        plan_sell_terminal: mine ? (t.plan_sell_terminal ?? facts.plan_sell_terminal) : null,
+      };
     });
   }
 
@@ -465,8 +484,40 @@ export class SessionManager {
     const out = {
       ...(includeBalance ? a : aggregateWithoutMoney(a)),
       history_trimmed: state.dropped_sessions,
+      // How the player's own runs compare with their plans: every ratio comes from the balance, so it follows the money.
+      route_reliability: includeBalance
+        ? buildCalibration(usedSessions(state.sessions, last), {
+            nowMs: this.now(),
+            gameVersion: latest(state)?.game_version ?? null,
+          })
+        : ("withheld" as const),
     };
     return out;
+  }
+
+  private calibrationMemo: { key: string; report: CalibrationReport } | null = null;
+
+  /**
+   * The calibration for the dashboard poll (only the groups with two runs or more, no prose). Called ONLY for a poll that
+   * asked for the balance: its ratios are derived from it. Kept until the file changes or a minute passes (a poll comes
+   * every few seconds).
+   */
+  async calibrationSection(): Promise<CalibrationSection | undefined> {
+    if (!this.enabled) return undefined;
+    const state = await this.deps.store.read();
+    const now = this.now();
+    const trips = state.sessions.reduce((n, s) => n + s.trips.length, 0);
+    const key = [state.revision, state.sessions.length, trips, Math.floor(now / 60_000)].join("|");
+    if (!this.calibrationMemo || this.calibrationMemo.key !== key) {
+      this.calibrationMemo = {
+        key,
+        report: buildCalibration(usedSessions(state.sessions), {
+          nowMs: now,
+          gameVersion: latest(state)?.game_version ?? null,
+        }),
+      };
+    }
+    return calibrationForPoll(this.calibrationMemo.report);
   }
 
   /** The balance seen a moment ago, if any (for a new session's start balance). */

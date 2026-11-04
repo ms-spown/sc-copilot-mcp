@@ -6,6 +6,7 @@ import { buildTradeSection, type TradePlan, type TradeSection } from "./tradeRun
 import type { Transaction } from "../providers/gamelog/trade.js";
 import type { MovementEvent, MovementsSection } from "./balanceMovements.js";
 import { movementsSectionFor, withDecompositions } from "./movementsLedger.js";
+import type { CalibrationSection } from "../providers/sessions/calibration.js";
 
 /**
  * The transport ledger: contracts of the current game session (from Game.log) linked to the balance change that
@@ -338,6 +339,11 @@ export interface LedgerPayload {
    * and a confidence. Present ONLY when the poll asked for the balance (every figure in it is derived from it).
    */
   movements?: MovementsSection;
+  /**
+   * How the player's own saved runs compare with their plans (providers/sessions/calibration.ts): ratios, fee rate and
+   * the number of runs behind each. Every figure is derived from the balance: present ONLY when the poll asked for it.
+   */
+  calibration?: CalibrationSection;
   /** Present only when the payload had to be cut to stay bounded. */
   truncated?: string;
 }
@@ -354,6 +360,8 @@ export interface LedgerInput {
   trades?: readonly Transaction[] | undefined;
   /** Insurance, hangar and session events of the log (ledgerService.movementEvents()); absent: none known. */
   movementEvents?: readonly MovementEvent[] | undefined;
+  /** The route calibration (sessions); used only with the balance. */
+  calibration?: CalibrationSection | undefined;
   nowMs: number;
 }
 
@@ -463,6 +471,12 @@ export function boundLedger(
   let out = payload;
   const notes: string[] = [];
   const size = (p: LedgerPayload) => JSON.stringify(p).length;
+  if (size(out) > maxChars && out.calibration) {
+    const { calibration: _dropped, ...rest } = out;
+    void _dropped;
+    out = rest;
+    notes.push("calibration dropped");
+  }
   if (size(out) > maxChars && out.movements && out.movements.listed.length > 10) {
     out = {
       ...out,
@@ -527,6 +541,10 @@ export function buildLedgerPayload(input: LedgerInput): LedgerPayload {
     if (payload.trade) payload.trade = withDecompositions(payload.trade, sources);
     const movements = movementsSectionFor(sources, nowMs);
     if (movements) payload.movements = movements;
+  }
+  // The calibration is derived from the balance too: never in an answer built without it, whatever the caller passed.
+  if (includeBalance && input.calibration && input.calibration.groups.length > 0) {
+    payload.calibration = input.calibration;
   }
   return boundLedger(payload);
 }

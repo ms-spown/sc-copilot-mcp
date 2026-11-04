@@ -6,7 +6,12 @@ import {
   type LedgerBase,
 } from "../../dashboard/ledger.js";
 import { cleanLabel } from "../../core/untrusted.js";
-import { buildTradeSection, type TradePlan } from "../../dashboard/tradeRun.js";
+import {
+  buildTradeSection,
+  type RunMoney,
+  type TradePlan,
+  type TradeRunView,
+} from "../../dashboard/tradeRun.js";
 import type { Transaction } from "../gamelog/trade.js";
 import type { BalancePoint } from "../telemetry/service.js";
 import type { TripInput } from "./types.js";
@@ -128,8 +133,11 @@ export { buildContracts };
  * run's figures: turnover, cost, gross margin, fees, the net (measured against the balance, or gross margin minus
  * measured fees) and the profit planned for it.
  *
- * Only runs that are complete and whose result is no longer pending are returned (the store freezes a trip). Goods are
- * named only when the plan Claude passed matches the run: the log gives a resource id, never a name.
+ * Only runs that are complete and whose result is no longer pending are returned (the store freezes a trip). The log gives
+ * a resource id, never a name, so the goods are named, and the plan tied to the run, in one of two ways (`planLinkOf`):
+ * by name when the model could compare names (`plan_link: "name"`), else by the PRICES: the run's average buy and sell
+ * price per SCU both within 40 % of the plan's, and a bought quantity within a factor of 4 of the plan's
+ * (`plan_link: "prices"`, an association by resemblance that the route calibration reports as unverified goods).
  */
 export class TradeRunTripSource implements TripSource {
   constructor(
@@ -154,7 +162,9 @@ export class TradeRunTripSource implements TripSource {
       const m = run.money;
       if (run.stage !== "complete" || !m) continue;
       if (m.net.reason === "en_cours" || (m.net.reason === "en_attente" && !opts.final)) continue;
-      const named = m.plan_match === "ok" ? cleanLabel(this.plan()?.commodity, 60) : null;
+      const plan = this.plan();
+      const link = planLinkOf(plan, run, m);
+      const named = link !== null ? cleanLabel(plan?.commodity, 60) : null;
       trips.push({
         // The run's own id (the time of its first transaction) is its identity: it does not change when a late sale
         // is added to the run (the end moves, the key does not), so the stored trip is REPLACED, not doubled.
@@ -173,11 +183,57 @@ export class TradeRunTripSource implements TripSource {
         net_auec: m.net.auec,
         net_kind:
           m.net.auec === null ? null : m.net.method === "mesure" ? "balance_delta" : "transactions",
-        planned_profit_auec: m.plan_match === "ok" ? m.planned_profit : null,
+        planned_profit_auec: link !== null ? m.planned_profit : null,
+        fees_method: m.fees.total === null ? null : m.fees.method,
+        plan_link: link,
+        ...planFacts(link !== null ? plan : undefined),
       });
     }
     return { trips, context: null };
   }
+}
+
+/** The plan's prices and the run's average prices may differ by this much (UEX prices are crowdsourced and move). */
+export const PLAN_PRICE_TOLERANCE = 0.4;
+/** The quantity bought and the plan's differ by less than this factor. */
+export const PLAN_SCU_FACTOR = 4;
+
+/**
+ * How a plan is tied to a completed run: by name when the commerce model could compare names ("ok"), else by prices
+ * (see the header). null when neither holds: the run then carries no plan, never a doubtful one. A plan without both unit
+ * prices cannot be tied to a run whose goods have no name.
+ */
+export function planLinkOf(
+  plan: TradePlan | undefined,
+  run: Pick<TradeRunView, "scu_bought">,
+  money: Pick<RunMoney, "plan_match" | "planned_profit" | "avg_buy_per_scu" | "avg_sell_per_scu">,
+): "name" | "prices" | null {
+  if (!plan || money.planned_profit === null) return null;
+  if (money.plan_match === "ok") return "name";
+  const { buy_unit_price: pb, sell_unit_price: ps, scu } = plan;
+  if (typeof pb !== "number" || typeof ps !== "number" || !(pb > 0) || !(ps > 0)) return null;
+  const b = money.avg_buy_per_scu;
+  const s = money.avg_sell_per_scu;
+  if (b === null || s === null || !(b > 0) || !(s > 0)) return null;
+  const near = (a: number, ref: number) => Math.abs(a / ref - 1) <= PLAN_PRICE_TOLERANCE;
+  if (!near(b, pb) || !near(s, ps)) return null;
+  if (typeof scu === "number" && scu > 0 && run.scu_bought !== null) {
+    const f = run.scu_bought / scu;
+    if (f < 1 / PLAN_SCU_FACTOR || f > PLAN_SCU_FACTOR) return null;
+  }
+  return "prices";
+}
+
+/** What the plan said about its run beyond the profit: the quantity and the two terminals (null when not given). */
+export function planFacts(
+  plan: TradePlan | undefined,
+): Pick<TripInput, "planned_scu" | "plan_buy_terminal" | "plan_sell_terminal"> {
+  const scu = plan?.scu;
+  return {
+    planned_scu: typeof scu === "number" && Number.isFinite(scu) && scu > 0 ? scu : null,
+    plan_buy_terminal: cleanLabel(plan?.buy_terminal, 60),
+    plan_sell_terminal: cleanLabel(plan?.sell_terminal, 60),
+  };
 }
 
 /** Several sources as one: their trips are concatenated, the first context found wins. */

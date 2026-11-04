@@ -136,7 +136,7 @@ export function sessionTools({ sessions }: { sessions?: SessionManager }): ToolD
     {
       name: "sc_session_stats",
       description:
-        "Statistics across the player's saved sessions: totals, average rate per hour, trend, best and worst session, best routes and goods (when known), efficiency against planned routes. Estimates and measures are labelled, an unknown figure is null, never zero. Sessions with too little active time give no rate. aUEC figures need include_balance=true, which you ask the player for first; counts and times are always given. Use last to limit to the newest N sessions. Needs SC_TELEMETRY=on.",
+        "Statistics across the player's saved sessions: totals, average rate per hour, trend, best and worst session, best routes and goods (when known), efficiency against planned routes. Estimates and measures are labelled, an unknown figure is null, never zero. Sessions with too little active time give no rate. route_reliability (with include_balance only): per goods and route, realised against planned margin and fee rate from the player's own saved runs, always with the number of runs and a confidence label; few runs means low confidence; an estimate that claims no cause. aUEC figures need include_balance=true, which you ask the player for first; counts and times are always given. Use last to limit to the newest N sessions. Needs SC_TELEMETRY=on.",
       inputSchema: {
         type: "object",
         properties: {

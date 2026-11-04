@@ -17,6 +17,8 @@
 //                 transport=story|off|loading|unreadable|empty|none   (the transport ledger; story by default, none = no field)
 //                 suggest=ok|wait|error|empty|nospeed|reported|slow  (what the commerce action bar's tool answers: invented
 //                 routes from src/dashboard/testing/suggestFixtures.ts, no UEX; slow = 4 s of virtual waiting)
+//                 calib=1  (the route calibration section the server sends with the balance: invented ratios for Laranite on the
+//                 route Port Tressler > Area18 TDD (4 runs), Gold (2 runs, wide spread) and Agricium (8 runs); needs balance=1)
 //                 click=<button label>  (presses it once the page is up, e.g. click=Plus rentable)
 //                 refine=1 (opens "Affiner")  card=1 (opens the details of the first card)
 //                 fw=<px>  (width of the frame in full screen, to see a narrow host at 360 px in a window that cannot be that narrow)
@@ -139,6 +141,18 @@ if (trade) {
   scenario.ledger = trade === "movements"
     ? (include, nowMs) => movementsLedger(nowMs, scenario.epoch, include, TRADE_PLAN)
     : (include, nowMs) => tradeLedger(nowMs, scenario.epoch, include, trade, TRADE_PLAN);
+}
+// calib=1: the calibration section the real server adds to the ledger, only for a poll that asked for the balance.
+if (q.get("calib")) {
+  const g = (over) => ({ kind: "commodity", commodity: "Laranite", buy_terminal: null, sell_terminal: null, n: 4, confidence: "medium", gross_ratio: 0.737, gross_min: 0.65, gross_max: 0.83, high_variance: false, net_ratio: 0.762, net_n: 4, net_confidence: "medium", fee_rate: 0.137, fee_n: 4, last_run_age_days: 1, quantity_adjusted: 0, quantity_unknown: 0, ...over });
+  const CALIBRATION = { v: 1, as_of: new Date(scenario.now).toISOString(), patch_line: "4.10", groups: [
+    g({}),
+    g({ kind: "route", buy_terminal: "Port Tressler", sell_terminal: "Area18 TDD" }),
+    g({ commodity: "Gold", n: 2, confidence: "low", gross_ratio: 0.58, gross_min: 0.2, gross_max: 0.96, high_variance: true, net_ratio: null, net_n: 0, fee_n: 2 }),
+    g({ commodity: "Agricium", n: 8, confidence: "medium", gross_ratio: 0.91, gross_min: 0.8, gross_max: 1.04, net_ratio: 0.88, net_n: 8, fee_rate: 0.052, fee_n: 8, last_run_age_days: 23 }),
+  ] };
+  const withoutCalibration = scenario.ledger;
+  if (withoutCalibration) scenario.ledger = (include, nowMs) => { const l = withoutCalibration(include, nowMs); return include ? { ...l, calibration: CALIBRATION } : l; };
 }
 $("specs").value = q.get("specs") ?? "ready";
 // The scenario holds the wiki sheet of its ship in the chosen state; the poll sends it through the real delta protocol.

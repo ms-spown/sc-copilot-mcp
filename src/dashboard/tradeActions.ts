@@ -767,6 +767,12 @@ export function tradeActionsPanel(doc: any, L: any): any {
       c.badges.push(b);
       add(badges, b);
     }
+    // The quiet line about the player's own saved runs of this goods (calibrationPanel.ts); hidden unless there are data.
+    c.calib = el("p", "ta-calib", "");
+    c.calibText = el("span", "ta-calib-text", "");
+    c.calibTag = el("span", "tr-tag", "");
+    add(c.calib, c.calibText, c.calibTag);
+    c.calib.setAttribute("data-hidden", "1");
     c.apply = el("button", "btn ta-apply", "Appliquer comme plan");
     c.apply.setAttribute("type", "button");
     c.apply.addEventListener("click", () => {
@@ -789,7 +795,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
       add(c.moreBody, p);
     }
     add(c.more, c.moreSum, c.moreBody);
-    add(c.root, top, facts, badges, actions, c.more);
+    add(c.root, top, facts, badges, c.calib, actions, c.more);
     return c;
   };
 
@@ -1250,6 +1256,18 @@ export function tradeActionsPanel(doc: any, L: any): any {
       const d = m.details[i];
       show(c.lines[i], d !== undefined);
       if (d !== undefined) setText(c.lines[i], d);
+    }
+    // Only while the balance is shown (the ratios come from it), and for the first leg: a plan holds one commodity.
+    const leg = o.legs[0];
+    const cal =
+      tradeBalanceNumber(H.balance) !== null && H.calibration && leg
+        ? L.calibrationLine(H.calibration, leg.commodity, leg.from, leg.to)
+        : null;
+    show(c.calib, !!cal);
+    if (cal) {
+      setText(c.calibText, cal.text);
+      setText(c.calibTag, cal.tag);
+      setAttr(c.calibTag, "data-estimate", "1");
     }
     const applied = S.appliedId === o.id;
     setText(c.apply, applied ? "Plan appliqué" : "Appliquer comme plan");

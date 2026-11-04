@@ -53,6 +53,8 @@ export const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record
   {
     // Version 0 never shipped: it is the stub that proves the mechanism (sessions without a counter).
     0: (raw) => ({ ...raw, version: 1, revision: 0, saved_at: null, next_number: 1 }),
+    // Version 2 adds optional fields to a trade trip (see types.ts); there is nothing to rewrite.
+    1: (raw) => ({ ...raw, version: 2 }),
   };
 
 export class StoreBusyError extends Error {}
