@@ -1837,11 +1837,11 @@ export function dashboardMain(win: any, doc: any, L: any): any {
    * What this View remembers about the player, best effort and never needed: one flag, "the help was read". Reaching the
    * storage may throw (an opaque origin, blocked site data): then nothing is remembered and the page works the same.
    */
-  function storageGet(key: string): string | null {
+  function storageGet(key: string): string | null | undefined {
     try {
       return win.localStorage.getItem(key);
     } catch {
-      return null;
+      return undefined; // unavailable (not "empty"): the caller must not count on remembering anything
     }
   }
   function storageSet(key: string, value: string) {

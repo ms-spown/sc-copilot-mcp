@@ -79,6 +79,11 @@ export class FakeNode {
   removeEventListener(type: string, fn: (event: unknown) => void): void {
     this.listeners[type] = (this.listeners[type] ?? []).filter((l) => l !== fn);
   }
+  /** The node that last received the focus (the keyboard tests read it). */
+  static focused: FakeNode | null = null;
+  focus(): void {
+    FakeNode.focused = this;
+  }
   click(): void {
     for (const fn of this.listeners["click"] ?? []) fn({ target: this });
   }

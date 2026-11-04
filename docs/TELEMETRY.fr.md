@@ -431,7 +431,7 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   garde, la réponse du suivi de connexion, la barre de session) : **aucun nouveau réseau, aucune nouvelle lecture de
   fichier** (télémétrie désactivée, rien n'est lu et le journal est annoncé « non vérifié »), aucun montant, rien qui
   dérive du solde, et il ne participe pas aux empreintes des sections. Chaque phrase et chaque commande est écrite dans
-  la page ; la page reconstruit l'objet champ par champ et le rejette en entier si un code est inconnu. `npm run doctor`
+  la page ; la page reconstruit l'objet champ par champ et le rejette en entier si un code `log`, `registration` ou `sessions` est inconnu (un nom de réglage ou une étiquette inconnus est écarté seul). `npm run doctor`
   reste le contrôle approfondi (il lit la config de Claude, la variable utilisateur et le port) ; la page ne le
   duplique pas.
 - **Comment lire le tableau de bord (la légende).** Montrée à la première ouverture et derrière le « ? » ensuite :
@@ -442,7 +442,7 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   jamais été vu fonctionner.
 - **Ce dont la page se souvient.** Un seul drapeau dans le stockage propre au navigateur, `sc-copilot-help-seen` :
   « la légende a été lue ». C'est au mieux et jamais nécessaire : quand le stockage est indisponible (un bac à sable) la
-  page fonctionne pareil et montre la légende à chaque ouverture. Le serveur ne stocke rien de nouveau sur le joueur.
+  page fonctionne pareil, et la légende ne s'ouvre d'elle-même que lorsque quelque chose est à régler (sa fermeture est alors gardée en mémoire pour la session). Le serveur ne stocke rien de nouveau sur le joueur.
 - **Ce que font les boutons.** « Analyser ma situation », « Route avec mon solde et ce vaisseau » et « Bilan de
   session » publient un court message fixe dans la conversation, comme si vous l'aviez tapé, demandant à Claude
   d'utiliser `sc_live_state` et `sc_live_events` ; une confirmation apparaît à côté des boutons et s'efface seule.
@@ -761,7 +761,7 @@ plantage du jeu et après un redémarrage du PC.
   de page : chaque conversation a la sienne, donc deux conversations ne verraient pas la même session ; l'hôte peut le
   vider à tout moment ; et les outils du modèle ne peuvent pas le lire. Un petit fichier JSON écrit par ce serveur est
   partagé par toutes les conversations et tous les processus du serveur, survit à l'hôte, et il est lu de la même façon
-  par les outils et par le tableau de bord. La page ne garde rien dans le stockage du navigateur.
+  par les outils et par le tableau de bord. La page ne garde aucune donnée de session dans le stockage du navigateur : son seul drapeau est `sc-copilot-help-seen` (la légende a été lue).
 - **Où.** `sessions.json` dans le dossier de données de l'utilisateur (Windows : `%LOCALAPPDATA%\sc-copilot-mcp\data`).
   `SCMCP_SESSIONS_FILE` le déplace ; `SCMCP_DATA_DIR` déplace le dossier.
 - **Quand il existe.** Seulement avec `SC_TELEMETRY=on`. Télémétrie désactivée, rien n'est créé, lu ni surveillé.

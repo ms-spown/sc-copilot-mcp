@@ -11,6 +11,7 @@ import {
   sessionStatsNormalize,
   sessionSummaryNormalize,
   sessionWhen,
+  SESSION_VIEW_FUNCTIONS,
 } from "./sessionPanel.js";
 import { sessionBar, sessionToolAnswer } from "./testing/sessionScenario.js";
 import { dashboardHtml, viewScript } from "./page.js";
@@ -392,7 +393,9 @@ describe("Feature: the bar in the page", () => {
     const script = viewScript();
     // The only thing the page remembers is the health strip's "legend read" flag (see viewPage.test.ts); sessions never.
     expect(script).not.toMatch(/innerHTML|insertAdjacentHTML|sessionStorage|indexedDB/);
-    expect(script).not.toMatch(/localStorage[^\n]*session|session[^\n]*localStorage/i);
+    // The session code does not touch any storage, and is given no way to: its api has no get / set.
+    for (const f of SESSION_VIEW_FUNCTIONS)
+      expect(f.toString(), f.name).not.toMatch(/localStorage|Storage|api\.(get|set)\b/);
     expect(dashboardHtml()).toContain("Session");
   });
 });

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { healthNormalize, healthRows, healthTodo, healthLegend } from "./healthPanel.js";
 import { healthSection, type HealthVariant } from "./testing/healthScenario.js";
 import {
+  FakeNode,
   FakeBus,
   VirtualClock,
   findAll,
@@ -289,23 +290,72 @@ describe("Feature: first open, the legend; afterwards, a quiet '?'", () => {
     expect(isOpen(w)).toBe(false);
   });
 
-  it("Given a browser whose storage throws, Then the page works, the legend shows and closing it does not fail", async () => {
-    const w = await page("ok", { storage: "throws" });
+  it.each([
+    ["whose storage throws", { storage: "throws" as const }],
+    ["with no storage at all", {}],
+  ])(
+    "Given a browser %s and nothing to set up, Then the legend does NOT push the cockpit down at each open",
+    async (_n, options) => {
+      const w = await page("ok", options);
+      await w.advance(5 * SECOND);
+      expect(isOpen(w)).toBe(false);
+      expect(text(w)).not.toContain("À régler");
+      // The "?" still brings it, and closing it again stays closed for the session (nothing could be stored).
+      findAll(w.root, (n) => n.tag === "button" && n.textContent === "?")[0]!.click();
+      await w.advance(100);
+      expect(isOpen(w)).toBe(true);
+      findButton(w.root, "Compris").click();
+      await w.advance(5 * SECOND);
+      expect(isOpen(w)).toBe(false);
+      expect(w.host.log.polls.length).toBeGreaterThanOrEqual(2);
+    },
+  );
+
+  it("Given a browser whose storage throws and something to set up, Then the help opens for it, and 'Compris' keeps it closed in memory", async () => {
+    const w = await page("nolog", { storage: "throws" });
     await w.advance(5 * SECOND);
     expect(isOpen(w)).toBe(true);
     findButton(w.root, "Compris").click();
-    await w.advance(200);
+    await w.advance(3 * SECOND);
     expect(isOpen(w)).toBe(false);
-    expect(w.host.log.polls.length).toBeGreaterThanOrEqual(2);
+    expect(text(w)).toContain("À régler pour tout voir");
   });
 
-  it("Given a window with no storage at all, Then the same", async () => {
-    const w = await page("ok", {});
+  it("Given a working storage, Then the legend opens once and the flag decides, with or without something to set up", async () => {
+    const first = await page("nolog", { storage: new Map() });
+    await first.advance(5 * SECOND);
+    expect(isOpen(first)).toBe(true);
+    const seen = await page("nolog", { storage: new Map([[FLAG, "1"]]) });
+    await seen.advance(5 * SECOND);
+    expect(isOpen(seen)).toBe(false);
+  });
+
+  it("Given 'Compris', 'Plus tard' or the '?', Then the focus goes to the '?' button (the pressed one disappears)", async () => {
+    const w = await page("nolog", { storage: new Map() });
     await w.advance(5 * SECOND);
-    expect(isOpen(w)).toBe(true);
+    const help = findAll(w.root, (n) => n.tag === "button" && n.textContent === "?")[0]!;
     findButton(w.root, "Compris").click();
-    await w.advance(200);
-    expect(isOpen(w)).toBe(false);
+    await w.advance(100);
+    expect(FakeNode.focused).toBe(help);
+    FakeNode.focused = null;
+    findButton(w.root, "Plus tard").click();
+    await w.advance(100);
+    expect(FakeNode.focused).toBe(help);
+    help.click();
+    await w.advance(100);
+    FakeNode.focused = null;
+    help.click(); // closes it again
+    await w.advance(100);
+    expect(FakeNode.focused).toBe(help);
+  });
+
+  it("Given the line to copy for the log, Then it has no trailing comma and the text says to add one if another line follows", async () => {
+    const w = await page("nolog", { storage: new Map([[FLAG, "1"]]) });
+    await w.advance(5 * SECOND);
+    const row = rowsFor("nolog").find((r: any) => r.id === "log");
+    expect(row.fix.cmd).not.toMatch(/,\s*$/);
+    expect(row.fix.text).toContain("une virgule si une autre ligne suit");
+    expect(text(w)).toContain("une virgule si une autre ligne suit");
   });
 
   it("Given a server without health (an older one), Then there is no strip and no '?'", async () => {

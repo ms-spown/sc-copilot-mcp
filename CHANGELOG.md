@@ -21,11 +21,15 @@ versions follow [Semantic Versioning](https://semver.org/).
     `Game.log`, `custom`), never a path. Built from facts the server already holds: no new network, no new file read,
     nothing read at all while telemetry is off, no amount, outside the section hashes. The session manager now keeps the
     time of its last write in memory; the telemetry service exposes the game-log hint it already holds.
-  - View: every code is re-validated in the page (the whole object is dropped when one is unknown), also for what
+  - View: every code is re-validated in the page (the whole object is dropped when a `log`, `registration` or `sessions` code is unknown; an unknown `via` or label is dropped alone), also for what
     arrives on the channel between dashboards. No new live region. One best-effort flag in the browser's storage
     (`sc-copilot-help-seen`), never required; the two tests that forbade any use of `localStorage` now pin that single
     use.
-  - The built page goes from 382.9 kB to 405.0 kB (budget 410 kB).
+  - The built page goes from 382.9 kB to 405.0 kB with the strip alone. A separate commit, `compact` in `page.ts`, sends
+    the View functions without their indentation and brings it to about 331 kB; the page budget of `check:page-size` is
+    now 360 kB. `npm run test:built` (run in CI after the build) runs the dashboard tests against the compiled page.
+  - Where the browser's storage is unavailable the legend no longer opens at each open: it opens only when something
+    needs setting up, and closing it is kept in memory. After "Compris" or "Plus tard" the focus goes to the "?" button.
   - Docs: `docs/TELEMETRY.md` and `docs/TELEMETRY.fr.md` (live dashboard, troubleshooting), `SECURITY.md`. Item 8
     (SCMDB and UEX ages) is not measured by the page: it needs the sources, so the network; the line points to
     `sc_data_status`. `npm run doctor` is unchanged: its facts (Claude config, user variable, port) are not available at

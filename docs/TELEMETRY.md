@@ -416,7 +416,8 @@ that this server provides and that the client renders next to the chat.
   the session bar): **no new network, no new file read** (with telemetry off nothing is read at all and the log is
   reported as "not checked"), no amount, nothing derived from the balance, and it takes no part in the section hashes.
   Every sentence and every command is written in the page; the page rebuilds the object field by field and drops the
-  whole of it when a code is unknown. `npm run doctor` stays the deep check (it reads the Claude config, the user
+  whole of it when a `log`, `registration` or `sessions` code is unknown (an unknown setting name or label is dropped
+  alone). `npm run doctor` stays the deep check (it reads the Claude config, the user
   variable and the port); the page does not duplicate it.
 - **How to read the dashboard (the legend).** Shown at the first open and behind the "?" afterwards: **Mesuré**
   (sent by the game just now), **Calculé** (a sum or difference of measured values), **Estimé** (a trend over the last
@@ -424,8 +425,8 @@ that this server provides and that the client renders next to the chat.
   game: a dash, never an invented zero). Each term has a glyph, and every state is written as well as coloured. "Grisé"
   means the values are not current, "non vérifié" that the field has never been seen working.
 - **What the page remembers.** One flag in the browser's own storage, `sc-copilot-help-seen`: "the legend was read". It
-  is best effort and never needed: when the storage is unavailable (a sandbox) the page works the same and shows the
-  legend at each open. The server stores nothing new about the player.
+  is best effort and never needed: when the storage is unavailable (a sandbox) the page works the same, and the legend
+  opens by itself only when something needs setting up (closing it is then kept in memory for the session). The server stores nothing new about the player.
 - **What the buttons do.** "Analyser ma situation", "Route avec mon solde et ce vaisseau" and "Bilan de session" post
   a short fixed message in the conversation, as if you had typed it, asking Claude to use `sc_live_state` and
   `sc_live_events`; a confirmation appears next to the buttons and clears itself. Session markers live in this
@@ -721,8 +722,8 @@ it again from any conversation, after a game crash, and after a reboot of the PC
 - **Why a file on the server and not the browser's `localStorage`.** `localStorage` belongs to one page origin: each
   conversation has its own, so two chats would not see the same session; it can be cleared by the host at any time; and
   the model's tools cannot read it. A small JSON file written by this server is shared by every conversation and every
-  server process, survives the host, and is read by the tools and the dashboard alike. The page keeps nothing in the
-  browser's storage.
+  server process, survives the host, and is read by the tools and the dashboard alike. The page keeps no session data in the
+  browser's storage: its only flag is `sc-copilot-help-seen` (the legend was read).
 - **Where.** `sessions.json` in the per-user data folder (Windows: `%LOCALAPPDATA%\sc-copilot-mcp\data`).
   `SCMCP_SESSIONS_FILE` moves it; `SCMCP_DATA_DIR` moves the folder.
 - **When it exists.** Only with `SC_TELEMETRY=on`. With telemetry off nothing is created, read or watched.

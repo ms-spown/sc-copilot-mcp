@@ -117,7 +117,7 @@ export function healthRows(L: any, poll: any, h: any, ctx: any): any[] {
       "Non configuré. Sans lui : pas d’état de connexion (un renvoi pour inactivité reste invisible), pas de journal de commerce ni de grand livre, des chiffres de session moins fiables.",
       {
         cmd: LOG_LINE,
-        text: "Dans claude_desktop_config.json, entrée « sc-copilot », bloc « env » : ajoute cette ligne (mets le dossier qui contient ton Game.log), puis quitte Claude Desktop complètement et relance-le. Pour un fichier précis, utilise SC_GAME_LOG_PATH.",
+        text: "Dans claude_desktop_config.json, entrée « sc-copilot », bloc « env » : ajoute cette ligne (mets le dossier qui contient ton Game.log, et une virgule si une autre ligne suit), puis quitte Claude Desktop complètement et relance-le. Pour un fichier précis, utilise SC_GAME_LOG_PATH.",
       },
     );
   } else if (h.log === "unchecked") {
@@ -450,14 +450,20 @@ export function healthPanel(doc: any, L: any, api: any): any {
   function remember() {
     if (api.set) api.set(KEY, "1");
   }
+  /** The pressed button hides itself with the block: the focus goes to the "?" so that the keyboard is not lost. */
+  function refocus() {
+    if (help.focus) help.focus();
+  }
   function closeHelp() {
     st.open = false;
     remember();
     paint();
+    refocus();
   }
   function dismiss() {
     st.dismissed = true;
     paint();
+    refocus();
   }
   function toggle() {
     if (st.open) closeHelp();
@@ -546,9 +552,11 @@ export function healthPanel(doc: any, L: any, api: any): any {
       }
       st.last = { rows: L.healthRows(L, poll, h, ctx) };
       if (!st.decided) {
-        // First open: the legend is shown unless this browser remembers it was read. Without storage it shows each time.
+        // First open: the legend is shown only if the storage answers and the flag is not set. Where the storage is
+        // unavailable nothing can be remembered, so it opens only for something to set up; the choice then lives in memory.
         st.decided = true;
-        st.open = !api.get || api.get(KEY) !== "1";
+        const seen = api.get ? api.get(KEY) : undefined;
+        st.open = seen === undefined ? L.healthTodo(st.last.rows).length > 0 : seen !== "1";
       }
       paint();
     },
