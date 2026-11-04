@@ -31,8 +31,10 @@ promise, and every item says what is verified and what is not. The history of wh
 
 ## Next, in order of value
 
-1. **Losses.** (Studied: a ship destroyed with the player aboard is certain in the 4.10 log, the cargo lost is only
-   inferable, its value and the insurance are not logged.) Cargo lost or a ship destroyed, attributed to the run it cost, with the insurance claim.
+1. **Losses, second step.** (The first step is in: a ship destroyed with the player aboard, and the cargo presumed lost with
+   it, attributed to the run it interrupted. The value lost and the insurance are not logged and stay unknown.) Still to
+   do: confirm the attribution on a 4.10 session that has a purchase followed by a loss (none exists yet), find the 4.10
+   line of a ship shot down (no sample), and the insurance claim cost if the game ever logs it.
 2. **Price watchlists.** Follow a commodity or a route and say when its price moves.
 3. **On foot.** Vitals forecast, helmet state (in the log, not in the stream), kill and death counters, an interface
    that adapts to ship, foot and EVA.

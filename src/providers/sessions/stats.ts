@@ -1,4 +1,4 @@
-import type { Session, Trip } from "./types.js";
+import type { Session, ShipLossRecord, Trip } from "./types.js";
 
 /**
  * Figures over stored sessions. PURE: sessions in, numbers out, no clock of its own.
@@ -57,6 +57,11 @@ export interface SessionMoney {
   } | null;
   /** Sum of the gross margins of the cargo runs (revenue - cost, no fees): null when there is none. */
   gross_margin_auec: number | null;
+  /**
+   * aUEC PAID for the cargo presumed lost with destroyed ships (the purchase price, not the value; unconfirmed). From the
+   * balance's side: withheld with the rest of `money`. null when no loss carried cargo.
+   */
+  lost_cargo_paid_auec: number | null;
   plan: {
     planned_auec: number;
     measured_auec: number;
@@ -104,8 +109,25 @@ export interface SessionSummary {
   last_commodity: string | null;
   /** Transactions the game refused because the price moved (a count: no amount, so it is not under `money`). */
   price_refusals: number;
+  /**
+   * The player's ships destroyed with him aboard, oldest first. Time, model, cause, kind of causer, place token and the SCU
+   * presumed lost: no amount (the aUEC paid is `money.lost_cargo_paid_auec`) and no identifier of any kind.
+   */
+  ship_losses: ShipLossSummary[];
+  /** How many ships were lost in all (a View lists only the newest few). */
+  ship_losses_count: number;
   note: string;
   money: SessionMoney;
+}
+
+export interface ShipLossSummary {
+  at: string;
+  ship_class: string | null;
+  cause: ShipLossRecord["cause"];
+  causer: ShipLossRecord["causer"];
+  zone: string | null;
+  /** null: the trade journal was not readable when it was recorded (unknown, never zero). */
+  cargo_scu: number | null;
 }
 
 const isTrip = (t: Trip) => t.kind !== "contract";
@@ -203,8 +225,22 @@ export function summarizeSession(s: Session): SessionSummary {
     last_location: s.last_location,
     last_commodity: s.last_commodity,
     price_refusals: s.price_refusals ?? 0,
+    // Copied by name: the paid amount stays out of the part every reader gets.
+    ship_losses: (s.ship_losses ?? []).map((l) => ({
+      at: l.at,
+      ship_class: l.ship_class,
+      cause: l.cause,
+      causer: l.causer,
+      zone: l.zone,
+      cargo_scu: l.cargo_scu,
+    })),
+    ship_losses_count: (s.ship_losses ?? []).length,
     note: s.note,
     money: {
+      lost_cargo_paid_auec: (() => {
+        const paid = known((s.ship_losses ?? []).map((l) => l.cargo_paid_auec));
+        return paid.length > 0 && paid.some((x) => x > 0) ? sum(paid) : null;
+      })(),
       start_balance_auec: s.start_balance,
       start_balance_quality: s.start_balance_quality,
       last_balance_auec: s.last_balance,

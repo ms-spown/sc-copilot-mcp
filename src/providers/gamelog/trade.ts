@@ -546,8 +546,9 @@ function summarize(tx: Transaction[]): SessionJournal {
  * Round trips: per commodity, purchases are matched first-in first-out with later sales. A run
  * opens with a purchase and closes when every purchased SCU has been sold. Only the paired
  * quantity is valued, so the margin is an estimate and always GROSS (the wallet is not in the log).
+ * `cuts` (epoch ms) are the instants at which a run ends because its ship, with the cargo, was destroyed.
  */
-export function pairCargoRuns(all: Transaction[]): CargoRun[] {
+export function pairCargoRuns(all: Transaction[], cuts: readonly number[] = []): CargoRun[] {
   const runs: CargoRun[] = [];
   const byCommodity = new Map<string, Transaction[]>();
   for (const t of all) {
@@ -597,7 +598,13 @@ export function pairCargoRuns(all: Transaction[]): CargoRun[] {
       lots: [],
     });
 
+    let prevAt = -Infinity;
     for (const t of lines) {
+      // A ship destroyed with its cargo cuts the run (shipLoss.ts): what follows is another run, and a later sale of the
+      // same goods must not be paired with lots that were lost. The lost run stays open, with its unsold quantity.
+      const at = ms(t.time);
+      if (run && cuts.some((c) => c > prevAt && c <= at)) close();
+      prevAt = at;
       const cur: RunState = run ?? (run = open(t));
       cur.to = t.time;
       if (t.side === "buy") {

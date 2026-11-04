@@ -1568,9 +1568,10 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     // The action bar asks the server for routes; it needs a server that answers, not a live stream.
     const actionsOn =
       initialised && !tornDown && !retired && !!view.poll && view.poll.state !== "off";
-    // A price refused at the kiosk goes into the verdict: it is the most urgent thing the page knows.
+    // A ship destroyed with the player aboard, else a price refused at the kiosk, goes into the verdict: it is the most urgent
+    // thing the page knows.
     const refusal = actionsOn
-      ? L.tradeRefusalInfo(L, tradeLedger ? tradeLedger.trade : null, now)
+      ? L.tradeAlertInfo(L, tradeLedger ? tradeLedger.trade : null, now, showBalance)
       : null;
     const info = renderStatus(now, conds, refusal);
     streamLive = !info.grey;
@@ -1601,6 +1602,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       fullscreen: displayMode === "fullscreen",
       balance: showBalance && view.poll ? view.poll.balance : null,
       baseline: L.baselineLabel(view.poll),
+      now,
       actionsEnabled: actionsOn,
       decomposition: moved.decomposition,
       movements: R.movements,
@@ -1685,6 +1687,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
       clock,
       plan: view.plan,
       trade,
+      showBalance,
       call: async (name: string, args: any, timeoutMs: number) =>
         request("tools/call", { name, arguments: args }, timeoutMs),
       say: (text: string) =>

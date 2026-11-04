@@ -2,6 +2,7 @@ import { cleanLabel } from "../core/untrusted.js";
 import type { BalancePoint } from "../providers/telemetry/service.js";
 import { pairCargoRuns, type Transaction } from "../providers/gamelog/trade.js";
 import { priceRefusalsOf, type PriceRefusal } from "../providers/gamelog/priceRefusals.js";
+import { lossCuts, type ShipLoss } from "../providers/gamelog/shipLoss.js";
 import type { RunDecomposition } from "./balanceMovements.js";
 
 /**
@@ -46,6 +47,8 @@ export const TRADE_MAX_TRANSACTIONS = 400;
 export const TRADE_MAX_RUNS = 4;
 /** Price refusals (the game refused a transaction because the price moved) returned in the payload, newest last. */
 export const TRADE_MAX_REFUSALS = 3;
+/** Ship losses (the player's ship destroyed with him aboard) returned in the payload, newest last. */
+export const TRADE_MAX_LOSSES = 5;
 /** Labels (commodity, shop) taken from the log. */
 export const TRADE_LABEL_MAX = 60;
 /** More than this between two transactions: another run. */
@@ -267,6 +270,32 @@ export interface TradeSection {
    * kind: NO amount, so they are sent with or without the balance. Absent when there is none.
    */
   price_refusals?: PriceRefusal[];
+  /**
+   * A ship destroyed with the player aboard (providers/gamelog/shipLoss.ts), newest last, with the cargo bought for it
+   * and not sold, which is only PRESUMED lost. The SCU and the counts are not amounts and go with or without the balance;
+   * `paid_auec` (the purchase price paid, not the value) exists only with `includeBalance`. Absent when there is none.
+   */
+  ship_losses?: ShipLossView[];
+}
+
+export interface ShipLossView {
+  at: string;
+  ship_class: string | null;
+  cause: ShipLoss["cause"];
+  causer: ShipLoss["causer"];
+  zone: string | null;
+  via: ShipLoss["via"];
+  /** SCU presumed lost; null when no journal was available (unknown, not zero). */
+  cargo_scu: number | null;
+  /** Purchase lines behind `cargo_scu`, and purchases the journal could not confirm (not counted). */
+  cargo_buys: number;
+  unconfirmed_buys: number;
+  /** Sales the journal could not confirm: not counted, so the SCU presumed lost may be overestimated. */
+  unconfirmed_sells: number;
+  /** The run (its `id`) the lost cargo was bought in; null when there is no cargo. */
+  run_id: string | null;
+  /** aUEC PAID (purchase price, not the value). Only with the balance. */
+  paid_auec?: number;
 }
 
 export const EMPTY_TRADE: TradeSection = { v: 1, source: "none", runs: [], runs_total: 0 };
@@ -279,6 +308,8 @@ export interface TradeInput {
   plan?: TradePlan | undefined;
   nowMs: number;
   dayHours?: number;
+  /** The ships destroyed (ledgerService.shipLosses()): a loss with cargo cuts the run it interrupted. */
+  losses?: readonly ShipLoss[] | undefined;
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -354,17 +385,20 @@ export function prepareTransactions(raw: readonly Transaction[] | undefined): Pr
 
 /**
  * Cuts the counted transactions into runs. A run is a purchase phase followed by a sale phase: a purchase that
- * comes after a sale starts a new run, and so does a silence of more than TRADE_RUN_GAP_MS. A sale with no
+ * comes after a sale starts a new run, and so does a silence of more than TRADE_RUN_GAP_MS or a ship lost
+ * with its cargo (`cuts`, epoch ms). A sale with no
  * purchase before it makes a run of its own (stage `sold_only`).
  */
-export function splitRuns(counted: readonly Tx[]): Tx[][] {
+export function splitRuns(counted: readonly Tx[], cuts: readonly number[] = []): Tx[][] {
   const runs: Tx[][] = [];
   let current: Tx[] = [];
   let sold = false;
   for (const x of counted) {
     const last = current[current.length - 1];
     const gap = last ? x.t - last.t > TRADE_RUN_GAP_MS : false;
-    if (current.length > 0 && (gap || (x.side === "buy" && sold))) {
+    // A ship destroyed with its cargo ends the run: what the player does next is another run (shipLoss.ts).
+    const cut = last ? cuts.some((c) => c > last.t && c <= x.t) : false;
+    if (current.length > 0 && (gap || cut || (x.side === "buy" && sold))) {
       runs.push(current);
       current = [];
       sold = false;
@@ -939,7 +973,7 @@ function viewOf(f: RunFacts, prep: Prepared, money: RunMoney | undefined): Trade
 export function buildTradeSection(input: TradeInput): TradeSection {
   if (input.transactions === undefined) return EMPTY_TRADE;
   const prep = prepareTransactions(input.transactions);
-  const runs = splitRuns(prep.counted).map(factsOf);
+  const runs = splitRuns(prep.counted, lossCuts(input.losses ?? [])).map(factsOf);
   const dayHours = input.dayHours ?? TRADE_DAY_HOURS;
   // The observed fee rate walks forward: a run without one uses the latest earlier run's.
   let carried: number | null = null;
@@ -976,11 +1010,45 @@ export function buildTradeSection(input: TradeInput): TradeSection {
   const views = runs.map((f, i) => viewOf(f, prep, moneys[i]));
   const newest = views.slice(-TRADE_MAX_RUNS).reverse();
   const refusals = priceRefusalsOf(input.transactions).slice(-TRADE_MAX_REFUSALS);
+  const losses = lossViews(input.losses, runs, input.includeBalance);
   return {
     v: 1,
     source: "journal",
     runs: newest,
     runs_total: views.length,
     ...(refusals.length > 0 ? { price_refusals: refusals } : {}),
+    ...(losses.length > 0 ? { ship_losses: losses } : {}),
   };
+}
+
+/**
+ * The ship losses as the section carries them: the run each one interrupted (found by the time of its latest lost purchase),
+ * and the paid amount only with the balance. Nothing else of a loss is read, so nothing the parser dropped can come back.
+ */
+function lossViews(
+  losses: readonly ShipLoss[] | undefined,
+  runs: readonly RunFacts[],
+  includeBalance: boolean,
+): ShipLossView[] {
+  if (!Array.isArray(losses)) return [];
+  return losses.slice(-TRADE_MAX_LOSSES).map((l) => {
+    const buyAt = l.cargo?.last_buy_at ? Date.parse(l.cargo.last_buy_at) : NaN;
+    const run = Number.isFinite(buyAt)
+      ? runs.find((r) => r.txs.some((x) => x.t === buyAt))
+      : undefined;
+    return {
+      at: l.at,
+      ship_class: l.ship_class,
+      cause: l.cause,
+      causer: l.causer,
+      zone: l.zone,
+      via: l.via,
+      cargo_scu: l.cargo ? l.cargo.scu : null,
+      cargo_buys: l.cargo ? l.cargo.buys : 0,
+      unconfirmed_buys: l.cargo ? l.cargo.unconfirmed_buys : 0,
+      unconfirmed_sells: l.cargo ? l.cargo.unconfirmed_sells : 0,
+      run_id: run ? new Date(run.txs[0]!.t).toISOString() : null,
+      ...(includeBalance && l.cargo ? { paid_auec: l.cargo.paid_auec } : {}),
+    };
+  });
 }

@@ -1,9 +1,12 @@
 import { randomBytes } from "node:crypto";
 import {
   MAX_INTERRUPTIONS,
+  MAX_SHIP_LOSSES,
   MAX_TRIPS,
   NOTE_MAX,
+  ShipLossSchema,
   TripSchema,
+  type ShipLossInput,
   cleanText,
   type Session,
   type StoreState,
@@ -53,6 +56,8 @@ export interface Observation {
   trips: readonly TripInput[];
   /** The game's refusals for a moved price, as the trade journal lists them (providers/gamelog/priceRefusals.ts). */
   priceRefusals?: readonly { at: string }[];
+  /** The player's ships destroyed with him aboard, as the trip source lists them (providers/gamelog/shipLoss.ts). */
+  shipLosses?: readonly ShipLossInput[];
   context: { location: string | null; commodity: string | null; at: string | null } | null;
 }
 
@@ -106,6 +111,7 @@ function create(
     note: "",
     price_refusals: 0,
     price_refusal_last_at: null,
+    ship_losses: [],
     updated_at: stamp,
   };
   state.next_number += 1;
@@ -283,6 +289,71 @@ function countRefusals(cur: Session, list: readonly { at: string }[] | undefined
   return true;
 }
 
+/**
+ * What makes two stored losses the same one: the time of the destruction line, to the second. No identifier of any ship is
+ * stored, so none can be used; the model and the place are NOT in the key because they can arrive later (a model the line did
+ * not give cleanly, a place token the first look dropped): they complete the loss instead of making a second one. One player
+ * does not lose two ships in the same second.
+ */
+const lossKey = (l: { at: string }): string => String(Math.round(ms(l.at) / 1000));
+
+/**
+ * Adds the ships destroyed with the player aboard that this session does not hold yet (one per loss, by `lossKey`), inside the
+ * session. Idempotent like the refusals: the same list again, or seen by a second server process, adds nothing. A loss
+ * stored while the trade journal was not readable (its cargo unknown) is completed when a later look knows the cargo; a known
+ * cargo is never replaced. The list is bounded: the oldest go first.
+ */
+function recordLosses(cur: Session, list: readonly ShipLossInput[] | undefined): boolean {
+  if (!list || list.length === 0) return false;
+  const from = ms(cur.started_at) - 2000;
+  const to = cur.ended_at === null ? Infinity : ms(cur.ended_at) + 60_000;
+  const held = cur.ship_losses ?? (cur.ship_losses = []);
+  let changed = false;
+  for (const input of list) {
+    const parsed = ShipLossSchema.safeParse(input);
+    if (!parsed.success) continue;
+    const at = ms(parsed.data.at);
+    if (at < from || at > to) continue;
+    const key = lossKey(parsed.data);
+    const i = held.findIndex((x) => lossKey(x) === key);
+    if (i >= 0) {
+      // A later look may know more (the cargo once the journal is readable; the cause and the causer once the 2025
+      // `Vehicle Destruction` line, up to 3 s after the death, has been read). A known value is replaced only by a more
+      // precise one, never by "unknown", and never by another known value. The model and the place fill in when missing. The
+      // cargo is replaced when it was unknown, or when a later look found MORE of it (a purchase the first read of a large
+      // log did not reach): never by a smaller quantity or by "unknown".
+      const old = held[i]!;
+      const next = { ...old };
+      if (
+        parsed.data.cargo_scu !== null &&
+        (old.cargo_scu === null || parsed.data.cargo_scu > old.cargo_scu)
+      ) {
+        next.cargo_scu = parsed.data.cargo_scu;
+        next.cargo_paid_auec = parsed.data.cargo_paid_auec;
+      }
+      if (old.ship_class === null && parsed.data.ship_class !== null)
+        next.ship_class = parsed.data.ship_class;
+      if (old.zone === null && parsed.data.zone !== null) next.zone = parsed.data.zone;
+      if (old.cause === "unknown" && parsed.data.cause !== "unknown")
+        next.cause = parsed.data.cause;
+      if (old.causer === "unknown" && parsed.data.causer !== "unknown")
+        next.causer = parsed.data.causer;
+      if (JSON.stringify(next) !== JSON.stringify(old)) {
+        held[i] = next;
+        changed = true;
+      }
+      continue;
+    }
+    held.push(parsed.data);
+    changed = true;
+  }
+  if (changed) {
+    held.sort((a, b) => ms(a.at) - ms(b.at));
+    if (held.length > MAX_SHIP_LOSSES) held.splice(0, held.length - MAX_SHIP_LOSSES);
+  }
+  return changed;
+}
+
 // ---------------------------------------------------------------------------------------------
 // One observation of the game
 // ---------------------------------------------------------------------------------------------
@@ -428,6 +499,7 @@ export function observe(state: StoreState, obs: Observation, cfg: ReduceConfig):
     if (action === "none") action = "trips";
   }
   if (countRefusals(cur, obs.priceRefusals)) changed = true;
+  if (recordLosses(cur, obs.shipLosses)) changed = true;
   if (changed) cur.updated_at = iso(now);
   return { changed, current: cur, action };
 }

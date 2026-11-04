@@ -13,7 +13,7 @@ switch it on, in particular [Risks](#risks).
 > - **Risks.** CIG has neither allowed nor forbidden it, the RSI terms apply to you, and the risk is yours: read [Risks](#risks) (near the end of this page) before you switch it on.
 > - **Not verified.** The maintainer has not yet seen the dashboard itself inside Claude Desktop (see [Who shows it](#live-dashboard)).
 > - **Turn it off.** `npm run telemetry -- disable --apply` (without `--apply`, `enable` and `disable` are dry runs that write nothing). It removes only what the tool set: a variable you set by hand stays, and the command says how to remove it. Then restart Claude Desktop, quit the RSI Launcher completely (tray icon too) and start it again. It does not delete your saved sessions.
-> - **What is saved, and how to erase it.** Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (the money figures only with `include_balance`); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it. Details: [Saved sessions](#saved-sessions).
+> - **What is saved, and how to erase it.** Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; ship losses: time, model, cause, place, presumed cargo (SCU and aUEC paid); and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (the money figures only with `include_balance`); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it. Details: [Saved sessions](#saved-sessions).
 
 ## What it is, and where it comes from
 
@@ -825,6 +825,26 @@ one shop purchase), 162 and 247 ms after the request, on two different days, bot
 journal (failed, confirmed). Too few cases to give a rate. Not verified: the behaviour in a live session, and what the game
 does with the price shown after a refusal.
 
+**The ship that was destroyed.** The same alert slot shows a ship destroyed with the player aboard, for 15 minutes unless a newer refused price takes the slot (the ownership of the ship is not verified; with
+the cause named only when the log states it) ("Vaisseau détruit, joueur à bord (…) : collision. Cargo présumé perdu : 640 SCU, 947 857 aUEC payés (prix
+d'achat, pas la valeur) (non confirmé)."; the saved session keeps it for good). It is read from build 4.10's
+`[ActorState] Dead ... destroyed vehicle` line (the actor must be the player, compared with a hash of his id from the login
+line) and, as a legacy path no 4.10 log exercises, from the 2025 `Actor Death` and `Vehicle Destruction` lines
+(`providers/gamelog/shipLossParse.ts`, `shipLoss.ts`). A collision is named as the cause only when a
+`FatalCollision ... PlayerPilot: 1` of the same ship comes at most 1 s before; else the cause is "not logged". The cargo is
+a presumption: the successful purchases bound to the ship by the cargo kiosk (`VehicleCargoDataRequest`) and not sold,
+at the price PAID (failed purchases ignored, unconfirmed ones counted apart); the value lost, the insurance and the killer
+are not in the log and are shown as "non journalisés"; and the purchase-to-ship-to-destruction chain is verified on 2025
+logs only (no 4.10 session has a purchase followed by a loss). The records hold a time, a ship model, a cause
+code, a kind of causer, a place token: no name, handle, GUID or raw identifier. The model is kept only when it starts with
+a known maker's code (AEGS, DRAK, MISC, RSI ...), and the place only when it begins with a known family of the game's own
+place names (an "OOC_" body, a jump point, a star system or a body ...): these are filters on the SHAPE of the text, not a
+list of places, so anything else ("Hangar_" followed by a name, a custom entity) is shown as "modèle inconnu" or "lieu inconnu" (after the family, at most 6 short segments, none starting with hangar, apartment, home, habitat or room). A short hash of the ship's identifier
+links a purchase to its ship, in memory only: it is never written, sent to a View or exported. The SCU go with or without
+the balance (`trade.ship_losses`: the server sends the newest 5, the View keeps the newest 3; also on the channel between Views); the aUEC paid is a balance figure and
+is withheld without it. The session keeps `ship_losses` (additive, optional, the file stays version 2): only the time, the
+model, the cause, the kind of causer, the place and the cargo presumed lost; the debrief lists them.
+
 ## Saved sessions
 
 The dashboard works **by session**, and a session is saved. A session is a play period: when it began, the balance at
@@ -1052,7 +1072,7 @@ compares what the plan promised with what you really got (`src/providers/session
   it is not reachable from the network.
 - It contains your health, your ship and your **aUEC balance**. It does not contain your position.
 - This server never logs frames, never writes them to disk and never sends them over a network. Its diagnostics
-  contain field numbers only. Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (the money figures only with `include_balance`); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it. The summaries include balances, by your explicit decision, and this server makes no network request for them (see [Saved sessions](#saved-sessions)).
+  contain field numbers only. Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; ship losses: time, model, cause, place, presumed cargo (SCU and aUEC paid); and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (the money figures only with `include_balance`); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it. The summaries include balances, by your explicit decision, and this server makes no network request for them (see [Saved sessions](#saved-sessions)).
 - **Tool results are part of your conversation with Claude**, which goes to Anthropic. For that reason the balance
   is withheld unless the tool is called with `include_balance`, and Claude is told to ask you first. What you let
   Claude read is what leaves your machine.

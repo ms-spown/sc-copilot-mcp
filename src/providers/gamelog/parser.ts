@@ -11,10 +11,14 @@
  *
  * Seen in real logs but deliberately NOT turned into events, because the log does not state
  * them: ordinary quantum travel, combat and kills, wallet balance, the player's position, a
- * death (only corpse/hospital bookkeeping lines exist). Jump-point transits between systems
+ * death on foot (only corpse/hospital bookkeeping lines exist). The ONE death that is read is
+ * a ship being destroyed with the player aboard: it goes to `ships`, apart from `events`
+ * (shipLossParse.ts: no name, no handle, no raw id). Jump-point transits between systems
  * (Stanton <-> Pyro) ARE logged, by the jump drive's state machine, and are reported.
  */
 
+import { ShipRecordBuffer, type ShipRecord } from "./shipLoss.js";
+import { mayBeShipLine, parseShipLine, type ShipParseState } from "./shipLossParse.js";
 import { parseCommerceLine, type TradeRecord } from "./trade.js";
 
 export type EventType =
@@ -97,6 +101,16 @@ export interface ParsedLog {
    * `events` so the frozen event list of the log tools does not change. See trade.ts.
    */
   commerce: TradeRecord[];
+  /**
+   * The lines behind the ship-loss tracker (a ship destroyed with the player aboard, the ship the cargo kiosk is bound to),
+   * kept apart from `events` and `commerce` for the same reason. No name, no handle, no raw entity id. See shipLoss.ts.
+   */
+  ships: ShipRecord[];
+  /**
+   * A hash of the player's own entity id, when the text holds his `Character` login line (the tracker compares ids with it;
+   * the id itself never leaves the parser). Callers that read a log in pieces carry it over (`seed`).
+   */
+  player_ref: string | null;
 }
 
 const TS = /^<(\d{4}-\d{2}-\d{2}T[\d:.]+Z)>/;
@@ -132,10 +146,12 @@ function field(line: string, name: string): string | null {
   return m ? m[1] : null;
 }
 
-export function parseLog(text: string): ParsedLog {
+export function parseLog(text: string, seed?: { playerRef?: string | null }): ParsedLog {
   const lines = text.split(/\r?\n/);
   const events: LogEvent[] = [];
   const commerce: TradeRecord[] = [];
+  const shipBuffer = new ShipRecordBuffer();
+  const shipState: ShipParseState = { playerRef: seed?.playerRef ?? null };
   const session: SessionInfo = {
     started_local: null,
     game_version: null,
@@ -200,6 +216,16 @@ export function parseLog(text: string): ParsedLog {
       session.build = m[1];
       recognized += 1;
       continue;
+    }
+
+    // --- a ship destroyed with the player aboard (shipLossParse.ts); such a line is never anything else
+    if (mayBeShipLine(body)) {
+      const ship = parseShipLine(body, ts, shipState);
+      if (ship) {
+        shipBuffer.add(ship);
+        recognized += 1;
+        continue;
+      }
     }
 
     // --- engine events
@@ -320,6 +346,8 @@ export function parseLog(text: string): ParsedLog {
     stats: { lines: counted, recognized, ignored: counted - recognized },
     span: { first: firstTime, last: lastTime },
     commerce,
+    ships: shipBuffer.records,
+    player_ref: shipState.playerRef,
   };
 }
 

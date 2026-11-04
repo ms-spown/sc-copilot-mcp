@@ -27,6 +27,30 @@ versions follow [Semantic Versioning](https://semver.org/).
   test deletes its temporary folder. The tests now close their managers (which waits for that look) before removing the
   folder. Test support only.
 
+### Added
+- Loss tracker. When a ship is destroyed with the player aboard (build 4.10: `[ActorState] Dead ... destroyed
+  vehicle`; the 2025 `Actor Death` of the player inside the ship as a legacy path), the dashboard says so in the alert slot
+  (header verdict, compact line, commerce card box, ahead of a refused price), the commerce card marks the run it
+  interrupted, the saved session keeps it and the session debrief lists it. The cause is a collision only when a
+  `FatalCollision ... PlayerPilot: 1` of the same ship precedes by at most 1 s (or the 2025 `Vehicle Destruction` line says
+  so), else "not logged". The cargo is PRESUMED lost: successful purchases bound to that ship by the cargo kiosk and not
+  sold, in SCU and aUEC PAID (the purchase price, not the value; failed purchases ignored, unconfirmed ones counted apart).
+  Value lost, insurance and killer are shown as "non journalisés"; the cargo attribution is labelled as verified on 2025-build
+  logs only. Suicides, routine insurance claims, other actors' deaths and AI vehicles the player destroyed are not counted.
+- Sessions file: a new additive `ship_losses` list per session (format version stays 2; an older file reads as empty).
+  It keeps only the time, the ship model, the cause, the kind of causer, the place and the cargo presumed lost; nothing
+  derived from a ship's identifier is written (the hash that links a purchase to its ship stays in memory), and a loss is
+  de-duplicated by time, model and place. The aUEC paid is a balance figure: withheld from the bar, the list, the stats,
+  the poll, the channel between Views and the debrief unless the balance is allowed. The reviewed privacy sentence
+  (README, SECURITY, CAPABILITIES, TELEMETRY, ARCHITECTURE and the block for Claude, English and French) adds "ship
+  losses: time, model, cause, place, presumed cargo".
+- Known limit of the additive field: the session file stays at format version 2, so a server of an older release that
+  rewrites the file drops `ship_losses` (as it drops `price_refusals`). Update every running server together.
+- The saved-session card holds up to 12 notes (it dropped any beyond 4 in silence); the compact line counts every loss and
+  uses no-break spaces; an invalid loss in the file is set aside alone, not the whole session.
+- A loss with cargo ends the run in the commerce model and in the journal's cargo runs, so a later sale of the same goods
+  is not paired with the lost cargo.
+
 ## [2.5.0] - 2026-11-04
 
 ### Fixed (documentation)

@@ -80,6 +80,8 @@ function sessionMoney(raw: any, allowMoney: boolean): any {
           }
         : null,
     gross_margin_auec: sessionNum(raw.gross_margin_auec),
+    // What was PAID for the cargo presumed lost with destroyed ships: a balance figure, so it lives here.
+    lost_cargo_paid_auec: sessionNum(raw.lost_cargo_paid_auec),
     measured_net_auec: sessionNum(raw.measured_net_auec),
     gross_only_trips: sessionCount(raw.gross_only_trips, 99999),
     overlap_excluded: sessionCount(raw.overlap_excluded, 99999),
@@ -122,6 +124,22 @@ export function sessionSummaryNormalize(raw: any, allowMoney: boolean): any {
     last_location: sessionText(raw.last_location, 60),
     last_commodity: sessionText(raw.last_commodity, 60),
     note: sessionText(raw.note, 500),
+    // Ships destroyed with the player aboard: fixed words and a quantity each, no amount (that is in `money`).
+    ship_losses: (Array.isArray(raw.ship_losses) ? raw.ship_losses : [])
+      .slice(-3)
+      .filter((x: any) => x && typeof x === "object" && sessionIso(x.at))
+      .map((x: any) => ({
+        at: x.at,
+        ship_class: sessionText(x.ship_class, 60) || null,
+        cause: ["collision", "combat", "self_destruct"].indexOf(x.cause) >= 0 ? x.cause : "unknown",
+        causer: ["self", "other", "npc"].indexOf(x.causer) >= 0 ? x.causer : "unknown",
+        cargo_scu: sessionNum(x.cargo_scu),
+      })),
+    // How many were lost in all (the list above keeps the 3 newest): a count, no amount.
+    ship_losses_count: Math.max(
+      sessionCount(raw.ship_losses_count, 999),
+      Math.min(3, Array.isArray(raw.ship_losses) ? raw.ship_losses.length : 0),
+    ),
     money: sessionMoney(raw.money, allowMoney),
   };
 }
@@ -325,6 +343,38 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
   if (hasMoney && money.start_balance_quality && money.start_balance_quality !== "game_start")
     notes.push("Solde de départ : " + sessionQualityLabel(money.start_balance_quality) + ".");
   if (notice) notes.push(notice);
+  // Ships destroyed with the player aboard stay on the session for good (the alert in the header goes away).
+  for (const l of cur.ship_losses) {
+    notes.push(
+      "Vaisseau détruit à " +
+        L.formatClock(l.at) +
+        " (" +
+        (l.ship_class ? l.ship_class.replace(/_/g, " ") : "modèle inconnu") +
+        ")" +
+        ", joueur à bord : " +
+        L.tradeLossCause(l) +
+        ". " +
+        L.tradeLossCargo(L, l, false),
+    );
+  }
+  if (cur.ship_losses_count > cur.ship_losses.length)
+    notes.push(
+      "Les " +
+        cur.ship_losses.length +
+        " derniers vaisseaux détruits sur " +
+        cur.ship_losses_count +
+        " sont listés.",
+    );
+  if (cur.ship_losses.length > 0)
+    notes.push(
+      "Propriété du vaisseau non vérifiée ; valeur perdue, assurance et responsable non journalisés.",
+    );
+  if (cur.ship_losses.length > 0 && hasMoney && money.lost_cargo_paid_auec !== null)
+    notes.push(
+      "Payé pour ce cargo\u00a0: " +
+        L.fmtAuec(money.lost_cargo_paid_auec) +
+        "\u00a0aUEC (prix d’achat, pas la valeur ; valeur perdue, assurance et responsable non journalisés).",
+    );
   // The compact view's one line: the net per hour comes from the same `money` as the kpis, so it exists only while the
   // balance is shown.
   const rate = hasMoney && money.net_per_hour_auec !== null ? money.net_per_hour_auec : null;
@@ -332,6 +382,13 @@ export function sessionBarInfo(L: any, bar: any, ctx: any): any {
   if (cur.active_ms > 0) line.push(L.formatDuration(cur.active_ms));
   if (rate !== null) line.push(L.fmtAuec(rate, true) + "\u00a0aUEC/h");
   if (cur.status === "ended" || bar.stale) line.push(sessionStateLabel(cur, bar.stale));
+  if (cur.ship_losses_count > 0)
+    line.push(
+      cur.ship_losses_count +
+        (cur.ship_losses_count > 1
+          ? "\u00a0vaisseaux\u00a0détruits"
+          : "\u00a0vaisseau\u00a0détruit"),
+    );
   // A warning note (a read-only or degraded store, a start balance that is not the game's) must not be hidden by the fold.
   if (
     notice ||
@@ -564,7 +621,9 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   add(bar, id, kpiBox, actions);
   const notes = el("div", "ses-notes");
   const noteEls: any[] = [];
-  for (let i = 0; i < 4; i++) {
+  // Room for every note the card can hold at once (stale, resumed, start balance, store notice, 3 losses and their count, the
+  // ownership warning, the amount paid): none is dropped in silence.
+  for (let i = 0; i < 12; i++) {
     const p = el("p", "ses-note", "");
     noteEls.push(p);
     add(notes, p);

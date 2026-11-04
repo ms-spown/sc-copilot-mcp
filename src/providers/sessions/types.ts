@@ -115,6 +115,31 @@ export const InterruptionSchema = z.object({
 });
 export type Interruption = z.infer<typeof InterruptionSchema>;
 
+/** Ship losses kept per session (a handful in a long evening; the newest are kept). */
+export const MAX_SHIP_LOSSES = 20;
+
+/**
+ * A ship destroyed with the player aboard (providers/gamelog/shipLoss.ts), as the session keeps it. ONLY: the time,
+ * the ship MODEL, a cause code, the kind of causer (never a name), a place token, and the cargo PRESUMED lost with it: SCU,
+ * and the aUEC PAID for it (the purchase price, not the value: balance-derived, so withheld like any other money figure).
+ * NOTHING derived from a ship's identifier is stored (the hash that links a purchase to its ship lives in memory only), nor
+ * a count of purchase lines, nor a key of the run. The value lost, the insurance and the killer are not in the log.
+ * Additive and optional: a file written before it reads as an empty list, and the format stays version 2.
+ */
+export const ShipLossSchema = z.object({
+  at: iso,
+  ship_class: cleanText(60).nullable().default(null),
+  cause: z.enum(["collision", "combat", "self_destruct", "unknown"]).default("unknown"),
+  causer: z.enum(["self", "other", "npc", "unknown"]).default("unknown"),
+  zone: cleanText(60).nullable().default(null),
+  /** null: no trade journal was available (unknown, never zero). */
+  cargo_scu: z.number().finite().min(0).nullable().default(null),
+  /** aUEC PAID for the SCU above. From the balance's side: never shown without it. */
+  cargo_paid_auec: money.default(null),
+});
+export type ShipLossRecord = z.infer<typeof ShipLossSchema>;
+export type ShipLossInput = z.input<typeof ShipLossSchema>;
+
 export const BALANCE_QUALITIES = ["game_start", "first_seen", "new_session", "late"] as const;
 export type BalanceQuality = (typeof BALANCE_QUALITIES)[number];
 
@@ -158,6 +183,8 @@ export const SessionSchema = z.object({
    */
   price_refusals: count.default(0),
   price_refusal_last_at: iso.nullable().default(null),
+  /** Ships destroyed with the player aboard (see ShipLossSchema), oldest first, one per ship. */
+  ship_losses: z.array(ShipLossSchema).max(MAX_SHIP_LOSSES).default([]),
   updated_at: iso,
 });
 export type Session = z.infer<typeof SessionSchema>;

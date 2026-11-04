@@ -5,7 +5,9 @@
  *
  *   1. THE ALERT. The game refused a transaction because the price moved (TransactionCostMismatch, listed by the trade
  *      journal): a sentence with the time and the side, for a few minutes, and a nudge to check the plan again. It carries
- *      no amount (only a time, a side and a kind) and also exists as one line for the compact view.
+ *      no amount (only a time, a side and a kind) and also exists as one line for the compact view. The same slot shows,
+ *      first, a ship destroyed with the player aboard (shipLoss.ts) and the cargo presumed lost with it: the SCU always,
+ *      the aUEC paid (the purchase price, not the value) only while the balance is shown.
  *   2. THE CHECK. A button asks the server (`sc_trade_suggest`, action preflight, app-only, no argument: the server checks
  *      the plan IT holds) whether the plan still holds at UEX. The answer is a verdict per leg and overall; its sentences
  *      are written by the server from codes and numbers (dashboard/preflightText.ts: the page has a size budget) and are
@@ -23,6 +25,11 @@ export function tradePreflightConfig() {
     timeoutMs: 32000,
     /** A refusal is shown as an alert for this long: it is about the kiosk the player is standing at. */
     refusalFreshMs: 10 * 60 * 1000,
+    /**
+     * A ship loss stays in the alert for this long (a refusal after it takes the slot if it is newer). The session card keeps
+     * the loss for good.
+     */
+    lossFreshMs: 15 * 60 * 1000,
   };
 }
 
@@ -79,6 +86,108 @@ export function tradeRefusalInfo(L: any, trade: any, now: number): any {
     };
   }
   return best;
+}
+
+/**
+ * What the cargo of a destroyed ship probably cost, as one sentence (the commerce card and the alert say it the same way).
+ * It is only PRESUMED: purchases for that ship that no sale followed, at the price PAID, not the value; the game does not say
+ * whether the boxes survived. SCU is a quantity and always shown; the aUEC paid is a balance figure and appears only while
+ * the balance is shown AND the section carried it.
+ */
+export function tradeLossCargo(L: any, loss: any, showBalance: boolean): string {
+  const scu = loss && typeof loss.cargo_scu === "number" ? loss.cargo_scu : null;
+  const unconfirmed =
+    (loss && loss.unconfirmed_buys > 0
+      ? " " + loss.unconfirmed_buys + " achat(s) non confirmé(s) ne sont pas comptés."
+      : "") +
+    (loss && loss.unconfirmed_sells > 0
+      ? " " +
+        loss.unconfirmed_sells +
+        " vente(s) non confirmée(s) ne sont pas déduites : le cargo perdu peut être surestimé."
+      : "");
+  if (scu === null) return "Cargo : le journal d’achats n’était pas lisible.";
+  if (!(scu > 0)) return "Aucun achat de cargo présumé à bord." + unconfirmed;
+  const paid =
+    showBalance && typeof loss.paid_auec === "number"
+      ? ", " + L.fmtAuec(loss.paid_auec) + "\u00a0aUEC payés (prix d’achat, pas la valeur)"
+      : "";
+  return (
+    "Cargo présumé perdu\u00a0: " +
+    L.fmtNum(scu, scu % 1 === 0 ? 0 : 2) +
+    "\u00a0SCU" +
+    paid +
+    " (non confirmé)." +
+    unconfirmed
+  );
+}
+
+/**
+ * What the log says about the cause of a loss, as words: a collision, a combat, a self-destruction, or "not logged". The kind
+ * of causer comes from the SHAPE of a name (a human-looking name, an AI-shaped name) and is said to be so.
+ */
+export function tradeLossCause(loss: any): string {
+  const cause =
+    loss && loss.cause === "collision"
+      ? "collision"
+      : loss && loss.cause === "combat"
+        ? "combat"
+        : loss && loss.cause === "self_destruct"
+          ? "autodestruction"
+          : "cause non journalisée";
+  const by =
+    loss && loss.causer === "npc"
+      ? " par une IA (d’après le nom)"
+      : loss && loss.causer === "other"
+        ? " par un autre joueur ou une entité inconnue (d’après le nom)"
+        : "";
+  return cause + by;
+}
+
+/**
+ * The newest ship loss that is still fresh, or null (trade: the normalised commerce section): a ship was
+ * destroyed with him aboard (certain). Same shape as a price refusal so the header, the compact line and the alert box take
+ * either: `label` (the header's words), `text` (what happened), `advice` (the cargo presumed lost), `note` (what the log does
+ * not say), `ago`, `at`, `atMs`, `loss: true`. No name of anyone: a model, a cause and a kind of causer.
+ */
+export function tradeLossInfo(L: any, trade: any, now: number, showBalance: boolean): any {
+  const list = trade && Array.isArray(trade.ship_losses) ? trade.ship_losses : [];
+  let best: any = null;
+  for (const l of list) {
+    const at = l && typeof l.at === "string" ? Date.parse(l.at) : NaN;
+    if (!Number.isFinite(at) || now - at < -5000 || now - at > tradePreflightConfig().lossFreshMs)
+      continue;
+    if (best && at <= best.atMs) continue;
+    best = {
+      atMs: at,
+      loss: true,
+      item: false,
+      label: "Vaisseau détruit",
+      text:
+        "Vaisseau détruit, joueur à bord" +
+        " (" +
+        (l.ship_class ? l.ship_class.replace(/_/g, " ") : "modèle inconnu") +
+        ")" +
+        "\u00a0: " +
+        tradeLossCause(l) +
+        ".",
+      advice: tradeLossCargo(L, l, showBalance),
+      note: "Valeur perdue, assurance et responsable\u00a0: non journalisés. Propriété du vaisseau non vérifiée. Attribution du cargo vérifiée sur des journaux de builds 2025 seulement.",
+      at: "à " + L.formatClock(new Date(at).toISOString()),
+      ago: "il y a " + L.formatAge(now - at),
+    };
+  }
+  return best;
+}
+
+/**
+ * The alert to show: the newer of a ship loss and a price refusal (a refusal at the kiosk after the respawn is what the player
+ * stands in front of; the loss stays on the session card for good), either alone, else null.
+ */
+export function tradeAlertInfo(L: any, trade: any, now: number, showBalance: boolean): any {
+  const loss = tradeLossInfo(L, trade, now, showBalance);
+  const refusal = tradeRefusalInfo(L, trade, now);
+  if (loss && refusal) return refusal.atMs > loss.atMs ? refusal : loss;
+  return loss || refusal;
 }
 
 function tradePfText(value: any, max: number): string {
@@ -200,6 +309,7 @@ export function tradePreflightMatches(plan: any, r: any): boolean {
 /**
  * `render(ctx)` is called by the View on each render; the component keeps its own state.
  * ctx: { enabled, fullscreen, follower, now, clock, plan (cleaned plan or null), trade (normalised commerce section),
+ *        showBalance (the player chose to see the aUEC figures),
  *        call(name, args, timeoutMs), say(text), feedback(text), takeLead(), later(fn, ms), cancel(id), changed() }
  */
 export function tradePreflightPanel(doc: any, L: any): any {
@@ -299,27 +409,31 @@ export function tradePreflightPanel(doc: any, L: any): any {
     const full = !!H.fullscreen;
     const now = H.now;
     const refusal = H.enabled ? tradeRefusalInfo(L, H.trade, now) : null;
+    // The alert slot holds the more serious of the two: a ship destroyed with the player aboard, else a refused price.
+    const alert = H.enabled ? tradeAlertInfo(L, H.trade, now, !!H.showBalance) : null;
     const planOk = tradePreflightPlanOk(H.plan);
     // The compact line: the alert alone.
-    setText(line, refusal ? (refusal.text + " " + refusal.advice).trim() : "");
-    show(line, !full && !!refusal);
-    show(root, !!H.enabled && full && (planOk || !!refusal));
+    setText(line, alert ? (alert.text + " " + alert.advice).trim() : "");
+    show(line, !full && !!alert);
+    show(root, !!H.enabled && full && (planOk || !!alert));
     if (!H.enabled || !full) return;
 
-    show(alertBox, !!refusal);
-    if (refusal) {
-      setText(alertText, (refusal.text + " " + refusal.advice).trim());
+    show(alertBox, !!alert);
+    if (alert) {
+      setText(alertText, (alert.text + " " + alert.advice).trim());
       setText(
         alertWhen,
-        refusal.ago +
+        alert.ago +
           " (" +
-          refusal.at +
+          alert.at +
           ")" +
-          (refusal.item
-            ? ""
-            : planOk
-              ? " · Revérifie le plan : UEX a peut-être un prix plus récent."
-              : " · Cherche une route à jour avant de racheter."),
+          (alert.loss
+            ? " · " + alert.note
+            : alert.item
+              ? ""
+              : planOk
+                ? " · Revérifie le plan : UEX a peut-être un prix plus récent."
+                : " · Cherche une route à jour avant de racheter."),
       );
     }
     show(head, planOk);
@@ -423,6 +537,10 @@ export const TRADE_PREFLIGHT_VIEW_FUNCTIONS = [
   tradePreflightConfig,
   tradeVerdictInfo,
   tradeRefusalInfo,
+  tradeLossCargo,
+  tradeLossCause,
+  tradeLossInfo,
+  tradeAlertInfo,
   tradePfText,
   tradePfNum,
   tradePreflightClean,

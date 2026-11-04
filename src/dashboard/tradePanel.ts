@@ -288,6 +288,9 @@ export function tradeInlineText(L: any, trade: any, showBalance: boolean): strin
   if (!trade || trade.source !== "journal" || trade.runs.length === 0) return "";
   const r = trade.runs[0];
   const goods = tradeGoodsLabel(r.commodity) || "marchandise";
+  // The run a destroyed ship interrupted is over, whatever its stage says.
+  if (Array.isArray(trade.ship_losses) && trade.ship_losses.some((l: any) => l.run_id === r.id))
+    return "Trajet interrompu · " + goods + " · vaisseau détruit";
   if (r.stage === "complete" && showBalance && r.money && r.money.net.auec !== null) {
     return (
       "Dernier trajet · " +
@@ -569,6 +572,12 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     show(slot, visible && !!(ctx && ctx.actionsEnabled));
     if (!visible) return;
 
+    // The run a destroyed ship interrupted: it will not be finished, whatever the stage says ("rien vendu", "pas terminé").
+    const lost =
+      run && trade && Array.isArray(trade.ship_losses)
+        ? trade.ship_losses.find((l: any) => l.run_id === run.id)
+        : null;
+
     // ---- header
     setText(route, tradeRouteText(plan, run));
     const metaParts: string[] = [];
@@ -588,7 +597,10 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     if (plan && plan.safety_note) metaParts.push(plan.safety_note);
     if (plan && plan.note) metaParts.push(plan.note);
     setText(meta, metaParts.join(" · "));
-    setText(stage, run ? tradeStageLabel(run.stage) : plan ? "Plan seul" : "");
+    setText(
+      stage,
+      lost ? "Trajet interrompu" : run ? tradeStageLabel(run.stage) : plan ? "Plan seul" : "",
+    );
     show(stage, !bare);
     setAttr(stage, "data-stage", run ? run.stage : "plan");
 
@@ -609,6 +621,22 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
     }
     // With the action bar alone (no run, no plan) there is no bilan to explain: the bar comes first and alone.
     if (bare) msg = "";
+    // The run a destroyed ship interrupted says so, with the cargo presumed lost (tradePreflight.ts words it). The alert box
+    // above (fresh for 15 minutes) already says all of it: then the chip and the alert are the two places, not three.
+    if (lost) {
+      // The alert box holds the NEWER of the loss and a refused price, and only while the actions are on (a server that
+      // answers): the sentence stays in the card unless the box really shows this loss.
+      const shown =
+        ctx && ctx.actionsEnabled && typeof ctx.now === "number"
+          ? L.tradeAlertInfo(L, trade, ctx.now, showBalance)
+          : null;
+      const inAlert = !!shown && shown.loss === true;
+      msg = inAlert
+        ? msg
+        : "Vaisseau détruit : trajet interrompu. " +
+          L.tradeLossCargo(L, lost, showBalance) +
+          (msg ? " " + msg : "");
+    }
     setText(message, msg);
     show(message, msg !== "");
 
@@ -644,7 +672,14 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           tradeNetSource(net),
         );
       } else {
-        tileValue(tiles.net, "—", "", "inconnu", true, tradeNetReason(net.reason));
+        tileValue(
+          tiles.net,
+          "—",
+          "",
+          "inconnu",
+          true,
+          lost ? "Trajet interrompu : le vaisseau a été détruit." : tradeNetReason(net.reason),
+        );
       }
       tileValue(
         tiles.turnover,

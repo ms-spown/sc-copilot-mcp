@@ -15,8 +15,9 @@ import {
 } from "../../dashboard/tradeRun.js";
 import type { Transaction } from "../gamelog/trade.js";
 import { priceRefusalsOf, type PriceRefusal } from "../gamelog/priceRefusals.js";
+import type { ShipLoss } from "../gamelog/shipLoss.js";
 import type { BalancePoint } from "../telemetry/service.js";
-import type { TripInput } from "./types.js";
+import type { ShipLossInput, TripInput } from "./types.js";
 
 /**
  * Where the trips of a session come from. This file is the SEAM between the session store and whatever reads the
@@ -41,6 +42,11 @@ export interface TripCollection {
   plan_distance?: Record<string, number>;
   /** The game's refusals for a moved price (a time, a side, a kind: no amount), oldest first. */
   price_refusals?: PriceRefusal[];
+  /**
+   * The player's ships destroyed with him aboard, with the cargo presumed lost (providers/gamelog/shipLoss.ts). The paid
+   * amount is in it: the session file keeps it like a trip's cost, and every reader withholds it without the balance.
+   */
+  ship_losses?: ShipLossInput[];
   /** The last place and goods the log named, and when (estimate: the last step the log counted as done). */
   context: { location: string | null; commodity: string | null; at: string | null } | null;
 }
@@ -153,18 +159,21 @@ export class TradeRunTripSource implements TripSource {
     private readonly transactions: () => readonly Transaction[] | undefined,
     private readonly history: () => Promise<readonly BalancePoint[]>,
     private readonly plan: () => TradePlan | undefined,
+    private readonly losses: () => readonly ShipLoss[] = () => [],
   ) {}
 
   async collect(now: number, opts: CollectOptions = {}): Promise<TripCollection> {
     const tx = this.transactions();
     if (tx === undefined) return { trips: [], context: null };
     const history: readonly BalancePoint[] = await this.history().catch(() => []);
+    const lost = this.losses();
     const section = buildTradeSection({
       transactions: tx,
       history,
       includeBalance: true,
       plan: this.plan(),
       nowMs: now,
+      losses: lost,
     });
     const trips: TripInput[] = [];
     const distance: Record<string, number> = {};
@@ -209,11 +218,23 @@ export class TradeRunTripSource implements TripSource {
         ...planFacts(link !== null ? plan : undefined),
       });
     }
+    // A ship lost with cargo interrupts a run that never completes (so never becomes a trip): the loss belongs to the session.
+    // Only what the file may keep goes out: nothing derived from the ship's identifier (its hash stays in memory).
+    const ship_losses: ShipLossInput[] = lost.map((l) => ({
+      at: l.at,
+      ship_class: l.ship_class,
+      cause: l.cause,
+      causer: l.causer,
+      zone: l.zone,
+      cargo_scu: l.cargo ? l.cargo.scu : null,
+      cargo_paid_auec: l.cargo && l.cargo.scu > 0 ? l.cargo.paid_auec : l.cargo ? 0 : null,
+    }));
     return {
       trips,
       context: null,
       plan_distance: distance,
       price_refusals: priceRefusalsOf(tx),
+      ship_losses,
     };
   }
 }
@@ -302,6 +323,7 @@ export class CompositeTripSource implements TripSource {
       // Without this the manager sees no distance and the OLDEST candidate wins instead of the closest.
       plan_distance: Object.assign({}, ...parts.map((p) => p.plan_distance ?? {})),
       price_refusals: parts.flatMap((p) => p.price_refusals ?? []),
+      ship_losses: parts.flatMap((p) => p.ship_losses ?? []),
     };
   }
 }

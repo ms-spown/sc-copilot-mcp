@@ -7,7 +7,9 @@ import {
   MAX_FILE_BYTES,
   MAX_INTERRUPTIONS,
   MAX_SESSIONS,
+  MAX_SHIP_LOSSES,
   MAX_TRIPS,
+  ShipLossSchema,
   WRITE_SOFT_BYTES,
   SessionSchema,
   SESSIONS_VERSION,
@@ -145,6 +147,15 @@ function cutOversized(item: unknown): unknown {
   if (Array.isArray(s.trips) && s.trips.length > MAX_TRIPS) out.trips = s.trips.slice(-MAX_TRIPS);
   if (Array.isArray(s.interruptions) && s.interruptions.length > MAX_INTERRUPTIONS)
     out.interruptions = s.interruptions.slice(-MAX_INTERRUPTIONS);
+  // A ship loss that does not read (an unknown cause, a negative quantity, a hand-edited file) is set aside ALONE: it must not
+  // make the whole session unreadable. The list is cut to its bound, the newest kept.
+  if (Array.isArray(s.ship_losses)) {
+    out.ship_losses = s.ship_losses
+      .filter((l) => ShipLossSchema.safeParse(l).success)
+      .slice(-MAX_SHIP_LOSSES);
+  } else if (s.ship_losses !== undefined) {
+    out.ship_losses = [];
+  }
   return out;
 }
 
