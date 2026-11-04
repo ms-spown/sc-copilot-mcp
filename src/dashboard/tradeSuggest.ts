@@ -199,6 +199,11 @@ export interface SuggestOk {
   armistice_degraded: boolean;
   /** Short planner remarks, cleaned (English). */
   notes: string[];
+  /**
+   * The starting place as the server resolved it (a planet, a system or a terminal), cleaned: the message to the agent needs the
+   * right key of `uex_plan_trade` (origin_planet_name, origin_system_name or origin_terminal_name). null: no origin.
+   */
+  origin: { kind: "planet" | "system" | "terminal"; name: string } | null;
   /** True when this answer was served from the short cache. */
   cached: boolean;
   age_s: number;
@@ -540,7 +545,7 @@ export class TradeSuggestService {
     cargo: number,
   ): Promise<SuggestAnswer> {
     try {
-      const origin = input.origin?.trim()
+      const origin: TripRequest["origin"] | undefined = input.origin?.trim()
         ? await this.deps.resolveOrigin(input.origin).catch(() => ({
             terminalName: (input.origin ?? "").trim(),
           }))
@@ -560,6 +565,14 @@ export class TradeSuggestService {
       const result = await this.deps.plan(req);
       const at = this.now();
       const ok = this.shape(result, input, ship, cargo, at);
+      if (origin) {
+        const kind = origin.planetName ? "planet" : origin.systemName ? "system" : "terminal";
+        const name = cleanLabel(
+          origin.planetName ?? origin.systemName ?? origin.terminalName ?? input.origin ?? "",
+          NAME_MAX,
+        );
+        if (name) ok.origin = { kind, name };
+      }
       this.remember(key, ok, at);
       return ok;
     } catch (error) {
@@ -616,6 +629,7 @@ export class TradeSuggestService {
       ),
       armistice_degraded: res.notes.some((n) => /Safety heuristic degraded/i.test(n)),
       notes,
+      origin: null,
       cached: false,
       age_s: 0,
     };

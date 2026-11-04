@@ -25,6 +25,7 @@ versions follow [Semantic Versioning](https://semver.org/).
   the check) and the debrief. A budget that is the balance is never written (the message says to read it, or to go without when
   it is hidden); the figures that derive from it stay omitted. The message cap goes from 1500 to 2600 characters (the recipe and the
   steps need room; the names are still quoted as data, and no brace, bracket or backtick can appear).
+- **Audit follow-ups.** The pre-flight message is built in priority order (what was checked, the exact readings and the closing order are never cut; the plan line, the margin and the legs' details go first), with the same 2600-character cap; a chain card or a lower-ranked option says which entry of the tool's `chains` or `options` to compare with and no longer claims "the dashboard only shows options"; the answer echoes the resolved starting place (`origin`: planet, system or terminal) so the recipe uses the right key; the constraints named come from the request that produced the card; a private card (budget = balance) does not send the agent to compare with figures it does not contain, and neither does the debrief; the "Budget = mon solde" note and SECURITY say plainly that, with the balance shown, the agent reads the balance itself and may use it in its own tool call (so it can reach the transcript that way). Remaining differences are stated in the docs (20 s against 25 s deadline, a computation up to two minutes old, UEX prices moving).
 - **One real difference found and removed:** the card sent the flown ship's quantum speed but not its spool-up, so the planner used
   its 10 s default while `ship_name` uses the wiki sheet's (6.9 s for a Cutlass Black): same prices and hold, a different cycle and
   profit per hour. `TripRequest` gained an optional `spoolSeconds`, the flown ship carries the sheet's, the card sends it. No tool name or
@@ -34,9 +35,9 @@ versions follow [Semantic Versioning](https://semver.org/).
 ### Changed (the account balance is obvious, F8)
 - **The header's "Solde" is now the first, biggest element of the header** (compact and full screen): a bordered box with a large
   figure, a green border and dot when live, a dashed amber border and "dernier solde connu · il y a 15 h" in amber when it is the last
-  known balance, a muted "Solde inconnu" with the reason, dots and "masqué" when hidden. Same data, same rules. Page size 418.3 kB
-  with these three changes; the internal budget of `check:page-size` goes from 420 kB to 439 kB (about 5 %, our own guard, nothing
-  removed to fit it).
+  known balance, a muted "Solde inconnu" with the reason, dots and "masqué" when hidden. Same data, same rules. The box wraps at narrow widths (a ten-digit balance no longer overflows a 320 px frame). Page size 419.9 kB
+  with these changes, still under the internal budget of `check:page-size` (420 kB, unchanged; the margin is thin, the next feature
+  raises it to its measure plus about 5 %).
 
 ### Added (a Sessions view: the dedicated tab, with archive and delete per session)
 - **Marc's request:** "on a session line I must be able to click delete, archive, etc., and see the stats when I select it ...

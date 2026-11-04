@@ -303,6 +303,13 @@ export function tradeSuggestClean(L: any, raw: any): any {
       .slice(0, 4)
       .map((n: any) => tradeText(n, 200))
       .filter((n: string) => n !== ""),
+    origin: (() => {
+      const og = raw.origin && typeof raw.origin === "object" ? raw.origin : null;
+      const name = og ? tradeText(og.name, 80) : "";
+      return name
+        ? { kind: tradeOneOf(og.kind, ["planet", "system", "terminal"], "terminal"), name }
+        : null;
+    })(),
     cached: raw.cached === true,
     age_s: tradeNum(raw.age_s, 0, 1e6) || 0,
   };
@@ -858,7 +865,18 @@ export function tradeRecipeArgs(view: any): any {
   if (an.ship && an.speed_known === true) args.ship_name = tradeSafeName(an.ship);
   if (rq.budget_private !== true && typeof rq.budget === "number" && rq.budget > 0)
     args.budget = Math.round(rq.budget);
-  if (rq.origin) args.origin_terminal_name = tradeSafeName(rq.origin);
+  // The starting place: the server says what it resolved the text to (a planet, a system or a terminal), so the right key is used.
+  // New arguments of the card's request (a location, a reliability filter...) are added here, with their tool name.
+  const og = an.origin && typeof an.origin === "object" && an.origin.name ? an.origin : null;
+  if (og) {
+    const key =
+      og.kind === "planet"
+        ? "origin_planet_name"
+        : og.kind === "system"
+          ? "origin_system_name"
+          : "origin_terminal_name";
+    args[key] = tradeSafeName(og.name);
+  } else if (rq.origin) args.origin_terminal_name = tradeSafeName(rq.origin);
   if (rq.avoid_pyro === true) args.avoid_pyro = true;
   if (rq.armistice_only === true) args.armistice_only = true;
   if (typeof rq.min_reports === "number" && rq.min_reports > 0) args.min_reports = rq.min_reports;
@@ -965,17 +983,30 @@ export function tradeAgentMessage(L: any, o: any, view: any): string {
       tradeExposureWord(o.safety.exposure) +
       ".",
   );
+  // The constraints come from the request that PRODUCED the card, not from the form as it stands now (it may have changed since).
+  const rq = view.request && typeof view.request === "object" ? view.request : null;
+  const fl = view.flags && typeof view.flags === "object" ? view.flags : {};
+  const chosen = rq
+    ? {
+        avoidPyro: rq.avoid_pyro === true,
+        armistice: rq.armistice_only === true,
+        reports: typeof rq.min_reports === "number" && rq.min_reports > 0,
+        roundTrip: rq.round_trip_only === true,
+      }
+    : fl;
   const wanted: string[] = [];
-  if (view.flags && view.flags.avoidPyro) wanted.push("éviter Pyro");
-  if (view.flags && view.flags.armistice) wanted.push("zones d’armistice seulement");
-  if (view.flags && view.flags.reports) wanted.push("relevés de joueurs exigés");
-  if (view.flags && view.flags.roundTrip) wanted.push("aller-retour seulement");
+  if (chosen.avoidPyro) wanted.push("éviter Pyro");
+  if (chosen.armistice) wanted.push("zones d’armistice seulement");
+  if (chosen.reports) wanted.push("relevés de joueurs exigés");
+  if (chosen.roundTrip) wanted.push("aller-retour seulement");
   if (wanted.length) parts.push("Contraintes choisies : " + wanted.join(", ") + ".");
   // The figures of each step, so that nothing has to be guessed back (none when they derive from a budget that is the balance).
+  // They are the first thing left out if the message would be too long: the recipe and the closing order are never cut.
+  const steps: string[] = [];
   if (!view.priv) {
     for (let i = 0; i < o.legs.length; i++) {
       const l = o.legs[i];
-      parts.push(
+      steps.push(
         "Étape " +
           (i + 1) +
           " : " +
@@ -999,34 +1030,57 @@ export function tradeAgentMessage(L: any, o: any, view: any): string {
       );
     }
     if (typeof o.cost === "number")
-      parts.push("Mise de départ : environ " + L.fmtNum(o.cost) + " aUEC.");
+      steps.push("Mise de départ : environ " + L.fmtNum(o.cost) + " aUEC.");
   }
-  const recipe = tradeRecipeArgs(view);
-  parts.push(
+  // Which card it is: the rank in the tool's `options`, or in its `chains` (a chain A → B → C has no return leg priced).
+  const an = view.answer && typeof view.answer === "object" ? view.answer : {};
+  const inChains = Array.isArray(an.chains) ? an.chains.indexOf(o) : -1;
+  const inOptions = Array.isArray(an.options) ? an.options.indexOf(o) : -1;
+  // No bracket in a message (the page keeps them out of fixed text): "la liste options, rang 2".
+  const ref =
+    inChains >= 0
+      ? "la liste chains, rang " + (inChains + 1)
+      : "la liste options, rang " + (Math.max(0, inOptions) + 1);
+  const rest: string[] = [];
+  rest.push(
     "Pour comparer à armes égales, rejoue exactement l’appel du tableau de bord : " +
       tradeRecipeText(view) +
-      (recipe.origin_terminal_name
-        ? " (si le départ est une planète ou un système, passe-le dans origin_planet_name ou origin_system_name)"
-        : "") +
-      (view.request && view.request.budget_private === true
+      (rq && rq.budget_private === true
         ? " ; ajoute-y mon budget : " +
           (view.showBalance === true
             ? "mon solde actuel (lis-le avec sc_live_state)"
             : "mon solde est masqué, rejoue sans budget et dis-le")
-        : view.request && typeof view.request.budget === "number"
+        : rq && typeof rq.budget === "number"
           ? ""
           : " (sans budget)") +
-      ". Le tableau de bord n’affiche que les options, pas les chains" +
-      (view.ageMs >= 60000
-        ? ", et il a calculé cette route il y a " + Math.round(view.ageMs / 60000) + " min"
+      "." +
+      (chosen.roundTrip ? " Le tableau de bord masque les chains : ignore-les." : "") +
+      (inChains >= 0
+        ? " Cette carte est une chaîne A → B → C sans retour chiffré : elle est dans chains."
         : "") +
-      ".",
+      (view.ageMs >= 60000
+        ? " Le tableau de bord a calculé cette route il y a " +
+          Math.round(view.ageMs / 60000) +
+          " min."
+        : ""),
   );
-  parts.push(
-    "Compare le premier résultat avec les chiffres du tableau de bord ci-dessus et dis explicitement ce qui diffère et pourquoi (stock, âge des prix, hypothèses) avant de donner ton verdict ; dis-moi ensuite ce qui peut mal tourner et propose une meilleure alternative si elle existe." +
+  rest.push(
+    "Compare " +
+      ref +
+      " du résultat (la route " +
+      q(o.route) +
+      ") avec " +
+      (view.priv
+        ? "la route, les prix et le cycle ci-dessus"
+        : "les chiffres du tableau de bord ci-dessus") +
+      " et dis explicitement ce qui diffère et pourquoi (stock, âge des prix, hypothèses) avant de donner ton verdict ; dis-moi ensuite ce qui peut mal tourner et propose une meilleure alternative si elle existe." +
       (view.showBalance === true ? "" : " Ne lis pas mon solde."),
   );
-  return parts.join(" ").slice(0, 2600);
+  // Fit: the figures of the steps go first when the message is too long; everything else is bounded (names are cut at 60).
+  const kept = steps.slice();
+  const whole = () => parts.concat(kept, rest).join(" ");
+  while (kept.length > 0 && whole().length > 2600) kept.pop();
+  return whole();
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -2041,7 +2095,7 @@ export function tradeActionsPanel(doc: any, L: any): any {
     setText(
       budgetNote,
       S.budgetBalance
-        ? "Ton solde est envoyé au serveur local (par l’hôte) pour ce calcul ; il n’est jamais envoyé à UEX et ce tableau de bord ne l’écrit pas dans la conversation."
+        ? "Ton solde est envoyé au serveur local (par l’hôte) pour ce calcul ; il n’est jamais envoyé à UEX et ce tableau de bord ne l’écrit pas dans la conversation. Si tu demandes l’avis de Claude sur une route, il lit lui-même ton solde pour l’utiliser comme budget dans son appel d’outil : il peut alors apparaître dans la conversation par ses appels d’outils, comme toute valeur de solde affiché."
         : "Un nombre : 250000, 2,5M. Vide : pas de limite.",
     );
 

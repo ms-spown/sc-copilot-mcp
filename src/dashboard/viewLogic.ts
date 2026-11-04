@@ -1335,7 +1335,7 @@ export function actionMessage(kind: string, ctx: any): string | null {
     return (
       "Fais le debrief de mon dernier trajet : appelle sc_trade_journal puis sc_session_current" +
       both +
-      ", regarde le prix de vente actuel avec uex_get_price_history (utilise le terminal de vente nommé par le journal ou par moi, sinon demande-le-moi), et dis ce qui a bien marché, ce que je changerais et la prochaine route. Distingue ce qui est mesuré de ce qui est estimé, et dis explicitement ce qui diffère entre ce que le journal établit et ce que le tableau de bord affichait (prix, quantités, frais) et pourquoi, avant de donner ton verdict. Si un outil manque, dis-le." +
+      ", regarde le prix de vente actuel avec uex_get_price_history (utilise le terminal de vente nommé par le journal ou par moi, sinon demande-le-moi), et dis ce qui a bien marché, ce que je changerais et la prochaine route. Distingue ce qui est mesuré de ce qui est estimé, et dis explicitement ce qui diffère entre ce que le journal établit et ce que tu trouves toi-même chez UEX (prix, quantités, frais) et pourquoi, avant de donner ton verdict. Si un outil manque, dis-le." +
       tail
     );
   }

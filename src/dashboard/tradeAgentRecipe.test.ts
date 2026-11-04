@@ -5,7 +5,7 @@ import type { HttpClient } from "../core/http.js";
 import { FleetStore } from "../providers/fleet/store.js";
 import { GameLog } from "../providers/gamelog/reader.js";
 import { Scmdb } from "../providers/scmdb/store.js";
-import { planTrips } from "../providers/uex/tripPlanner.js";
+import { planTrips, type TripRequest } from "../providers/uex/tripPlanner.js";
 import { allTools, createRegistry } from "../tools/registry.js";
 import {
   resolveOriginHint,
@@ -185,6 +185,10 @@ beforeEach(() => {
   configureDiskCache(null);
 });
 
+const PLACES = new Map<number, any>(
+  TERMINALS.map((t) => [t.id, { planetName: t.planet_name, systemName: t.star_system_name }]),
+);
+
 /** What the page does for one click: the request, the card's answer, the message. */
 async function card(
   state: Record<string, unknown>,
@@ -192,10 +196,14 @@ async function card(
   objective = "profit_per_hour",
 ) {
   const clock = { t: 1_000_000 };
+  const planned: TripRequest[] = [];
   const service = new TradeSuggestService({
-    plan: (req) => planTrips({ ...clients, deadlineMs: 20_000 }, req),
+    plan: (req) => {
+      planned.push(req);
+      return planTrips({ ...clients, deadlineMs: 20_000 }, req);
+    },
     ship: async () => ship,
-    resolveOrigin: async (text) => resolveOriginHint({ byTerminal: new Map() }, text),
+    resolveOrigin: async (text) => resolveOriginHint({ byTerminal: PLACES } as never, text),
     applyPlan: () => undefined,
     now: () => clock.t + SUGGEST_MIN_INTERVAL_MS,
   });
@@ -219,31 +227,38 @@ async function card(
     ageMs: 0,
     from: "",
   };
-  return { built, answer, view, message: tradeAgentMessage(L, answer.options[0], view) };
+  const messageAt = (o: any) => tradeAgentMessage(L, o, view);
+  return { built, answer, view, planned, message: messageAt(answer.options[0]), messageAt };
 }
 
-/** The first option of the tool, as the dashboard's option names its figures. */
-async function toolTop(args: Record<string, unknown>) {
+/** The option `k` of the tool's `options` (or `chains`), with the figures the card shows. */
+async function toolAt(
+  args: Record<string, unknown>,
+  list: "options" | "chains" = "options",
+  k = 0,
+) {
   const out = await registry().call("uex_plan_trade", args);
   expect(out.isError).toBeUndefined();
   const data = JSON.parse(out.content[0]!.text).data;
-  const o = data.options[0];
+  const o = data[list][k];
+  const names = [o.legs[0].from.terminal, ...o.legs.map((l: any) => l.to.terminal)];
+  // a one-way route is repeated with an empty return: the card's route ends where it started
+  if (o.trip.returns_to_start && o.mode === "one_way") names.push(o.legs[0].from.terminal);
   return {
-    route: [o.legs[0].from.terminal, ...o.legs.map((l: any) => l.to.terminal)].join(" → "),
+    route: names.join(" → "),
     profit_per_trip: Math.round(o.trip.profit_per_cycle),
     scu_moved: o.trip.scu_moved,
     profit_per_hour: o.trip.profit_per_hour === null ? null : Math.round(o.trip.profit_per_hour),
-    cycle_minutes: Math.max(1, Math.round(o.trip.cycle_seconds / 60)),
+    cycle_minutes:
+      o.trip.cycle_seconds === null ? null : Math.max(1, Math.round(o.trip.cycle_seconds / 60)),
     legs: o.legs.map((l: any) => [l.commodity, l.scu, l.buy_price, l.sell_price]),
   };
 }
-const cardTop = (answer: any) => {
-  const o = answer.options[0];
+const toolTop = (args: Record<string, unknown>) => toolAt(args, "options", 0);
+const cardAt = (answer: any, list: "options" | "chains" = "options", k = 0) => {
+  const o = answer[list][k];
   return {
-    route: o.route
-      .split(" → ")
-      .slice(0, o.mode === "round_trip" || o.mode === "two_leg" ? undefined : 2)
-      .join(" → "),
+    route: o.route as string,
     profit_per_trip: o.profit_per_trip,
     scu_moved: o.scu_moved,
     profit_per_hour: o.profit_per_hour,
@@ -251,23 +266,39 @@ const cardTop = (answer: any) => {
     legs: o.legs.map((l: any) => [l.commodity, l.scu, l.buy_price, l.sell_price]),
   };
 };
+const cardTop = (answer: any) => cardAt(answer);
 
 describe("Feature: the recipe in the message gives the card's first option, with its figures", () => {
-  const cases: [string, Record<string, unknown>][] = [
-    ["no option", {}],
-    ["a typed budget", { budgetText: "2000" }],
-    ["avoid Pyro and reports required", { avoidPyro: true, reports: true }],
-    ["armistice zones only", { armistice: true }],
-    ["a starting place", { originText: "Area 18" }],
+  const cases: [string, Record<string, unknown>, Record<string, unknown>][] = [
+    ["no constraint", {}, {}],
+    ["a typed budget", { budgetText: "2000" }, { budget: 2000 }],
+    ["avoid Pyro and reports required", { avoidPyro: true, reports: true }, { min_reports: 1 }],
+    ["armistice zones only", { armistice: true }, { armistice_only: true }],
+    [
+      "a terminal as the starting place",
+      { originText: "Area 18" },
+      { origin_terminal_name: "Area 18" },
+    ],
+    [
+      "a planet as the starting place",
+      { originText: "ArcCorp" },
+      { origin_planet_name: "ArcCorp" },
+    ],
+    [
+      "a system as the starting place",
+      { originText: "Stanton" },
+      { origin_system_name: "Stanton" },
+    ],
   ];
   it.each(cases)(
     "Given %s, Then the tool called with the recipe returns the card's top option",
-    async (_l, state) => {
+    async (_l, state, expectedArgs) => {
       const { answer, view } = await card(state);
       const args = tradeRecipeArgs(view);
-      // the hold and the flown ship of the card are in the recipe
+      // the hold and the flown ship of the card are in the recipe, and so is what the request asked for
       expect(args.cargo_scu).toBe(46);
       expect(args.ship_name).toBe("Cutlass Black");
+      expect(args).toMatchObject(expectedArgs);
       const top = await toolTop(args);
       const mine = cardTop(answer);
       expect(top.profit_per_trip).toBe(mine.profit_per_trip);
@@ -275,9 +306,93 @@ describe("Feature: the recipe in the message gives the card's first option, with
       expect(top.profit_per_hour).toBe(mine.profit_per_hour);
       expect(top.cycle_minutes).toBe(mine.cycle_minutes);
       expect(top.legs).toEqual(mine.legs);
-      expect(top.route.startsWith(mine.route.split(" → ")[0]!)).toBe(true);
+      // the whole route, name by name, not just where it starts
+      expect(top.route).toBe(mine.route);
     },
   );
+
+  it("Given a second card and a chain card, Then the tool's options[1] and chains[0] are those cards, and the message says which", async () => {
+    const { answer, view, messageAt } = await card({});
+    expect(answer.options.length).toBeGreaterThan(1);
+    const args = tradeRecipeArgs(view);
+    const second = await toolAt(args, "options", 1);
+    expect(second.route).toBe(cardAt(answer, "options", 1).route);
+    expect(second.profit_per_trip).toBe(cardAt(answer, "options", 1).profit_per_trip);
+    const m2 = messageAt(answer.options[1]).replace(/[\u00a0\u202f]/g, " ");
+    expect(m2).toContain("Compare la liste options, rang 2 du résultat");
+    expect(m2).not.toContain("rang 1 du résultat");
+    // the claim "the card shows options, not chains" was false for a chain card: it is gone, and a chain says it is one
+    expect(m2).not.toContain("n’affiche que les options");
+    if (answer.chains.length > 0) {
+      const chain = await toolAt(args, "chains", 0);
+      expect(chain.route).toBe(cardAt(answer, "chains", 0).route);
+      expect(chain.profit_per_trip).toBe(cardAt(answer, "chains", 0).profit_per_trip);
+      const mc = messageAt(answer.chains[0]).replace(/[\u00a0\u202f]/g, " ");
+      expect(mc).toContain("Compare la liste chains, rang 1 du résultat");
+      expect(mc).toContain(
+        "Cette carte est une chaîne A → B → C sans retour chiffré : elle est dans chains.",
+      );
+    }
+  });
+
+  it("Given round-trip only, Then the message says the chains are hidden; otherwise it does not", async () => {
+    const hidden = await card({ roundTrip: true });
+    expect(hidden.message).toContain("Le tableau de bord masque les chains : ignore-les.");
+    expect(hidden.message).toContain("aller-retour seulement");
+    const plain = await card({});
+    expect(plain.message).not.toContain("masque les chains");
+  });
+
+  it("Given a form that changed after the card was computed, Then the constraints named are the request's, not the form's", async () => {
+    const { answer, built } = await card({ avoidPyro: true });
+    const view = {
+      objective: "profit_per_hour",
+      flags: { armistice: true, reports: true }, // the form NOW
+      priv: false,
+      showBalance: true,
+      request: built.args, // what produced the card
+      answer,
+      ageMs: 0,
+      from: "",
+    };
+    const m = tradeAgentMessage(L, answer.options[0], view);
+    expect(m).toContain("Contraintes choisies : éviter Pyro.");
+    expect(m).not.toContain("armistice");
+    expect(m).not.toContain("relevés de joueurs exigés");
+  });
+
+  it("Given no flown ship and a typed hold, Then the recipe has the hold and no ship, and the tool agrees (no hourly figure on either side)", async () => {
+    const { answer, view } = await card(
+      { cargoText: "40", cargoTyped: true, cargoPicked: "autre" },
+      null,
+    );
+    const args = tradeRecipeArgs(view);
+    expect(args.cargo_scu).toBe(40);
+    expect(args).not.toHaveProperty("ship_name");
+    const top = await toolTop(args);
+    const mine = cardTop(answer);
+    expect(top.scu_moved).toBe(mine.scu_moved);
+    expect(top.profit_per_trip).toBe(mine.profit_per_trip);
+    expect(top.profit_per_hour).toBeNull();
+    expect(mine.profit_per_hour).toBeNull();
+    expect(top.route).toBe(mine.route);
+  });
+
+  it("Given the other settings of the planner, Then the card leaves them at the tool's defaults and the recipe sets none", async () => {
+    // max_age_days (7), include_stale (false), max_legs (2), quantum_speed (from the sheet) and the rest of the request: the card
+    // sets none of them but the ones it names, so the tool's defaults are the card's.
+    const { planned, view } = await card({ avoidPyro: true });
+    const req = planned[0]!;
+    expect(req.maxAgeDays).toBeUndefined();
+    expect(req.includeStale).toBeUndefined();
+    expect(req.maxLegs).toBeUndefined();
+    expect(req.limit).toBe(8);
+    expect(req.stopMinutes).toBeUndefined();
+    const args = tradeRecipeArgs(view);
+    for (const k of ["max_age_days", "include_stale", "max_legs"])
+      expect(args).not.toHaveProperty(k);
+    expect(args.limit).toBe(8);
+  });
 
   it("Given the card's message, Then it holds the recipe, the card's figures and the order to reconcile", async () => {
     const { message, view } = await card({ avoidPyro: true, budgetText: "2000" });
@@ -292,6 +407,23 @@ describe("Feature: the recipe in the message gives the card's first option, with
     );
     expect(text.length).toBeLessThanOrEqual(2600);
     expect(text).not.toMatch(/[\n`<>{}[\]]/);
+  });
+
+  it("Given hostile long names in a card, Then the message is bounded and keeps the recipe and the closing order", async () => {
+    const { answer, view } = await card({ avoidPyro: true });
+    const o = JSON.parse(JSON.stringify(answer.options[0]));
+    o.route = `${"A".repeat(60)} → ${"B".repeat(60)} → ${"A".repeat(60)}`;
+    for (const l of o.legs) {
+      l.commodity = "C".repeat(60);
+      l.from = "D".repeat(60);
+      l.to = "E".repeat(60);
+    }
+    const huge = { ...view, answer: { ...answer, options: [o] } };
+    const m = tradeAgentMessage(L, o, huge);
+    expect(m.length).toBeLessThanOrEqual(2600);
+    expect(m).toContain("uex_plan_trade(");
+    expect(m).toContain("avant de donner ton verdict");
+    expect(m.endsWith("propose une meilleure alternative si elle existe.")).toBe(true);
   });
 });
 
@@ -332,6 +464,9 @@ describe("Feature: a budget that is the balance is never written into the recipe
       const m = tradeAgentMessage(L, answer.options[0], view(shown));
       expect(m).not.toMatch(/987\D?654\D?321/);
       expect(m).not.toMatch(/budget=\d/);
+      // the step figures are not in a private message: it does not send the agent to compare with them
+      expect(m).not.toContain("les chiffres du tableau de bord ci-dessus");
+      expect(m).toContain("avec la route, les prix et le cycle ci-dessus");
       expect(m).toContain(
         shown ? "lis-le avec sc_live_state" : "mon solde est masqué, rejoue sans budget et dis-le",
       );

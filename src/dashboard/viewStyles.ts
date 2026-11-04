@@ -82,14 +82,15 @@ h2, h3 { margin: 0; }
 .top-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-left: auto; }
 .age { color: var(--sc-text3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 /* the account balance: a discreet reminder, always in the header; calmer (muted) when it is not a live reading */
-.acct { display: inline-flex; align-items: center; gap: var(--sp-3); padding: 5px var(--sp-3); border-radius: var(--r-m); background: var(--sc-bg2); border: 1px solid var(--sc-border); min-width: 0; max-width: 100%; }
-.acct-main { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.acct { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); padding: 5px var(--sp-3); border-radius: var(--r-m); background: var(--sc-bg2); border: 1px solid var(--sc-border); min-width: 0; max-width: 100%; }
+.acct-main { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; line-height: 1.15; }
 .acct-label { display: flex; align-items: center; gap: 6px; color: var(--sc-text2); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.08em; }
 .acct-label::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--sc-text3); flex: none; }
-.acct-value { font-size: var(--fs-l); font-weight: 700; color: var(--sc-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.acct-value { font-size: var(--fs-l); font-weight: 700; color: var(--sc-text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .acct-note { color: var(--sc-text3); font-size: var(--fs-xs); }
 .acct .btn { flex: none; }
 [data-mode="fullscreen"] .acct-value { font-size: 24px; }
+@media (max-width: 400px) { [data-mode="fullscreen"] .acct-value { font-size: var(--fs-xl); } .acct-value { font-size: var(--fs-l); } }
 .acct[data-kind="live"] { border-color: var(--sc-ok); }
 .acct[data-kind="live"] .acct-label::before { background: var(--sc-ok); }
 .acct[data-kind="last_known"] { border-style: dashed; border-color: var(--sc-warn); }

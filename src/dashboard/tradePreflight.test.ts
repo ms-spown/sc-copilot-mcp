@@ -93,7 +93,7 @@ describe("Feature: the page rebuilds the answer of the tool field by field", () 
     expect(a.headline.length).toBeLessThanOrEqual(200);
     expect(a.margin.length).toBeLessThanOrEqual(120);
     expect(a.notes).toHaveLength(3);
-    expect(a.agent.length).toBeLessThanOrEqual(1500);
+    expect(a.agent.length).toBeLessThanOrEqual(2600);
     expect(JSON.stringify(a)).not.toContain("250000");
     expect(a).not.toHaveProperty("surprise");
   });

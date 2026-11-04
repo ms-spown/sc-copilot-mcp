@@ -62,7 +62,7 @@ src/providers/  sessions (saved play sessions: store, reducer, stats, manager, t
 src/tools/      one file per group (definition + handler together), catalog.ts (provenance + profiles),
                 registry.ts (envelope, scoping), status.ts (sc_data_status)
 src/dashboard/  the live dashboard (MCP App): poll, service, ledger, trade and pre-flight, health strip, session bar,
-                viewApp/viewLogic/page (the one HTML page, size-budgeted: 439 kB, scripts/check-page-size.mjs),
+                viewApp/viewLogic/page (the one HTML page, size-budgeted: 420 kB, scripts/check-page-size.mjs),
                 shortcuts* (context shortcuts and the sources of their keys), layoutOrder (the flight and commerce
                 orders of full screen), calibrationPanel (route cards), commodityNames (names of goods, wiki
                 lookup), testing/ (fake host)

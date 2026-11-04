@@ -550,7 +550,7 @@ describe("Feature: a plan built from the balance does not outlive the balance be
     for (const c of w.host.log.contexts) expect(c).not.toMatch(quantity);
     // the hold (cargo_scu in the recipe) is the ship's, not derived from the balance: it is the one number allowed
     for (const m of w.host.log.messages)
-      expect(NBSP_FREE(m).replace(/cargo_scu=\d+/, "")).not.toMatch(quantity);
+      expect(NBSP_FREE(m).replace(/cargo_scu=\d+/g, "")).not.toMatch(quantity);
   });
 
   it("Given a route from a typed budget is applied, Then it stays when the balance is hidden", async () => {
@@ -590,6 +590,10 @@ describe("Feature: the wording about the balance is exact", () => {
     const t = text(w);
     expect(t).toContain("envoyé au serveur local (par l’hôte) pour ce calcul");
     expect(t).toContain("jamais envoyé à UEX");
+    // and plainly: Claude reads the balance itself for its own call, so it can reach the conversation that way
+    expect(t).toContain(
+      "il lit lui-même ton solde pour l’utiliser comme budget dans son appel d’outil",
+    );
     expect(t).not.toContain("sans être affiché ni transmis");
     expect(t).not.toContain("reste sur cet écran");
   });

@@ -325,7 +325,7 @@ export function tradePreflightClean(raw: any): any {
       ? "La réponse du serveur n’est pas cohérente : impossible de vérifier."
       : tradePfText(t.headline, 200),
     margin: bad ? "" : tradePfText(t.margin, 120),
-    agent: bad ? "" : tradePfText(t.agent, 1500),
+    agent: bad ? "" : tradePfText(t.agent, 2600),
     action: bad ? "Vérifie au terminal avant d’acheter." : tradePfText(t.action, 200),
     notes: (Array.isArray(t.notes) ? t.notes : [])
       .slice(0, 3)

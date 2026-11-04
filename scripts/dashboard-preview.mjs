@@ -31,7 +31,7 @@
 //                 sessions=story|empty|off|stale|ended|waiting|readonly|gross|losses|manylosses|none  (the saved play session bar; story
 //                 by default; the figures are invented, see src/dashboard/testing/sessionScenario.ts; losses = a resumed
 //                 session with a store notice, a start balance that is not the game's and 3 ships destroyed, manylosses = 5)
-//                 account=live|last|unknown  (the header's "Solde" reminder: live, last known with its age, no reading)
+//                 account=live|last|big|unknown  (big: a ten-digit last known balance, to look at a narrow frame; the header's "Solde" reminder: live, last known with its age, no reading)
 //                 menu=1|detail  (opens the "Sessions" menu, or the detail of session 2, after the page has loaded)
 //                 health=ok|nolog|unreadable|unregistered|sessionsoff|degraded|readonly|off|custom|everything  (the health strip: what is
 //                 wired and what is missing; made-up facts through the server builder, see src/dashboard/testing/healthScenario.ts;
@@ -171,6 +171,7 @@ if (acct) {
     if (!include) return next;
     const account =
       acct === "live" ? { source: "live", uec: 1234567 }
+      : acct === "big" ? { source: "last_known", uec: 1234567890, at: new Date(scenario.now - 15 * 3600000).toISOString(), from: "session" }
       : acct === "last" ? { source: "last_known", uec: 1234567, at: new Date(scenario.now - 15 * 3600000).toISOString(), from: "session" }
       : { source: "unknown", reason: "game_closed" };
     return { ...next, account };
