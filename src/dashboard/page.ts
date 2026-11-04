@@ -27,6 +27,13 @@ import { VIEW_CSS } from "./viewStyles.js";
 const CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'";
 
+/**
+ * Indentation only costs bytes in the page, so each function loses its leading blanks. A function that holds a template
+ * literal is left as written: there the indentation could be part of a string.
+ */
+export const compact = (source: string): string =>
+  source.includes("`") ? source : source.replace(/^[ \t]+/gm, "");
+
 export function viewScript(): string {
   // viewLogic.ts first, then the ship sheet module (specsView.ts), then the transport ledger panel
   // (ledgerPanel.ts), the commerce card (tradePanel.ts) and its action bar slot (tradeActions.ts): one scope, one object L.
@@ -40,14 +47,14 @@ export function viewScript(): string {
     ...MOVEMENTS_VIEW_FUNCTIONS,
     ...HEALTH_VIEW_FUNCTIONS,
   ];
-  const functions = all.map((f) => f.toString()).join("\n");
+  const functions = all.map((f) => compact(f.toString())).join("\n");
   const names = all.map((f) => f.name).join(", ");
   return [
     '"use strict";',
     "(function () {",
     functions,
     `var L = { ${names} };`,
-    `var dashboardMain = ${dashboardMain.toString()};`,
+    `var dashboardMain = ${compact(dashboardMain.toString())};`,
     "dashboardMain(window, document, L);",
     "})();",
   ].join("\n");
