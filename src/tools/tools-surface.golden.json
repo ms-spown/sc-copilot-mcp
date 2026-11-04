@@ -729,9 +729,18 @@
           "type": "boolean",
           "description": "Use the flown ship's quantum speed and hold (search). Default true."
         },
+        "next_run": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "The id of the completed run this suggestion is for: computed once per run (search)."
+        },
         "id": {
           "type": "string",
-          "description": "The id of an option, to apply as the plan (apply)."
+          "description": "The random id of an option, to apply as the plan (apply)."
+        },
+        "with_balance": {
+          "type": "boolean",
+          "description": "The balance is shown: a plan built from it may reach the saved session (apply)."
         }
       },
       "required": [

@@ -1419,6 +1419,11 @@ export function dashboardMain(win: any, doc: any, L: any): any {
 
   function render() {
     const now = clock();
+    // A route plan built from the balance (its quantity and profit give the budget away) does not outlive the balance
+    // being shown: hidden again, it is dropped here, whichever way the balance was hidden.
+    if (view.plan && view.plan.private === true && !showBalance) {
+      view = Object.assign({}, view, { plan: null });
+    }
     // The ship banner already says "mode quantique" and "saut quantique": no second chip for them.
     const conds = L.conditionItems(view.poll, now, view.receivedAt, 12)
       .filter((c: any) => c.id !== "in_quantum" && c.id !== "in_jump")
@@ -1991,6 +1996,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   function dispose() {
     tornDown = true;
     stopTimers();
+    // The action bar's own timers (a re-search after an option changed, a wait) must not fire in a dead View.
+    if (R.tradeActions) R.tradeActions.dispose();
     if (timer !== null) win.clearTimeout(timer);
     timer = null;
     closeChannel();

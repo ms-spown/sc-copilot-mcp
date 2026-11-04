@@ -555,8 +555,9 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
 
   function render(ctx: any) {
     const trade = ctx && ctx.trade ? ctx.trade : null;
-    const plan = ctx && ctx.plan ? ctx.plan : null;
     const showBalance = !!(ctx && ctx.showBalance);
+    // A plan built from the player's balance shows its quantity and profit only while the balance is shown.
+    const plan = ctx && ctx.plan && !(ctx.plan.private === true && !showBalance) ? ctx.plan : null;
     const full = !!(ctx && ctx.fullscreen);
     const run = trade && trade.runs && trade.runs.length > 0 ? trade.runs[0] : null;
     const m = run && showBalance ? run.money : null;

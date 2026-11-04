@@ -630,20 +630,27 @@ calme ; avant le premier clic, rien n'est demandé.
 - **Et ensuite ?** Quand un trajet se termine (il y a moins de 30 minutes), une suggestion est calculée depuis l'endroit
   où il s'est terminé : le terminal de vente du plan en vigueur (les noms de boutique du journal sont des identifiants
   du jeu qu'UEX ne connaît pas : sans plan, rien n'est demandé, appliquez une route comme plan pour obtenir la suite ;
-  un terminal inconnu d'UEX échoue en silence), une fois par trajet, jamais appliquée toute seule. Elle peut être
+  un terminal inconnu d'UEX échoue en silence), une fois par trajet (le serveur retient le trajet : un tableau de bord remonté ne relance pas la recherche sans
+  clic), jamais appliquée toute seule. Elle peut être
   désactivée.
 - **Limite de débit.** UEX est un service partagé. Le serveur répond à une question identique depuis une mémoire de 2
   minutes, partage un seul calcul entre des appels identiques simultanés, et sinon ne lance qu'UN nouveau calcul toutes
   les 8 secondes pour toutes les Views : une demande dans l'intervalle reçoit « attends N s » (un état, pas une erreur ;
-  une recherche automatique réessaie seule au plus deux fois). Le planificateur a sa propre échéance de 20 s, plus courte
-  que l'attente de la page (32 s). Seule la View qui mène appelle le serveur (une View qui suit prend la main quand on
+  une recherche automatique réessaie seule au plus deux fois), et aucun calcul ne démarre tant qu'un autre tourne. Le
+  planificateur a sa propre échéance de 20 s, plus courte que l'attente de la page (32 s). Seule la View qui mène appelle le serveur (une View qui suit prend la main quand on
   appuie sur son bouton). Aucun sondage du planificateur.
 - **Le solde.** *Budget = mon solde* n'existe que tant que le solde est affiché et seulement si vous le cochez. La page
-  envoie alors le nombre au serveur local comme budget avec un indicateur privé ; la réponse ne contient jamais le solde
-  ni le budget, et avec l'indicateur elle ne contient pas de coût. Les chiffres dimensionnés par lui restent sur votre
-  écran : le message à l'agent ne contient alors ni quantité, ni total, ni gain par heure (il dit que le budget est
-  votre solde, non communiqué), rien ne part sur le canal entre Views ni dans le résumé automatique, et les résultats
-  sont oubliés quand vous masquez le solde.
+  envoie alors le nombre comme budget, avec un indicateur privé, dans l'appel d'outil : il passe par l'hôte jusqu'au
+  serveur local, qui ne s'en sert que pour dimensionner les quantités (il n'est jamais envoyé à UEX, et ce tableau de
+  bord ne l'écrit pas dans la conversation). La réponse ne contient jamais le solde ni le budget ; avec l'indicateur, pas
+  de coût, aucune étape ne dit qu'elle est limitée par le budget, et une route appliquée comme plan est marquée privée.
+  Les quantités dimensionnées par le budget restent sur votre écran : le message à l'agent ne contient alors ni
+  quantité, ni total, ni gain par heure (il dit que le budget est votre solde, non communiqué), rien ne part sur le
+  canal entre Views ni dans le résumé automatique, les résultats et un plan privé sont abandonnés quand vous masquez le
+  solde, et un plan privé n'arrive dans la session enregistrée que tant que le solde est affiché. Les identifiants des
+  options sont aléatoires (128 bits) et valables tant que la réponse est gardée (2 minutes).
+- **La soute.** La page n'envoie une soute que si vous en avez tapé une ; sinon le serveur prend celle du vaisseau piloté
+  et la réponse dit d'où elle vient.
 - **Non vérifié.** La limite de temps de l'hôte pour un appel d'outil (la page attend 32 s), le comportement des
   boutons dans Claude Desktop et la qualité de l'heuristique face à la piraterie réelle.
 

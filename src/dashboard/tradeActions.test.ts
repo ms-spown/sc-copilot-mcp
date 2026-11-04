@@ -53,7 +53,14 @@ describe("Feature: the budget and the hold are read strictly", () => {
     });
     const r = tradeBuildRequest(
       "safety",
-      { ...base, avoidPyro: true, reports: true, cargoText: " 96 ", originText: "  Lorville " },
+      {
+        ...base,
+        avoidPyro: true,
+        reports: true,
+        cargoText: " 96 ",
+        cargoTyped: true,
+        originText: "  Lorville ",
+      },
       { balance: null, sheetCargo: 4 },
     );
     expect(r.args).toEqual({
@@ -83,9 +90,10 @@ describe("Feature: the budget and the hold are read strictly", () => {
     const st = { budgetText: "", budgetBalance: false, cargoText: "", originText: "" };
     expect(tradeBuildRequest("profit", { ...st, budgetText: "lots" }, {}).reason).toBe("budget");
     for (const cargo of ["0", "-3", "1.5", "abc", "1234567"]) {
-      expect(tradeBuildRequest("profit", { ...st, cargoText: cargo }, {}).reason, cargo).toBe(
-        "cargo",
-      );
+      expect(
+        tradeBuildRequest("profit", { ...st, cargoText: cargo, cargoTyped: true }, {}).reason,
+        cargo,
+      ).toBe("cargo");
     }
   });
 });
@@ -221,7 +229,8 @@ describe("Feature: the message to the agent is fixed text and never holds the ba
   it("Given a normal card, Then the message names the route, the figures, the estimate and the tools to check with", () => {
     const o = answer().options[0];
     const m = NBSP_FREE(tradeAgentMessage(L, o, view()));
-    expect(m).toContain("Route : Port Tressler → Area18 TDD → Port Tressler.");
+    expect(m).toContain('Route : "Port Tressler" → "Area18 TDD" → "Port Tressler".');
+    expect(m).toContain("Les noms entre guillemets viennent d’UEX");
     expect(m).toContain("Gain estimé : environ 214 368 aUEC par trajet pour 816 SCU");
     expect(m).toContain("c’est une estimation UEX");
     expect(m).toContain("Contraintes choisies : éviter Pyro.");
@@ -244,7 +253,7 @@ describe("Feature: the message to the agent is fixed text and never holds the ba
   it("Given a suggestion for after a run, Then it says where the run ended", () => {
     const o = answer().options[0];
     const m = tradeAgentMessage(L, o, view({ from: "Area18 TDD" }));
-    expect(m).toContain("Je viens de terminer un trajet à Area18 TDD.");
+    expect(m).toContain('Je viens de terminer un trajet à "Area18 TDD".');
   });
 
   it("Given hostile names, Then the message holds no instruction-looking characters", () => {

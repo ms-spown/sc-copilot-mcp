@@ -90,7 +90,7 @@ function candidates(priv: boolean, speed: boolean): SuggestOption[] {
   const m = (v: number | null) => (speed ? v : null);
   return [
     option(
-      "t1-o0",
+      "000000000000000000000000000000a0",
       "round_trip",
       [
         leg("Laranite", "Port Tressler", "Area18 TDD", 189, 457, 696, { arm: false, age: 0.6 }),
@@ -104,7 +104,7 @@ function candidates(priv: boolean, speed: boolean): SuggestOption[] {
       priv,
     ),
     option(
-      "t1-o1",
+      "000000000000000000000000000000a1",
       "one_way",
       [leg("Agricium", "Lorville CBD", "Area18 TDD", 2410, 2790, 400, { age: 1.1 })],
       m(38),
@@ -112,7 +112,7 @@ function candidates(priv: boolean, speed: boolean): SuggestOption[] {
       priv,
     ),
     option(
-      "t1-o2",
+      "000000000000000000000000000000a2",
       "round_trip",
       [
         leg("Gold", "Everus Harbor", "Seraphim Station", 5870, 6210, 300, { age: 2.3 }),
@@ -123,7 +123,7 @@ function candidates(priv: boolean, speed: boolean): SuggestOption[] {
       priv,
     ),
     option(
-      "t1-o3",
+      "000000000000000000000000000000a3",
       "one_way",
       [leg("Quartz", "Magnus Gateway", "Area18 TDD", 1480, 1599, 500, { age: 5.2 })],
       m(52),
@@ -131,7 +131,7 @@ function candidates(priv: boolean, speed: boolean): SuggestOption[] {
       priv,
     ),
     option(
-      "t1-o4",
+      "000000000000000000000000000000a4",
       "round_trip",
       [
         leg("Scrap", "Everus Harbor", "Port Tressler", 1485, 1623, 640, { age: 8.4 }),
@@ -148,7 +148,7 @@ function chains(priv: boolean, speed: boolean): SuggestOption[] {
   const m = (v: number | null) => (speed ? v : null);
   return [
     option(
-      "t1-c0",
+      "000000000000000000000000000000c0",
       "two_leg",
       [
         leg("Laranite", "Port Tressler", "Area18 TDD", 189, 457, 696, { arm: false, age: 0.6 }),
@@ -167,6 +167,9 @@ const KEY: Record<string, (o: SuggestOption) => number> = {
   speed: (o) => o.cycle_minutes ?? 9999,
   safety: (o) => o.safety.points * 1e9 - (o.profit_per_hour ?? o.profit_per_trip),
 };
+
+/** Whether the last search was made with a budget that is the balance (the real server remembers it per plan). */
+let lastSearchPrivate = false;
 
 export interface SuggestFixtureOptions {
   variant?: SuggestVariant;
@@ -190,6 +193,7 @@ export function suggestAnswer(
     return {
       v: 1,
       state: "applied",
+      private: lastSearchPrivate,
       plan: {
         commodity: first.commodity,
         buy_terminal: first.from,
@@ -209,6 +213,7 @@ export function suggestAnswer(
   if (variant === "wait") return { v: 1, state: "throttled", retry_after_s: 6 };
   if (variant === "error") return { v: 1, state: "error", code: "upstream", detail: "HTTP 503" };
   const priv = args["budget_private"] === true;
+  lastSearchPrivate = priv;
   const speed = variant !== "nospeed";
   let list = candidates(priv, speed);
   let chainList = args["round_trip_only"] ? [] : chains(priv, speed);
@@ -236,7 +241,10 @@ export function suggestAnswer(
     chains: chainList,
     counts,
     cargo_scu: typeof args["cargo_scu"] === "number" ? args["cargo_scu"] : 696,
-    cargo_source: typeof args["cargo_scu"] === "number" ? "saisie" : "fiche",
+    // The page sends the hold only when the player typed one; the server's ship has 696 SCU in this made-up world.
+    cargo_source:
+      typeof args["cargo_scu"] === "number" && args["cargo_scu"] !== 696 ? "saisie" : "fiche",
+    private: priv,
     ship: "Hull C",
     speed_known: speed,
     stop_minutes: 8,

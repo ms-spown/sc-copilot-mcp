@@ -119,7 +119,8 @@ export function dashboardTools(
   // The flown ship for the trade suggestions: its class comes from the stream, its wiki sheet from the resolver the
   // poll already uses, its quantum speed and hold from the same lookup uex_plan_trade makes. Server state only: the
   // View never names a ship. Memoised, because the answer for one ship does not change within minutes.
-  const shipMemo = new Map<string, { at: number; ship: FlownShip | null }>();
+  // The promise is what is remembered: N simultaneous calls make one lookup, not N.
+  const shipMemo = new Map<string, { at: number; ship: Promise<FlownShip | null> }>();
   const flownShip = async (): Promise<FlownShip | null> => {
     const snapshot = await telemetry?.snapshot();
     const className = snapshot?.state.ship?.class_name;
@@ -128,20 +129,23 @@ export function dashboardTools(
     if (!sheet || sheet.status !== "ready" || !sheet.name) return null;
     const held = shipMemo.get(sheet.name);
     if (held && Date.now() - held.at < SHIP_MEMO_MS) return held.ship;
-    let ship: FlownShip | null;
-    try {
-      const found = await fetchShipSheet(uexClient, scwClient, sheet.name);
-      ship = {
-        name: sheet.name,
-        cargoScu: found.cargo_scu ?? sheet.cargo_scu ?? null,
-        quantumSpeedMs: found.quantum_speed_ms,
-      };
-    } catch {
-      // A sheet that cannot be matched in UEX still gives a hold; the planner then says the speed is unknown.
-      ship = { name: sheet.name, cargoScu: sheet.cargo_scu ?? null, quantumSpeedMs: null };
-    }
-    shipMemo.set(sheet.name, { at: Date.now(), ship });
-    return ship;
+    const name = sheet.name;
+    const wikiCargo = sheet.cargo_scu ?? null;
+    const lookup = (async (): Promise<FlownShip | null> => {
+      try {
+        const found = await fetchShipSheet(uexClient, scwClient, name);
+        return {
+          name,
+          cargoScu: found.cargo_scu ?? wikiCargo,
+          quantumSpeedMs: found.quantum_speed_ms,
+        };
+      } catch {
+        // A sheet that cannot be matched in UEX still gives a hold; the planner then says the speed is unknown.
+        return { name, cargoScu: wikiCargo, quantumSpeedMs: null };
+      }
+    })();
+    shipMemo.set(name, { at: Date.now(), ship: lookup });
+    return lookup;
   };
   const suggestions = new TradeSuggestService({
     plan:
@@ -160,10 +164,11 @@ export function dashboardTools(
       }
     },
     // The same two places as the plan Claude passes when it opens the dashboard: the commerce card's figures and the
-    // persistent session, which marks the trip that follows with the planned profit.
-    applyPlan: (plan) => {
+    // persistent session, which marks the trip that follows with the planned profit. A plan built from the player's
+    // balance (its quantity and profit give the budget away) reaches the saved session only while the balance is shown.
+    applyPlan: (plan, info) => {
       service.setPlan(plan);
-      sessions?.setPlan(plan);
+      if (!info.private || info.withBalance) sessions?.setPlan(plan);
     },
     ...(overrides.now ? { now: overrides.now } : {}),
     ...(overrides.minIntervalMs !== undefined ? { minIntervalMs: overrides.minIntervalMs } : {}),
@@ -392,7 +397,21 @@ export function dashboardTools(
             type: "boolean",
             description: "Use the flown ship's quantum speed and hold (search). Default true.",
           },
-          id: { type: "string", description: "The id of an option, to apply as the plan (apply)." },
+          next_run: {
+            type: "string",
+            maxLength: 40,
+            description:
+              "The id of the completed run this suggestion is for: computed once per run (search).",
+          },
+          id: {
+            type: "string",
+            description: "The random id of an option, to apply as the plan (apply).",
+          },
+          with_balance: {
+            type: "boolean",
+            description:
+              "The balance is shown: a plan built from it may reach the saved session (apply).",
+          },
         },
         required: ["action"],
       },

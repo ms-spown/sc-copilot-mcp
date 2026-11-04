@@ -135,6 +135,7 @@ function service(
     ship?: FlownShip | null;
     now?: { t: number };
     applied?: any[];
+    infos?: any[];
   } = {},
 ) {
   const clock = options.now ?? { t: 1_000_000 };
@@ -147,7 +148,10 @@ function service(
     },
     ship: async () => (options.ship === undefined ? SHIP : options.ship),
     resolveOrigin: async (text) => resolveOriginHint({ byTerminal: new Map() }, text),
-    applyPlan: (p) => options.applied?.push(p),
+    applyPlan: (p, info) => {
+      options.applied?.push(p);
+      options.infos?.push(info);
+    },
     now: () => clock.t,
   });
   const ask = async (input: Record<string, unknown>): Promise<SuggestAnswer> => {
@@ -185,7 +189,11 @@ describe("Feature: the input is validated before anything is asked", () => {
     expect(parse({ action: "search", min_reports: 99 })).toBe(false);
     expect(parse({ action: "search", origin: "x".repeat(81) })).toBe(false);
     expect(parse({ action: "search", avoid_pyro: "yes" })).toBe(false);
-    expect(parse({ action: "apply", id: "k-o3" })).toBe(true);
+    expect(parse({ action: "apply", id: "000000000000000000000000000000a0" })).toBe(true);
+    expect(parse({ action: "apply", id: "1-o0" })).toBe(false); // the old sequential ids are gone
+    expect(
+      parse({ action: "apply", id: "000000000000000000000000000000a0", with_balance: true }),
+    ).toBe(true);
     expect(parse({ action: "apply", id: "../etc" })).toBe(false);
     expect(parse({ action: "apply" })).toBe(false);
     expect(parse({})).toBe(false);
@@ -213,7 +221,9 @@ describe("Feature: the answer is compact, bounded and clean", () => {
       safety: { heuristic: true, exposure: "lower", points: 1 },
     });
     // the ids are what "apply" takes
-    expect(a.options.map((o: any) => o.id)).toEqual(["1-o0", "1-o1", "1-o2", "1-o3", "1-o4"]);
+    const ids = [...a.options, ...a.chains].map((o: any) => o.id);
+    expect(ids.every((id: string) => /^[a-f0-9]{32}$/.test(id))).toBe(true);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it("Given 'round trip only', Then the chains are left out", async () => {
@@ -281,6 +291,7 @@ describe("Feature: the answer is compact, bounded and clean", () => {
         "objective",
         "options",
         "partial",
+        "private",
         "reports_incomplete",
         "ship",
         "speed_known",
@@ -461,8 +472,9 @@ describe("Feature: apply as plan, by id", () => {
   it("Given an option, When applied, Then the plan is the outbound leg, cleaned, and stored on the dashboard", async () => {
     const applied: any[] = [];
     const { svc, ask } = service({ applied });
-    await ask({ cargo_scu: 100 });
-    const answer = await svc.handle(suggestInputSchema.parse({ action: "apply", id: "1-o0" }));
+    const found = (await ask({ cargo_scu: 100 })) as any;
+    const firstId: string = found.options[0].id;
+    const answer = await svc.handle(suggestInputSchema.parse({ action: "apply", id: firstId }));
     expect(answer.state).toBe("applied");
     expect(applied).toHaveLength(1);
     expect(applied[0]).toMatchObject({
@@ -482,9 +494,180 @@ describe("Feature: apply as plan, by id", () => {
   it("Given an unknown id, Then nothing is applied", async () => {
     const applied: any[] = [];
     const { svc } = service({ applied });
-    const answer = await svc.handle(suggestInputSchema.parse({ action: "apply", id: "9-o0" }));
+    const answer = await svc.handle(
+      suggestInputSchema.parse({ action: "apply", id: "ffffffffffffffffffffffffffffffff" }),
+    );
     expect(answer).toEqual({ v: 1, state: "error", code: "expired" });
     expect(applied).toEqual([]);
+  });
+});
+
+describe("Feature: a plan cannot be guessed and does not outlive its answer", () => {
+  it("Given a caller that enumerates ids, Then every guess is refused and nothing is applied", async () => {
+    const applied: any[] = [];
+    const { svc, ask } = service({ applied });
+    const found = (await ask({ cargo_scu: 100 })) as any;
+    const real = new Set([...found.options, ...found.chains].map((o: any) => o.id));
+    const guesses = [
+      ...Array.from({ length: 300 }, (_, i) => i.toString(16).padStart(32, "0")),
+      ...Array.from(
+        { length: 300 },
+        (_, i) => `${(i + 1).toString(16)}${"0".repeat(31 - String(i).length)}`,
+      ),
+    ].filter((g) => /^[a-f0-9]{32}$/.test(g) && !real.has(g));
+    for (const id of guesses) {
+      const a = await svc.handle(suggestInputSchema.parse({ action: "apply", id }));
+      expect(a).toEqual({ v: 1, state: "error", code: "expired" });
+    }
+    expect(applied).toEqual([]);
+  });
+
+  it("Given two searches, Then their ids differ (random, not a counter)", async () => {
+    const { ask, clock } = service();
+    const one = (await ask({ cargo_scu: 100 })) as any;
+    clock.t += 10 * SECOND;
+    const two = (await ask({ cargo_scu: 100, avoid_pyro: true })) as any;
+    const ids = [...one.options, ...two.options].map((o: any) => o.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("Given the cache TTL has passed, Then the ids are refused too", async () => {
+    const applied: any[] = [];
+    const { svc, ask, clock } = service({ applied });
+    const found = (await ask({ cargo_scu: 100 })) as any;
+    const id = found.options[0].id;
+    clock.t += 119 * SECOND;
+    expect((await svc.handle(suggestInputSchema.parse({ action: "apply", id }))).state).toBe(
+      "applied",
+    );
+    clock.t += 2 * SECOND;
+    expect(await svc.handle(suggestInputSchema.parse({ action: "apply", id }))).toEqual({
+      v: 1,
+      state: "error",
+      code: "expired",
+    });
+    expect(applied).toHaveLength(1);
+  });
+});
+
+describe("Feature: a plan built from the balance stays private", () => {
+  const budgetLimited = async () => {
+    const o = fakeOption(0);
+    o.legs[0]!.limited_by = "budget";
+    o.legs[1]!.limited_by = "stock";
+    return fakeResult({ options: [o], chains: [fakeOption(1, { mode: "two_leg" })] });
+  };
+
+  it("Given a private budget, Then no leg says it is limited by the budget, and the answer says it is private", async () => {
+    const { ask } = service({ plan: budgetLimited });
+    const a = (await ask({ cargo_scu: 100, budget: 1_234_561, budget_private: true })) as any;
+    expect(a.private).toBe(true);
+    expect(a.options[0].legs[0].limited_by).toBe("hidden");
+    expect(a.options[0].legs[1].limited_by).toBe("stock");
+    expect(JSON.stringify(a)).not.toContain('"budget"');
+    expect(JSON.stringify(a)).not.toContain("1234561");
+  });
+
+  it("Given a typed budget, Then the legs say it (it is the player's own number, not the balance)", async () => {
+    const { ask } = service({ plan: budgetLimited });
+    const a = (await ask({ cargo_scu: 100, budget: 500_000 })) as any;
+    expect(a.private).toBe(false);
+    expect(a.options[0].legs[0].limited_by).toBe("budget");
+  });
+
+  it("Given a private plan is applied, Then the answer and the application say it is private, and whether the balance is shown", async () => {
+    const infos: any[] = [];
+    const { svc, ask } = service({ plan: budgetLimited, infos });
+    const found = (await ask({ cargo_scu: 100, budget: 1_234_561, budget_private: true })) as any;
+    const id = found.options[0].id;
+    const hidden = (await svc.handle(suggestInputSchema.parse({ action: "apply", id }))) as any;
+    expect(hidden).toMatchObject({ state: "applied", private: true });
+    const shown = (await svc.handle(
+      suggestInputSchema.parse({ action: "apply", id, with_balance: true }),
+    )) as any;
+    expect(shown.private).toBe(true);
+    expect(infos).toEqual([
+      { private: true, withBalance: false },
+      { private: true, withBalance: true },
+    ]);
+  });
+
+  it("Given a plan from a typed budget, Then it is not private", async () => {
+    const infos: any[] = [];
+    const { svc, ask } = service({ infos });
+    const found = (await ask({ cargo_scu: 100, budget: 500_000 })) as any;
+    const a = (await svc.handle(
+      suggestInputSchema.parse({ action: "apply", id: found.options[0].id }),
+    )) as any;
+    expect(a.private).toBe(false);
+    expect(infos[0]).toEqual({ private: false, withBalance: false });
+  });
+});
+
+describe("Feature: where the hold comes from is said right", () => {
+  it("Given no typed hold, Then it is the ship's; a typed one equal to the ship's is still the ship's; another is typed", async () => {
+    const { ask, clock } = service();
+    expect(((await ask({})) as any).cargo_source).toBe("fiche");
+    clock.t += 10 * SECOND;
+    expect(((await ask({ cargo_scu: 4 })) as any).cargo_source).toBe("fiche");
+    clock.t += 10 * SECOND;
+    expect(((await ask({ cargo_scu: 96 })) as any).cargo_source).toBe("saisie");
+  });
+});
+
+describe("Feature: a slow planner cannot pile up runs", () => {
+  it("Given a run in progress for a long time, Then a different question waits even after the interval", async () => {
+    let release: (r: TripPlanResult) => void = () => undefined;
+    const { ask, requests, clock } = service({
+      plan: () => new Promise<TripPlanResult>((resolve) => (release = resolve)),
+    });
+    const first = ask({ cargo_scu: 100 });
+    await new Promise((r) => setImmediate(r));
+    clock.t += 24 * SECOND;
+    const second = await ask({ cargo_scu: 100, budget: 1_000_000 });
+    const third = await ask({ cargo_scu: 100, budget: 2_000_000 });
+    expect(second).toMatchObject({ state: "throttled" });
+    expect(third).toMatchObject({ state: "throttled" });
+    expect(requests).toHaveLength(1);
+    release(fakeResult());
+    await first;
+  });
+});
+
+describe("Feature: a suggestion for a completed run is computed once, whoever asks", () => {
+  it("Given the same run id twice, Then the second (a View mounted again) gets 'done' and no planner run", async () => {
+    const { ask, requests, clock } = service();
+    const a = await ask({
+      cargo_scu: 100,
+      origin: "Area18 TDD",
+      next_run: "2026-11-04T11:40:00.000Z",
+    });
+    expect(a.state).toBe("ok");
+    clock.t += 30 * SECOND;
+    const b = await ask({
+      cargo_scu: 100,
+      origin: "Area18 TDD",
+      next_run: "2026-11-04T11:40:00.000Z",
+    });
+    expect(b).toEqual({ v: 1, state: "error", code: "done" });
+    expect(requests).toHaveLength(1);
+    // another run is another suggestion
+    const c = await ask({
+      cargo_scu: 100,
+      origin: "Area18 TDD",
+      next_run: "2026-11-04T12:40:00.000Z",
+    });
+    expect(c.state).toBe("ok");
+  });
+
+  it("Given a throttled or impossible call, Then the run is not marked (the View may try again)", async () => {
+    const { ask, clock } = service({ ship: null });
+    expect((await ask({ next_run: "r1" })).state).toBe("error"); // no hold
+    expect((await ask({ cargo_scu: 5, next_run: "r1" })).state).toBe("ok");
+    clock.t += 1 * SECOND;
+    expect((await ask({ cargo_scu: 6, next_run: "r2" })).state).toBe("throttled");
+    clock.t += 9 * SECOND;
+    expect((await ask({ cargo_scu: 6, next_run: "r2" })).state).toBe("ok");
   });
 });
 
@@ -572,6 +755,39 @@ describe("Feature: the tool, as the registry lists and runs it", () => {
     expect(applied.structuredContent.state).toBe("applied");
     expect(setPlan).toHaveBeenCalledTimes(1);
     expect(setPlan.mock.calls[0]![0]).toMatchObject({ commodity: "Laranite 0", scu: 100 });
+  });
+
+  it("Given a plan built from the balance, Then the saved session gets it only while the balance is shown", async () => {
+    const setPlan = vi.fn();
+    const tools = dashboardTools(
+      {
+        telemetry: telemetry(true),
+        uexClient: empty,
+        scwClient: empty,
+        sessions: { setPlan } as any,
+      },
+      { plan: vi.fn(async () => fakeResult()), now: () => 5_000_000, minIntervalMs: 0 },
+    );
+    const registry = createRegistry(tools);
+    const search = async (extra: Record<string, unknown>) =>
+      (
+        (await registry.call("sc_trade_suggest", {
+          action: "search",
+          cargo_scu: 100,
+          use_ship: false,
+          ...extra,
+        })) as any
+      ).structuredContent;
+    const priv = await search({ budget: 1_234_561, budget_private: true });
+    const apply = async (id: string, extra: Record<string, unknown> = {}) =>
+      (await registry.call("sc_trade_suggest", { action: "apply", id, ...extra })) as any;
+    expect((await apply(priv.options[0].id)).structuredContent.private).toBe(true);
+    expect(setPlan).not.toHaveBeenCalled();
+    await apply(priv.options[1].id, { with_balance: true });
+    expect(setPlan).toHaveBeenCalledTimes(1);
+    const plain = await search({ budget: 500_000 });
+    await apply(plain.options[0].id);
+    expect(setPlan).toHaveBeenCalledTimes(2);
   });
 
   it("Given an invalid input, Then it is an error result and the planner is not asked", async () => {

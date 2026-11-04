@@ -1,4 +1,5 @@
 import axios from "axios";
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { cleanLabel } from "../core/untrusted.js";
 import type { PlaceIndex } from "../providers/uex/places.js";
@@ -43,8 +44,9 @@ export const SUGGEST_VIEW_TIMEOUT_MS = 32_000;
 export const SUGGEST_MAX_OPTIONS = 5;
 export const SUGGEST_MAX_CHAINS = 3;
 const MAX_CACHE_ENTRIES = 12;
-// 12 cached answers of at most 8 options each: an id never expires while its answer is still served from memory.
+// 12 cached answers of at most 8 options each, and no more: a plan lives as long as its answer (the cache TTL).
 const MAX_PLANS = 160;
+const MAX_NEXT_RUNS = 64;
 const NAME_MAX = 60;
 const NOTE_MAX = 200;
 
@@ -64,6 +66,14 @@ const searchSchema = z
     /** The budget is derived from the player's balance: the answer then carries no cost and nothing derived is shared. */
     budget_private: z.boolean().optional(),
     cargo_scu: z.number().int().min(1).max(100_000).optional(),
+    /**
+     * "Et ensuite ?": the id of the run this suggestion is for. The server remembers it, so a View that is mounted
+     * again (the host remounts iframes) does not search a second time for the same run.
+     */
+    next_run: z
+      .string()
+      .regex(/^[0-9A-Za-z:.+-]{1,40}$/)
+      .optional(),
     origin: z.string().max(80).optional(),
     /** Use the flown ship's quantum speed (and hold, when no cargo_scu is given). Default true. */
     use_ship: z.boolean().optional(),
@@ -73,7 +83,10 @@ const searchSchema = z
 const applySchema = z
   .object({
     action: z.literal("apply"),
-    id: z.string().regex(/^[a-z0-9]{1,12}-[oc][0-9]$/),
+    /** 128 random bits (see TradeSuggestService.option): not guessable, not sequential. */
+    id: z.string().regex(/^[a-f0-9]{32}$/),
+    /** The balance is shown in the View: a plan built from the balance may then reach the saved session. */
+    with_balance: z.boolean().optional(),
   })
   .strict();
 
@@ -94,7 +107,8 @@ export interface SuggestLeg {
   sell_price: number;
   profit_per_scu: number;
   scu: number;
-  limited_by: "cargo" | "budget" | "stock";
+  /** "hidden" when the budget is the player's balance: that a leg is limited by it would reveal it. */
+  limited_by: "cargo" | "budget" | "stock" | "hidden";
   /** Oldest of the two prices, in days (null: UEX gives no date). */
   age_days: number | null;
   report_status: "reported" | "estimate" | "unverified";
@@ -103,7 +117,7 @@ export interface SuggestLeg {
 }
 
 export interface SuggestOption {
-  /** Opaque, valid for "apply" while the answer is in this server's memory. */
+  /** Random (128 bits), valid for "apply" for as long as the answer is in this server's memory (the cache TTL). */
   id: string;
   mode: "one_way" | "round_trip" | "two_leg";
   /** "A → B → A" (cycle) or "A → B → C" (chain). */
@@ -139,7 +153,10 @@ export interface SuggestOk {
   chains: SuggestOption[];
   counts: { reported: number; estimate: number; unverified: number };
   cargo_scu: number;
+  /** "fiche": the hold of the flown ship (sent or not by the page); "saisie": a hold the player typed. */
   cargo_source: "saisie" | "fiche";
+  /** The budget is the player's balance: quantities and totals below are for his screen only. */
+  private: boolean;
   ship: string | null;
   /** Whether a quantum speed was known: without one, hourly figures and the order by time are not available. */
   speed_known: boolean;
@@ -163,7 +180,14 @@ export interface SuggestThrottled {
 }
 
 export type SuggestErrorCode =
-  "no_cargo" | "bad_origin" | "armistice_unavailable" | "upstream" | "expired" | "off" | "other";
+  | "no_cargo"
+  | "bad_origin"
+  | "armistice_unavailable"
+  | "upstream"
+  | "expired"
+  | "off"
+  | "done"
+  | "other";
 
 export interface SuggestError {
   v: 1;
@@ -176,6 +200,8 @@ export interface SuggestApplied {
   v: 1;
   state: "applied";
   plan: Plan;
+  /** Built from a budget that is the player's balance: the View hides it, and drops it, when the balance is hidden. */
+  private: boolean;
 }
 
 export type SuggestAnswer = SuggestOk | SuggestThrottled | SuggestError | SuggestApplied;
@@ -198,8 +224,11 @@ export interface SuggestDeps {
   ship: () => Promise<FlownShip | null>;
   /** From the text of the player to the planner's origin hint. */
   resolveOrigin: (text: string) => Promise<NonNullable<TripRequest["origin"]>>;
-  /** Stores the plan in the dashboard service (memory only). */
-  applyPlan: (plan: Plan) => void;
+  /**
+   * Stores the plan (memory only): in the dashboard service always, and in the saved session unless the plan is
+   * private and the balance is not shown.
+   */
+  applyPlan: (plan: Plan, info: { private: boolean; withBalance: boolean }) => void;
   now?: () => number;
   minIntervalMs?: number;
   cacheTtlMs?: number;
@@ -231,12 +260,19 @@ interface CacheEntry {
   ok: SuggestOk;
 }
 
+interface StoredPlan {
+  plan: Plan;
+  priv: boolean;
+  at: number;
+}
+
 export class TradeSuggestService {
   private readonly cache = new Map<string, CacheEntry>();
   private readonly inFlight = new Map<string, Promise<SuggestAnswer>>();
-  private readonly plans = new Map<string, Plan>();
+  private readonly plans = new Map<string, StoredPlan>();
+  /** Runs an "Et ensuite ?" suggestion was already computed for (bounded, memory only). */
+  private readonly nextRuns = new Set<string>();
   private lastStartAt = Number.NEGATIVE_INFINITY;
-  private seq = 0;
   private readonly now: () => number;
   private readonly minInterval: number;
   private readonly ttl: number;
@@ -249,18 +285,41 @@ export class TradeSuggestService {
 
   /** Runs one validated input. Never throws: every failure is a state of the answer. */
   async handle(input: SuggestInput): Promise<SuggestAnswer> {
-    if (input.action === "apply") return this.apply(input.id);
+    this.prune();
+    if (input.action === "apply") return this.apply(input.id, input.with_balance === true);
     return this.search(input);
   }
 
-  private apply(id: string): SuggestAnswer {
-    const plan = this.plans.get(id);
-    if (!plan) return { v: 1, state: "error", code: "expired" };
-    this.deps.applyPlan(plan);
-    return { v: 1, state: "applied", plan };
+  /** Plans live as long as the cached answers they come from. */
+  private prune(): void {
+    const t = this.now();
+    for (const [id, p] of this.plans) {
+      if (t - p.at < 0 || t - p.at >= this.ttl) this.plans.delete(id);
+    }
+  }
+
+  private apply(id: string, withBalance: boolean): SuggestAnswer {
+    const held = this.plans.get(id);
+    if (!held) return { v: 1, state: "error", code: "expired" };
+    this.deps.applyPlan(held.plan, { private: held.priv, withBalance });
+    return { v: 1, state: "applied", plan: held.plan, private: held.priv };
+  }
+
+  private markNext(runId: string | undefined): void {
+    if (!runId) return;
+    this.nextRuns.add(runId);
+    while (this.nextRuns.size > MAX_NEXT_RUNS) {
+      const oldest = this.nextRuns.values().next().value;
+      if (oldest === undefined) break;
+      this.nextRuns.delete(oldest);
+    }
   }
 
   private async search(input: SearchInput): Promise<SuggestAnswer> {
+    // A suggestion for a completed run is computed once, whichever View asks (and however often it is mounted).
+    if (input.next_run && this.nextRuns.has(input.next_run)) {
+      return { v: 1, state: "error", code: "done" };
+    }
     const ship = input.use_ship === false ? null : await this.deps.ship().catch(() => null);
     // No hold size: nothing to ask UEX, and nothing that should count toward the interval.
     const cargo = input.cargo_scu ?? ship?.cargoScu ?? undefined;
@@ -271,25 +330,29 @@ export class TradeSuggestService {
     // 1. the short cache
     const held = this.cache.get(key);
     if (held && t - held.at >= 0 && t - held.at < this.ttl) {
+      this.markNext(input.next_run);
       return { ...held.ok, cached: true, age_s: Math.round((t - held.at) / 1000) };
     }
     if (held) this.cache.delete(key);
 
     // 2. an identical run in progress is joined
     const running = this.inFlight.get(key);
-    if (running) return running;
+    if (running) {
+      this.markNext(input.next_run);
+      return running;
+    }
 
-    // 3. at most one new planner run per interval, for everybody
+    // 3. at most one new planner run per interval, for everybody, and none while another is still running (a slow
+    // planner must not let several runs for different questions pile up)
     const sinceStart = t - this.lastStartAt;
-    if (sinceStart >= 0 && sinceStart < this.minInterval) {
-      return {
-        v: 1,
-        state: "throttled",
-        retry_after_s: Math.max(1, Math.ceil((this.minInterval - sinceStart) / 1000)),
-      };
+    const busy = this.inFlight.size > 0;
+    if (busy || (sinceStart >= 0 && sinceStart < this.minInterval)) {
+      const wait = Math.ceil((this.minInterval - Math.max(0, sinceStart)) / 1000);
+      return { v: 1, state: "throttled", retry_after_s: Math.max(busy ? 3 : 1, wait) };
     }
 
     // 4. start
+    this.markNext(input.next_run);
     this.lastStartAt = t;
     const job = this.run(input, ship, key, cargo).finally(() => {
       this.inFlight.delete(key);
@@ -337,16 +400,17 @@ export class TradeSuggestService {
         limit: 8,
       };
       const result = await this.deps.plan(req);
-      const ok = this.shape(result, input, ship, cargo);
-      this.remember(key, ok);
+      const at = this.now();
+      const ok = this.shape(result, input, ship, cargo, at);
+      this.remember(key, ok, at);
       return ok;
     } catch (error) {
       return failure(error);
     }
   }
 
-  private remember(key: string, ok: SuggestOk): void {
-    this.cache.set(key, { at: this.now(), ok });
+  private remember(key: string, ok: SuggestOk, at: number): void {
+    this.cache.set(key, { at, ok });
     while (this.cache.size > MAX_CACHE_ENTRIES) {
       const oldest = this.cache.keys().next().value;
       if (oldest === undefined) break;
@@ -359,17 +423,13 @@ export class TradeSuggestService {
     input: SearchInput,
     ship: FlownShip | null,
     cargo: number,
+    at: number,
   ): SuggestOk {
-    const batch = (++this.seq).toString(36);
     const priv = input.budget_private === true;
-    const options = res.options
-      .slice(0, SUGGEST_MAX_OPTIONS)
-      .map((o, i) => this.option(o, `${batch}-o${i}`, priv));
+    const options = res.options.slice(0, SUGGEST_MAX_OPTIONS).map((o) => this.option(o, priv, at));
     const chains = input.round_trip_only
       ? []
-      : res.chains
-          .slice(0, SUGGEST_MAX_CHAINS)
-          .map((o, i) => this.option(o, `${batch}-c${i}`, priv));
+      : res.chains.slice(0, SUGGEST_MAX_CHAINS).map((o) => this.option(o, priv, at));
     const counts = { reported: 0, estimate: 0, unverified: 0 };
     for (const o of [...options, ...chains]) counts[o.report_status]++;
     const notes = res.notes
@@ -385,7 +445,10 @@ export class TradeSuggestService {
       chains,
       counts,
       cargo_scu: cargo,
-      cargo_source: input.cargo_scu !== undefined ? "saisie" : "fiche",
+      // The page sends the hold only when the player typed one; a typed hold equal to the ship's is still the ship's.
+      cargo_source:
+        input.cargo_scu !== undefined && input.cargo_scu !== ship?.cargoScu ? "saisie" : "fiche",
+      private: priv,
       ship: ship ? cleanLabel(ship.name, NAME_MAX) : null,
       speed_known: speedKnown,
       stop_minutes: res.time_model.stop_minutes,
@@ -400,7 +463,8 @@ export class TradeSuggestService {
     };
   }
 
-  private option(o: TripOption, id: string, priv: boolean): SuggestOption {
+  private option(o: TripOption, priv: boolean, at: number): SuggestOption {
+    const id = randomBytes(16).toString("hex");
     const legs: SuggestLeg[] = o.legs.slice(0, 2).map((l) => {
       const ages = [l.price_age_days.buy, l.price_age_days.sell].filter(
         (a): a is number => a !== null,
@@ -414,7 +478,7 @@ export class TradeSuggestService {
         sell_price: l.sell_price,
         profit_per_scu: l.profit_per_scu,
         scu: l.scu,
-        limited_by: l.limited_by,
+        limited_by: priv && l.limited_by === "budget" ? "hidden" : l.limited_by,
         age_days: ages.length ? Math.max(...ages) : null,
         report_status: l.report_status,
         armistice: { from: l.from.armistice_zone, to: l.to.armistice_zone },
@@ -450,12 +514,12 @@ export class TradeSuggestService {
       },
       ...(priv ? {} : { cost: o.trip.peak_investment }),
     };
-    this.storePlan(id, option);
+    this.storePlan(id, option, priv, at);
     return option;
   }
 
   /** The plan "apply" will use: the outbound leg (a plan holds one commodity), the return named in the note. */
-  private storePlan(id: string, o: SuggestOption): void {
+  private storePlan(id: string, o: SuggestOption, priv: boolean, at: number): void {
     const leg = o.legs[0];
     if (!leg) return;
     const second = o.legs[1];
@@ -478,7 +542,7 @@ export class TradeSuggestService {
       note,
     });
     if (!plan) return;
-    this.plans.set(id, plan);
+    this.plans.set(id, { plan, priv, at });
     while (this.plans.size > MAX_PLANS) {
       const oldest = this.plans.keys().next().value;
       if (oldest === undefined) break;

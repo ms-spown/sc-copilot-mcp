@@ -677,7 +677,9 @@ For the dashboard View only, not for the model: ranks trade routes for the comme
 | `cargo_scu` | number | no | Hold size in SCU (search). |
 | `origin` | string | no | Where to start: a terminal, planet or system name (search). |
 | `use_ship` | boolean | no | Use the flown ship's quantum speed and hold (search). Default true. |
-| `id` | string | no | The id of an option, to apply as the plan (apply). |
+| `next_run` | string | no | The id of the completed run this suggestion is for: computed once per run (search). |
+| `id` | string | no | The random id of an option, to apply as the plan (apply). |
+| `with_balance` | boolean | no | The balance is shown: a plan built from it may reach the saved session (apply). |
 
 ### sc_session_current
 

@@ -604,17 +604,25 @@ nothing is asked.
 - **Et ensuite ?** When a run completes (less than 30 minutes ago), one suggestion is computed from where it ended: the
   selling terminal of the plan in force (the journal's shop names are game identifiers that UEX does not know, so
   without a plan nothing is asked: apply a route as the plan to get the follow-up; a terminal UEX does not know fails
-  quietly), once per run, never applied by itself. It can be switched off.
+  quietly), once per run (the server remembers the run, so a dashboard mounted again does not search again without a
+  click), never applied by itself. It can be switched off.
 - **Rate limit.** UEX is a shared service. The server answers an identical question from a 2-minute memory, shares one
   planner run between identical simultaneous calls, and otherwise starts at most ONE new planner run every 8 seconds for
   all Views: a request inside the interval gets "attends N s" (a state, not an error; an automatic re-search retries
-  by itself at most twice). The planner has its own 20 s deadline, shorter than the page's 32 s wait. Only the leading
+  by itself at most twice), and none starts while another is still running. The planner has its own 20 s deadline,
+  shorter than the page's 32 s wait. Only the leading
   View calls the server (a following View takes the lead when its button is pressed). There is no polling of the planner.
 - **The balance.** *Budget = mon solde* exists only while the balance is shown and only if you tick it. The page then
-  sends the number to the local server as the budget with a private flag; the answer never contains the balance or the
-  budget, and with the flag it carries no cost. The figures sized by it stay on your screen: the message to the agent
-  then holds no quantity, total or hourly figure (it says the budget is your balance, not communicated), nothing goes on
-  the channel between Views or into the automatic summary, and the results are forgotten when you hide the balance.
+  sends the number as the budget, with a private flag, in the tool call: it passes through the host to the local server,
+  which uses it only to size the quantities (it is never sent to UEX, and this dashboard does not write it in the
+  conversation). The answer never contains the balance or the budget; with the flag it carries no cost, no leg says it
+  is limited by the budget, and a route applied as the plan is marked private. The quantities sized by the budget stay
+  on your screen: the message to the agent then holds no quantity, total or hourly figure (it says the budget is your
+  balance, not communicated), nothing goes on the channel between Views or into the automatic summary, the results and
+  a private plan are dropped when you hide the balance, and a private plan reaches the saved session only while the
+  balance is shown. The option ids are random (128 bits) and valid as long as the answer is kept (2 minutes).
+- **The hold.** The page sends a hold only when you typed one; otherwise the server uses the flown ship's and the answer
+  says where it comes from.
 - **Not verified.** The host's own time limit for a tool call (the page waits 32 s), the behaviour of the buttons in
   Claude Desktop, and the quality of the heuristic against real piracy.
 

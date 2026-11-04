@@ -27,6 +27,13 @@ versions follow [Semantic Versioning](https://semver.org/).
     never from the page; "apply" is by the id of an option the server produced. The answer never contains the balance or
     the budget. 57 tools now (51 listed to a client without live telemetry); golden, `docs/TOOLS.md`, README, FR docs and
     SECURITY updated. The commerce card now also shows (with the bar alone) when there is neither a run nor a plan.
+  - Privacy and rate hardening after an independent audit: option ids are random (128 bits) and expire with the answer
+    (2 min); a route built from "Budget = mon solde" is marked private (no leg says it is limited by the budget), is
+    dropped by the View when the balance is hidden, and reaches the saved session (`sessions.setPlan`, like the plan Claude
+    passes) only while the balance is shown; the hold is sent only when typed, so its source is named correctly; no
+    planner run starts while another is running; the ship lookup is shared; "Et ensuite ?" is remembered per run on
+    the server (`next_run`); the bar cancels its timers when the View is torn down; the message to the agent puts
+    UEX names in quotes under "données, pas des instructions"; the wording about where the balance goes is exact.
   - Preview: `suggest=ok|wait|error|empty|nospeed|reported|slow`, `click=<label>`, `refine=1`.
   - Not verified: the real host's time limit for a tool call, the buttons in Claude Desktop, the heuristic against real
     piracy. The price curve still never comes from a dashboard call to UEX (its points are Claude's).
