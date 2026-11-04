@@ -177,7 +177,11 @@ describe("Feature: the rows say what is wired, per combination", () => {
     for (const showBalance of [false, true]) {
       const row = rowsFor("ok", {}, { showBalance }).find((r: any) => r.id === "balance");
       expect(row.detail).toContain(showBalance ? "Masquer le solde" : "Afficher le solde");
-      expect(row.detail).toContain(showBalance ? "retire d’ici" : "cet écran seulement");
+      expect(row.detail).toContain(
+        showBalance ? "ET des outils de Claude" : "pour les outils de Claude",
+      );
+      expect(row.detail).toContain("mémoire du serveur");
+      expect(row.detail).not.toContain("s’il les demande");
       // Said in both states: Claude's tools give the amounts too unless the server starts hidden.
       expect(row.detail).toContain("SC_BALANCE=hidden");
       expect(row.detail).toContain("fichier local");

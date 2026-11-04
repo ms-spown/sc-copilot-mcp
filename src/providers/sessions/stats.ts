@@ -1,3 +1,4 @@
+import { HIDDEN_NOTE } from "../../core/balance.js";
 import type { Session, ShipLossRecord, Trip } from "./types.js";
 
 /**
@@ -288,8 +289,7 @@ export function withoutMoney<T extends { money: unknown }>(
   return { ...summary, money: "withheld" };
 }
 
-export const MONEY_WITHHELD_NOTE =
-  "aUEC figures (balances, results, turnover, rates) are hidden: the player chose that (include_balance=false, or SC_BALANCE=hidden in the server's setup). Do not work around it; pass include_balance=true only if the player asks to see amounts.";
+export const MONEY_WITHHELD_NOTE = `${HIDDEN_NOTE} aUEC figures (balances, results, turnover, rates) are hidden.`;
 
 // -------------------------------------------------------------------------------------------------
 // Across sessions

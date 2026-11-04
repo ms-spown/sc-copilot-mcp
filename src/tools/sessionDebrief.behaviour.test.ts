@@ -211,7 +211,7 @@ describe("Feature: the model gets a small report, with the amounts unless the pl
       expect(md.length).toBeLessThanOrEqual(DEBRIEF_FOR_MODEL.maxChars);
       expect(data.data.money_included).toBe(false);
       expect(data.data.balances_included).toBe(false);
-      expect(data.data.money_note).toContain("the player chose that");
+      expect(data.data.money_note).toContain("Montants masqués par le joueur");
       expect(data.data.csv).toBeUndefined();
       // no instruction inside the data (the envelope tells the model not to follow any)
       expect(text).not.toMatch(/note_for_the_model|code block|Give the report/);

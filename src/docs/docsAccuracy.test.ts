@@ -257,9 +257,9 @@ describe("Feature: the English and French pages state the same things", () => {
 
 /** The reviewed sentence about what stays in memory and what is saved. Change it here and in every page below. */
 const PRIVACY_EN =
-  "Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; ship losses: time, model, cause, place, presumed cargo (SCU and aUEC paid); and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (money figures included, unless you hide them: `include_balance` false, or `SC_BALANCE=hidden` in the server's entry); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it.";
+  'Frames and raw log lines stay in memory and are never written. The one exception is the session summary: the balance at the start and at the last sighting; the game version, the times (including how long the game was seen running) and the breaks; the last place and goods the log named; your note; the count of refused prices; ship losses: time, model, cause, place, presumed cargo (SCU and aUEC paid); and, for each trip, its label (contract title, places, goods), quantity, cost, revenue, margin, fees, net and the applied plan (planned profit, quantity, terminals). It is kept in a local file, `sessions.json`, only when telemetry is on; this server never sends it anywhere, except that the `sc_session_*` tools return parts of it to your MCP client, and so to your conversation (money figures included, unless you hide them: "Masquer le solde" in the dashboard or `SC_BALANCE=hidden` hides them from the tools until you click "Afficher le solde", and `include_balance` false hides them from one call); `SC_SESSIONS=off` disables it; and deleting `sessions.json` and the `.bak` and `.corrupt` copies next to it erases it.';
 const PRIVACY_FR =
-  "Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais écrites. La seule exception est le résumé de session : le solde au départ et à la dernière observation ; la version du jeu, les heures (dont la durée pendant laquelle le jeu a été vu en marche) et les coupures ; le dernier lieu et les dernières marchandises nommés par le journal ; votre note ; le nombre de prix refusés ; pertes de vaisseau : heure, modèle, cause, lieu, cargo présumé (SCU et aUEC payés) ; et, pour chaque trajet, son libellé (titre du contrat, lieux, marchandises), la quantité, le coût, le revenu, la marge, les frais, le net et le plan appliqué (profit prévu, quantité, terminaux). Il est gardé dans un fichier local, `sessions.json`, seulement quand la télémétrie est activée ; ce serveur ne l'envoie jamais nulle part, sauf que les outils `sc_session_*` en renvoient des parties à votre client MCP, donc à votre conversation (chiffres d'argent compris, sauf si vous les masquez : `include_balance` à false, ou `SC_BALANCE=hidden` dans l'entrée du serveur) ; `SC_SESSIONS=off` le désactive ; et supprimer `sessions.json` ainsi que les copies `.bak` et `.corrupt` à côté de lui l'efface.";
+  "Les trames et les lignes brutes du journal restent en mémoire et ne sont jamais écrites. La seule exception est le résumé de session : le solde au départ et à la dernière observation ; la version du jeu, les heures (dont la durée pendant laquelle le jeu a été vu en marche) et les coupures ; le dernier lieu et les dernières marchandises nommés par le journal ; votre note ; le nombre de prix refusés ; pertes de vaisseau : heure, modèle, cause, lieu, cargo présumé (SCU et aUEC payés) ; et, pour chaque trajet, son libellé (titre du contrat, lieux, marchandises), la quantité, le coût, le revenu, la marge, les frais, le net et le plan appliqué (profit prévu, quantité, terminaux). Il est gardé dans un fichier local, `sessions.json`, seulement quand la télémétrie est activée ; ce serveur ne l'envoie jamais nulle part, sauf que les outils `sc_session_*` en renvoient des parties à votre client MCP, donc à votre conversation (chiffres d'argent compris, sauf si vous les masquez : « Masquer le solde » dans le tableau de bord ou `SC_BALANCE=hidden` les cache aux outils jusqu'à votre clic sur « Afficher le solde », et `include_balance` à false les cache pour un appel) ; `SC_SESSIONS=off` le désactive ; et supprimer `sessions.json` ainsi que les copies `.bak` et `.corrupt` à côté de lui l'efface.";
 
 /**
  * The same sentence as rule 5 of the block pasted into Claude: no backticks (the block is a code fence) and addressed to
@@ -621,6 +621,14 @@ describe("Feature: the documentation says the aUEC amounts are shown by default,
     "docs/ARCHITECTURE.md",
     "docs/USING_WITH_CLAUDE.md",
     "docs/USING_WITH_CLAUDE.fr.md",
+    "docs/TROUBLESHOOTING.md",
+    "CONTRIBUTING.md",
+    "src/prompts.ts",
+    "src/instructions.ts",
+    "src/tools/telemetry.ts",
+    "src/tools/sessions.ts",
+    "src/tools/sessionDebrief.ts",
+    "src/tools/tradejournal.ts",
   ];
 
   it("Given every page, Then none still says the amounts are hidden by default or until the player shows them", () => {
@@ -629,7 +637,16 @@ describe("Feature: the documentation says the aUEC amounts are shown by default,
       /masqué par défaut/i,
       /balance (stays|is) hidden until/i,
       /reste masqué tant que/i,
-      /ask(ing)? the player first/i,
+      /ask(ing)? (the player|me|you) first/i,
+      /ask me before/i,
+      /withheld unless/i,
+      /only after (asking|I agree|you agree|the player agree)/i,
+      /only if I agree/i,
+      /demand\w* d['’]abord/i,
+      /sans votre accord/i,
+      /avant l['’]accord du joueur/i,
+      /seulement apr\S+s (avoir demand|accord)/i,
+      /ne le (redemandez|contournez) pas sauf/i,
     ];
     for (const file of pages) {
       const text = flat(read(file));

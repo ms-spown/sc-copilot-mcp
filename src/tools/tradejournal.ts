@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { wantsBalance, type BalancePolicy } from "../core/balance.js";
+import { HIDDEN_NOTE, wantsBalance, type BalancePolicy } from "../core/balance.js";
 import type { HttpClient } from "../core/http.js";
 import { formatOutputRaw } from "../core/format.js";
 import { addNote } from "../core/provenance.js";
@@ -63,8 +63,7 @@ const MONEY_KEYS_RUN = [
 const without = <T extends object>(value: T, keys: readonly string[]): T =>
   Object.fromEntries(Object.entries(value).filter(([k]) => !keys.includes(k))) as T;
 
-export const JOURNAL_AMOUNTS_WITHHELD_NOTE =
-  "aUEC amounts (line totals, unit prices, cost, revenue, gross margin, spending) are hidden, like the figures of the session tools: the player chose that (include_balance=false, or SC_BALANCE=hidden in the server's setup). Counts, SCU, kinds, statuses and categories are shown. Do not work around it; pass include_balance=true only if the player asks to see amounts.";
+export const JOURNAL_AMOUNTS_WITHHELD_NOTE = `${HIDDEN_NOTE} aUEC amounts (line totals, unit prices, cost, revenue, gross margin, spending) are hidden; counts, SCU, kinds, statuses and categories are shown.`;
 
 export function tradeJournalTools({
   gameLog,

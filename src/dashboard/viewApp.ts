@@ -10,8 +10,10 @@
  *   - the View answers {} to ping and ui/resource-teardown;
  *   - it never polls while hidden, off screen, torn down or retired, nor faster than 2 Hz;
  *   - the balance is shown by default (the player's choice); the server starts it hidden with SC_BALANCE=hidden, and the
- *     player hides or shows it with the toggle. Every poll states the choice (include_balance true or false). Only the
- *     explicit "route" action sends the balance to the conversation.
+ *     player hides or shows it with the toggle. A CLICK is sent to the server once (balance_choice) and is sticky there: it
+ *     protects the tools too. Ordinary polls only state include_balance (to draw) and never change the server's choice; the
+ *     server's answer (balance_state) is what this View follows (the last click, in any dashboard, wins). Only the explicit
+ *     "route" action sends the balance to the conversation, for that one message (balance_once).
  */
 export function dashboardMain(win: any, doc: any, L: any): any {
   const cfg = L.viewConfig();
@@ -31,6 +33,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
   let showBalance = false;
   let balancePref: boolean | null = null;
   let balanceStart = false;
+  // A click not yet delivered to the server, and a counter that tells a poll sent before a click from one sent after it.
+  let pendingChoice: string | null = null;
+  let choiceVersion = 0;
   let hidden = !!doc.hidden;
   let offscreen = false;
   let awaySince: number | null = hidden ? clock() : null;
@@ -1487,6 +1492,7 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     const bal = balanceInfo(p);
     setRow(R.sesBalance, bal ? L.fmtAuec(bal.uec) + "\u00a0aUEC" : showBalance ? "—" : "masqué");
     setText(R.btnBalance2, showBalance ? "Masquer" : "Afficher le solde");
+    setAttr(R.btnBalance2, "aria-label", showBalance ? "Masquer le solde" : "Afficher le solde");
     show(R.sesDelta.root, !!bal);
     show(R.sesRate.root, !!bal);
     if (bal) {
@@ -1751,7 +1757,9 @@ export function dashboardMain(win: any, doc: any, L: any): any {
 
   function pollOnce(): Promise<void> {
     if (inFlight) return inFlight;
-    const args: any = L.pollArguments(view, showBalance);
+    const sentChoice = pendingChoice;
+    const sentVersion = choiceVersion;
+    const args: any = L.pollArguments(view, showBalance, sentChoice);
     lastPollAt = clock();
     const run = (async () => {
       try {
@@ -1759,6 +1767,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
         const sc = r && r.structuredContent;
         if (!r || r.isError || !sc || typeof sc !== "object") throw new Error("réponse vide");
         view = L.reducePoll(view, sc, clock());
+        if (sentChoice !== null && sentVersion === choiceVersion) pendingChoice = null;
+        followServer(sc, sentVersion);
         share();
       } catch (err: any) {
         view = L.reducePollError(view, err && err.message ? err.message : "erreur", clock());
@@ -1771,10 +1781,40 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     return run;
   }
 
-  /** A poll that carries the balance: one already in flight was asked without it, so ask again if needed. */
+  /** A poll that carries the balance or a click: one already in flight was asked without it, so ask again if needed. */
   async function pollWithBalance() {
     await pollOnce();
-    if (showBalance && !(view.poll && view.poll.balance)) await pollOnce();
+    if (pendingChoice !== null || (showBalance && !(view.poll && view.poll.balance))) {
+      await pollOnce();
+    }
+  }
+
+  /**
+   * The server's balance choice, from a poll answer: the last click in any dashboard wins, and a mask is sticky. It is
+   * ignored while this View has a click to deliver or clicked since that poll was sent.
+   */
+  function followServer(sc: any, sentVersion: number) {
+    const state = sc && sc.balance_state;
+    if ((state !== "shown" && state !== "hidden") || pendingChoice !== null) return;
+    if (sentVersion !== choiceVersion) return;
+    balancePref = state === "shown";
+    const was = showBalance;
+    syncBalance();
+    if (was && !showBalance) forgetBalance();
+  }
+
+  /** Hidden: forget the balance and everything derived from it held here (the next answers will not carry it). */
+  function forgetBalance() {
+    if (!view.poll) return;
+    view = Object.assign({}, view, {
+      poll: Object.assign({}, view.poll, {
+        balance: undefined,
+        ledger: L.ledgerStripBalance(view.poll.ledger),
+        sessions: L.sessionBarStripBalance(view.poll.sessions),
+      }),
+      // The hash held for the ledger stood for the version with amounts: forget it, the next answer brings the plain one.
+      hash: Object.assign({}, view.hash, { ledger: undefined }),
+    });
   }
 
   function stopTimers() {
@@ -2112,12 +2152,15 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     try {
       let balance: any;
       if (kind === "route") {
-        // The button says it sends the balance: that click is the player's explicit choice.
-        balancePref = true;
-        showBalance = true;
-        await pollWithBalance();
-        render();
-        balance = view.poll && view.poll.balance ? view.poll.balance.uec : undefined;
+        // The button says it sends the balance: that click is the player's explicit choice, for this message only. The
+        // answer is used for the message and kept nowhere: it changes neither the server's choice nor this screen.
+        const r = await request("tools/call", {
+          name: "sc_live_poll",
+          arguments: { include_balance: true, balance_once: true },
+        });
+        const sc = r && !r.isError ? r.structuredContent : null;
+        balance =
+          sc && sc.balance && typeof sc.balance.uec === "number" ? sc.balance.uec : undefined;
       }
       const vehicle = view.poll && view.poll.ship ? view.poll.ship.name : "";
       const text = L.actionMessage(kind, { vehicle, balance });
@@ -2180,20 +2223,13 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     if (isFollower()) takeLead();
     showBalance = !showBalance;
     balancePref = showBalance;
-    if (!showBalance && view.poll) {
-      // Hidden again: forget it here too. The next answers will not carry it.
-      view = Object.assign({}, view, {
-        poll: Object.assign({}, view.poll, {
-          balance: undefined,
-          ledger: L.ledgerStripBalance(view.poll.ledger),
-          sessions: L.sessionBarStripBalance(view.poll.sessions),
-        }),
-        // The hash held for the ledger stood for the version with amounts: forget it, the next answer brings the plain one.
-        hash: Object.assign({}, view.hash, { ledger: undefined }),
-      });
-    }
+    // The click is sent to the server with the next poll, which remembers it (sticky, memory only).
+    pendingChoice = showBalance ? "shown" : "hidden";
+    choiceVersion++;
+    // Hidden again: forget it here too. The next answers will not carry it.
+    if (!showBalance) forgetBalance();
     render();
-    if (showBalance) void pollWithBalance().then(render);
+    void pollWithBalance().then(render);
   }
 
   async function requestMode(mode: string) {

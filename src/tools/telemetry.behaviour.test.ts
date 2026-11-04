@@ -217,7 +217,7 @@ describe("Feature: reading the live game through the tools", () => {
         expect(json.data.limits.join(" ")).toMatch(/position/);
         expect(json.provenance).toMatchObject({ kind: "local_telemetry" });
         expect(text).not.toContain("987654321");
-        expect(json.data.uec_balance).toMatch(/hidden by the player's choice/);
+        expect(json.data.uec_balance).toMatch(/Montants masqués par le joueur/);
         expect(text).not.toContain("uec_session");
       },
     );
@@ -356,7 +356,7 @@ describe("Feature: reading the live game through the tools", () => {
       "Given balance-change events and $label, Then sc_live_events leaves them out",
       async (mode) => {
         const clock = manualClock();
-        const { call, untilConnected, send } = await liveWorld(clock, mode.policy);
+        const { call, telemetry, untilConnected, send } = await liveWorld(clock, mode.policy);
         await untilConnected();
         await send(frame(actorField({ uec: 1000, health: 100 })));
         clock.t += 20;
@@ -365,17 +365,12 @@ describe("Feature: reading the live game through the tools", () => {
         clock.t += 5200;
         await send(frame(actorField({ uec: 400, health: 100 })));
         await waitFor(async () => {
-          const all = (await call("sc_live_events", { include_balance: true })).json.data.events;
+          const all = (await telemetry.events(0, 100)).events;
           return all.some((e: { type: string }) => e.type === "uec_changed");
         }, "uec_changed");
         const hidden = (await call("sc_live_events", mode.args)).json;
         expect(JSON.stringify(hidden.data.events)).not.toContain("uec_changed");
         expect(hidden.text ?? JSON.stringify(hidden)).not.toContain("400");
-        const shown = (await call("sc_live_events", { include_balance: true })).json.data.events;
-        expect(shown.find((e: { type: string }) => e.type === "uec_changed").data).toMatchObject({
-          delta: "-600",
-          balance: 400,
-        });
       },
     );
 
@@ -421,7 +416,7 @@ describe("Feature: reading the live game through the tools", () => {
       "Given the newest event is a hidden balance event and $label, When limit is 1, Then the newest allowed event is still returned",
       async (mode) => {
         const clock = manualClock();
-        const { call, untilConnected, send } = await liveWorld(clock, mode.policy);
+        const { call, telemetry, untilConnected, send } = await liveWorld(clock, mode.policy);
         await untilConnected();
         await send(frame(actorField({ uec: 100, health: 100, intoxication: 0 })));
         clock.t += 20;
@@ -431,7 +426,7 @@ describe("Feature: reading the live game through the tools", () => {
         clock.t += 5200;
         await send(frame(actorField({ uec: 50, health: 100, intoxication: 3 }))); // uec_changed (newest)
         await waitFor(async () => {
-          const all = (await call("sc_live_events", { include_balance: true })).json.data.events;
+          const all = (await telemetry.events(0, 100)).events;
           return all.some((e: { type: string }) => e.type === "uec_changed");
         }, "uec_changed");
         const { json } = await call("sc_live_events", { limit: 1, ...mode.args });

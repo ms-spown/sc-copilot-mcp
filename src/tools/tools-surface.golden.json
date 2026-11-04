@@ -326,7 +326,19 @@
       "properties": {
         "include_balance": {
           "type": "boolean",
-          "description": "Include the aUEC balance and its change. Default true; false hides it."
+          "description": "Include the aUEC balance and its change. Default true; false hides it. Ignored (hidden) while the player's choice is hidden."
+        },
+        "balance_choice": {
+          "type": "string",
+          "enum": [
+            "hidden",
+            "shown"
+          ],
+          "description": "Only after a CLICK of the player on the balance toggle: the server remembers it (memory only)."
+        },
+        "balance_once": {
+          "type": "boolean",
+          "description": "With include_balance true: the balance for this answer only, for the route button the player pressed. Changes no choice."
         },
         "include_static": {
           "type": "boolean",

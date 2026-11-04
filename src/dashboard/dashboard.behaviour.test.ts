@@ -338,7 +338,13 @@ describe("Feature: the poll answers many Views for the price of one", () => {
         call("sc_live_poll", { include_balance: true }),
         call("sc_live_poll", mode.args),
       ]);
-      expect(withBalance.sc!["balance"]).toMatchObject({ uec: 424242 });
+      // Hidden by the server's setting, an explicit include_balance true is ignored: the mask is not liftable by a call.
+      if (mode.policy?.hiddenByDefault || mode.policy?.playerChoice === "hidden") {
+        expect(withBalance.sc).not.toHaveProperty("balance");
+        expect(JSON.stringify(withBalance.sc)).not.toContain("424242");
+      } else {
+        expect(withBalance.sc!["balance"]).toMatchObject({ uec: 424242 });
+      }
       expect(without.sc).not.toHaveProperty("balance");
       expect(JSON.stringify(without.sc)).not.toContain("424242");
       // The text of the answer never carries data, so it cannot carry the balance either.
@@ -361,17 +367,81 @@ describe("Feature: the poll answers many Views for the price of one", () => {
     expect(JSON.stringify(hid.sc)).not.toContain("424242");
   });
 
-  it("Given SC_BALANCE=hidden, Then the View can still show the balance by saying so (its toggle), and the page starts hidden", async () => {
+  it("Given SC_BALANCE=hidden, Then the page starts hidden, a poll's include_balance true is ignored, and only a CLICK (balance_choice shown) lifts the mask", async () => {
     const { game, call, untilState, client } = await liveWorld({ hiddenByDefault: true });
     await untilState("connected");
     game.send(
       frame(vehicleField({ name: "DRAK_Cutter_1" }), actorField({ health: 80, uec: 424242 })),
     );
     await untilState("live");
-    const shown = await call("sc_live_poll", { include_balance: true });
-    expect(shown.sc!["balance"]).toMatchObject({ uec: 424242 });
-    const read = await client.readResource({ uri: DASHBOARD_URI });
-    expect((read.contents[0] as { text: string }).text).toContain('data-balance="hidden"');
+    const page = async () =>
+      ((await client.readResource({ uri: DASHBOARD_URI })).contents[0] as { text: string }).text;
+    expect(await page()).toContain('data-balance="hidden"');
+    const ignored = await call("sc_live_poll", { include_balance: true });
+    expect(ignored.sc).not.toHaveProperty("balance");
+    expect(ignored.sc!["balance_state"]).toBe("hidden");
+    const clicked = await call("sc_live_poll", { include_balance: true, balance_choice: "shown" });
+    expect(clicked.sc!["balance"]).toMatchObject({ uec: 424242 });
+    expect(clicked.sc!["balance_state"]).toBe("shown");
+    expect(await page()).toContain('data-balance="shown"');
+  });
+
+  /** The tools as the model calls them (no UI), after the player's clicks in the dashboard, end to end. */
+  describe("Scenario: the dashboard's toggle protects the tools", () => {
+    const BAL = "424242";
+    async function played() {
+      // One policy object for the process: the tools and the dashboard share it, as src/index.ts does.
+      const w = await liveWorld({ hiddenByDefault: false, playerChoice: null });
+      await w.untilState("connected");
+      w.game.send(
+        frame(
+          vehicleField({ name: "DRAK_Cutter_1" }),
+          actorField({ health: 80, uec: Number(BAL) }),
+        ),
+      );
+      await w.untilState("live");
+      return w;
+    }
+    const state = async (w: Awaited<ReturnType<typeof played>>, args = {}) =>
+      (await w.call("sc_live_state", args)).text;
+
+    it("Given the player clicks 'Masquer le solde', Then a tool with no argument and one with include_balance true give no amount, with the note; and 'Afficher le solde' gives them back", async () => {
+      const w = await played();
+      expect(await state(w)).toContain(BAL); // shown by default
+      const hid = await w.call("sc_live_poll", {
+        include_balance: false,
+        balance_choice: "hidden",
+      });
+      expect(hid.sc!["balance_state"]).toBe("hidden");
+      for (const args of [{}, { include_balance: true }]) {
+        const text = await state(w, args);
+        expect(text, JSON.stringify(args)).not.toContain(BAL);
+        expect(text).not.toContain("uec_session");
+        expect(text).toContain("Montants masqués par le joueur");
+        expect(text).toContain("Afficher le solde");
+      }
+      // an ordinary poll from another dashboard asking for the balance changes nothing
+      const other = await w.call("sc_live_poll", { include_balance: true });
+      expect(other.sc).not.toHaveProperty("balance");
+      expect(await state(w, { include_balance: true })).not.toContain(BAL);
+      // the route button's one-off gives it for that answer only
+      const once = await w.call("sc_live_poll", { include_balance: true, balance_once: true });
+      expect(once.sc!["balance"]).toMatchObject({ uec: 424242 });
+      expect(await state(w)).not.toContain(BAL);
+      // the player clicks 'Afficher le solde'
+      await w.call("sc_live_poll", { include_balance: true, balance_choice: "shown" });
+      expect(await state(w)).toContain(BAL);
+      expect(await state(w, { include_balance: true })).toContain(BAL);
+    });
+
+    it("Given the last click wins, Then a later 'Masquer' from another dashboard hides again", async () => {
+      const w = await played();
+      await w.call("sc_live_poll", { balance_choice: "hidden" });
+      await w.call("sc_live_poll", { balance_choice: "shown" });
+      expect(await state(w)).toContain(BAL);
+      await w.call("sc_live_poll", { balance_choice: "hidden" });
+      expect(await state(w)).not.toContain(BAL);
+    });
   });
 });
 

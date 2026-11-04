@@ -115,7 +115,7 @@ function rig(enabled = true, extraTrip?: TripInput, balance?: BalancePolicy) {
     const r = await registry.call(name, args);
     return { r, text: r.content[0].text, data: JSON.parse(r.content[0].text) };
   };
-  return { registry, manager, play, call, tel, clock };
+  return { registry, manager, play, call, tel, clock, policy: balance };
 }
 
 describe("Feature: the tools are there only when sessions are on", () => {
@@ -190,6 +190,8 @@ describe("Feature: sc_session_current gives what Claude needs to accompany the p
       expect(hidden.text).not.toMatch(/111111|123456|234567/);
       expect(JSON.stringify(hidden.r.structuredContent)).not.toMatch(/111111|123456|234567/);
       expect(hidden.data.data.recent_trips[1].commodity).toBe("Waste");
+      // the positive control: the player clicks Afficher (lifts any mask), then the same figures come out
+      if (t.policy) t.policy.playerChoice = "shown";
       const shown = await t.call("sc_session_current", { include_balance: true });
       expect(shown.data.data.session.money.gross_margin_auec).toBe(111_111);
       expect(shown.data.data.recent_trips[1].gross_margin_auec).toBe(111_111);
@@ -234,6 +236,8 @@ describe("Feature: sc_session_current gives what Claude needs to accompany the p
       });
       expect(hidden.text).not.toMatch(/estime|7777|4321/);
       expect(JSON.stringify(hidden.r.structuredContent)).not.toMatch(/estime|7777|4321/);
+      // the positive control: the player clicks Afficher (lifts any mask), then the same figures come out
+      if (t.policy) t.policy.playerChoice = "shown";
       const shown = await t.call("sc_session_current", { include_balance: true });
       expect(shown.data.data.recent_trips[1]).toMatchObject({
         fees_method: "estime",
@@ -293,7 +297,7 @@ describe("Feature: list and stats show the figures by default and leak none when
         expect(text, name).not.toContain(String(BALANCE));
         expect(text, name).not.toContain("41000");
         expect(text, name).toContain("hidden");
-        expect(text, name).toContain("the player chose that");
+        expect(text, name).toContain("Montants masqués par le joueur");
         expect(JSON.stringify(r.structuredContent), name).not.toContain("41000");
       }
     },

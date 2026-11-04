@@ -178,8 +178,8 @@ describe("Feature: sc_trade_journal", () => {
         expect(text).not.toMatch(AMOUNT_KEYS);
         for (const amount of AMOUNTS) expect(text, String(amount)).not.toContain(String(amount));
         const out = JSON.parse(text);
-        expect(out.data.money_note).toMatch(/the player chose that/);
-        expect(out.data.money_note).toMatch(/include_balance=true only if the player asks/);
+        expect(out.data.money_note).toMatch(/Montants masqués par le joueur/);
+        expect(out.data.money_note).toMatch(/include_balance=true est ignoré/);
       },
     );
 
@@ -236,13 +236,16 @@ describe("Feature: sc_trade_journal", () => {
       },
     );
 
-    it("Given SC_BALANCE=hidden and include_balance true, Then the explicit choice shows the amounts (the old consent path)", async () => {
-      const { registry } = world(TRIP, () => wikiPage([{ uuid: WASTE, name: "Waste" }]), {
-        hiddenByDefault: true,
-      });
-      const text = (await registry.call("sc_trade_journal", { include_balance: true })).content[0]
-        .text;
-      expect(text).toContain("120923");
+    it("Given SC_BALANCE=hidden, Then include_balance true is ignored, and only the player's click on Afficher gives the amounts", async () => {
+      const policy = { hiddenByDefault: true, playerChoice: null as "hidden" | "shown" | null };
+      const { registry } = world(TRIP, () => wikiPage([{ uuid: WASTE, name: "Waste" }]), policy);
+      const ignored = (await registry.call("sc_trade_journal", { include_balance: true }))
+        .content[0].text;
+      expect(ignored).not.toContain("120923");
+      expect(ignored).toContain("Montants masqués par le joueur");
+      policy.playerChoice = "shown";
+      const lifted = (await registry.call("sc_trade_journal", {})).content[0].text;
+      expect(lifted).toContain("120923");
     });
   });
 

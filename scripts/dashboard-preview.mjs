@@ -124,6 +124,8 @@ const suggestVariant = q.get("suggest") ?? "ok";
 const preflightVariant = q.get("preflight") ?? "valid";
 host = createFakeHost({
   scenario,
+  // the server's balance choice: hidden=1 plays a server started with SC_BALANCE=hidden
+  balanceServer: { hidden: q.get("hidden") === "1" },
   theme: $("theme").value,
   deliver,
   suggest: (args) => {
@@ -219,7 +221,7 @@ frame.addEventListener("load", () => {
 });
 // balance=1: press "Afficher le solde" in the page, as the player would (the preview frame is same-origin).
 if (q.get("balance")) frame.addEventListener("load", () => setTimeout(() => {
-  const b = [...frame.contentDocument.querySelectorAll("button")].find((x) => x.textContent === "Afficher le solde");
+  const b = [...frame.contentDocument.querySelectorAll("button")].find((x) => x.textContent === "Afficher le solde" && x.offsetParent !== null);
   if (b) b.click();
 }, 1200));
 // click=<label>, refine=1, card=1: drive the page the way the player would (same-origin frame).

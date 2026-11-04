@@ -1013,7 +1013,7 @@ export function buildDebrief(sessions: readonly Session[], options: DebriefOptio
     );
   else
     tail.push(
-      "- Ce bilan ne contient aucun montant en aUEC : réafficher les montants dans le tableau de bord (bouton « Afficher le solde »), ou include_balance=true, pour l’obtenir avec les chiffres d’argent.",
+      "- Ce bilan ne contient aucun montant en aUEC : les montants étaient masqués au moment de l’export.",
     );
   tail.push(
     "- Le serveur n’enregistre aucun pseudo, identifiant de compte, adresse, GUID, ligne brute du journal ni chemin ; les libellés des trajets et la note du joueur sont repris tels que saisis, après nettoyage, et leur contenu n’est pas contrôlé : relis-les avant de partager.",

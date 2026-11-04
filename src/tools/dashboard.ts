@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { wantsBalance, type BalancePolicy } from "../core/balance.js";
+import { balanceHidden, wantsBalance, type BalancePolicy } from "../core/balance.js";
 import {
   DASHBOARD_URI,
   PLAN_PRICE_POINTS_MAX,
@@ -79,7 +79,7 @@ export function dashboardResources({
       advertised: () => telemetry?.enabled === true,
       contentMeta: { ui: { prefersBorder: false } },
       // The page carries the server's start choice for the balance (shown unless SC_BALANCE=hidden).
-      text: () => dashboardHtml({ balanceHidden: balance?.hiddenByDefault === true }),
+      text: () => dashboardHtml({ balanceHidden: balanceHidden(balance) }),
     },
   ];
 }
@@ -136,6 +136,8 @@ export function dashboardTools(
     },
   );
   const enabled = () => telemetry?.enabled === true;
+  // The server's runtime balance choice. Without one passed (some tests), a private one: shown, until a click.
+  const policy: BalancePolicy = balance ?? { hiddenByDefault: false, playerChoice: null };
 
   // The flown ship for the trade suggestions: its class comes from the stream, its wiki sheet from the resolver the
   // poll already uses, its quantum speed and hold from the same lookup uex_plan_trade makes. Server state only: the
@@ -293,13 +295,25 @@ export function dashboardTools(
     {
       name: "sc_live_poll",
       description:
-        "For the dashboard View only, not for the model: current telemetry state, recent events and session counters as structured content, refreshed by the View about once a second (answers are shared for half a second). Never starts the reader while telemetry is off. The balance is included unless include_balance is false (the View sends the player's choice; absent follows the server's start choice). Use sc_live_state instead.",
+        "For the dashboard View only, not for the model: current telemetry state, recent events and session counters as structured content, refreshed by the View about once a second (answers are shared for half a second). Never starts the reader while telemetry is off. The balance is included unless it is hidden (a click of the player, or SC_BALANCE=hidden) or include_balance is false. balance_choice records a CLICK of the player (hidden or shown, held in memory, the last click wins); balance_once gives the balance for one answer to the route button only. Reports balance_state. Use sc_live_state instead.",
       inputSchema: {
         type: "object",
         properties: {
           include_balance: {
             type: "boolean",
-            description: "Include the aUEC balance and its change. Default true; false hides it.",
+            description:
+              "Include the aUEC balance and its change. Default true; false hides it. Ignored (hidden) while the player's choice is hidden.",
+          },
+          balance_choice: {
+            type: "string",
+            enum: ["hidden", "shown"],
+            description:
+              "Only after a CLICK of the player on the balance toggle: the server remembers it (memory only).",
+          },
+          balance_once: {
+            type: "boolean",
+            description:
+              "With include_balance true: the balance for this answer only, for the route button the player pressed. Changes no choice.",
           },
           include_static: {
             type: "boolean",
@@ -328,9 +342,11 @@ export function dashboardTools(
       meta: APP_ONLY_META,
       handler: async (args: unknown): Promise<ToolResult> => {
         const hash = z.string().regex(/^[0-9a-f]{1,16}$/);
-        const { include_balance, include_static, since_seq, have } = z
+        const { include_balance, balance_choice, balance_once, include_static, since_seq, have } = z
           .object({
             include_balance: z.boolean().optional(),
+            balance_choice: z.enum(["hidden", "shown"]).optional(),
+            balance_once: z.boolean().optional(),
             include_static: z.boolean().optional(),
             since_seq: z.number().int().min(0).max(1e12).optional(),
             have: z
@@ -344,8 +360,12 @@ export function dashboardTools(
               .optional(),
           })
           .parse(args || {});
+        // A click of the player is the only thing that changes the choice (an ordinary poll never does: two Views
+        // polling once a second would fight over it). The last click wins.
+        if (balance_choice) policy.playerChoice = balance_choice;
+        const once = balance_once === true && include_balance === true;
         const result = await service.poll({
-          includeBalance: wantsBalance(include_balance, balance) && enabled(),
+          includeBalance: (once || wantsBalance(include_balance, policy)) && enabled(),
           ...(include_static === true ? { includeStatic: true } : {}),
           ...(since_seq !== undefined ? { sinceSeq: since_seq } : {}),
           ...(have ? { have } : {}),
@@ -353,7 +373,11 @@ export function dashboardTools(
         return {
           // Fixed text on purpose: the data is in structuredContent, and no balance can leak into the text.
           content: [{ type: "text", text: `live dashboard poll: ${result.state}` }],
-          structuredContent: result as unknown as Record<string, unknown>,
+          // The View reads the server's choice here (on mounting, and after another dashboard's click).
+          structuredContent: {
+            ...(result as unknown as Record<string, unknown>),
+            balance_state: balanceHidden(policy) ? "hidden" : "shown",
+          },
         };
       },
     },

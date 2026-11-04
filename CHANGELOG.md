@@ -11,29 +11,39 @@ versions follow [Semantic Versioning](https://semver.org/).
   rates, route reliability, balance movements, aUEC paid for lost cargo, the trade journal's amounts, session reports) reached the
   model and the dashboard only with `include_balance` / the "Afficher le solde" click, after asking the player. They are now
   SHOWN by default; hiding is the opt-in, and the masking feature is kept in full. The earlier rule in `CLAUDE.md` and
-  `SECURITY.md` was a decision of the owner that his new decision replaces.
-- **Three ways to hide**: `include_balance: false` on a tool call; the dashboard's "Masquer le solde" toggle (the page then asks
-  for no amount, in the poll and in the session calls it makes); and the new server setting **`SC_BALANCE=hidden`** in the
-  entry of the server (the dashboard starts hidden and a tool call that does not say otherwise is answered without amounts; an
-  explicit `include_balance: true` still shows them, so a prompt written for 2.5 keeps working; a value it does not know hides
-  and says so on stderr). Hiding in the dashboard does not stop Claude's tools from giving amounts: only `SC_BALANCE=hidden` or
-  `include_balance: false` does, and the docs and the health strip say so.
-- **Honest wording.** When the amounts are shown they reach the model and the conversation: that is the player's choice. What
-  does not change: the server sends nothing over a network; no handle, account id, GUID of a player or a game session, or raw
-  frame is ever stored; sessions are local summaries; the balance is never in `ui/update-model-context`, in the fixed messages
-  (except the route button the player presses) or on the channel between Views; `include_start_balance` of the reports stays a
-  separate explicit choice, false by default.
-- **What changed in the code.** `core/balance.ts` resolves the choice once per call (an explicit true or false wins, otherwise
-  the start choice) for `sc_live_state`, `sc_live_events`, `sc_live_poll`, `sc_session_current`, `sc_session_list`,
+  `SECURITY.md` was a decision of the owner that his new decision replaces. **This can surprise players who pasted the old
+  Claude block (it told Claude to ask first): recopy the block of `docs/USING_WITH_CLAUDE(.fr).md`.**
+- **Hiding is sticky and protects Claude's tools too.** (1) The dashboard's "Masquer le solde": the page sends the click to
+  the server once (`balance_choice` on `sc_live_poll`), and from then on `sc_live_state`, `sc_live_events`, `sc_session_*` and
+  `sc_trade_journal` answer without amounts, with a note saying the player hid them, until the player clicks "Afficher le
+  solde". (2) `SC_BALANCE=hidden` in the server's entry does the same permanently, and the dashboard starts hidden. (3)
+  `include_balance: false` hides one call. While the amounts are hidden an explicit `include_balance: true` from the model
+  is IGNORED (an instruction hidden in a UEX name or a journal note must not be able to reveal them); while they are shown it
+  is harmless, so a prompt written for 2.5 keeps working. The last click wins between dashboards; every dashboard follows the
+  server's state (a new one reads it on mounting). A click on "Afficher le solde" lifts the mask for the running process,
+  even over `SC_BALANCE=hidden`. A value of `SC_BALANCE` it does not know hides and says so on stderr.
+- **Limits, said plainly.** The click is held in the memory of the server process only, never in a file: a restart forgets
+  it (the health strip and the docs say so; `SC_BALANCE=hidden` is the permanent way), and one server process is shared by the
+  conversations that use it. When the amounts are shown they reach the model and the conversation: the player's choice.
+  What does not change: the server sends nothing over a network; no handle, account id, GUID of a player or a game session,
+  or raw frame is ever stored; sessions are local summaries; the balance is never in `ui/update-model-context`, in the fixed
+  messages (except the route button the player presses, which gives it for that one message and changes nothing else) or on
+  the channel between Views; `include_start_balance` of the reports stays a separate explicit choice, false by default.
+- **What changed in the code.** `core/balance.ts` holds one `BalancePolicy` per process (start choice and the player's click) and
+  resolves the choice once per call for `sc_live_state`, `sc_live_events`, `sc_live_poll`, `sc_session_current`, `sc_session_list`,
   `sc_session_stats`, `sc_session_debrief`, `sc_session_export` and `sc_trade_journal` (schemas and descriptions changed: the
-  golden file and `docs/TOOLS.md` are regenerated). The page carries the start choice in `data-balance` (missing means hidden);
-  the View keeps the player's choice apart from what it draws (a View that follows another one draws no amount and goes back to
-  the choice when it leads again) and states `include_balance` true or false on every poll. Server instructions, prompts and the
-  block of `docs/USING_WITH_CLAUDE` no longer tell Claude to ask before reading amounts; they tell it not to work around a
-  hidden balance. The health strip and the "Solde" row say which state this screen is in and how to change it.
-- **Tests.** Every masking test is kept and runs in each hiding mode (`include_balance: false`, `SC_BALANCE=hidden` with and
-  without an argument, the toggle, the replay sweeps); new tests pin the shown default, the explicit `true` under
-  `SC_BALANCE=hidden`, the page's two starts and the follower that leads again.
+  golden file and `docs/TOOLS.md` are regenerated; `sc_live_poll` gained `balance_choice` and `balance_once` and answers
+  `balance_state`). The page carries the effective choice in `data-balance` (missing means hidden) and follows `balance_state`;
+  a View that follows another one draws no amount and goes back to the choice when it leads again. The dashboard's own fixed
+  messages and its automatic context tell Claude `include_balance false` while the balance is hidden. Server instructions,
+  prompts and the Claude block no longer tell Claude to ask before reading amounts; they tell it not to work around a hidden
+  balance. The health strip and the "Solde" row say which state this screen is in, that the mask also covers Claude's tools and
+  that a restart forgets it.
+- **Tests.** Every masking test is kept and runs in each hiding mode: `include_balance: false`, `SC_BALANCE=hidden` with no
+  argument, with false and with an (ignored) true, and the player's click with no argument and with an (ignored) true; the
+  replay sweeps cover the same, and the positive control stays positive after a click on "Afficher le solde". An end-to-end
+  test goes click, tool without argument, tool with `include_balance: true`, then "Afficher". New tests pin the shown default,
+  the page's two starts, the follower that leads again, a lost click, the wiring of `SC_BALANCE` in `src/index.ts`.
 
 ### Added (dashboard)
 - A "Raccourcis" zone under the ship banner: reminders of the actions that fit the moment, chosen from states the stream

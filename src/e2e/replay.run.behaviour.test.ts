@@ -265,6 +265,7 @@ describe("Feature: the player's run, from the first frame to the saved session",
     const bare = await w.call("sc_trade_journal", { resolve_names: false, include_balance: false });
     expectAbsent(JSON.stringify(bare), figures, "sc_trade_journal with include_balance false");
     w.balancePolicy.hiddenByDefault = true;
+    w.balancePolicy.playerChoice = null;
     try {
       const started = await w.call("sc_trade_journal", { resolve_names: false });
       expectAbsent(JSON.stringify(started), figures, "sc_trade_journal under SC_BALANCE=hidden");

@@ -1,6 +1,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import dotenv from "dotenv";
 import { fileURLToPath } from "node:url";
+import { createBalancePolicy } from "./core/balance.js";
 import { loadConfig } from "./core/config.js";
 import { createGameVersionResolver, createProbes } from "./providers/probes.js";
 import { FleetStore, fleetFilePath } from "./providers/fleet/store.js";
@@ -73,8 +74,9 @@ const clients = {
   fleet: new FleetStore(fleetFilePath()),
   telemetry,
   ...(sessions ? { sessions } : {}),
-  // Shown by default; SC_BALANCE=hidden starts the dashboard and the tools without amounts.
-  balance: { hiddenByDefault: config.balanceHiddenByDefault },
+  // Shown by default; SC_BALANCE=hidden starts the dashboard and the tools without amounts. One object for the
+  // process: a click of the player in the dashboard changes it (memory only) and the tools read it at every call.
+  balance: createBalancePolicy(config),
 };
 
 // A bad SCMCP_TOOLS or SCMCP_PROFILES throws here, at startup, rather than listing nothing.

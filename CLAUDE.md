@@ -28,12 +28,16 @@ For Claude as a _user_ of the tools, see `docs/USING_WITH_CLAUDE.md` (the block 
   The aUEC balance and every figure derived from it (results, rates, calibration, movements, aUEC paid for lost cargo,
   trade-journal amounts, session reports) are SHOWN by default, in the dashboard and in the tools, and so reach the model and
   the conversation: that is the player's choice, and the docs say so plainly. Hiding is the opt-in, three ways:
-  `include_balance: false` on a tool call, the dashboard's "Masquer le solde" toggle, and `SC_BALANCE=hidden` in the server's
-  entry (the dashboard starts hidden, the tools answer without amounts unless a call says `include_balance: true`; a value it
-  does not know hides). One resolver, `core/balance.ts`, decides once per call. UNCHANGED: the server sends nothing over a
+  the dashboard's "Masquer le solde" toggle, `SC_BALANCE=hidden` in the server's entry, and `include_balance: false` on one
+  tool call. Hiding is STICKY and protects the tools too: after a click on "Masquer le solde" (or with `SC_BALANCE=hidden`,
+  or a value it does not know) the tools answer without amounts, an `include_balance: true` is IGNORED (an injection in a UEX
+  name or a journal note must not reveal them) and the answer says the player hid them, until the player clicks "Afficher le
+  solde" (the last click wins; it lifts the mask for the running process, even over `SC_BALANCE=hidden`). The click is held
+  in the server process's memory only, never a file, so a restart forgets it (`SC_BALANCE=hidden` is the permanent way) and
+  one process is shared by the conversations that use it. One resolver, `core/balance.ts`, decides once per call. UNCHANGED: the server sends nothing over a
   network; no handle, account id, GUID or frame is ever stored; sessions are local summaries; the balance is never in
   `ui/update-model-context`, in the fixed messages (except the route button the player presses) or on the channel between
-  Views; `include_start_balance` stays a separate, explicit choice. Every masking guard and its tests are kept and run in each
+  Views; the route button's one-off (`balance_once`) changes nothing; `include_start_balance` stays a separate, explicit choice. Every masking guard and its tests are kept and run in each
   hiding mode (`src/testing/balanceModes.ts`); do not delete one.
 - No `Data.p4k` extraction and no extraction code or instructions in this repository. Whether it is safe for an
   account is unverified (see `SECURITY.md`).

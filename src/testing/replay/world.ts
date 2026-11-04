@@ -158,7 +158,10 @@ export class ReplayWorld {
    * The server's start choice for the aUEC amounts (SC_BALANCE). Shared with the tools, which read it at call time: a
    * test (or a sweep) flips `hiddenByDefault` to play the "start hidden" mode against the same server.
    */
-  readonly balancePolicy: { hiddenByDefault: boolean } = { hiddenByDefault: false };
+  readonly balancePolicy: { hiddenByDefault: boolean; playerChoice: "hidden" | "shown" | null } = {
+    hiddenByDefault: false,
+    playerChoice: null,
+  };
   /** What the fake game sends. */
   balance: number;
   ship: ShipSpec = FLYING;

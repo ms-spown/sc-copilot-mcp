@@ -26,12 +26,21 @@ export interface HostOptions {
    * answers when it settles (to test a slow planner). Default: the invented answer of testing/suggestFixtures.ts.
    */
   suggest?: (args: any) => unknown | Promise<unknown>;
+  /** The server's balance choice; give the same object to several hosts to play two dashboards of one process. */
+  balanceServer?: { hidden: boolean };
 }
 
 export interface HostLog {
   /** Every request or notification the View sent, in order. */
   received: { method: string; params: any; at: number }[];
-  polls: { includeBalance: boolean; at: number; bytes: number }[];
+  polls: {
+    includeBalance: boolean;
+    at: number;
+    bytes: number;
+    /** The click recorded with this poll (balance_choice), and whether it was the route button's one-off. */
+    choice?: string;
+    once?: boolean;
+  }[];
   messages: string[];
   contexts: string[];
   modeRequests: string[];
@@ -80,6 +89,8 @@ export function createFakeHost(options: HostOptions) {
     suggests: [],
     tools: [],
   };
+  /** The server's runtime balance choice (shared by the Views of one process). Starts shown. */
+  const balanceServer = options.balanceServer ?? { hidden: false };
   /** Set by a test to change what the next polls answer. */
   const overrides: {
     poll?: (base: any, includeBalance: boolean) => any;
@@ -136,8 +147,14 @@ export function createFakeHost(options: HostOptions) {
         case "tools/call": {
           scenario.advanceTo(Math.max(scenario.t, nowMs - scenario.epoch));
           if (params.name === "sc_live_poll") {
-            const include = params.arguments?.include_balance !== false;
             const a = params.arguments ?? {};
+            // Like the server: a click is remembered (the last one wins, shared by the Views of the process), hidden
+            // ignores include_balance true, and the one-off of the route button changes nothing.
+            if (a.balance_choice === "hidden" || a.balance_choice === "shown") {
+              balanceServer.hidden = a.balance_choice === "hidden";
+            }
+            const once = a.balance_once === true && a.include_balance === true;
+            const include = once || (!balanceServer.hidden && a.include_balance !== false);
             const base = scenario.poll(
               include,
               options.legacyFullPolls
@@ -148,11 +165,17 @@ export function createFakeHost(options: HostOptions) {
                     ...(a.have && typeof a.have === "object" ? { have: a.have } : {}),
                   },
             );
-            const structuredContent = overrides.poll ? overrides.poll(base, include) : base;
+            const answered = overrides.poll ? overrides.poll(base, include) : base;
+            const structuredContent = {
+              ...answered,
+              balance_state: balanceServer.hidden ? "hidden" : "shown",
+            };
             log.polls.push({
               includeBalance: include,
               at: nowMs,
               bytes: JSON.stringify(structuredContent).length,
+              ...(typeof a.balance_choice === "string" ? { choice: a.balance_choice } : {}),
+              ...(once ? { once: true } : {}),
             });
             respond(id, {
               content: [{ type: "text", text: `live dashboard poll: ${base.state}` }],

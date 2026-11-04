@@ -85,12 +85,20 @@ describe("Feature: the amounts are shown at the start unless the server starts h
 
   it("Given a page with no data-balance attribute (an old page), Then it starts hidden", async () => {
     // The page is built to start SHOWN, but its root carries no attribute: the View must not guess "shown".
-    const w = await startPage({ balanceHidden: false, omitBalanceAttribute: true });
+    // The server here is hidden too: the View asks for no amount until the server says otherwise.
+    const w = await startPage({
+      balanceHidden: false,
+      omitBalanceAttribute: true,
+      balanceServer: { hidden: true },
+    });
     await w.advance(100 * SECOND);
     expect(w.host.log.polls.length).toBeGreaterThan(5);
     expect(w.host.log.polls.every((p) => !p.includeBalance)).toBe(true);
     expectNoAmount(everything(w.root));
     expect(hasButton(w, "Afficher le solde")).toBe(true);
+    // ... and the very first poll asked for none, whatever the server would have said.
+    const first = await startPage({ balanceHidden: false, omitBalanceAttribute: true });
+    expect(first.host.log.polls[0]!.includeBalance).toBe(false);
   });
 });
 

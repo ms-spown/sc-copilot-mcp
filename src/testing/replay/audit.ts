@@ -64,18 +64,35 @@ export async function sweepWithoutBalance(world: ReplayWorld): Promise<Sweep> {
     const r = await world.call(name, { ...args, include_balance: false });
     parts.push(r.text, JSON.stringify(r.structured ?? null));
   }
-  const was = world.balancePolicy.hiddenByDefault;
-  world.balancePolicy.hiddenByDefault = true;
+  const policy = world.balancePolicy;
+  const was = { ...policy };
+  // Two more ways to hide, each swept with no argument AND with an explicit include_balance true (which is IGNORED
+  // while the amounts are hidden: an instruction hidden in a UEX name must not be able to reveal them):
+  //   - a server that starts hidden (SC_BALANCE=hidden);
+  //   - the player's click on "Masquer le solde" (memory only), on a server that shows by default.
+  const hiddenStates: [boolean, "hidden" | null][] = [
+    [true, null],
+    [false, "hidden"],
+  ];
   try {
-    // A View of a server that starts hidden says nothing (the answer follows the start choice).
-    const bare = await world.call("sc_live_poll", {});
-    parts.push(JSON.stringify(bare.structured ?? null));
-    for (const [name, args] of MODEL_TOOLS) {
-      const r = await world.call(name, args);
-      parts.push(r.text, JSON.stringify(r.structured ?? null));
+    for (const [hiddenByDefault, playerChoice] of hiddenStates) {
+      policy.hiddenByDefault = hiddenByDefault;
+      policy.playerChoice = playerChoice;
+      // A View says nothing, or asks for the balance: the answer is the same.
+      for (const pollArgs of [{}, { include_balance: true }]) {
+        const poll = await world.call("sc_live_poll", pollArgs);
+        parts.push(JSON.stringify(poll.structured ?? null));
+      }
+      for (const [name, args] of MODEL_TOOLS) {
+        for (const extra of [{}, { include_balance: true }]) {
+          const r = await world.call(name, { ...args, ...extra });
+          parts.push(r.text, JSON.stringify(r.structured ?? null));
+        }
+      }
     }
   } finally {
-    world.balancePolicy.hiddenByDefault = was;
+    policy.hiddenByDefault = was.hiddenByDefault;
+    policy.playerChoice = was.playerChoice;
   }
   // The View that shows the balance still shares nothing derived from it.
   const channel = JSON.stringify(channelOf(await world.poll(true)));
@@ -89,6 +106,20 @@ export async function sweepWithoutBalance(world: ReplayWorld): Promise<Sweep> {
 /** The same tools, with the balance: the positive control (asked explicitly, then by default, which shows it too). */
 export async function sweepWithBalance(world: ReplayWorld): Promise<string> {
   const parts: string[] = [JSON.stringify(await world.poll(true))];
+  // The positive control must stay positive after a click on "Afficher le solde", even on a server that starts hidden.
+  const policy = world.balancePolicy;
+  const was = { ...policy };
+  policy.hiddenByDefault = true;
+  policy.playerChoice = "shown";
+  try {
+    for (const [name, args] of MODEL_TOOLS) {
+      const r = await world.call(name, args);
+      parts.push(r.text, JSON.stringify(r.structured ?? null));
+    }
+  } finally {
+    policy.hiddenByDefault = was.hiddenByDefault;
+    policy.playerChoice = was.playerChoice;
+  }
   for (const [name, args] of MODEL_TOOLS) {
     const r = await world.call(name, { ...args, include_balance: true });
     parts.push(r.text, JSON.stringify(r.structured ?? null));

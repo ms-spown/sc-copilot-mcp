@@ -630,7 +630,7 @@ No parameters.
 
 ### sc_live_state
 
-Snapshot of the running game from its local telemetry, only when the user enabled it: ship (name, speed, altitude, heading, hydrogen, boost, g-force, gear, flight modes, power flags, warning lights), weapons per seat, countermeasures, and the pilot (locomotion, health, hunger, thirst, heart rate, atmosphere). Say how old it is (frame_age_ms); fields not sent are left out, never zero. NOT in the stream: position, shield level, hull, heat, ammo, power distribution, quantum fuel. Health 0 is 'down or dead'. The UEC balance is withheld unless include_balance is true (ask the player first). available=false (waiting or connected) means no data yet, normal in menus and loading: never say the game is not running or that something is wrong. On foot only pilot data exists; ship data needs the player seated in a ship. When the game log is configured, `connection` says if the player is online, in the menus, disconnected (for example kicked for inactivity) or has quit: if it is not online, the values are the last ones held and are not current. Not advertised when telemetry is off.
+Snapshot of the running game from its local telemetry, only when the user enabled it: ship (name, speed, altitude, heading, hydrogen, boost, g-force, gear, flight modes, power flags, warning lights), weapons per seat, countermeasures, and the pilot (locomotion, health, hunger, thirst, heart rate, atmosphere). Say how old it is (frame_age_ms); fields not sent are left out, never zero. NOT in the stream: position, shield level, hull, heat, ammo, power distribution, quantum fuel. Health 0 is 'down or dead'. The UEC balance is given by default; include_balance=false hides it, and it stays hidden (include_balance=true is ignored) once the player hid it. available=false (waiting or connected) means no data yet, normal in menus and loading: never say the game is not running or that something is wrong. On foot only pilot data exists; ship data needs the player seated in a ship. When the game log is configured, `connection` says if the player is online, in the menus, disconnected (for example kicked for inactivity) or has quit: if it is not online, the values are the last ones held and are not current. Not advertised when telemetry is off.
 
 *Source:* game telemetry (local, 127.0.0.1) · *Kind:* local_telemetry · *Trust:* structured · *Profiles:* local
 
@@ -664,13 +664,15 @@ Opens the live dashboard of the running game in the conversation (ship, speed, h
 
 ### sc_live_poll
 
-For the dashboard View only, not for the model: current telemetry state, recent events and session counters as structured content, refreshed by the View about once a second (answers are shared for half a second). Never starts the reader while telemetry is off. The balance is included unless include_balance is false (the View sends the player's choice; absent follows the server's start choice). Use sc_live_state instead.
+For the dashboard View only, not for the model: current telemetry state, recent events and session counters as structured content, refreshed by the View about once a second (answers are shared for half a second). Never starts the reader while telemetry is off. The balance is included unless it is hidden (a click of the player, or SC_BALANCE=hidden) or include_balance is false. balance_choice records a CLICK of the player (hidden or shown, held in memory, the last click wins); balance_once gives the balance for one answer to the route button only. Reports balance_state. Use sc_live_state instead.
 
 *Source:* game telemetry (local, 127.0.0.1) · *Kind:* local_telemetry · *Trust:* structured · *Profiles:* local
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `include_balance` | boolean | no | Include the aUEC balance and its change. Default true; false hides it. |
+| `include_balance` | boolean | no | Include the aUEC balance and its change. Default true; false hides it. Ignored (hidden) while the player's choice is hidden. |
+| `balance_choice` | `hidden` \| `shown` | no | Only after a CLICK of the player on the balance toggle: the server remembers it (memory only). |
+| `balance_once` | boolean | no | With include_balance true: the balance for this answer only, for the route button the player pressed. Changes no choice. |
 | `include_static` | boolean | no | Include the list of what the stream never contains. The View asks once. |
 | `since_seq` | number | no | The newest event number the View holds: only newer events come back. |
 | `have` | object | no | Hashes (the `hash` of a previous answer) of the sections the View holds; a section with the same hash is left out and listed in `unchanged`. |

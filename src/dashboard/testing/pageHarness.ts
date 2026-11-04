@@ -282,6 +282,8 @@ export interface WorldOptions {
   balanceHidden?: boolean;
   /** Leave the page's root without the data-balance attribute (an old or foreign page): the View must start hidden. */
   omitBalanceAttribute?: boolean;
+  /** The server's runtime choice, shared by the pages of one process. Default: follows `balanceHidden`. */
+  balanceServer?: { hidden: boolean };
   theme?: "light" | "dark";
   modes?: string[];
   scenario?: Scenario;
@@ -501,6 +503,7 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     theme: options.theme,
     availableDisplayModes: options.modes,
     legacyFullPolls: options.legacyFullPolls,
+    balanceServer: options.balanceServer ?? { hidden: options.balanceHidden !== false },
     ...(options.suggest ? { suggest: options.suggest } : {}),
     deliver: (message) => fireMessage(message, parent),
   });

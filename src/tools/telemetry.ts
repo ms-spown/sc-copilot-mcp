@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { MAX_OUTPUT_CHARS, formatOutputRaw } from "../core/format.js";
-import { wantsBalance, type BalancePolicy } from "../core/balance.js";
+import { HIDDEN_NOTE, wantsBalance, type BalancePolicy } from "../core/balance.js";
 import { TELEMETRY_WARNING } from "../core/telemetryNotice.js";
 import { addNote, recordFetch, setChannel, setGameVersion } from "../core/provenance.js";
 import {
@@ -110,12 +110,7 @@ function stripBalance(snapshot: TelemetrySnapshot, include: boolean) {
   return {
     ...rest,
     ...(include && uec_session ? { uec_session } : {}),
-    ...(include
-      ? {}
-      : {
-          uec_balance:
-            "hidden by the player's choice (include_balance=false or SC_BALANCE=hidden): do not work around it; pass include_balance=true only if the player asks",
-        }),
+    ...(include ? {} : { uec_balance: HIDDEN_NOTE }),
     state: { ...state, pilot },
   };
 }
@@ -195,7 +190,7 @@ export function telemetryTools({
     {
       name: "sc_live_state",
       description:
-        "Snapshot of the running game from its local telemetry, only when the user enabled it: ship (name, speed, altitude, heading, hydrogen, boost, g-force, gear, flight modes, power flags, warning lights), weapons per seat, countermeasures, and the pilot (locomotion, health, hunger, thirst, heart rate, atmosphere). Say how old it is (frame_age_ms); fields not sent are left out, never zero. NOT in the stream: position, shield level, hull, heat, ammo, power distribution, quantum fuel. Health 0 is 'down or dead'. The UEC balance is withheld unless include_balance is true (ask the player first). available=false (waiting or connected) means no data yet, normal in menus and loading: never say the game is not running or that something is wrong. On foot only pilot data exists; ship data needs the player seated in a ship. When the game log is configured, `connection` says if the player is online, in the menus, disconnected (for example kicked for inactivity) or has quit: if it is not online, the values are the last ones held and are not current. Not advertised when telemetry is off.",
+        "Snapshot of the running game from its local telemetry, only when the user enabled it: ship (name, speed, altitude, heading, hydrogen, boost, g-force, gear, flight modes, power flags, warning lights), weapons per seat, countermeasures, and the pilot (locomotion, health, hunger, thirst, heart rate, atmosphere). Say how old it is (frame_age_ms); fields not sent are left out, never zero. NOT in the stream: position, shield level, hull, heat, ammo, power distribution, quantum fuel. Health 0 is 'down or dead'. The UEC balance is given by default; include_balance=false hides it, and it stays hidden (include_balance=true is ignored) once the player hid it. available=false (waiting or connected) means no data yet, normal in menus and loading: never say the game is not running or that something is wrong. On foot only pilot data exists; ship data needs the player seated in a ship. When the game log is configured, `connection` says if the player is online, in the menus, disconnected (for example kicked for inactivity) or has quit: if it is not online, the values are the last ones held and are not current. Not advertised when telemetry is off.",
       inputSchema: {
         type: "object",
         properties: {
