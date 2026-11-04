@@ -974,45 +974,6 @@ export function coveredAlertKeys(poll: any): string[] {
   return out;
 }
 
-export function timelineItems(events: any[], markers: any[], limit: number): any[] {
-  const kept = [
-    "took_off",
-    "landed",
-    "jump_started",
-    "jump_finished",
-    "vehicle_changed",
-    "under_fire",
-    "shields_down",
-    "shields_powered_off",
-    "shields_powered_on",
-    "player_down",
-    "respawned",
-    "locked_on",
-  ];
-  const items: any[] = [];
-  for (const e of events) {
-    if (e && kept.indexOf(e.type) >= 0) {
-      items.push({
-        at: e.at,
-        label: eventLabel(e),
-        kind: "event",
-        verified: e.confidence === "confirmed",
-      });
-    }
-  }
-  const marks: any = {
-    start: "Début des compteurs",
-    end: "Fin des compteurs",
-    reset_delta: "Solde remis à zéro",
-  };
-  for (const m of markers || []) {
-    if (m && marks[m.kind])
-      items.push({ at: m.at, label: marks[m.kind], kind: "marker", verified: true });
-  }
-  items.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-  return items.slice(-limit);
-}
-
 // ---------------------------------------------------------------------------------------------
 // Estimates and pace
 // ---------------------------------------------------------------------------------------------
@@ -2250,7 +2211,6 @@ export const VIEW_FUNCTIONS = [
   activeAlerts,
   conditionItems,
   coveredAlertKeys,
-  timelineItems,
   trendEstimate,
   estimateText,
   sessionRate,

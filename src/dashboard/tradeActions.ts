@@ -1482,7 +1482,6 @@ export function tradeActionsPanel(doc: any, L: any): any {
 export const TRADE_ACTIONS_VIEW_FUNCTIONS = [
   tradeActionsConfig,
   tradeApplySuggestion,
-  tradeSuggestionText,
   tradeObjectives,
   tradeObjectiveLabel,
   tradeText,
