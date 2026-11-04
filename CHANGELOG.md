@@ -6,6 +6,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **The dashboard page is 38 kB lighter (357.3 kB to 319.3 kB), with no change of behaviour.** The room under the budget (2.7 kB) blocked
+  every new View feature. The script is now shipped without its blanks (`minifyScript` in `src/dashboard/scriptMinify.ts`, a
+  token-level pass: strings, templates and regular expressions byte for byte, no name touched; a test has a JavaScript parser read
+  the script before and after and requires the same tokens and the same tree), the DOM helpers that eight panels each carried are
+  one shared `domKit` in `viewLogic.ts`, three functions nobody called are no longer shipped, and two style rules for classes the
+  page never produces are gone (a test now fails on a dead rule or a dead function). The budget of `npm run check:page-size` is
+  345 kB (the new size plus about 8 %).
+
 ## [2.4.0] - 2026-11-04
 
 ### Changed

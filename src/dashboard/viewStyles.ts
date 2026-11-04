@@ -241,8 +241,6 @@ h2, h3 { margin: 0; }
 .fact[data-level="ok"] .fact-value { color: var(--sc-ok); }
 .fact .pin { position: static; width: 22px; height: 22px; flex: none; }
 .fact:focus-within .pin { opacity: 1; }
-.plan-line { margin: 0 0 2px; font-weight: 600; overflow-wrap: anywhere; }
-.plan-note { margin: 0 0 var(--sp-2); color: var(--sc-text2); overflow-wrap: anywhere; }
 
 /* ---------- chips ---------- */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }

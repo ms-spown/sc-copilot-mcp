@@ -501,30 +501,7 @@ export function sessionDebriefNormalize(
 /** Builds the bar and its menu once; `render(bar, ctx)` then only changes text and attributes. */
 export function sessionPanel(doc: any, L: any, api: any): any {
   const cfg = sessionConfig();
-  const el = (tag: string, cls?: string, text?: string): any => {
-    const n = doc.createElement(tag);
-    if (cls) n.className = cls;
-    if (text !== undefined) n.textContent = text;
-    return n;
-  };
-  const add = (parent: any, ...kids: any[]): any => {
-    for (const k of kids) if (k) parent.appendChild(k);
-    return parent;
-  };
-  const setText = (n: any, text: string) => {
-    if (n._t !== text) {
-      n._t = text;
-      n.textContent = text;
-    }
-  };
-  const setAttr = (n: any, name: string, value: string) => {
-    const key = "_a_" + name;
-    if (n[key] !== value) {
-      n[key] = value;
-      n.setAttribute(name, value);
-    }
-  };
-  const show = (n: any, on: boolean) => setAttr(n, "data-hidden", on ? "0" : "1");
+  const { el, add, setText, setAttr, show } = L.domKit(doc);
   const button = (label: string, onClick: () => void, cls?: string): any => {
     const b = el("button", "btn" + (cls ? " " + cls : ""), label);
     b.setAttribute("type", "button");

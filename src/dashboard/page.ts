@@ -7,6 +7,7 @@ import { LEDGER_CSS } from "./ledgerStyles.js";
 import { SESSION_VIEW_FUNCTIONS } from "./sessionPanel.js";
 import { SESSION_CSS } from "./sessionStyles.js";
 import { dashboardMain } from "./viewApp.js";
+import { minifyScript } from "./scriptMinify.js";
 import { MOVEMENTS_VIEW_FUNCTIONS } from "./movementsPanel.js";
 import { MOVEMENTS_CSS } from "./movementsStyles.js";
 import { SPECS_VIEW_FUNCTIONS } from "./specsView.js";
@@ -30,13 +31,6 @@ import { VIEW_CSS } from "./viewStyles.js";
  */
 const CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'";
-
-/**
- * Indentation only costs bytes in the page, so each function loses its leading blanks. A function that holds a template
- * literal is left as written: there the indentation could be part of a string.
- */
-export const compact = (source: string): string =>
-  source.includes("`") ? source : source.replace(/^[ \t]+/gm, "");
 
 /**
  * The style sheet loses what a browser ignores: comments, indentation, line breaks, the blanks around `{ } ; ,`, the blank after a `:` and the
@@ -95,7 +89,8 @@ export function compactCss(css: string): string {
 export const pageCss = (): string =>
   `${VIEW_CSS}${SPECS_CSS}${LEDGER_CSS}${TRADE_CSS}${TRADE_ACTIONS_CSS}${TRADE_PREFLIGHT_CSS}${SESSION_CSS}${MOVEMENTS_CSS}${HEALTH_CSS}${CALIBRATION_CSS}`;
 
-export function viewScript(): string {
+/** The script as assembled, before `minifyScript`: each function as `toString` gives it. */
+export function rawViewScript(): string {
   // viewLogic.ts first, then the ship sheet module (specsView.ts), then the transport ledger panel
   // (ledgerPanel.ts), the commerce card (tradePanel.ts) and its action bar slot (tradeActions.ts): one scope, one object L.
   const all = [
@@ -110,18 +105,24 @@ export function viewScript(): string {
     ...CALIBRATION_VIEW_FUNCTIONS,
     ...HEALTH_VIEW_FUNCTIONS,
   ];
-  const functions = all.map((f) => compact(f.toString())).join("\n");
+  const functions = all.map((f) => f.toString()).join("\n");
   const names = all.map((f) => f.name).join(", ");
   return [
     '"use strict";',
     "(function () {",
     functions,
     `var L = { ${names} };`,
-    `var dashboardMain = ${compact(dashboardMain.toString())};`,
+    `var dashboardMain = ${dashboardMain.toString()};`,
     "dashboardMain(window, document, L);",
     "})();",
   ].join("\n");
 }
+
+/**
+ * The script the page ships: `rawViewScript` without comments, indentation, line breaks or any blank that is not needed
+ * (see scriptMinify.ts; a test checks that a JavaScript parser reads both the same).
+ */
+export const viewScript = (): string => minifyScript(rawViewScript());
 
 export function dashboardHtml(): string {
   const script = viewScript();

@@ -1,6 +1,7 @@
+import { tokenizer } from "acorn";
 import { transform } from "lightningcss";
 import { describe, expect, it } from "vitest";
-import { compactCss, pageCss } from "./page.js";
+import { compactCss, pageCss, viewScript } from "./page.js";
 
 /**
  * The style sheet is shipped compacted (page.ts compactCss). Compacting must change nothing a browser would see: a real CSS
@@ -59,5 +60,27 @@ describe("Feature: compacting the style sheet changes no rule", () => {
   it("Given an unterminated comment or string, Then nothing throws", () => {
     expect(() => compactCss("a{b:c} /* open")).not.toThrow();
     expect(() => compactCss('a{content:"open}')).not.toThrow();
+  });
+});
+
+describe("Feature: the style sheet holds no rule for a class that nothing produces", () => {
+  it("Given every class a selector of the sheet names, Then the script writes it as a word of some string (a dead rule costs bytes at every open)", () => {
+    const classes = new Set<string>();
+    transform({
+      filename: "page.css",
+      code: Buffer.from(pageCss()),
+      visitor: {
+        Selector(selector) {
+          for (const part of selector) if (part.type === "class") classes.add(part.name);
+        },
+      },
+    });
+    const words = new Set<string>();
+    for (const t of tokenizer(viewScript(), { ecmaVersion: "latest", sourceType: "script" })) {
+      const v = (t as { value?: unknown }).value;
+      if (typeof v === "string") for (const w of v.split(/\s+/)) words.add(w);
+    }
+    expect(classes.size).toBeGreaterThan(300); // the visitor really saw the sheet
+    expect([...classes].filter((c) => !words.has(c))).toEqual([]);
   });
 });

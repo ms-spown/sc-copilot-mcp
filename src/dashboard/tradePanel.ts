@@ -330,42 +330,12 @@ export function tradeInlineText(L: any, trade: any, showBalance: boolean): strin
 export function tradePanel(doc: any, L: any, svgNs: string): any {
   const cfg = tradeConfig();
   const SVG = svgNs;
-  const el = (tag: string, cls?: string, text?: string): any => {
-    const n = doc.createElement(tag);
-    if (cls) n.className = cls;
-    if (text !== undefined) n.textContent = text;
-    return n;
-  };
+  const { el, add, setText, setAttr, setVar, show } = L.domKit(doc);
   const svg = (tag: string, attrs: any): any => {
     const n = doc.createElementNS(SVG, tag);
     for (const k of Object.keys(attrs)) n.setAttribute(k, String(attrs[k]));
     return n;
   };
-  const add = (parent: any, ...kids: any[]): any => {
-    for (const k of kids) if (k) parent.appendChild(k);
-    return parent;
-  };
-  const setText = (n: any, text: string) => {
-    if (n._t !== text) {
-      n._t = text;
-      n.textContent = text;
-    }
-  };
-  const setAttr = (n: any, name: string, value: string) => {
-    const key = "_a_" + name;
-    if (n[key] !== value) {
-      n[key] = value;
-      n.setAttribute(name, value);
-    }
-  };
-  const setVar = (n: any, name: string, value: string) => {
-    const key = "_v_" + name;
-    if (n[key] !== value) {
-      n[key] = value;
-      n.style.setProperty(name, value);
-    }
-  };
-  const show = (n: any, on: boolean) => setAttr(n, "data-hidden", on ? "0" : "1");
 
   // ---- the compact line of the small view
   const line = el("p", "lg-line tr-line", "");

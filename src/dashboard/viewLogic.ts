@@ -974,45 +974,6 @@ export function coveredAlertKeys(poll: any): string[] {
   return out;
 }
 
-export function timelineItems(events: any[], markers: any[], limit: number): any[] {
-  const kept = [
-    "took_off",
-    "landed",
-    "jump_started",
-    "jump_finished",
-    "vehicle_changed",
-    "under_fire",
-    "shields_down",
-    "shields_powered_off",
-    "shields_powered_on",
-    "player_down",
-    "respawned",
-    "locked_on",
-  ];
-  const items: any[] = [];
-  for (const e of events) {
-    if (e && kept.indexOf(e.type) >= 0) {
-      items.push({
-        at: e.at,
-        label: eventLabel(e),
-        kind: "event",
-        verified: e.confidence === "confirmed",
-      });
-    }
-  }
-  const marks: any = {
-    start: "Début des compteurs",
-    end: "Fin des compteurs",
-    reset_delta: "Solde remis à zéro",
-  };
-  for (const m of markers || []) {
-    if (m && marks[m.kind])
-      items.push({ at: m.at, label: marks[m.kind], kind: "marker", verified: true });
-  }
-  items.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-  return items.slice(-limit);
-}
-
 // ---------------------------------------------------------------------------------------------
 // Estimates and pace
 // ---------------------------------------------------------------------------------------------
@@ -2175,9 +2136,50 @@ export function pinnedItems(poll: any, view: any, pins: any): any[] {
   return out;
 }
 
+/**
+ * The DOM helpers every panel uses, built once on a document: text only goes through textContent, and a text, an attribute or a
+ * style variable is only written when it changed (the last value is remembered on the node). One copy for the whole page: the
+ * panels take it with `const { el, add, setText } = L.domKit(doc)`.
+ */
+export function domKit(doc: any): any {
+  const el = (tag: string, cls?: string, text?: string): any => {
+    const n = doc.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  };
+  const add = (parent: any, ...kids: any[]): any => {
+    for (const k of kids) if (k) parent.appendChild(k);
+    return parent;
+  };
+  const setText = (n: any, text: string) => {
+    if (n._t !== text) {
+      n._t = text;
+      n.textContent = text;
+    }
+  };
+  const setAttr = (n: any, name: string, value: string) => {
+    const key = "_a_" + name;
+    if (n[key] !== value) {
+      n[key] = value;
+      n.setAttribute(name, value);
+    }
+  };
+  const setVar = (n: any, name: string, value: string) => {
+    const key = "_v_" + name;
+    if (n[key] !== value) {
+      n[key] = value;
+      n.style.setProperty(name, value);
+    }
+  };
+  const show = (n: any, on: boolean) => setAttr(n, "data-hidden", on ? "0" : "1");
+  return { el, add, setText, setAttr, setVar, show };
+}
+
 /** The names the page needs, in the order they are serialised. */
 export const VIEW_FUNCTIONS = [
   viewConfig,
+  domKit,
   fmtNum,
   fmtAuec,
   formatAge,
@@ -2209,7 +2211,6 @@ export const VIEW_FUNCTIONS = [
   activeAlerts,
   conditionItems,
   coveredAlertKeys,
-  timelineItems,
   trendEstimate,
   estimateText,
   sessionRate,
