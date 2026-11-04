@@ -407,10 +407,10 @@ describe("Feature: the speed dial of the cockpit shows the ship's limits", () =>
     expect(text).not.toMatch(/fiche \(wiki\)/);
     const sub = findAll(
       w.root,
-      (n) => n.className === "dial-sub" && (n.attrs["title"] ?? "") !== "",
+      (n) => n.className === "dial-sub" && (n.attrs["data-tip"] ?? "") !== "",
     );
     expect(sub.length).toBeGreaterThan(0);
-    expect(plain(sub[0]!.attrs["title"]!)).toMatch(
+    expect(plain(sub[0]!.attrs["data-tip"]!)).toMatch(
       /\d+ % de la vitesse SCM · marques SCM .* d’après la fiche \(wiki\)/,
     );
     expect(text).not.toMatch(/déduite des vitesses vues/);

@@ -6,6 +6,27 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed (accessibility of the dashboard)
+- Short readings that were hover-only native tooltips are now reachable without a mouse: in the compact view the age of the
+  data ("Données de 0,8 s") and the legend under the speed dial (its scale and source); in both views the clock time of a
+  refused price (the header verdict, the only verdict tip); in full screen the confidence tag of a calibrated figure. The
+  label is a focusable button (in the tab order only while it has a text). The bubble opens on focus, hover or tap; Enter or
+  Space closes it if it is open and opens and keeps it if it is not; Escape (taken only when a bubble is open, otherwise it
+  goes on to the host), a tap elsewhere, a scroll or a resize closes it; it follows its label on every render, closes when
+  the label is hidden, and stays inside a short frame. `aria-describedby` and `aria-expanded` follow. One shared bubble, not
+  a live region, it never takes the pointer.
+- The lamps (THR, SHLD, RADR ...) and the power nodes now carry their full name and state as an `aria-label` ("Radar :
+  verrouillage hostile, nominal"; `role="img"`), since their title no longer holds it; they show it on hover or tap and are
+  not tab stops.
+- "Détail ▸" on the commerce warning: the arrow is an `aria-hidden` decoration, so the accessible name is "Détail", and
+  `aria-expanded` is set from the start.
+- The unfolded session card of the compact view no longer shows its title twice (the fold button and the card both said
+  "Session N").
+- Tests `tools/sessions.calibration`, `sessions.behaviour`, `sessions.priceRefusals` and `sessionDebrief.behaviour`: every
+  tool call starts a background look at the session file (`poke`) that can still be running, depending on the load, when the
+  test deletes its temporary folder. The tests now close their managers (which waits for that look) before removing the
+  folder. Test support only.
+
 ## [2.5.0] - 2026-11-04
 
 ### Fixed (documentation)

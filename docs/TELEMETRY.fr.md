@@ -361,7 +361,14 @@ une MCP App : une petite page que ce serveur fournit et que le client affiche à
   température extérieure, atmosphère, position du corps, rôle. Une seule chronologie des événements et de vos repères,
   avec des filtres, une carte de session, le plan de route, et deux lignes repliables : les valeurs non vérifiées et
   ce que le flux ne contient pas. Chaque donnée peut être épinglée (icône d'épingle au survol ou au focus) : elle
-  apparaît alors dans une barre sous l'en-tête, dans les deux modes.
+  apparaît alors dans une barre sous l'en-tête, dans les deux modes. Les courtes explications d'une étiquette s'atteignent
+  aussi au clavier et au toucher, pas seulement au survol : en vue compacte l'âge des données (« Données de ... ») et la
+  légende sous le cadran de vitesse (son échelle et sa source), dans les deux vues l'heure d'un prix refusé (le verdict de
+  l'en-tête), en plein écran l'étiquette de confiance d'un chiffre calibré. Tab jusqu'à l'étiquette, ou un appui ; Entrée ou Espace ferme la
+  bulle si elle est ouverte, l'ouvre et la garde sinon, un appui la garde ouverte, Échap (seulement si une bulle est ouverte), un
+  appui ailleurs, un défilement ou un redimensionnement la ferme. Les voyants et les éléments d'alimentation sont nommés en
+  entier (« Radar : verrouillage hostile, nominal ») pour un lecteur d'écran et montrent ce nom au survol ou à l'appui ; ils
+  ne sont pas des arrêts de tabulation.
 - **Un vaisseau éteint.** Quand la centrale est signalée hors service, la page affiche « Vaisseau éteint », des
   tirets à la place des zéros, et n'ajoute rien aux courbes. Rien n'est coloré en rouge simplement parce que c'est
   absent.

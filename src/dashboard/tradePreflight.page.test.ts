@@ -407,7 +407,7 @@ describe("Feature: the alert when the game refuses a transaction because the pri
     const verdict = () => findAll(w.root, (n) => n.className === "verdict")[0]!;
     expect(NBSP_FREE(verdict().textContent)).toMatch(/^Prix changé : achat refusé · il y a \d+ s/);
     expect(verdict().attrs["data-tone"]).toBe("warn");
-    expect(verdict().attrs["title"]).toMatch(/^à \d{2}:\d{2}:\d{2}$/);
+    expect(verdict().attrs["data-tip"]).toMatch(/^à \d{2}:\d{2}:\d{2}$/);
     expect(text(w)).not.toContain("Tout va bien");
     // the header is not a live region: the age may tick (the status regions are checked below)
     const before = verdict().textContent;

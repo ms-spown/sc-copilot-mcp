@@ -79,6 +79,9 @@ export class FakeNode {
   removeEventListener(type: string, fn: (event: unknown) => void): void {
     this.listeners[type] = (this.listeners[type] ?? []).filter((l) => l !== fn);
   }
+  getBoundingClientRect(): { left: number; top: number; right: number; bottom: number } {
+    return { left: 0, top: 0, right: 0, bottom: 0 };
+  }
   /** The node that last received the focus (the keyboard tests read it). */
   static focused: FakeNode | null = null;
   focus(): void {
@@ -251,6 +254,8 @@ export interface PageWorld {
   clock: { now: number };
   /** A message from the parent window (the host). */
   fromHost: (data: unknown) => void;
+  /** An event of the window itself (scroll, resize) to the listeners the View registered. */
+  fireWindow: (type: string) => void;
   /** A message from a window that is NOT the parent. */
   fromStranger: (data: unknown) => void;
   /** What the View posted to its parent, in order. */
@@ -521,6 +526,9 @@ export async function startPage(options: WorldOptions = {}): Promise<PageWorld> 
     advance,
     clock,
     fromHost: (data) => fireMessage(data, parent),
+    fireWindow: (type) => {
+      for (const fn of [...(listeners[type] ?? [])]) fn({});
+    },
     fromStranger: (data) => fireMessage(data, stranger),
     posted,
     setHidden(hidden) {

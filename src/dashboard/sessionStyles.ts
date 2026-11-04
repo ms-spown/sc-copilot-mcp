@@ -64,6 +64,8 @@ export const SESSION_CSS = `
 .ses-one { display: none; width: 100%; min-height: 28px; padding: 3px 0; background: none; border: 0; text-align: left; font-size: var(--fs-s); font-weight: 600; }
 [data-mode=inline] .ses-one { display: block; }
 [data-mode=inline] .ses[data-fold="1"] { padding-block: 0; }
+/* Unfolded in the compact view, the fold button above already says "Session N · ...": not a second title. */
+[data-mode=inline] .ses[data-fold="0"] .ses-title { display: none; }
 [data-mode=inline] .ses[data-fold="1"] > :not(.ses-one) { display: none; }
 
 @media (max-width: 520px) {

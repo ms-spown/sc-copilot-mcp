@@ -26,10 +26,18 @@ const DAY = 86_400_000;
 const RATIO = "0.737";
 
 let dir: string;
+/** Every tool call pokes the manager, which looks at the file in the BACKGROUND (a tick nobody awaits): see afterEach. */
+const managers: SessionManager[] = [];
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "sc-sessions-tool-cal-"));
 });
-afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+afterEach(async () => {
+  // The tick that a call started is still reading sessions.json (and may lock and write it) when the test body ends:
+  // sometimes, depending on the load. Removing the folder under it races its file access, and how
+  // that goes depends on the machine's load. close() waits for it; only then is the folder removed.
+  await Promise.all(managers.splice(0).map((m) => m.close()));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
 
 const trade = (n: number): Trip => ({
   key: `00000000000000${n.toString(16).padStart(2, "0")}`,
@@ -86,6 +94,7 @@ async function rig(trips: Trip[] = [trade(1), trade(2)]) {
     config: { enabled: true, file, gapMs: 3 * 3_600_000 },
     now: () => NOW,
   });
+  managers.push(manager);
   const registry = createRegistry(
     allTools(
       {
