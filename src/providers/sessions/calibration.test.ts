@@ -51,6 +51,8 @@ const run = (
     plan_sell_terminal: "Area18 TDD",
     fees_method: "mesure",
     plan_link: "name",
+    unexplained_auec: null,
+    net_doubtful: null,
     ...rest,
   };
 };
@@ -355,6 +357,7 @@ describe("Feature: the calibrated expectation is an estimate with its sample siz
       ratio: 0.76,
       n: 2,
       confidence: "low",
+      goods_unverified: false,
     });
   });
 

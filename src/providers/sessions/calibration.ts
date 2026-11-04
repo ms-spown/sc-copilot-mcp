@@ -15,9 +15,13 @@ import type { Session, Trip } from "./types.js";
  *
  * WHAT IS COMPARED. For a trade trip that carries a planned profit (`planned_profit_auec`, a margin BEFORE fees):
  *   - gross ratio = gross margin realised / planned profit (like for like: neither holds the loading fees);
- *   - net ratio   = net realised / planned profit, only when the net and the fees are both known (a net with no fees
- *                   means the balance moved for another reason: it is left out, never guessed);
+ *   - net ratio   = net realised / planned profit, only for a run whose net is the run's own: the net and the fees are known,
+ *                   the commerce model did not flag the net as doubtful, and what the margin and the fees leave unexplained
+ *                   of the balance change (gross margin - net - fees, or the `unexplained_auec` the model measured) is at
+ *                   most 2 % of the turnover. A net that holds a purchase made elsewhere or a reward is left out and
+ *                   counted (`net_excluded`), never guessed. Without that information (an older trip) it is left out too;
  *   - fee rate    = fees / turnover.
+ * A plan below CALIBRATION_MIN_PLANNED_AUEC (or below the run's own fees) is ignored: a ratio over a few aUEC is noise.
  * The planned profit is first brought to the quantity really moved when the plan's quantity is known and differs by
  * more than 2 % (a half-loaded hold is not a bad price); a run moved 4 times more or less than planned is left out.
  * Without the planned quantity (older trips) the plan is used as it is and the group says so.
@@ -33,9 +37,14 @@ import type { Session, Trip } from "./types.js";
  *     excluded for its patch;
  *   - a duplicate of a run stored twice, and a run with no planned profit above zero or no gross margin: not a sample.
  *
- * TYPICAL RATIO. Pooled: the sum of the realised over the sum of the planned (the formula of the efficiency figure the
- * sessions already show, so two numbers never disagree), with the median, the minimum and the maximum of the per-run
- * ratios beside it.
+ * TYPICAL RATIO. Pooled: the sum of the realised over the sum of the planned, with the median, the minimum and the maximum of
+ * the per-run ratios beside it. It is NOT the efficiency figure the sessions already show (`money.plan.efficiency`): that
+ * one is the measured result (net, else gross margin) over the plan AS PLANNED, while this one is the gross margin over
+ * the plan rescaled to the quantity really moved, so the two can differ on purpose.
+ *
+ * GOODS NOT VERIFIED. The game log never names goods, so every real plan is tied to its run by the resemblance of the
+ * prices (trips.ts `planLinkOf`): a group that rests on such a run says `goods_unverified`, is never labelled `high`,
+ * and must never be quoted as if the goods had been checked.
  *
  * CONFIDENCE (none / low / medium / high), from the number of runs n and the spread (max minus min of the per-run ratios,
  * in points of the plan):
@@ -60,6 +69,10 @@ export const CALIBRATION_QUANTITY_TOLERANCE = 0.02;
 /** A run that moved less than a quarter or more than four times the planned quantity is not comparable. */
 export const CALIBRATION_QUANTITY_RANGE: readonly [number, number] = [0.25, 4];
 export const CALIBRATION_MIN_RUNS = 2;
+/** A plan under this (or under the run's fees) is not compared: a choice, to keep a ratio of a few aUEC out. */
+export const CALIBRATION_MIN_PLANNED_AUEC = 1000;
+/** A net whose unexplained part of the balance change is above this share of the turnover is not the run's own. */
+export const CALIBRATION_UNEXPLAINED_SHARE = 0.02;
 export const CALIBRATION_SPREAD_HIGH = 0.6;
 export const CALIBRATION_SPREAD_TIGHT = 0.3;
 /** Groups kept in the report / in the dashboard poll. */
@@ -85,9 +98,11 @@ export interface CalibrationGroup {
   gross_min: number | null;
   gross_max: number | null;
   high_variance: boolean;
-  /** Realised net over the planned profit, from the runs whose net and fees are both known; null below 2 such runs. */
+  /** Realised net over the planned profit, from the runs whose net is their own; null below 2 such runs. */
   net_ratio: number | null;
   net_n: number;
+  /** Runs left out of the net because it held a movement of the balance that is not the run's (or could not be told). */
+  net_excluded: number;
   net_confidence: Confidence;
   /** Fees as a share of the turnover, from the runs that have both; null below 2. */
   fee_rate: number | null;
@@ -102,8 +117,16 @@ export interface CalibrationGroup {
   unknown_version: number;
   /** Runs whose plan was tied to them by prices (the log names goods by an id, so the goods were not verified). */
   linked_by_prices: number;
+  /** True when at least one used run was tied to its plan by prices: never quote the group as verified. */
+  goods_unverified: boolean;
   /** Runs of this group that were left out, by reason. */
-  excluded: { old: number; other_patch: number; quantity: number; beyond_last: number };
+  excluded: {
+    old: number;
+    other_patch: number;
+    quantity: number;
+    small_plan: number;
+    beyond_last: number;
+  };
 }
 
 export interface CalibrationReport {
@@ -125,8 +148,12 @@ export interface CalibrationReport {
   note: string;
 }
 
+/**
+ * Said with every answer of the tool. It must stay under 200 characters: the registry cuts every string of an
+ * untrusted_text answer there, and the part about unverified goods must survive.
+ */
 export const CALIBRATION_NOTE =
-  "ESTIMATE drawn from the player's own saved runs: realised gross margin against the planned profit (a margin before fees), fees as a share of the turnover. A handful of runs is low confidence; prices move and a ratio claims no cause. Never carried from one commodity to another. One applied plan marks one run, so two runs of a route need the plan applied twice.";
+  "ESTIMATE from the player's own runs; few runs = low confidence; no cause claimed. goods_unverified true: plan tied to runs by price resemblance, not name; never call it verified.";
 
 // -------------------------------------------------------------------------------------------------
 // Small helpers
@@ -205,7 +232,7 @@ export function confidenceOf(
 // Samples
 // -------------------------------------------------------------------------------------------------
 
-type Skip = "old" | "other_patch" | "quantity" | null;
+type Skip = "old" | "other_patch" | "quantity" | "small_plan" | null;
 
 interface Sample {
   commodity: string;
@@ -216,6 +243,8 @@ interface Sample {
   skip: Skip;
   gross: Pair;
   net: Pair | null;
+  /** A net was recorded but is not the run's own. */
+  netPolluted: boolean;
   fee: (Pair & { measured: boolean }) | null;
   adjusted: boolean;
   quantityUnknown: boolean;
@@ -264,11 +293,28 @@ function samplesOf(
           adjusted = true;
         }
       }
+      if (skip === null && planned < Math.max(CALIBRATION_MIN_PLANNED_AUEC, t.fees_auec ?? 0))
+        skip = "small_plan";
       if (skip === null && nowMs - endedMs > CALIBRATION_MAX_AGE_DAYS * DAY) skip = "old";
       if (skip === null && current !== null && line !== null && line !== current)
         skip = "other_patch";
-      // A net counts only with its fees: a net with no fees means the balance moved for another reason.
-      const netClean = t.net_auec !== null && t.fees_auec !== null;
+      // A net counts only when it is the run's own: with its fees, not flagged doubtful, and with what the margin and the
+      // fees leave unexplained of the balance change small. Measured fees give that residual from the figures stored;
+      // deduced fees (net = margin - fees by construction) only the model's own measure can tell, so an older trip without
+      // it is left out.
+      const turnover = t.revenue_auec ?? 0;
+      const residual =
+        t.unexplained_auec ??
+        (t.fees_method === "mesure" && t.fees_auec !== null && t.net_auec !== null
+          ? t.gross_margin_auec - t.net_auec - t.fees_auec
+          : null);
+      const hasNet = t.net_auec !== null && t.fees_auec !== null;
+      const netClean =
+        hasNet &&
+        t.net_doubtful !== true &&
+        residual !== null &&
+        turnover > 0 &&
+        Math.abs(residual) <= CALIBRATION_UNEXPLAINED_SHARE * turnover;
       samples.push({
         commodity: t.commodity,
         buy: t.plan_buy_terminal,
@@ -278,6 +324,7 @@ function samplesOf(
         skip,
         gross: { num: t.gross_margin_auec, den: plannedAdj },
         net: netClean ? { num: t.net_auec as number, den: plannedAdj } : null,
+        netPolluted: hasNet && !netClean,
         fee:
           t.fees_auec !== null && t.revenue_auec !== null && t.revenue_auec > 0
             ? { num: t.fees_auec, den: t.revenue_auec, measured: t.fees_method === "mesure" }
@@ -298,7 +345,7 @@ function groupOf(
   nowMs: number,
 ): CalibrationGroup {
   const first = members[0]!;
-  const excluded = { old: 0, other_patch: 0, quantity: 0, beyond_last: 0 };
+  const excluded = { old: 0, other_patch: 0, quantity: 0, small_plan: 0, beyond_last: 0 };
   for (const m of members) if (m.skip) excluded[m.skip] += 1;
   const eligible = members.filter((m) => m.skip === null).sort((a, b) => b.endedMs - a.endedMs);
   const used = eligible.slice(0, CALIBRATION_LAST_RUNS);
@@ -329,6 +376,7 @@ function groupOf(
     high_variance: gross ? gross.spread > CALIBRATION_SPREAD_HIGH : false,
     net_ratio: net ? net.typical : null,
     net_n: netSamples.length,
+    net_excluded: used.filter((u) => u.netPolluted).length,
     net_confidence: netVerdict.confidence,
     fee_rate: feeFigures ? feeFigures.typical : null,
     fee_n: fees.length,
@@ -339,6 +387,7 @@ function groupOf(
     quantity_unknown: used.filter((u) => u.quantityUnknown).length,
     unknown_version: used.filter((u) => u.versionUnknown).length,
     linked_by_prices: byPrices,
+    goods_unverified: byPrices > 0,
     excluded,
   };
 }

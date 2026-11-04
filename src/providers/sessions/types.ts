@@ -88,6 +88,13 @@ export const TripSchema = z.object({
    * goods by an id only, so the run's average prices resembled the plan's). null: no plan, or a trip from before this field.
    */
   plan_link: z.enum(["name", "prices"]).nullable().default(null),
+  /**
+   * What the margin and the fees do not explain of the balance change (gross margin - net - fees): a purchase made
+   * elsewhere, a reward... `net_doubtful` is the commerce model's own verdict that the net holds such a movement. The
+   * calibration leaves such a run's net out. Both come from the balance.
+   */
+  unexplained_auec: money.default(null),
+  net_doubtful: z.boolean().nullable().default(null),
   /** How `fees_auec` was obtained: measured against the balance on both sides, or deduced (gross margin minus net). */
   fees_method: z.enum(["mesure", "estime"]).nullable().default(null),
 });

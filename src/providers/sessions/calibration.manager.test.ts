@@ -150,7 +150,7 @@ describe("Feature: a run tied to its plan by prices is named after the plan on t
     const [a, b] = (await r.store.read()).sessions[0].trips;
     expect(a).toMatchObject({
       commodity: "Laranite",
-      label: "Cargo Laranite",
+      label: "Cargo Laranite (lien par prix)",
       plan_link: "prices",
       planned_profit_auec: 100_000,
     });

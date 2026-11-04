@@ -1261,13 +1261,14 @@ export function tradeActionsPanel(doc: any, L: any): any {
     const leg = o.legs[0];
     const cal =
       tradeBalanceNumber(H.balance) !== null && H.calibration && leg
-        ? L.calibrationLine(H.calibration, leg.commodity, leg.from, leg.to)
+        ? L.calibrationLine(H.calibration, leg.commodity, leg.from, leg.to, o.legs.length)
         : null;
     show(c.calib, !!cal);
     if (cal) {
       setText(c.calibText, cal.text);
       setText(c.calibTag, cal.tag);
       setAttr(c.calibTag, "data-estimate", "1");
+      setAttr(c.calibTag, "title", cal.hint);
     }
     const applied = S.appliedId === o.id;
     setText(c.apply, applied ? "Plan appliqué" : "Appliquer comme plan");

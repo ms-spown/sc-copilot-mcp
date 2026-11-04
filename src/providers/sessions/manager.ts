@@ -321,7 +321,7 @@ export class SessionManager {
       freshStart,
       connection: conn ? { state: conn.state, since: conn.since } : null,
       game: info,
-      trips: this.withPlans(collected.trips),
+      trips: this.withPlans(collected.trips, collected.plan_distance),
       context: collected.context,
     };
     await this.apply((s) => observe(s, obs, this.rc));
@@ -332,7 +332,10 @@ export class SessionManager {
    * (a hauling contract never carries it, and a second run of the same goods does not: the plan would be counted twice
    * in the efficiency). The run is remembered by its key so the same one keeps it on every look.
    */
-  private withPlans(trips: readonly TripInput[]): TripInput[] {
+  private withPlans(
+    trips: readonly TripInput[],
+    distance: Record<string, number> = {},
+  ): TripInput[] {
     const p = this.plan;
     const planned = p && typeof p.expected_profit_auec === "number" ? p.expected_profit_auec : null;
     const runs = trips
@@ -346,7 +349,12 @@ export class SessionManager {
       return a.includes(b) || b.includes(a);
     };
     if (planned !== null && this.planTripKey === null) {
-      this.planTripKey = runs.find(matches)?.key ?? null;
+      // Several runs may qualify in one look (a restart, a flush): the one closest to the plan takes it, the earliest on a tie.
+      const d = (t: TripInput) => distance[t.key] ?? 0;
+      const best = runs
+        .filter(matches)
+        .reduce<TripInput | null>((b, t) => (b === null || d(t) < d(b) ? t : b), null);
+      this.planTripKey = best?.key ?? null;
     }
     return trips.map((t) => {
       const mine = planned !== null && t.key === this.planTripKey;
@@ -358,12 +366,13 @@ export class SessionManager {
       const named = mine && t.commodity == null ? cleanLabel(p?.commodity, 60) : null;
       return {
         ...t,
-        ...(named ? { commodity: named, label: t.label ?? `Cargo ${named}` } : {}),
+        ...(named ? { commodity: named, label: t.label ?? `Cargo ${named} (lien par prix)` } : {}),
         planned_profit_auec: mine ? (t.planned_profit_auec ?? planned) : null,
         planned_scu: mine ? (t.planned_scu ?? facts.planned_scu) : null,
         plan_buy_terminal: mine ? (t.plan_buy_terminal ?? facts.plan_buy_terminal) : null,
         plan_link: mine ? (t.plan_link ?? null) : null,
         plan_sell_terminal: mine ? (t.plan_sell_terminal ?? facts.plan_sell_terminal) : null,
+        // The prices are the player's own and the flag tells that the goods were not named: no amount, kept.
       };
     });
   }
@@ -588,6 +597,9 @@ const stripTripMoney = (t: Session["trips"][number]) => ({
   planned_profit_auec: null,
   // The plan's quantity can be sized by the balance (a route built from "Budget = mon solde"): it goes with the money.
   planned_scu: null,
+  // Both come from the balance (what the margin and the fees do not explain of it).
+  unexplained_auec: null,
+  net_doubtful: null,
 });
 
 export { MONEY_WITHHELD_NOTE };

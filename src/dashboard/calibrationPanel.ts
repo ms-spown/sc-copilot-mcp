@@ -19,14 +19,34 @@ export function calibrationConfig() {
   return { maxGroups: 14, textMax: 60, maxN: 999 };
 }
 
-/** The comparison key of a name: lower case, letters and digits only. Equal keys are the same commodity or terminal. */
+/**
+ * The comparison key of a name: accents folded (NFKD, combining marks out), lower case, letters and digits of any script
+ * only. Equal keys are the same commodity or terminal. A name with no letter or digit at all gets a stable hash of its
+ * folded text, so it is never an empty key (which would make its group invisible).
+ */
 export function calibrationKey(value: unknown): string {
-  return typeof value === "string" ? value.toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+  if (typeof value !== "string") return "";
+  const folded = value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const plain = folded.replace(/[^\p{L}\p{N}]/gu, "");
+  if (plain !== "") return plain;
+  const text = folded.trim();
+  if (text === "") return "";
+  let h = 5381;
+  for (const ch of text) h = ((h * 33) ^ (ch.codePointAt(0) as number)) >>> 0;
+  return "h" + h.toString(16);
 }
 
 /** "78 %" (a no-break space before the sign). */
 export function calibrationPct(ratio: number): string {
   return Math.round(ratio * 100) + "\u00a0%";
+}
+
+/** A ratio this far from 1 (500 %) is shown as "écart très élevé", never as a number: it rests on a tiny plan. */
+export function calibrationHuge(ratio: unknown): boolean {
+  return typeof ratio === "number" && Math.abs(ratio) > 5;
 }
 
 export function calibrationWord(confidence: string): string {
@@ -63,6 +83,8 @@ export function calibrationGroupNormalize(L: any, raw: any): any {
     high_variance: raw.high_variance === true,
     net_ratio: calibrationRatio(L, raw.net_ratio),
     net_n: count(raw.net_n),
+    net_excluded: count(raw.net_excluded),
+    goods_unverified: raw.goods_unverified === true,
     net_confidence: L.ledgerOneOf(raw.net_confidence, confs, "low"),
     fee_rate: calibrationRatio(L, raw.fee_rate),
     fee_n: count(raw.fee_n),
@@ -130,17 +152,24 @@ export function calibrationExpected(
   plannedTurnover?: unknown,
 ): any {
   if (!group || typeof plannedProfit !== "number" || !Number.isFinite(plannedProfit)) return null;
-  if (typeof group.net_ratio === "number" && group.net_n >= 2) {
+  const unverified = group.goods_unverified === true;
+  if (
+    typeof group.net_ratio === "number" &&
+    group.net_n >= 2 &&
+    !calibrationHuge(group.net_ratio)
+  ) {
     return {
       auec: Math.round(plannedProfit * group.net_ratio),
       basis: "net_ratio",
       ratio: group.net_ratio,
       n: group.net_n,
       confidence: group.net_confidence,
+      goods_unverified: unverified,
     };
   }
   if (
     typeof group.gross_ratio === "number" &&
+    !calibrationHuge(group.gross_ratio) &&
     typeof group.fee_rate === "number" &&
     group.fee_n >= 2 &&
     typeof plannedTurnover === "number" &&
@@ -156,6 +185,7 @@ export function calibrationExpected(
       ratio: group.gross_ratio,
       n: Math.min(group.n, group.fee_n),
       confidence: conf,
+      goods_unverified: unverified,
     };
   }
   return null;
@@ -187,30 +217,51 @@ export function calibrationCaution(group: any): string {
  * there is nothing to say (the balance is hidden, no group, fewer than two runs). `tag` always carries the confidence and
  * the word "estimé".
  */
-export function calibrationLine(calib: any, commodity: unknown, buy: unknown, sell: unknown): any {
+export function calibrationLine(
+  calib: any,
+  commodity: unknown,
+  buy: unknown,
+  sell: unknown,
+  legs?: unknown,
+): any {
   const hit = calibrationPick(calib, commodity, buy, sell);
   if (!hit) return null;
   const g = hit.group;
-  const where = hit.scope === "route" ? "sur cette route" : "de cette marchandise";
-  let text =
-    "Tes " +
-    g.n +
-    " derniers trajets " +
-    where +
-    " : réalisé (marge brute) ≈ " +
-    calibrationPct(g.gross_ratio) +
-    " du prévu";
+  const unverified = g.goods_unverified === true;
+  // The game log never names goods: when the plan was tied to the runs by their prices, the line says they only
+  // RESEMBLE the plan, never that they are "of this goods".
+  const where = unverified
+    ? hit.scope === "route"
+      ? "qui ressemblent au plan sur cette route (marchandise non vérifiée, lien par prix)"
+      : "qui ressemblent au plan (marchandise non vérifiée, lien par prix)"
+    : hit.scope === "route"
+      ? "sur cette route"
+      : "de cette marchandise";
+  let text = "Tes " + g.n + " derniers trajets " + where;
+  text += calibrationHuge(g.gross_ratio)
+    ? " : écart très élevé entre le réalisé (marge brute) et le prévu"
+    : " : réalisé (marge brute) ≈ " + calibrationPct(g.gross_ratio) + " du prévu";
   if (typeof g.fee_rate === "number")
     text += ", frais ≈ " + calibrationPct(g.fee_rate) + " du chiffre d’affaires";
   text += ".";
   const caution = calibrationCaution(g);
   if (caution !== "") text += " " + caution[0]!.toUpperCase() + caution.slice(1) + ".";
+  if (typeof legs === "number" && legs > 1)
+    text += " Ligne calculée pour le premier tronçon seulement.";
   return {
     text,
     tag: "estimé · confiance " + calibrationWord(g.confidence),
+    hint: calibrationHint(g),
     scope: hit.scope,
     confidence: g.confidence,
+    goods_unverified: unverified,
   };
+}
+
+/** The explanation behind the confidence tag (its title): why it is capped when the goods were not verified. */
+export function calibrationHint(group: any): string {
+  if (!group || group.goods_unverified !== true) return "";
+  return "Confiance plafonnée à « moyenne » : le journal du jeu ne nomme pas les marchandises, le plan est rattaché aux trajets par la ressemblance des prix (une ressemblance, pas une preuve).";
 }
 
 /**
@@ -229,7 +280,14 @@ export function calibrationNextTile(calib: any, plan: any, money: any): any {
       : null;
   const e = calibrationExpected(hit.group, money.planned_profit, turnover);
   if (!e) return null;
-  const where = hit.scope === "route" ? "cette route" : "cette marchandise";
+  const unverified = e.goods_unverified === true;
+  const where = unverified
+    ? hit.scope === "route"
+      ? "qui ressemblent au plan sur cette route, marchandise non vérifiée"
+      : "qui ressemblent au plan, marchandise non vérifiée"
+    : hit.scope === "route"
+      ? "sur cette route"
+      : "sur cette marchandise";
   const caution = calibrationCaution(hit.group);
   const sub =
     e.basis === "net_ratio"
@@ -237,14 +295,14 @@ export function calibrationNextTile(calib: any, plan: any, money: any): any {
         calibrationPct(e.ratio) +
         " (net typique de tes " +
         e.n +
-        " trajets sur " +
+        " trajets " +
         where +
         ")"
       : "prévu × " +
         calibrationPct(e.ratio) +
         " (marge brute typique de tes " +
         e.n +
-        " trajets sur " +
+        " trajets " +
         where +
         "), moins les frais habituels (" +
         calibrationPct(hit.group.fee_rate) +
@@ -253,6 +311,7 @@ export function calibrationNextTile(calib: any, plan: any, money: any): any {
     auec: e.auec,
     tag: "estimé · confiance " + calibrationWord(e.confidence),
     sub: sub + (caution !== "" ? " · " + caution : ""),
+    hint: calibrationHint(hit.group),
     confidence: e.confidence,
     basis: e.basis,
   };
@@ -263,6 +322,7 @@ export const CALIBRATION_VIEW_FUNCTIONS = [
   calibrationConfig,
   calibrationKey,
   calibrationPct,
+  calibrationHuge,
   calibrationWord,
   calibrationRatio,
   calibrationGroupNormalize,
@@ -272,5 +332,6 @@ export const CALIBRATION_VIEW_FUNCTIONS = [
   calibrationExpected,
   calibrationCaution,
   calibrationLine,
+  calibrationHint,
   calibrationNextTile,
 ];

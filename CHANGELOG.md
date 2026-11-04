@@ -14,22 +14,29 @@ versions follow [Semantic Versioning](https://semver.org/).
   both known), fees over turnover; the plan is scaled to the quantity really moved; no figure below 2 runs and the number
   of runs always shown; a confidence label (`none`, `low`, `medium`, `high`) from the number of runs, the spread and the
   age; runs older than 60 days or from another patch line are left out, only the last 8 per group count; a figure is
-  never carried from one commodity to another. Shown in `sc_session_stats` (`route_reliability`), as a quiet line under
+  never carried from one commodity to another; a plan under 1 000 aUEC is ignored and a ratio above 500 % is shown as "écart
+  très élevé"; a net that holds a purchase made elsewhere (what the margin and the fees leave unexplained above 2 % of the
+  turnover, or flagged doubtful by the commerce model) is left out of the net ratio and counted. Shown in `sc_session_stats` (`route_reliability`), as a quiet line under
   each suggested route of the action bar, in the commerce card's "Si tu refais ce trajet" tile (calibrated net
   expectation, an estimate), and in a sentence of the server instructions and the `trade_copilot` prompt. Every ratio is
   derived from the balance: it exists only where the balance is shown (not in the tool without `include_balance`, not in
   the poll of a View that did not ask, not on the channel between Views, not in `ui/update-model-context` or the message to
   the agent). Docs EN/FR, SECURITY.
-- Session file version 2: a trade trip also keeps the plan's quantity and terminals, how the plan was tied to the run
-  and how the fees were obtained (all optional, null for older trips). A version 1 file is read as is; a server that
-  only knows version 1 leaves a version 2 file alone.
+- Session file version 2: a trade trip also keeps the plan's quantity and terminals, how the plan was tied to the run,
+  how the fees were obtained and what the balance holds beyond the run (all optional, null for older trips). A version 1
+  file is read as is and, before the first write in the new format, copied once to `sessions.json.v1.bak` (an existing copy
+  is never overwritten). A build that only knows version 1 opens a version 2 file read-only, in memory, with a notice: the
+  data is not lost.
 
 ### Fixed
 - **A planned profit was never saved with a trade run in the real game.** The journal names goods by an id (the first 8
   characters of a GUID), the plan by a name, so the commerce model's name comparison always said "non vérifié" and the
   saved trip carried no plan: the efficiency against the plan had nothing to compare. A plan is now also tied to the run
-  by its prices (the run's average buy and sell prices within 40 % of the plan's, the quantity within a factor of 4),
-  recorded as `plan_link: "prices"` and reported as unverified goods by the calibration.
+  by its prices, strictly (average buy and sell prices each within 15 % of the plan's, a known bought quantity within a
+  factor of 2.5 of the plan's, a positive realised unit margin between half and twice the plan's; a run that fails a test
+  leaves the plan free, and the closest of several candidates takes it), recorded as `plan_link: "prices"`. Such goods are
+  never verified: the calibration, its line and its tile say "marchandise non vérifiée (lien par prix)", the confidence is
+  capped at medium, and the session figures count them (`price_linked_trips`, label suffix "(lien par prix)").
 
 ## [2.2.0] - 2026-11-04
 

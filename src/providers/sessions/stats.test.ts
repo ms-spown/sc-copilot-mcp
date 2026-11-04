@@ -36,6 +36,8 @@ const trip = (over: Partial<Trip> = {}): Trip => ({
   plan_sell_terminal: null,
   fees_method: null,
   plan_link: null,
+  unexplained_auec: null,
+  net_doubtful: null,
   ...over,
 });
 
@@ -104,6 +106,7 @@ describe("Feature: one session", () => {
       measured_auec: 14_000,
       efficiency: 0.7,
       trips: 2,
+      price_linked_trips: 0,
     });
   });
 

@@ -84,6 +84,7 @@ const group = (over: Record<string, unknown> = {}) => ({
 const route = group({ kind: "route", buy_terminal: "Port Tressler", sell_terminal: "Area18 TDD" });
 const gold = group({
   commodity: "Gold",
+  goods_unverified: true,
   n: 2,
   confidence: "low",
   reasons: ["few_runs"],
@@ -153,7 +154,11 @@ describe("Feature: the line under a suggestion is quiet, honest and tied to its 
 
   it("Given two runs, Then the line says that few runs only give an indication", () => {
     const line = calibrationLine(calib, "Gold", "Everus Harbor", "Seraphim Station");
-    expect(NBSP_FREE(line.text)).toContain("Tes 2 derniers trajets de cette marchandise");
+    // the plan was tied to these runs by their prices: they only resemble it, and the line says the goods are unverified
+    expect(NBSP_FREE(line.text)).toContain(
+      "Tes 2 derniers trajets qui ressemblent au plan (marchandise non vérifiée, lien par prix)",
+    );
+    expect(line.hint).toMatch(/plafonnée à « moyenne »/);
     expect(line.text).toContain("Peu de trajets : indicatif seulement.");
     expect(line.tag).toBe("estimé · confiance faible");
   });
@@ -287,6 +292,8 @@ describe("Feature: the section is in the ledger only for a caller allowed the ba
       plan_buy_terminal: `Terminal ${i % 14} with a long name of sixty characters or so ....`,
       plan_sell_terminal: `Destination ${i % 14} with a long name of sixty characters ....`,
       plan_link: "prices" as const,
+      unexplained_auec: null,
+      net_doubtful: null,
       fees_method: "mesure" as const,
     }));
     const poll = calibrationForPoll(
@@ -465,8 +472,10 @@ describe("Feature: the line under the suggestions, in the assembled page", () =>
     expect(t).toContain(
       "Tes 4 derniers trajets sur cette route : réalisé (marge brute) ≈ 74 % du prévu, frais ≈ 14 % du chiffre d’affaires.",
     );
-    // Gold: two runs, said to be an indication only
-    expect(t).toContain("Tes 2 derniers trajets de cette marchandise");
+    // Gold: two runs, unverified goods, said to be an indication only
+    expect(t).toContain("Tes 2 derniers trajets qui ressemblent au plan (marchandise non vérifiée");
+    // a two-leg card says the line is about the first leg
+    expect(t).toContain("Ligne calculée pour le premier tronçon seulement.");
     expect(t).toContain("Peu de trajets : indicatif seulement.");
     expect(t).toContain("estimé · confiance moyenne");
     expect(t).toContain("estimé · confiance faible");

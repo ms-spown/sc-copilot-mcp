@@ -144,7 +144,7 @@ if (trade) {
 }
 // calib=1: the calibration section the real server adds to the ledger, only for a poll that asked for the balance.
 if (q.get("calib")) {
-  const g = (over) => ({ kind: "commodity", commodity: "Laranite", buy_terminal: null, sell_terminal: null, n: 4, confidence: "medium", gross_ratio: 0.737, gross_min: 0.65, gross_max: 0.83, high_variance: false, net_ratio: 0.762, net_n: 4, net_confidence: "medium", fee_rate: 0.137, fee_n: 4, last_run_age_days: 1, quantity_adjusted: 0, quantity_unknown: 0, ...over });
+  const g = (over) => ({ kind: "commodity", commodity: "Laranite", buy_terminal: null, sell_terminal: null, n: 4, confidence: "medium", gross_ratio: 0.737, gross_min: 0.65, gross_max: 0.83, high_variance: false, net_ratio: 0.762, net_n: 4, net_confidence: "medium", fee_rate: 0.137, fee_n: 4, last_run_age_days: 1, quantity_adjusted: 0, quantity_unknown: 0, goods_unverified: true, ...over });
   const CALIBRATION = { v: 1, patch_line: "4.10", groups: [
     g({}),
     g({ kind: "route", buy_terminal: "Port Tressler", sell_terminal: "Area18 TDD" }),

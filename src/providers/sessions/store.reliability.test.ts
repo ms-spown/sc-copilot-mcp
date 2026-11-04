@@ -56,6 +56,8 @@ const addTrip = (sessionNumber: number, label: string) => (d: StoreState) => {
     plan_sell_terminal: null,
     fees_method: null,
     plan_link: null,
+    unexplained_auec: null,
+    net_doubtful: null,
   });
   return { changed: true, result: label };
 };

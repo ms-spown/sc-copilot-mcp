@@ -60,8 +60,18 @@ export interface SessionMoney {
   plan: {
     planned_auec: number;
     measured_auec: number;
+    /**
+     * Measured result (net, else gross margin) over the planned profit AS PLANNED (not rescaled to the quantity moved: the
+     * route calibration, calibration.ts, compares the gross margin with a plan rescaled to the quantity, so the two figures
+     * can differ on purpose).
+     */
     efficiency: number | null;
     trips: number;
+    /**
+     * How many of those trips had their plan tied to them by PRICE resemblance, not by the goods' name (the game log never
+     * names goods): their goods were not verified.
+     */
+    price_linked_trips: number;
   } | null;
 }
 
@@ -222,6 +232,7 @@ export function summarizeSession(s: Session): SessionSummary {
               efficiency:
                 plannedSum > 0 ? Math.round((measuredSum / plannedSum) * 1000) / 1000 : null,
               trips: planned.length,
+              price_linked_trips: planned.filter((e) => e.trip.plan_link === "prices").length,
             }
           : null,
     },
@@ -247,6 +258,8 @@ export interface RouteStat {
   buy_terminal: string | null;
   sell_terminal: string | null;
   trips: number;
+  /** Trips of this route whose plan was tied to them by price resemblance (goods not verified). */
+  price_linked_trips: number;
   avg_net_auec: number;
   total_net_auec: number;
 }
@@ -266,7 +279,7 @@ export interface AggregateMoney {
     previous_per_hour_auec: number;
     sessions_each: number;
   } | null;
-  plan: { efficiency: number | null; trips: number } | null;
+  plan: { efficiency: number | null; trips: number; price_linked_trips: number } | null;
   per_session: {
     number: number;
     net_auec: number | null;
@@ -276,6 +289,8 @@ export interface AggregateMoney {
   best_commodities: {
     commodity: string;
     trips: number;
+    /** Trips of this goods whose plan was tied to them by price resemblance (goods not verified). */
+    price_linked_trips: number;
     avg_net_auec: number;
     total_net_auec: number;
   }[];
@@ -371,7 +386,12 @@ export function aggregate(
   }
   const stat = (list: Trip[]) => {
     const total = sum(known(list.map((t) => resultOf.get(t) ?? null)));
-    return { trips: list.length, total_net_auec: total, avg_net_auec: round(total / list.length) };
+    return {
+      trips: list.length,
+      price_linked_trips: list.filter((t) => t.plan_link === "prices").length,
+      total_net_auec: total,
+      avg_net_auec: round(total / list.length),
+    };
   };
   const best_routes: RouteStat[] = [...routes.values()]
     .map(({ t }) => ({
@@ -424,6 +444,7 @@ export function aggregate(
                     1000
                   : null,
               trips: planned.length,
+              price_linked_trips: planned.filter((e) => e.trip.plan_link === "prices").length,
             }
           : null,
       per_session: sums.slice(-12).map((s) => ({

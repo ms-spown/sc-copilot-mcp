@@ -710,7 +710,9 @@ export function tradePanel(doc: any, L: any, svgNs: string): any {
           true,
           calibrated.sub,
         );
+        setAttr(tiles.next.tag, "title", calibrated.hint);
       } else if (next !== null && next !== undefined) {
+        setAttr(tiles.next.tag, "title", "");
         tileValue(
           tiles.next,
           "≈ " + tradeAmount(L, next, true),

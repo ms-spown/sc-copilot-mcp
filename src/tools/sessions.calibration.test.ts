@@ -53,6 +53,8 @@ const trade = (n: number): Trip => ({
   plan_buy_terminal: "Port Tressler",
   plan_sell_terminal: "Area18 TDD",
   plan_link: "prices",
+  unexplained_auec: null,
+  net_doubtful: null,
   fees_method: "mesure",
 });
 
@@ -112,7 +114,7 @@ describe("Feature: what the plan said reaches the model only with the balance", 
   const SIZED = 6937;
 
   it("Given a trip whose plan was sized by the balance, Then its quantity is withheld like the planned profit, and given only with include_balance", async () => {
-    const t = await rig([{ ...trade(1), planned_scu: SIZED }]);
+    const t = await rig([{ ...trade(1), planned_scu: SIZED, unexplained_auec: 9137 }]);
     for (const [name, args] of [
       ["sc_session_current", {}],
       ["sc_session_list", {}],
@@ -122,9 +124,12 @@ describe("Feature: what the plan said reaches the model only with the balance", 
       expect(text, name).not.toContain(String(SIZED));
       expect(JSON.stringify(r.structuredContent ?? {}), name).not.toContain(String(SIZED));
       expect(text, name).not.toContain("100000"); // the planned profit
+      expect(text, name).not.toContain("9137"); // what the balance holds beyond the run
+      expect(text, name).not.toContain('net_doubtful":true');
     }
     const rich = await t.callTool("sc_session_current", { include_balance: true });
     expect(rich.text).toContain(String(SIZED));
+    expect(rich.text).toContain("9137");
     // what carries no amount stays visible: the plan's places and how it was tied to the run
     const plain = await t.callTool("sc_session_current", {});
     expect(plain.text).toContain("Port Tressler");
@@ -140,6 +145,11 @@ describe("Feature: route_reliability in sc_session_stats", () => {
     expect(g).toMatchObject({ commodity: "Laranite", n: 2, confidence: "low" });
     expect(g.reasons).toContain("few_runs");
     expect(g.linked_by_prices).toBe(2);
+    // the log never names goods: every real group says so, and the answer carries one sentence about it
+    expect(g.goods_unverified).toBe(true);
+    expect(data.route_reliability.note).toMatch(
+      /goods_unverified true: plan tied to runs by price resemblance/,
+    );
     expect(String(g.gross_ratio)).toBe(RATIO);
     expect(data.route_reliability.note).toMatch(/ESTIMATE/);
     expect(data.route_reliability.note).toMatch(/low confidence/);
