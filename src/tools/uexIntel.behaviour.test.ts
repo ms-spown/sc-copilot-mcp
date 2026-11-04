@@ -1,3 +1,4 @@
+import { AxiosError } from "axios";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { clearCache, configureDiskCache } from "../core/cache.js";
 import type { HttpClient } from "../core/http.js";
@@ -144,7 +145,7 @@ function fake(routes: Record<string, unknown | ((params: Record<string, unknown>
   const get = vi.fn(async (url: string, config?: { params?: Record<string, unknown> }) => {
     const route = routes[url];
     if (route === undefined) throw new Error(`fake: no route for ${url}`);
-    return { data: typeof route === "function" ? route(config?.params ?? {}) : route };
+    return { data: typeof route === "function" ? await route(config?.params ?? {}) : route };
   });
   return {
     client: {
@@ -227,15 +228,14 @@ describe("Feature: uex_plan_trade ranks options by estimated profit per hour", (
     expect(top.trip.distance_basis).toEqual(["orbits_distances", "orbits_distances"]);
     expect(r.time_model.estimate).toBe(true);
     expect(r.assumptions.join(" ")).toContain("ESTIMATE");
-    // Within the reported options (they come first), sorted by profit per hour, descending.
-    const perHour = r.options
-      .filter((o) => o.legs.every((l) => l.report_status === "reported"))
-      .map((o) => o.trip.profit_per_hour as number);
+    // The objective decides the order: sorted by profit per hour, descending, estimates included.
+    const perHour = r.options.map((o) => o.trip.profit_per_hour as number);
     expect(perHour.length).toBeGreaterThan(1);
     expect([...perHour].sort((a, b) => b - a)).toEqual(perHour);
+    expect(r.options.every((o) => o.trip.returns_to_start)).toBe(true);
   });
 
-  it("Then a price nobody reported is flagged an estimate and its option comes after the reported ones", async () => {
+  it("Then a price nobody reported is flagged an estimate on the option, its summary and the counts, without reordering by it", async () => {
     const r = await planTrips(deps(market()), { shipName: "Cutlass Black", avoidPyro: true });
     // T1<->T2 has Gold at T2 with 0 reports (estimate) and is the most profitable; T2<->T4 is fully reported.
     const byPair = (a: string, b: string) =>
@@ -245,9 +245,185 @@ describe("Feature: uex_plan_trade ranks options by estimated profit per hour", (
     expect(estimate?.legs[0].report_status).toBe("estimate");
     expect(estimate?.legs[0].is_estimate).toBe(true);
     expect(estimate?.legs[0].estimated_sides).toEqual(["destination"]);
-    expect(reported?.legs.every((l) => l.report_status === "reported")).toBe(true);
-    expect(r.options.indexOf(reported!)).toBeLessThan(r.options.indexOf(estimate!));
+    expect(estimate).toMatchObject({ report_status: "estimate", estimate: true });
+    expect(estimate?.summary.startsWith("[ESTIMATE] ")).toBe(true);
+    expect(reported).toMatchObject({ report_status: "reported", estimate: false });
+    expect(reported?.summary.startsWith("[")).toBe(false);
+    // The objective decides: the better estimate stays above the reported option.
+    expect(r.options.indexOf(estimate!)).toBeLessThan(r.options.indexOf(reported!));
+    expect(r.report_counts.estimate).toBeGreaterThan(0);
+    expect(r.report_counts.reported).toBeGreaterThan(0);
+    expect(r.min_reports_note).toContain("min_reports");
     expect(r.notes.join(" ")).toContain("report_status");
+  });
+
+  it("Then two-leg chains are a separate list with no return priced, never mixed into options", async () => {
+    const r = await planTrips(deps(market()), { shipName: "Cutlass Black", avoidPyro: true });
+    expect(r.chains.length).toBeGreaterThan(0);
+    expect(r.chains.every((c) => c.mode === "two_leg" && !c.trip.returns_to_start)).toBe(true);
+    expect(r.options.some((o) => o.mode === "two_leg")).toBe(false);
+    expect(r.lists_note).toContain("not comparable");
+    const perHour = r.chains.map((c) => c.trip.profit_per_hour as number);
+    expect([...perHour].sort((a, b) => b - a)).toEqual(perHour);
+  });
+
+  it("Then without min_reports an unverified option is kept and tagged, and the failed check is named in the notes", async () => {
+    const failing = market({
+      "/commodities_prices": () => {
+        throw new Error("boom");
+      },
+    });
+    const open = await planTrips(deps(failing), { shipName: "Cutlass Black", avoidPyro: true });
+    expect(open.options.length).toBeGreaterThan(0);
+    expect(open.options.every((o) => o.report_status === "unverified")).toBe(true);
+    expect(open.options[0].summary.startsWith("[UNVERIFIED] ")).toBe(true);
+    expect(open.notes.join(" ")).toMatch(/player-report check failed for \d+ commodit/);
+    expect(open.notes.join(" ")).toContain("boom");
+  });
+
+  it("Then with min_reports an option whose reports could not be checked is dropped and counted", async () => {
+    const failing = market({
+      "/commodities_prices": () => {
+        throw new Error("boom");
+      },
+    });
+    const strict = await planTrips(deps(failing), {
+      shipName: "Cutlass Black",
+      avoidPyro: true,
+      minReports: 5,
+    });
+    expect(strict.options).toEqual([]);
+    expect(strict.chains).toEqual([]);
+    expect(strict.excluded.options_unverified_dropped_by_min_reports).toBeGreaterThan(0);
+    expect(strict.notes.join(" ")).toContain("player-report check failed");
+  });
+
+  it("Then min_reports keeps only options whose every end has that many player reports", async () => {
+    const r = await planTrips(deps(market()), {
+      shipName: "Cutlass Black",
+      avoidPyro: true,
+      minReports: 1,
+    });
+    // Only T2<->T4 (Silver and Copper) has a report at every end.
+    expect(r.options.length).toBeGreaterThan(0);
+    expect(r.options.every((o) => o.report_status === "reported")).toBe(true);
+    for (const o of r.options) {
+      for (const l of o.legs) {
+        expect(l.reports.origin).toBeGreaterThanOrEqual(1);
+        expect(l.reports.destination).toBeGreaterThanOrEqual(1);
+      }
+    }
+    expect(r.excluded.options_with_fewer_reports_than_min_reports).toBeGreaterThan(0);
+  });
+
+  it("Then a circuit breaker stops the report check at the first timeout or 429 and says so", async () => {
+    let calls = 0;
+    const slow = market({
+      "/commodities_prices": () => {
+        calls++;
+        throw new AxiosError("timeout", "ECONNABORTED");
+      },
+    });
+    const r = await planTrips(deps(slow), { shipName: "Cutlass Black", avoidPyro: true });
+    expect(calls).toBe(1);
+    expect(r.notes.join(" ")).toContain("check stopped early");
+    expect(r.options.every((o) => o.report_status === "unverified")).toBe(true);
+  });
+
+  it("Then a round trip from a requested terminal or planet starts its first purchase there", async () => {
+    const fromT2 = await planTrips(deps(market()), {
+      shipName: "Cutlass Black",
+      avoidPyro: true,
+      origin: { terminalName: "Area 18" },
+    });
+    const rt = fromT2.options.filter((o) => o.mode === "round_trip");
+    expect(rt.length).toBeGreaterThan(0);
+    for (const o of rt) expect(o.legs[0].from.terminal).toBe("Area 18");
+    // Area 18 first buys Laranite for ARC-L1 (not the Gold the reverse direction would start with).
+    expect(rt.find((o) => o.legs[0].to.terminal === "ARC-L1")?.legs[0].commodity).toBe("Laranite");
+
+    clearCache();
+    const fromHurston = await planTrips(deps(market()), {
+      shipName: "Cutlass Black",
+      avoidPyro: true,
+      origin: { planetName: "Hurston" },
+    });
+    for (const o of [...fromHurston.options, ...fromHurston.chains]) {
+      expect(o.legs[0].from.planet).toBe("Hurston");
+    }
+    clearCache();
+    const fromArc = await planTrips(deps(market()), {
+      shipName: "Cutlass Black",
+      avoidPyro: true,
+      origin: { planetName: "ArcCorp" },
+    });
+    expect(fromArc.options.length).toBeGreaterThan(0);
+    for (const o of [...fromArc.options, ...fromArc.chains]) {
+      expect(o.legs[0].from.planet).toBe("ArcCorp");
+    }
+  });
+
+  it("Then a failure of the UEX routes call degrades to the offline plans, with a note", async () => {
+    const down = () =>
+      market({
+        "/commodities_routes": () => {
+          throw new Error("routes down");
+        },
+      });
+    const r = await planTrips(deps(down()), {
+      shipName: "Cutlass Black",
+      avoidPyro: true,
+      origin: { terminalName: "Area 18" },
+    });
+    expect(r.notes.join(" ")).toContain("UEX routes could not be read");
+    expect(r.options.some((o) => o.mode === "round_trip")).toBe(true);
+    clearCache();
+    await expect(
+      planTrips(deps(down()), {
+        shipName: "Cutlass Black",
+        maxLegs: 1,
+        origin: { commodityName: "Gold" },
+      }),
+    ).rejects.toThrow(/nothing else to show/);
+  });
+
+  it("Then the plan has a deadline: a source that never answers ends it with what is known", async () => {
+    const hang = market({ "/commodities_prices": () => new Promise(() => undefined) });
+    const r = await planTrips(
+      { ...deps(hang), deadlineMs: 150 },
+      { shipName: "Cutlass Black", avoidPyro: true },
+    );
+    expect(r.notes.join(" ")).toMatch(/stopped early|time allowed/);
+    expect(r.options.every((o) => o.report_status === "unverified")).toBe(true);
+  });
+
+  it("Then rows without a date are counted apart from old ones, and a fractional hold is rounded down", async () => {
+    const undated = { ...sell(10, 2, 160), date_modified: undefined };
+    const uex = market({
+      "/commodities_prices_all": env([
+        ...PRICES_ALL.filter((p) => !(p.id_commodity === 10 && p.id_terminal === 2)),
+        undated,
+      ]),
+    });
+    const r = await planTrips(deps(uex), {
+      cargoScu: 46.9,
+      quantumSpeedMs: 238314300,
+      avoidPyro: true,
+    });
+    expect(r.excluded.price_rows_without_date).toBe(1);
+    expect(r.excluded.price_rows_older_than_max_age).toBe(1);
+    expect(r.cargo_scu_used).toBe(46);
+    await expect(planTrips(deps(market()), { cargoScu: 0.5 })).rejects.toThrow(/at least 1 SCU/);
+  });
+
+  it("Then stop_minutes is rounded, not floored", async () => {
+    const r = await planTrips(deps(market()), {
+      cargoScu: 46,
+      quantumSpeedMs: 238314300,
+      avoidPyro: true,
+      stopMinutes: 9.6,
+    });
+    expect(r.time_model.stop_minutes).toBe(10);
   });
 
   it("Then every leg says how old its prices are, and old prices are left out and counted", async () => {

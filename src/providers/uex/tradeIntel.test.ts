@@ -299,7 +299,7 @@ describe("planner", () => {
     ]);
     const set = buildLegs(rows, base);
     expect([...set.best.keys()]).toEqual(["1>2"]);
-    expect(set.excluded_stale_rows).toBe(2);
+    expect(set.excluded_stale_rows).toBe(1);
     expect(set.undated_rows).toBe(1);
     const leg = set.best.get("1>2");
     expect(leg).toMatchObject({ scu: 46, profit: 46 * 60, limitedBy: "cargo" });

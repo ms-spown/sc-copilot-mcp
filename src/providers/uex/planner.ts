@@ -93,7 +93,9 @@ export interface LegSet {
   best: Map<string, Leg>;
   considered_buy_rows: number;
   considered_sell_rows: number;
+  /** Rows dropped because their date is older than the limit. */
   excluded_stale_rows: number;
+  /** Rows UEX gives no date for (dropped unless stale rows are kept). */
   undated_rows: number;
 }
 
@@ -120,9 +122,9 @@ export function buildLegs(rows: readonly PriceRow[], o: LegOptions): LegSet {
   for (const r of rows) {
     if (o.commodityId !== undefined && r.commodityId !== o.commodityId) continue;
     if (!canBuy(r) && !canSell(r)) continue;
-    if (r.updatedAt === null) set.undated_rows++;
     if (!ageOk(r, o)) {
-      set.excluded_stale_rows++;
+      if (r.updatedAt === null) set.undated_rows++;
+      else set.excluded_stale_rows++;
       continue;
     }
     const list = byCommodity.get(r.commodityId);
@@ -249,14 +251,16 @@ export interface PlanSearch {
 
 /**
  * Round trips A -> B -> A: the best commodity out and the best commodity back, then back at A.
- * Each pair is counted once (A -> B -> A and B -> A -> B are the same cycle).
+ * Without `startsAt`, each pair is counted once (A -> B -> A and B -> A -> B are the same cycle).
+ * With it, the FIRST purchase is at a terminal that satisfies it: the outbound leg starts there, and
+ * both directions of a pair are separate plans when both ends satisfy it.
  */
 export function roundTrips(
   legs: LegSet,
   distance: DistanceFn,
   model: TravelModel,
   pool: number,
-  startsAt: (terminalId: number) => boolean = () => true,
+  startsAt?: (terminalId: number) => boolean,
   rank: Rank = byValue,
 ): PlanSearch {
   const plans: Plan[] = [];
@@ -265,8 +269,7 @@ export function roundTrips(
   for (const out of legs.best.values()) {
     const back = legs.best.get(pairKey(out.toId, out.fromId));
     if (!back) continue;
-    if (out.fromId > out.toId) continue;
-    if (!startsAt(out.fromId) && !startsAt(out.toId)) continue;
+    if (startsAt ? !startsAt(out.fromId) : out.fromId > out.toId) continue;
     const d = distance(out.fromId, out.toId);
     if (d.kind === "unknown") {
       skipped.unknownDistance++;
@@ -285,7 +288,7 @@ export function twoLegChains(
   distance: DistanceFn,
   model: TravelModel,
   pool: number,
-  startsAt: (terminalId: number) => boolean = () => true,
+  startsAt?: (terminalId: number) => boolean,
   rank: Rank = byValue,
 ): PlanSearch {
   const outOf = new Map<number, Leg[]>();
@@ -303,7 +306,7 @@ export function twoLegChains(
     plans.length = Math.min(plans.length, pool);
   };
   for (const first of legs.best.values()) {
-    if (!startsAt(first.fromId)) continue;
+    if (startsAt && !startsAt(first.fromId)) continue;
     const next = outOf.get(first.toId);
     if (!next) continue;
     const d1 = distance(first.fromId, first.toId);

@@ -289,7 +289,7 @@ export function uexIntelTools({
     {
       name: "uex_plan_trade",
       description:
-        "Rank trade options by estimated PROFIT PER HOUR (or by profit, speed or a safety heuristic) from UEX prices, a wiki ship sheet and UEX distances. Options: one-way routes (when you give a commodity, terminal or planet), round trips A>B>A with a different cargo each way, and two-leg chains A>B>C, sized to the hold (ship_name or cargo_scu) and budget. Gives profit per SCU, per run and per hour with the assumptions listed: travel time is an ESTIMATE (quantum flight + fixed stop time), fuel is left out and why. Every leg shows price age, stale and report_status (reported, estimate, unverified); old prices are excluded by default. Safety is a labelled heuristic from UEX armistice data, never a promise.",
+        "Rank trade options by estimated PROFIT PER HOUR (or profit, speed, or a safety heuristic) from UEX prices, the wiki ship sheet and UEX distances, sized to the hold (ship_name or cargo_scu) and budget. `options` come back to where they start: one-way routes (when you give a commodity, terminal or planet) and round trips A>B>A. `chains` A>B>C have no return leg priced: ranked apart, never against options. Gives profit per SCU, per run and per hour; travel time is an ESTIMATE (quantum flight + fixed stop time), fuel is left out and why. The order follows the objective; each option is tagged [ESTIMATE] when UEX has no player report for a price (report_counts); min_reports requires reports. Prices past max_age_days are excluded. Safety is a labelled heuristic, never a promise.",
       inputSchema: {
         type: "object",
         properties: {
@@ -400,15 +400,17 @@ export function uexIntelTools({
           if (error instanceof TripPlanError) throw new Error(error.message, { cause: error });
           throw error;
         }
-        const { options, ...rest } = result;
+        const { options, chains, ...rest } = result;
         return ok(
           fitted(
             (n) => ({
               ...rest,
               options_returned: Math.min(n, options.length),
               options: options.slice(0, n),
+              chains_returned: Math.min(n, chains.length),
+              chains: chains.slice(0, n),
             }),
-            options.length,
+            Math.max(options.length, chains.length),
           ),
         );
       },

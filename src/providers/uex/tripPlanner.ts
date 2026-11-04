@@ -1,3 +1,4 @@
+import axios from "axios";
 import { fetchWithCache } from "../../core/cache.js";
 import type { HttpClient } from "../../core/http.js";
 import { setDataDates } from "../../core/provenance.js";
@@ -79,12 +80,15 @@ export interface TripRequest {
   avoidPyro?: boolean;
   /** Keep only plans whose every stop UEX flags as an armistice zone. */
   armisticeOnly?: boolean;
-  /** 1: one-way routes only (needs an origin hint). 2 (default): also round trips and two-leg chains. */
+  /** 1: one-way routes only (needs an origin hint). 2 (default): also round trips, and two-leg chains in their own list. */
   maxLegs?: 1 | 2;
   /** Prices older than this are left out (default 7 days). */
   maxAgeDays?: number;
   includeStale?: boolean;
-  /** Drop options with fewer player reports than this at a buy or sell end (default 0). */
+  /**
+   * Keep only options with at least this many player reports at every buy and sell end (default 0 = keep
+   * estimates, flagged). Options whose reports could not be checked are DROPPED when this is above 0.
+   */
   minReports?: number;
   stopMinutes?: number;
   limit?: number;
@@ -94,6 +98,8 @@ export interface Dependencies {
   uexClient: HttpClient;
   scwClient: HttpClient;
   now?: () => number;
+  /** Time allowed for the whole plan (default 25 s). Past it, the work stops and what is known is returned, with a note. */
+  deadlineMs?: number;
 }
 
 export class TripPlanError extends Error {}
@@ -133,6 +139,10 @@ export interface PlaceView {
 export interface TripOption {
   rank: number;
   mode: PlanMode;
+  /** The worst report status among the legs: estimate, then unverified, then reported. */
+  report_status: ReportStatus;
+  /** True when at least one price is a UEX estimate (no player report): do not count on it. */
+  estimate: boolean;
   summary: string;
   legs: LegView[];
   trip: {
@@ -170,7 +180,14 @@ export interface TripPlanResult {
     local_hop_minutes: number;
     estimate: true;
   };
+  /** Options that come back to where they start (one-way routes repeated, round trips), ranked by the objective. */
   options: TripOption[];
+  /** Two-leg chains A>B>C: no return leg is priced, so they are ranked on their own and not comparable with `options`. */
+  chains: TripOption[];
+  lists_note: string;
+  /** How many of the options and chains shown rest on player reports, on UEX estimates, or were not checked. */
+  report_counts: { reported: number; estimate: number; unverified: number };
+  min_reports_note: string;
   candidates_scored: number;
   excluded: Record<string, number>;
   assumptions: string[];
@@ -192,6 +209,51 @@ const MAX_VERIFY_COMMODITIES = 12;
 const MAX_VERIFY_COMMODITIES_MIN_REPORTS = 25;
 const MAX_TERMINAL_DISTANCE_CALLS = 5;
 const MAX_MATRICES = 3;
+const DEFAULT_DEADLINE_MS = 25_000;
+/** Verification failures listed one by one in the notes. */
+const MAX_LISTED_FAILURES = 5;
+
+class DeadlineError extends Error {}
+
+/** Reject once `ms` have passed (the request itself cannot be cancelled; its answer is ignored). */
+function withDeadline<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+  if (ms <= 0) {
+    promise.catch(() => undefined);
+    return Promise.reject(new DeadlineError(`${what}: the time allowed for the plan is used up`));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new DeadlineError(`${what}: no answer within the time allowed for the plan`)),
+      ms,
+    );
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+/** A failure that says the upstream is slow or throttling: asking again for the next item would only add to it. */
+function isBreaker(error: unknown): boolean {
+  if (error instanceof DeadlineError) return true;
+  return (
+    axios.isAxiosError(error) &&
+    (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT" || error.response?.status === 429)
+  );
+}
+
+function describeFailure(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    return error.response ? `HTTP ${error.response.status}` : (error.code ?? "no answer");
+  }
+  return error instanceof Error ? (label(error.message, 100) ?? "error") : "error";
+}
 
 const clampInt = (v: number | undefined, lo: number, hi: number, dflt: number): number =>
   v === undefined || !Number.isFinite(v) ? dflt : Math.min(hi, Math.max(lo, Math.floor(v)));
@@ -201,7 +263,7 @@ export function tripAssumptions(model: TravelModel, maxAgeDays: number): string[
   return [
     "TRAVEL TIME IS AN ESTIMATE. Flight time = ship quantum spool-up + distance / quantum speed (UEX distance in Gm, quantum speed from the Star Citizen Wiki sheet or the caller). The wiki's own calibration agrees with it: Port Olisar to ArcCorp, 42 Gm, 176 s.",
     `Each stop (request landing, land, terminal, load or unload, take off, align) is a fixed ${round(model.stopSeconds / 60, 1)} min, and a hop inside one orbit a fixed ${round(model.localHopSeconds / 60, 1)} min. These two values are assumptions, not measurements: change them with stop_minutes.`,
-    "A one-way route is repeated: stock up at A, sell at B, fly back empty. A round trip carries a different cargo each way. A two-leg chain A to B to C does not return to A, so its hour only counts those two legs.",
+    "A one-way route is repeated: stock up at A, sell at B, fly back empty. A round trip carries a different cargo each way. A two-leg chain A to B to C does not return to A: no return flight is priced (and a distance back to A is not looked up), so chains are listed apart and never ranked against round trips.",
     "Straight-line quantum flights between orbit centres. Not modelled: quantum fuel and its price, jump interruptions, pirates, queues at landing pads, loading time of a big hold, price drops while selling.",
     `Prices older than ${maxAgeDays} days are left out unless include_stale is set. UEX prices are crowdsourced and move within hours: confirm at the terminal.`,
     "Quantity of each leg is the smallest of the hold, the budget, and the stock UEX shows at the buy terminal. The demand at the sell terminal is shown, not applied. Container sizes are not applied.",
@@ -216,6 +278,8 @@ interface Context {
   matrices: Map<number, OrbitMatrix>;
   terminalDistanceCalls: number;
   distanceMemo: Map<string, Distance>;
+  /** True once the time allowed for the plan is used up: no more optional requests. */
+  expired: () => boolean;
   priceByKey: Map<string, PriceRow>;
 }
 
@@ -238,6 +302,8 @@ const ageOf = (ts: number | null, now: number) => ageDays(ts, now);
  */
 export async function planTrips(deps: Dependencies, req: TripRequest): Promise<TripPlanResult> {
   const now = (deps.now ?? Date.now)();
+  const deadlineAt = Date.now() + (deps.deadlineMs ?? DEFAULT_DEADLINE_MS);
+  const left = () => deadlineAt - Date.now();
   const objective: Objective = req.objective ?? "profit_per_hour";
   const maxAgeDays = clampInt(req.maxAgeDays, 1, 3650, 7);
   const limit = clampInt(req.limit, 1, 20, 8);
@@ -248,8 +314,8 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
   const maxLegs = req.maxLegs === 1 ? 1 : 2;
   if (req.budget !== undefined && !(req.budget > 0))
     throw new TripPlanError("budget must be a positive number of aUEC.");
-  if (req.cargoScu !== undefined && !(req.cargoScu > 0))
-    throw new TripPlanError("cargo_scu must be positive.");
+  if (req.cargoScu !== undefined && !(req.cargoScu >= 1))
+    throw new TripPlanError("cargo_scu must be at least 1 SCU.");
   if (req.quantumSpeedMs !== undefined && validQuantumSpeed(req.quantumSpeedMs) === null) {
     throw new TripPlanError(
       "quantum_speed_ms must be between 1,000,000 and 299,792,458 m/s (a quantum drive, in metres per second).",
@@ -267,8 +333,10 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
       );
     }
   }
-  const cargo = req.cargoScu ?? sheet?.cargo_scu ?? undefined;
-  if (cargo === undefined) {
+  // Whole SCU: a hold is counted in containers, and a fraction would make profit and quantity disagree.
+  const rawCargo = req.cargoScu ?? sheet?.cargo_scu ?? undefined;
+  const cargo = rawCargo === undefined ? undefined : Math.floor(rawCargo);
+  if (cargo === undefined || cargo < 1) {
     throw new TripPlanError(
       "Give ship_name (its cargo comes from UEX) or cargo_scu: a plan needs a hold size.",
     );
@@ -276,15 +344,27 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
   const model: TravelModel = {
     quantumSpeedMs: req.quantumSpeedMs ?? sheet?.quantum_speed_ms ?? null,
     spoolSeconds: sheet?.spool_seconds ?? DEFAULT_SPOOL_SECONDS,
-    stopSeconds: clampInt(req.stopMinutes, 0, 120, DEFAULT_STOP_SECONDS / 60) * 60,
+    stopSeconds:
+      Math.round(Math.min(120, Math.max(0, req.stopMinutes ?? DEFAULT_STOP_SECONDS / 60))) * 60,
     localHopSeconds: LOCAL_HOP_SECONDS,
   };
 
   // --- the data -------------------------------------------------------------------------------
-  const [pricesRes, places] = await Promise.all([
-    fetchWithCache(deps.uexClient, "/commodities_prices_all"),
-    loadPlaces(deps.uexClient),
-  ]);
+  let pricesRes: Awaited<ReturnType<typeof fetchWithCache>>;
+  let places: PlaceIndex;
+  try {
+    [pricesRes, places] = await withDeadline(
+      Promise.all([
+        fetchWithCache(deps.uexClient, "/commodities_prices_all"),
+        loadPlaces(deps.uexClient),
+      ]),
+      left(),
+      "reading UEX prices and places",
+    );
+  } catch (error) {
+    if (error instanceof DeadlineError) throw new TripPlanError(error.message);
+    throw error;
+  }
   const priceData = unwrapData(pricesRes.data);
   if (priceData.kind !== "rows")
     throw new TripPlanError("UEX returned no prices (commodities_prices_all is empty).");
@@ -375,6 +455,7 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
     matrices: new Map(),
     terminalDistanceCalls: 0,
     distanceMemo: new Map(),
+    expired: () => left() <= 0,
     priceByKey: new Map(allPrices.map((r) => [`${r.commodityId}|${r.terminalId}`, r])),
   };
 
@@ -386,11 +467,19 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
   }
   for (const [system] of [...systemsInUse].sort((a, b) => b[1] - a[1]).slice(0, MAX_MATRICES)) {
     try {
-      ctx.matrices.set(system, await fetchOrbitMatrix(deps.uexClient, system, system));
-    } catch {
-      notes.push(
-        "An orbit distance matrix could not be read; pairs in that system have no distance and are left out.",
+      ctx.matrices.set(
+        system,
+        await withDeadline(
+          fetchOrbitMatrix(deps.uexClient, system, system),
+          left(),
+          "reading an orbit distance matrix",
+        ),
       );
+    } catch (error) {
+      notes.push(
+        `An orbit distance matrix could not be read (${describeFailure(error)}); pairs in that system have no distance and are left out.`,
+      );
+      if (isBreaker(error)) break;
     }
   }
   const distance = (a: number, b: number): Distance => {
@@ -449,9 +538,11 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
   };
   const legs = buildLegs(prices, legOptions);
   if (legs.excluded_stale_rows) bump("price_rows_older_than_max_age", legs.excluded_stale_rows);
+  if (legs.undated_rows) bump("price_rows_without_date", legs.undated_rows);
+  const hasStart = startTerminal !== undefined || startPlanet !== undefined;
   if (maxLegs === 2) {
-    const rt = roundTrips(legs, distance, model, pool, startsAt, rank);
-    const tl = twoLegChains(legs, distance, model, pool, startsAt, rank);
+    const rt = roundTrips(legs, distance, model, pool, hasStart ? startsAt : undefined, rank);
+    const tl = twoLegChains(legs, distance, model, pool, hasStart ? startsAt : undefined, rank);
     plans.push(...rt.plans, ...tl.plans);
     scored += rt.scored + tl.scored;
     bump("plans_without_known_distance", rt.skipped.unknownDistance + tl.skipped.unknownDistance);
@@ -466,16 +557,33 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
     );
   }
   if (routesWanted) {
-    const params: Record<string, unknown> = { scu: cargo };
-    if (req.budget !== undefined) params.investment = req.budget;
+    // No scu or investment sent: the quantity is sized here from the hold and the budget, and a request
+    // that does not carry the caller's numbers is cached and shared between callers.
+    const params: Record<string, unknown> = {};
     if (commodityId !== undefined) params.id_commodity = commodityId;
     if (startTerminal !== undefined) params.id_terminal_origin = startTerminal;
     if (startPlanet) {
       const id = terminalRows.find((t) => t.planetName === startPlanet)?.planetId;
       if (id) params.id_planet_origin = id;
     }
-    const res = await fetchWithCache(deps.uexClient, "/commodities_routes", { params });
-    const data = unwrapData(res.data);
+    let data: ReturnType<typeof unwrapData> = { kind: "no_data", why: "not read" };
+    try {
+      const res = await withDeadline(
+        fetchWithCache(deps.uexClient, "/commodities_routes", { params }),
+        left(),
+        "reading UEX routes",
+      );
+      data = unwrapData(res.data);
+    } catch (error) {
+      if (maxLegs === 1) {
+        throw new TripPlanError(
+          `UEX routes could not be read (${describeFailure(error)}) and max_legs 1 has nothing else to show.`,
+        );
+      }
+      notes.push(
+        `UEX routes could not be read (${describeFailure(error)}): the one-way routes are left out, and the round trips and chains below were computed offline from the price file.`,
+      );
+    }
     const oneWay: Plan[] = [];
     if (data.kind === "rows") {
       for (const row of data.rows) {
@@ -519,24 +627,41 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
   }
 
   // --- who reported these prices --------------------------------------------------------------
+  // Two lists, never mixed: what comes back to where it starts (one-way routes repeated, round trips),
+  // and open chains A>B>C, which have no return leg priced and so cannot share a profit-per-hour ranking.
   plans.sort(rank);
-  const candidates = plans.slice(0, pool);
-  const needed: number[] = [];
+  const cyclePlans = plans.filter((p) => p.returnsToStart).slice(0, pool);
+  const chainPlans = plans.filter((p) => !p.returnsToStart).slice(0, pool);
+  const candidates = [...cyclePlans, ...chainPlans];
+  const needed = new Map<number, string>();
   for (const p of candidates) {
     if (routeEvidence.has(p)) continue;
-    for (const l of p.legs) if (!needed.includes(l.commodityId)) needed.push(l.commodityId);
+    for (const l of p.legs) if (!needed.has(l.commodityId)) needed.set(l.commodityId, l.commodity);
   }
   const reports = new Map<string, { buy: number | null; sell: number | null }>();
-  for (const id of needed.slice(0, maxVerify)) {
+  const failures: string[] = [];
+  let stoppedEarly: string | null = null;
+  for (const [id, name] of [...needed].slice(0, maxVerify)) {
+    if (left() <= 0) {
+      stoppedEarly = "the time allowed for the plan ran out";
+      break;
+    }
     try {
-      const res = await fetchWithCache(
-        deps.uexClient,
-        "/commodities_prices",
-        { params: { id_commodity: id } },
-        { record: false },
+      const res = await withDeadline(
+        fetchWithCache(
+          deps.uexClient,
+          "/commodities_prices",
+          { params: { id_commodity: id } },
+          { record: false },
+        ),
+        left(),
+        "checking player reports",
       );
       const d = unwrapData(res.data);
-      if (d.kind !== "rows") continue;
+      if (d.kind !== "rows") {
+        failures.push(`${name}: UEX returned no price rows`);
+        continue;
+      }
       for (const r of d.rows) {
         const t = toNumber(r.id_terminal);
         if (t === undefined) continue;
@@ -545,14 +670,24 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
           sell: toNumber(r.price_sell_users_rows) ?? null,
         });
       }
-    } catch {
-      // This commodity stays "unverified": said so in the answer.
+    } catch (error) {
+      failures.push(`${name}: ${describeFailure(error)}`);
+      if (isBreaker(error)) {
+        stoppedEarly = `UEX was slow or throttling (${describeFailure(error)}), so the remaining checks were not attempted`;
+        break;
+      }
     }
   }
-  const unverifiedCommodities = needed.length - Math.min(needed.length, maxVerify);
-  if (unverifiedCommodities > 0) {
+  if (failures.length > 0) {
     notes.push(
-      `${unverifiedCommodities} commodit${unverifiedCommodities === 1 ? "y was" : "ies were"} not checked for player reports (limit of ${maxVerify} extra calls): their legs are report_status "unverified".`,
+      `The player-report check failed for ${failures.length} commodit${failures.length === 1 ? "y" : "ies"} (${failures.slice(0, MAX_LISTED_FAILURES).join("; ")}${failures.length > MAX_LISTED_FAILURES ? "; ..." : ""}): their legs are report_status "unverified".`,
+    );
+  }
+  if (stoppedEarly) notes.push(`The player-report check stopped early: ${stoppedEarly}.`);
+  const capped = Math.max(0, needed.size - maxVerify);
+  if (capped > 0) {
+    notes.push(
+      `${capped} commodit${capped === 1 ? "y was" : "ies were"} not checked for player reports (limit of ${maxVerify} extra calls): their legs are report_status "unverified".`,
     );
   }
 
@@ -599,38 +734,58 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
     };
   };
 
-  const group = (views: LegView[]): number =>
+  const worst = (views: LegView[]): ReportStatus =>
     views.some((v) => v.report_status === "estimate")
-      ? 2
+      ? "estimate"
       : views.some((v) => v.report_status === "unverified")
-        ? 1
-        : 0;
+        ? "unverified"
+        : "reported";
 
-  const built = candidates
-    .map((plan) => ({ plan, views: plan.legs.map((l) => viewLeg(plan, l)) }))
-    .filter(({ views }) => {
-      if (minReports === 0) return true;
-      const ok = views.every(
-        (v) =>
-          (v.reports.origin ?? minReports) >= minReports &&
-          (v.reports.destination ?? minReports) >= minReports,
-      );
-      if (!ok) bump("options_with_fewer_reports_than_min_reports");
-      return ok;
-    });
-  built.sort((a, b) => group(a.views) - group(b.views) || rank(a.plan, b.plan));
-  const shown = built.slice(0, limit);
+  // The objective decides the order. The report status is shown on every option, not used to reorder.
+  const build = (list: Plan[]) => {
+    const kept: { plan: Plan; views: LegView[]; status: ReportStatus }[] = [];
+    for (const plan of list) {
+      const views = plan.legs.map((l) => viewLeg(plan, l));
+      const status = worst(views);
+      if (minReports > 0) {
+        if (status === "unverified") {
+          bump("options_unverified_dropped_by_min_reports");
+          continue;
+        }
+        const enough = views.every(
+          (v) =>
+            (v.reports.origin ?? 0) >= minReports && (v.reports.destination ?? 0) >= minReports,
+        );
+        if (!enough) {
+          bump("options_with_fewer_reports_than_min_reports");
+          continue;
+        }
+      }
+      kept.push({ plan, views, status });
+    }
+    return kept.sort((x, y) => rank(x.plan, y.plan)).slice(0, limit);
+  };
+  const shownCycle = build(cyclePlans);
+  const shownChains = build(chainPlans);
+  const shown = [...shownCycle, ...shownChains];
 
-  const options: TripOption[] = shown.map(({ plan, views }, i) => {
+  const toOption = (
+    { plan, views, status }: { plan: Plan; views: LegView[]; status: ReportStatus },
+    i: number,
+  ): TripOption => {
     const ages = views
       .flatMap((v) => [v.price_age_days.buy, v.price_age_days.sell])
       .filter((a): a is number => a !== null);
     const scuMoved = plan.legs.reduce((s, l) => s + l.scu, 0);
     const route = [plan.legs[0].from, ...plan.legs.map((l) => l.to)].join(" > ");
+    const tag =
+      status === "estimate" ? "[ESTIMATE] " : status === "unverified" ? "[UNVERIFIED] " : "";
     return {
       rank: i + 1,
       mode: plan.mode,
-      summary: `${plan.legs.map((l) => `${l.scu} SCU ${l.commodity}`).join(" + ")} on ${route}${plan.returnsToStart && plan.mode !== "round_trip" ? " and back empty" : ""}`,
+      report_status: status,
+      estimate: status === "estimate",
+      summary: `${tag}${plan.legs.map((l) => `${l.scu} SCU ${l.commodity}`).join(" + ")} on ${route}${plan.returnsToStart && plan.mode !== "round_trip" ? " and back empty" : ""}`,
       legs: views,
       trip: {
         profit_per_cycle: plan.profit,
@@ -654,7 +809,11 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
       },
       safety: safetyFor(plan),
     };
-  });
+  };
+  const options = shownCycle.map(toOption);
+  const chains = shownChains.map(toOption);
+  const counts = { reported: 0, estimate: 0, unverified: 0 };
+  for (const o of [...options, ...chains]) counts[o.report_status]++;
 
   // Provenance: the real age of the prices behind what is shown.
   const stamps = shown
@@ -668,16 +827,30 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
     );
   }
 
-  const fuel = await fuelBlock(deps.uexClient, now);
+  let fuel: TripPlanResult["fuel"];
+  try {
+    fuel = await withDeadline(
+      fuelBlock(deps.uexClient, now),
+      Math.max(left(), 2000),
+      "reading fuel prices",
+    );
+  } catch {
+    fuel = fuelUnavailable();
+  }
   const assumptions = tripAssumptions(model, maxAgeDays);
-  if (options.some((o) => o.legs.some((l) => l.report_status !== "reported"))) {
+  if ([...options, ...chains].some((o) => o.report_status !== "reported")) {
     notes.push(
-      "report_status: reported = a player reported both prices; estimate = UEX counts 0 player reports for that price (the is_estimate convention of uex_get_trade_routes, whatever the date of the price: most UEX prices are in that state today, so reported options are rare, and min_reports 1 asks for them), do not count on it; unverified = not checked (the price file does not say). Reported options come first.",
+      "report_status: reported = a player reported both prices; estimate = UEX counts 0 player reports for that price (the is_estimate convention of uex_get_trade_routes, whatever the date of the price: most UEX prices are in that state today, so reported options are rare), do not count on it; unverified = the check could not be made. The order follows the objective, not the report status: see report_counts and the [ESTIMATE] tag on each summary.",
     );
   }
-  if (options.length === 0) {
+  if (options.length === 0 && chains.length === 0) {
     notes.push(
       "No option matched. Loosen the filters (max_age_days, include_stale, armistice_only, min_reports, budget) or choose another origin.",
+    );
+  }
+  if (left() <= 0) {
+    notes.push(
+      "The time allowed for the plan (25 s) ran out: the result uses what was read by then.",
     );
   }
   if (places.armisticeUnavailable)
@@ -704,6 +877,12 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
       estimate: true,
     },
     options,
+    chains,
+    lists_note:
+      "`options` come back to where they start (a one-way route repeated with an empty return, or a round trip) and are ranked by the objective among themselves. `chains` are open A>B>C trips: no return leg to the start is priced, so their profit per hour is not comparable with `options` and they are ranked on their own.",
+    report_counts: counts,
+    min_reports_note:
+      "Options are ordered by the objective, estimates included, each marked estimate or not. To require player reports, set min_reports (1 or more): options with fewer reports at an end, or whose reports could not be checked, are then dropped and counted in `excluded`.",
     candidates_scored: scored,
     excluded,
     assumptions,
@@ -729,7 +908,7 @@ async function routeDistance(
   if (own !== undefined && own > 0) return { kind: "known", gm: own, basis: "route" };
   const viaOrbit = byOrbit(leg.fromId, leg.toId);
   if (viaOrbit.kind === "known") return viaOrbit;
-  if (ctx.terminalDistanceCalls >= MAX_TERMINAL_DISTANCE_CALLS) return viaOrbit;
+  if (ctx.terminalDistanceCalls >= MAX_TERMINAL_DISTANCE_CALLS || ctx.expired()) return viaOrbit;
   ctx.terminalDistanceCalls++;
   try {
     const t = await fetchTerminalDistance(client, leg.fromId, leg.toId);
@@ -738,6 +917,17 @@ async function routeDistance(
   } catch {
     return viaOrbit;
   }
+}
+
+function fuelUnavailable(): TripPlanResult["fuel"] {
+  return {
+    included: false,
+    reason:
+      "Fuel is NOT subtracted from the profit. UEX gives a price per unit of fuel without saying which unit, and no ship's quantum fuel burn per Gm is available in a verified unit, so a fuel cost would be invented. The fuel price table could not be read in time.",
+    fuel_prices_rows: null,
+    rows_updated_within_7_days: null,
+    median_age_days: null,
+  };
 }
 
 /** Fuel is left out of the profit, and the answer says why with the measured freshness of UEX's fuel prices. */
