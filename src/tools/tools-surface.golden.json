@@ -52,7 +52,11 @@
           "description": "Max entries listed per category in summary mode (default 50)."
         }
       },
-      "required": ["dataset", "from_version", "to_version"]
+      "required": [
+        "dataset",
+        "from_version",
+        "to_version"
+      ]
     }
   },
   {
@@ -62,7 +66,10 @@
       "properties": {
         "origin": {
           "type": "string",
-          "enum": ["pledge", "in_game"],
+          "enum": [
+            "pledge",
+            "in_game"
+          ],
           "description": "Only ships with this origin."
         },
         "enrich": {
@@ -83,11 +90,16 @@
         },
         "origin": {
           "type": "string",
-          "enum": ["pledge", "in_game"],
+          "enum": [
+            "pledge",
+            "in_game"
+          ],
           "description": "Needed only when the name exists under both origins."
         }
       },
-      "required": ["name"]
+      "required": [
+        "name"
+      ]
     }
   },
   {
@@ -101,7 +113,10 @@
         },
         "origin": {
           "type": "string",
-          "enum": ["pledge", "in_game"],
+          "enum": [
+            "pledge",
+            "in_game"
+          ],
           "description": "'pledge' for a ship bought with real money, 'in_game' for one bought with aUEC."
         },
         "notes": {
@@ -109,7 +124,10 @@
           "description": "Optional note, up to 500 characters (loadout idea, role, location)."
         }
       },
-      "required": ["name", "origin"]
+      "required": [
+        "name",
+        "origin"
+      ]
     }
   },
   {
@@ -219,7 +237,10 @@
             },
             "price_points_for": {
               "type": "string",
-              "enum": ["buy", "sell"],
+              "enum": [
+                "buy",
+                "sell"
+              ],
               "description": "Which price the points are (sell when absent)."
             },
             "price_points_label": {
@@ -257,7 +278,10 @@
         },
         "confidence": {
           "type": "string",
-          "enum": ["confirmed", "all"],
+          "enum": [
+            "confirmed",
+            "all"
+          ],
           "description": "'confirmed' hides unverified events (default all)."
         },
         "include_balance": {
@@ -274,16 +298,24 @@
       "properties": {
         "action": {
           "type": "string",
-          "enum": ["start", "end", "reset_delta"],
+          "enum": [
+            "start",
+            "end",
+            "reset_delta"
+          ],
           "description": "start or end a session, or restart the balance change from now."
         }
       },
-      "required": ["action"]
+      "required": [
+        "action"
+      ]
     },
     "_meta": {
       "ui": {
         "resourceUri": "ui://sc-copilot/live-dashboard.html",
-        "visibility": ["app"]
+        "visibility": [
+          "app"
+        ]
       }
     }
   },
@@ -335,7 +367,9 @@
     "_meta": {
       "ui": {
         "resourceUri": "ui://sc-copilot/live-dashboard.html",
-        "visibility": ["app"]
+        "visibility": [
+          "app"
+        ]
       }
     }
   },
@@ -348,7 +382,11 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["ship", "pilot", "weapons"]
+            "enum": [
+              "ship",
+              "pilot",
+              "weapons"
+            ]
           },
           "description": "Only these parts (default all). Smaller answers cost less."
         },
@@ -380,7 +418,10 @@
       "properties": {
         "session": {
           "type": "string",
-          "enum": ["current", "previous"],
+          "enum": [
+            "current",
+            "previous"
+          ],
           "description": "'current' = Game.log (default); 'previous' = newest file in logbackups."
         }
       }
@@ -431,7 +472,10 @@
         },
         "session": {
           "type": "string",
-          "enum": ["current", "previous"],
+          "enum": [
+            "current",
+            "previous"
+          ],
           "description": "'current' = Game.log (default); 'previous' = newest file in logbackups."
         }
       }
@@ -498,7 +542,10 @@
           "description": "Records to return (default 25, max 200)."
         }
       },
-      "required": ["dataset", "collection"]
+      "required": [
+        "dataset",
+        "collection"
+      ]
     }
   },
   {
@@ -523,7 +570,10 @@
           "description": "Max records to return (default 20)."
         }
       },
-      "required": ["dataset", "query"]
+      "required": [
+        "dataset",
+        "query"
+      ]
     }
   },
   {
@@ -634,8 +684,125 @@
         },
         "channel": {
           "type": "string",
-          "enum": ["live", "ptu"],
+          "enum": [
+            "live",
+            "ptu"
+          ],
           "description": "Game channel: 'live' (default) or 'ptu' (test build, may be absent). The build used is in provenance."
+        }
+      }
+    }
+  },
+  {
+    "name": "scmdb_rank_hauling",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "templates",
+            "offers"
+          ],
+          "description": "templates (default): datamined contract families. offers: price the offers given in `offers` (used by default when `offers` is present)."
+        },
+        "ship_name": {
+          "type": "string",
+          "description": "Ship (e.g. 'Cutlass Black'): hold and container sizes from UEX, quantum speed from the wiki. Use sc_fleet_get for the player's ships."
+        },
+        "cargo_scu": {
+          "type": "number",
+          "description": "Hold size in SCU (wins over the ship's), e.g. when only part of it is free."
+        },
+        "max_container_size": {
+          "type": "number",
+          "description": "Largest container size in SCU the ship takes (wins over UEX's list)."
+        },
+        "quantum_speed_ms": {
+          "type": "number",
+          "description": "offers: quantum speed in m/s when there is no ship_name."
+        },
+        "stop_minutes": {
+          "type": "number",
+          "description": "offers: assumed minutes per stop (default 8, an unmeasured assumption)."
+        },
+        "rank": {
+          "type": "string",
+          "description": "templates: the player's Hauling rank (Trainee, Rookie, Junior, Member, Experienced, Senior or Master): contracts outside it are left out. Omit to keep all."
+        },
+        "system": {
+          "type": "string",
+          "description": "templates: keep contracts that run in this system ('Stanton', 'Pyro', 'Nyx')."
+        },
+        "include_illegal": {
+          "type": "boolean",
+          "description": "templates: also show illegal contracts (default false)."
+        },
+        "include_unfit": {
+          "type": "boolean",
+          "description": "templates: also show contracts whose containers are too big for the ship, flagged (default false)."
+        },
+        "sort": {
+          "type": "string",
+          "enum": [
+            "reward_per_scu",
+            "reward"
+          ],
+          "description": "templates: reward_per_scu (default; by the low end of the range) or reward. With a ship, fit comes first (containers, then trips)."
+        },
+        "max_results": {
+          "type": "number",
+          "description": "templates: families to return (default 10, max 20)."
+        },
+        "channel": {
+          "type": "string",
+          "enum": [
+            "live",
+            "ptu"
+          ],
+          "description": "templates: game channel, 'live' (default) or 'ptu'."
+        },
+        "offers": {
+          "type": "array",
+          "description": "offers: 1 to 10 offers as seen in the mobiGlas (2 or more to compare and bundle).",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "description": "Optional title, for your own reference."
+              },
+              "reward": {
+                "type": "number",
+                "description": "Reward in aUEC."
+              },
+              "scu": {
+                "type": "number",
+                "description": "Cargo quantity in SCU."
+              },
+              "pickup": {
+                "type": "string",
+                "description": "Pickup place name (e.g. 'Port Tressler')."
+              },
+              "dropoffs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "1 to 6 drop-off place names."
+              },
+              "max_container_size": {
+                "type": "number",
+                "description": "Optional: the largest container size in SCU the offer uses."
+              }
+            },
+            "required": [
+              "reward",
+              "scu",
+              "pickup",
+              "dropoffs"
+            ]
+          }
         }
       }
     }
@@ -667,7 +834,10 @@
         },
         "channel": {
           "type": "string",
-          "enum": ["live", "ptu"],
+          "enum": [
+            "live",
+            "ptu"
+          ],
           "description": "Game channel: 'live' (default) or 'ptu' (test build, may be absent). The build used is in provenance."
         }
       }
@@ -684,7 +854,11 @@
         },
         "scope": {
           "type": "string",
-          "enum": ["ores", "equipment", "all"],
+          "enum": [
+            "ores",
+            "equipment",
+            "all"
+          ],
           "description": "What to search (default all)."
         },
         "limit": {
@@ -693,7 +867,10 @@
         },
         "channel": {
           "type": "string",
-          "enum": ["live", "ptu"],
+          "enum": [
+            "live",
+            "ptu"
+          ],
           "description": "Game channel: 'live' (default) or 'ptu' (test build, may be absent). The build used is in provenance."
         }
       }
@@ -714,7 +891,11 @@
         },
         "category": {
           "type": "string",
-          "enum": ["career", "story", "event"],
+          "enum": [
+            "career",
+            "story",
+            "event"
+          ],
           "description": "Mission category."
         },
         "faction": {
@@ -743,7 +924,10 @@
         },
         "channel": {
           "type": "string",
-          "enum": ["live", "ptu"],
+          "enum": [
+            "live",
+            "ptu"
+          ],
           "description": "Game channel: 'live' (default) or 'ptu' (test build, may be absent). The build used is in provenance."
         }
       }
@@ -759,7 +943,9 @@
           "description": "The title of the article (e.g., 'Wikelo', 'Carrack')."
         }
       },
-      "required": ["title"]
+      "required": [
+        "title"
+      ]
     }
   },
   {
@@ -772,7 +958,9 @@
           "description": "The search query."
         }
       },
-      "required": ["query"]
+      "required": [
+        "query"
+      ]
     }
   },
   {
@@ -782,11 +970,16 @@
       "properties": {
         "dataset": {
           "type": "string",
-          "enum": ["vehicles", "items"],
+          "enum": [
+            "vehicles",
+            "items"
+          ],
           "description": "Which dataset's filters to retrieve."
         }
       },
-      "required": ["dataset"]
+      "required": [
+        "dataset"
+      ]
     }
   },
   {
@@ -799,7 +992,9 @@
           "description": "The name of the item (e.g., 'FS-9 LMG', 'Lynx Helmet')."
         }
       },
-      "required": ["name"]
+      "required": [
+        "name"
+      ]
     }
   },
   {
@@ -816,7 +1011,9 @@
           "minItems": 2
         }
       },
-      "required": ["ship_names"]
+      "required": [
+        "ship_names"
+      ]
     }
   },
   {
@@ -829,7 +1026,9 @@
           "description": "The name of the vehicle (e.g., '300i', 'Carrack')."
         }
       },
-      "required": ["name"]
+      "required": [
+        "name"
+      ]
     }
   },
   {
@@ -865,7 +1064,12 @@
         },
         "grade": {
           "type": "string",
-          "enum": ["A", "B", "C", "D"],
+          "enum": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ],
           "description": "Optional: Component grade."
         },
         "class": {
@@ -933,7 +1137,9 @@
           "description": "The search query."
         }
       },
-      "required": ["query"]
+      "required": [
+        "query"
+      ]
     }
   },
   {
@@ -950,7 +1156,9 @@
           "description": "Optional: Filter by star system (e.g., 'Pyro', 'Stanton')."
         }
       },
-      "required": ["vendor_name"]
+      "required": [
+        "vendor_name"
+      ]
     }
   },
   {
@@ -968,11 +1176,17 @@
         },
         "dataset": {
           "type": "string",
-          "enum": ["vehicles", "items"],
+          "enum": [
+            "vehicles",
+            "items"
+          ],
           "description": "Which dataset to diff."
         }
       },
-      "required": ["from_label", "dataset"]
+      "required": [
+        "from_label",
+        "dataset"
+      ]
     }
   },
   {
@@ -989,7 +1203,10 @@
       "properties": {
         "dataset": {
           "type": "string",
-          "enum": ["vehicles", "items"],
+          "enum": [
+            "vehicles",
+            "items"
+          ],
           "description": "Which dataset to snapshot."
         },
         "label": {
@@ -1001,7 +1218,9 @@
           "description": "Optional (items only): Restrict snapshot to one item type (e.g., 'Shields', 'WeaponPersonal')."
         }
       },
-      "required": ["dataset"]
+      "required": [
+        "dataset"
+      ]
     }
   },
   {
@@ -1034,7 +1253,11 @@
           "description": "Optional: size of the second item."
         }
       },
-      "required": ["item_a", "item_b", "category"]
+      "required": [
+        "item_a",
+        "item_b",
+        "category"
+      ]
     }
   },
   {
@@ -1054,7 +1277,9 @@
           "description": "The name of the commodity (e.g., 'Gold', 'Laranite')."
         }
       },
-      "required": ["commodity_name"]
+      "required": [
+        "commodity_name"
+      ]
     }
   },
   {
@@ -1080,7 +1305,11 @@
         },
         "side": {
           "type": "string",
-          "enum": ["buy", "sell", "both"],
+          "enum": [
+            "buy",
+            "sell",
+            "both"
+          ],
           "description": "buy = where the player can BUY it (cheapest first), sell = where the player can SELL it (best price first), both = two lists (default)."
         },
         "limit": {
@@ -1092,7 +1321,9 @@
           "description": "Also return rows from an older game version than LIVE (default false: they are left out and counted)."
         }
       },
-      "required": ["commodity_name"]
+      "required": [
+        "commodity_name"
+      ]
     }
   },
   {
@@ -1147,7 +1378,10 @@
           "description": "Add the item's stats from UEX (one more request per item). Default false."
         }
       },
-      "required": ["item_name", "category"]
+      "required": [
+        "item_name",
+        "category"
+      ]
     }
   },
   {
@@ -1197,7 +1431,10 @@
         },
         "operation": {
           "type": "string",
-          "enum": ["buy", "sell"],
+          "enum": [
+            "buy",
+            "sell"
+          ],
           "description": "Optional: one side only. 'sell' = players offering the item (what you pay), 'buy' = players wanting it (what you are paid)."
         },
         "quality_tier": {
@@ -1233,7 +1470,10 @@
           "description": "Terminal name or nickname (e.g. 'CBD Lorville' or 'TDD Area 18')."
         }
       },
-      "required": ["commodity_name", "terminal_name"]
+      "required": [
+        "commodity_name",
+        "terminal_name"
+      ]
     }
   },
   {
@@ -1278,7 +1518,9 @@
           "description": "Include rental locations as well as purchase locations (default true)."
         }
       },
-      "required": ["vehicle_name"]
+      "required": [
+        "vehicle_name"
+      ]
     }
   },
   {
@@ -1296,7 +1538,13 @@
         },
         "inventory_type": {
           "type": "string",
-          "enum": ["ships", "weapons", "armor", "components", "all"],
+          "enum": [
+            "ships",
+            "weapons",
+            "armor",
+            "components",
+            "all"
+          ],
           "description": "Type of inventory to retrieve (ships, weapons, armor, components, or all)."
         }
       }
@@ -1365,7 +1613,12 @@
       "properties": {
         "objective": {
           "type": "string",
-          "enum": ["profit_per_hour", "profit", "speed", "safety"],
+          "enum": [
+            "profit_per_hour",
+            "profit",
+            "speed",
+            "safety"
+          ],
           "description": "profit_per_hour (default), profit (per run), speed (shortest run), safety (fewest risk factors of the heuristic)."
         },
         "ship_name": {
@@ -1410,7 +1663,10 @@
         },
         "max_legs": {
           "type": "number",
-          "enum": [1, 2],
+          "enum": [
+            1,
+            2
+          ],
           "description": "1 = one-way routes only (needs an origin); 2 (default) = also round trips and two-leg chains."
         },
         "max_age_days": {
@@ -1447,12 +1703,19 @@
         },
         "operation": {
           "type": "string",
-          "enum": ["buy", "sell"],
+          "enum": [
+            "buy",
+            "sell"
+          ],
           "description": "Optional: filter by transaction type."
         },
         "type": {
           "type": "string",
-          "enum": ["item", "service", "contract"],
+          "enum": [
+            "item",
+            "service",
+            "contract"
+          ],
           "description": "Optional: filter by ad type."
         },
         "id_item": {

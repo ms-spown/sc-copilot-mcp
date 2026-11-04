@@ -25,6 +25,7 @@ you point it at, and only if you do.
 | Trade | "Best haul from ArcCorp for my C2?" | `uex_get_trade_routes`, `uex_plan_trade`, `uex_get_commodity_prices` |
 | Ships | "Cutlass Black or Freelancer? Where can I buy it?" | `scw_get_ship_comparison`, `scw_get_vehicle`, `uex_get_ship_prices` |
 | Missions | "Which missions pay a blueprint in Pyro?" | `scmdb_search_missions`, `scmdb_search_crafting` |
+| Hauling contracts | "Which hauling contracts suit my Cutlass Black? Which of these three offers pays most per hour?" | `scmdb_rank_hauling` |
 | Mining | "Where is Quantainium and which laser copes with it?" | `scmdb_search_mining` |
 | Refining | "Which refinery gives the best yield for my Laranite?" | `uex_get_refining_margins` |
 | Components and gear | "Where is the Burst quantum drive cheapest? Burst or Voyage?" | `uex_get_item_prices`, `uex_compare_items` |
@@ -99,9 +100,9 @@ npm run build
    `npm run check:sources` asks every data source for its version and verifies the files and fields the tools rely
    on. In Claude, ask for `sc_data_status`.
 
-## Tools (61)
+## Tools (62)
 
-Claude sees 51 of them by default: `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll` and
+Claude sees 52 of them by default: `sc_live_state`, `sc_live_events`, `sc_live_dashboard`, `sc_live_poll` and
 `sc_live_mark` are listed only when live telemetry is on (the last three also need a client that can show them, such
 as Claude Desktop), and the five `sc_session_*` tools only when it is on and `SC_SESSIONS` is not `off`.
 
@@ -112,7 +113,7 @@ Full parameter reference: **[docs/TOOLS.md](docs/TOOLS.md)** (generated from the
 | **Freshness**                          | `sc_data_status`: game version per source, age, disagreements, which sources are down                                                                                                                                                                                                                                                                                                           |
 | **Trading** (UEX)                      | `uex_get_trade_routes` (sized to your ship or cargo, profit for the cargo that fits, player reports behind each price), `uex_get_commodity_prices`, `uex_get_commodity_averages`, `uex_get_commodity_ranking`, `uex_get_commodities`, `uex_get_terminals`, `uex_get_terminal_inventory`, `uex_search_marketplace`, `uex_get_ship_prices`, `uex_get_game_versions`, `scw_search_ships_by_vendor`, `uex_get_refining_margins` (refineries ranked by reported yield bonus; a ranking, never an aUEC profit), `uex_get_item_prices` and `uex_compare_items` (components, weapons, armor, food: cheapest shop, stats, price age), `uex_get_marketplace_prices` (player-market price guide, units kept apart), `uex_get_price_history` (how a price has moved, with a verdict and its number of points), `uex_get_market_status` (shortage and saturation warnings), `uex_plan_trade` (trade options ranked by estimated profit per hour) |
 | **Ships and items** (Wiki)             | `scw_get_vehicle`, `scw_get_item`, `scw_get_ship_comparison`, `scw_list_vehicles`, `scw_list_items`, `scw_get_filters`, `scw_search`, `scw_snapshot_save`, `scw_snapshot_list`, `scw_snapshot_diff`, `sc_get_vocabulary`                                                                                                                                                                        |
-| **Missions, crafting, mining** (SCMDB) | `scmdb_search_missions`, `scmdb_search_crafting`, `scmdb_search_mining`, `scmdb_changes`                                                                                                                                                                                                                                                                                                        |
+| **Missions, crafting, mining** (SCMDB) | `scmdb_search_missions`, `scmdb_search_crafting`, `scmdb_search_mining`, `scmdb_changes`, `scmdb_rank_hauling` (hauling contract families ranked for your ship, or the offers you read in the mobiGlas priced in time: estimates, never live availability)                                                                                                                                                                                                                                                                                                        |
 | **Patches and lore**                   | `sc_patch_notes` (notes of an update, by section or keyword), `sct_search`, `sct_get_article`, `sc_list_builds`, `sc_diff_versions`                                                                                                                                                                                                                                                             |
 | **Your game log** (off by default)     | `sc_log_context` (what you are doing now), `sc_log_recent_events`, `sc_log_sessions`, `sc_log_status`, `sc_trade_journal` (what you bought and sold, cargo runs)                                                                                                                                                                                                                                                                                           |
 | **Live telemetry** (off by default)    | `sc_live_status` (always listed: state and how to enable), `sc_live_state`, `sc_live_events` (listed only when `SC_TELEMETRY=on`), `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark` (the live dashboard, in Claude Desktop only)                                                                                                                                                                                                                                                               |
@@ -129,7 +130,7 @@ at startup instead of listing nothing. Scoping is for speed, not security: an un
 | Profile   | Tools | For                                                                                  |
 | --------- | ----- | ------------------------------------------------------------------------------------ |
 | **core**  | 14    | The everyday copilot: status, ships, trade basics, missions, patch notes, your fleet |
-| **trade** | 19    | The full UEX market toolbox, with refining, shop items and the player market         |
+| **trade** | 23    | The full UEX market toolbox, with refining, shop items, the player market and hauling contracts |
 | **data**  | 16    | Reference data, crafting, mining, patch history, wiki browsing                       |
 | **local** | 12    | Your game log, your fleet, your own data files                                       |
 

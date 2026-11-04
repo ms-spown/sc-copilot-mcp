@@ -18,12 +18,26 @@ export interface ShipSheet {
   cargo_scu: number | null;
   quantum_speed_ms: number | null;
   spool_seconds: number | null;
+  /**
+   * Cargo container sizes (SCU) the ship's grid takes, from UEX `container_sizes` ("1,2,4,8,16"). null when UEX
+   * gives none: an empty or missing value means "not provided", never "no containers".
+   */
+  container_sizes: number[] | null;
   /** What could not be found, in words, for the answer. */
   missing: string[];
   wiki_version: string | null;
 }
 
 export class ShipLookupError extends Error {}
+
+/** "1,2,4,8,16" to [1, 2, 4, 8, 16]; anything that is not a list of positive whole sizes (empty, null) is null. */
+export function parseContainerSizes(raw: unknown): number[] | null {
+  if (typeof raw !== "string") return null;
+  const parts = raw.split(",").map((p) => p.trim());
+  const sizes = parts.map((p) => (/^\d{1,3}$/.test(p) ? Number(p) : 0));
+  if (sizes.length === 0 || sizes.some((n) => n < 1)) return null;
+  return [...new Set(sizes)].sort((a, b) => a - b);
+}
 
 export async function fetchShipSheet(
   uexClient: HttpClient,
@@ -50,6 +64,7 @@ export async function fetchShipSheet(
     cargo_scu: positive(v.scu) ?? null,
     quantum_speed_ms: null,
     spool_seconds: null,
+    container_sizes: parseContainerSizes(v.container_sizes),
     missing: [],
     wiki_version: null,
   };

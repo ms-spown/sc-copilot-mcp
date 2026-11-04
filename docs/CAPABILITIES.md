@@ -11,7 +11,7 @@ over stdio and gives Claude tools to answer Star Citizen questions: market and t
 missions, crafting, mining, patch notes, what your own game just logged, your fleet and, if you switch it on,
 live telemetry.
 
-61 tools exist. While live telemetry is off (the default) 51 are listed to the client, because `sc_live_state`,
+62 tools exist. While live telemetry is off (the default) 52 are listed to the client, because `sc_live_state`,
 `sc_live_events`, `sc_live_dashboard`, `sc_live_poll` and `sc_live_mark` are hidden until telemetry is on, and so are the five session tools (`sc_session_current`,
 `sc_session_list`, `sc_session_stats`, `sc_session_new`, `sc_session_end`). The three
 dashboard tools are also listed only to a client that can show them (Claude Desktop), never to Claude Code.
@@ -101,12 +101,26 @@ hidden behind old data.
 | --- | --- |
 | What it is for | Search the datamined mission list: reward, contractor, type, place, minimum reputation, illegality and the blueprints a mission can reward |
 | Example questions | "Which missions pay the most in Pyro?" (Quelles missions paient le mieux à Pyro ?) ; "What gives the Corbel armor blueprint?" (Quelle mission donne le plan de l'armure Corbel ?) ; "Show me Wikelo missions" (Montre-moi les missions Wikelo) ; "Illegal hauling missions above 50,000 aUEC" (Missions de transport illégales à plus de 50 000 aUEC) ; "Is this mission new in the last patch?" (Cette mission est-elle nouvelle dans le dernier patch ?) |
-| Tools | `scmdb_search_missions` (and `scmdb_changes`, see [Patches](#6-patches-and-patch-notes), for "is this mission new") |
-| Source | SCMDB, a community mirror of datamined game data |
+| Tools | `scmdb_search_missions` (and `scmdb_changes`, see [Patches](#6-patches-and-patch-notes), for "is this mission new"); `scmdb_rank_hauling` for hauling contracts (below) |
+| Source | SCMDB, a community mirror of datamined game data; `scmdb_rank_hauling` also reads UEX (places, distances, container sizes) and the wiki ship sheet (quantum speed) |
 | Freshness | `data_age` is the date the SCMDB maintainer last regenerated the channel; `game_version` is that channel's build. SCMDB can lag a patch by hours or days; `sc_data_status` shows the gap |
 | Limits | Rewards are datamined values, not what players see after modifiers. `time_to_complete` is passed through as the data gives it, and its unit is not stated by the source. Results are sorted by reward and capped at 30 (10 by default). A misspelled query or filter still finds the closest missions, and a filter that matches nothing says so in `note`. Mission titles and descriptions are third-party text (`untrusted_text`) |
 | Prerequisites | None. LIVE by default; pass `channel` `ptu` for the test build, which may be absent (the tool then returns an error saying SCMDB has no PTU build) |
 | Local or network | Network: `raw.githubusercontent.com` for the data files, `api.github.com` only to learn the current commit. Files are read on demand into your cache and answered in small pieces |
+
+### Hauling contracts (`scmdb_rank_hauling`, `trade` profile)
+
+SCMDB holds contract TEMPLATES (the 136 `Hauling*` definitions of LIVE 4.10.2 at the time of writing), not the offers on your mobiGlas: a pickup or a destination is a pool of candidates and the game picks the place when it offers the contract. So the tool never says a contract is available. It has two modes, and every figure carries how sure it is.
+
+| Topic | Details |
+| --- | --- |
+| Mode `templates` | Ranks contract families (identical templates merged, `variants` counts them) for a ship: `ship_name` (hold and container sizes from UEX, quantum speed from the wiki sheet; `sc_fleet_get` lists your ships) or `cargo_scu` and `max_container_size`. Shows the fixed reward, the SCU range, the reward per SCU as a RANGE (reward over the largest SCU to reward over the smallest), the commodities, the required Hauling rank (`rank` filters by yours), whether the containers fit the ship, the trips the hold needs, the partial-payout table and flags (once only, cooldown, intro needed). Illegal contracts are left out unless `include_illegal`; contracts whose containers are too big are left out unless `include_unfit`. With a ship, suitability comes first (containers that fit, then one trip, then trips that depend on the SCU rolled, then several trips), then `sort` (`reward_per_scu` by the low end of the range, or `reward`). `reward_per_hour` is null: a template has no concrete pickup and drop-off |
+| Mode `offers` | You (or Claude, from what you read in the mobiGlas) give 1 to 10 offers: reward, scu, pickup, dropoffs (1 to 6), optionally the largest container size. Places are resolved with UEX to an orbit (a name that fits several orbits is refused with suggestions, never guessed). The server estimates minutes and reward per hour for each offer (stops, hops and quantum flights), groups offers that share a pickup orbit into bundles of 2 to 4 whose SCU fit the hold in one trip, orders the drop-offs (exact search up to 6 stops, nearest neighbour above, flagged), and compares each bundle with the best single offer |
+| Labels | `datamined`: reward, SCU, container size, rank, illegal flag, pools. `deduced`: an order with `maxSCU` 0 and a `minSCU` is read as a fixed quantity (flagged `scu_fixed_quantity_is_deduced`; not documented by the source). `estimated`: reward per SCU, minutes, reward per hour, bundles. `given_by_player`: the offers' numbers and names. `unknown`: null with its reason (placeholder commodity, order without SCU, availability, a route between two systems). `measured` never appears: no game log or telemetry is read |
+| Assumptions | 8 minutes per stop and a 2 minute hop inside one orbit (both unmeasured; `stop_minutes` changes the first), straight quantum flights between UEX orbit centres. Not counted: the flight to the first pickup, anything after the last drop-off, loading time, quantum fuel, interdiction. No transit time between star systems (UEX has none): such a route has no hourly figure. An offer larger than the hold is timed as repeated trips. Container fit (the ship's largest container size at least the contract's) and trips (hold) are rules of thumb, not verified in game |
+| Not used | `timeToComplete` (its unit is not stated by the source) is never shown as a duration and no rate is derived from it. Availability and frequency of a template are not in the data |
+| Build and dates | The answer states the SCMDB channel and build of the file (it can differ from the build you play; `sc_data_status` shows the gap) and the provenance dates the channel. Titles and place names are third-party text (`untrusted_text`) |
+| Requests | `templates`: SCMDB files (cached on disk by commit) and, for a named ship, 2 requests (UEX `/vehicles`, wiki sheet). `offers`: UEX `/terminals` (1), one orbit matrix per star system met (at most 3), and 2 for a named ship: at most 6, none on a repeat within 5 minutes. No per-pair distance request. The answer is cut to fit the output limit and says so |
 
 ## 4. Crafting (SCMDB)
 
@@ -284,7 +298,7 @@ The two telemetry tools stay hidden while telemetry is off, even when named in `
 | Profile | Tools | For |
 | --- | --- | --- |
 | **core** (14) | `sc_data_status`, `uex_get_commodity_prices`, `uex_get_trade_routes`, `uex_get_game_versions`, `uex_get_ship_prices`, `scw_get_vehicle`, `scw_get_item`, `scw_get_ship_comparison`, `sct_search`, `sct_get_article`, `sc_patch_notes`, `scmdb_search_missions`, `scmdb_changes`, `sc_fleet_get` | The everyday copilot; a test keeps it under 15 tools |
-| **trade** (22) | The eighteen tools of [section 1](#1-market-and-trade-routes-uex), the three read-only session tools (`sc_session_current`, `sc_session_list`, `sc_session_stats`) and `sc_data_status` | The full market toolbox |
+| **trade** (23) | The eighteen tools of [section 1](#1-market-and-trade-routes-uex), the three read-only session tools (`sc_session_current`, `sc_session_list`, `sc_session_stats`), `scmdb_rank_hauling` ([section 3](#3-missions-scmdb)) and `sc_data_status` | The full market toolbox |
 | **data** (16) | Wiki browsing and snapshots, missions, crafting, mining, patch notes and history, vocabulary | Reference data, crafting, mining and patch history |
 | **local** (23) | The game log, telemetry, fleet and local-file tools | Things on your PC. Thirteen are listed while telemetry is off |
 
