@@ -912,6 +912,35 @@ aucune recherche n'est lancée.
   de vols), toujours étiquetée « (heuristique) » ; UEX n'a aucune donnée de piraterie. Les prix de plus de 7 jours sont
   marqués « périmés ». La vitesse quantique du vaisseau vient de l'état du serveur (la fiche wiki du vaisseau piloté,
   puis la même recherche que `uex_plan_trade`), jamais de la page.
+- **Fiabilité.** Chaque carte (options, chaînes, « Et ensuite ? ») porte un bloc dont le résumé, toujours visible, nomme
+  en toutes lettres le niveau de preuve des prix (un symbole et une bordure le répètent ; la couleur n'est jamais le seul
+  indice) : *Relevée par des joueurs* (chaque prix repose sur au moins un relevé de joueur, aucun de plus de 3 jours),
+  *Partiellement relevée* (certains prix oui, d'autres non ou inconnus, ou un prix relevé de plus de 3 jours),
+  *Estimation non vérifiée* (aucun relevé de joueur, UEX en comptant 0 sur au moins un prix) ou *Relevés non vérifiés*
+  (la vérification a échoué ou n'a pas eu lieu : rien n'est affirmé dans un sens ni dans l'autre). Le niveau figure aussi
+  sous le grand chiffre (« aUEC par heure, estimé (aucun relevé joueur) »). Repliés sous le résumé : jusqu'à cinq raisons,
+  les plus décisives d'abord, chacune avec sa source et l'âge du prix sur lequel elle repose, puis celles qui n'ont pas
+  tenu (nommées, pas supprimées), un *premier trajet prudent* et une phrase fixe sur ce que l'estimation laisse de côté
+  (temps de chargement, carburant, taille des pads, piraterie, effet de tes propres achats et ventes sur le prix). Les
+  raisons sont calculées à partir de données que le planificateur lit déjà et **ne s'affichent que si la donnée est là**
+  (un signal non lu n'est jamais rassurant) : aucun relevé de joueur (avec, quand la fourchette d'UEX pour ce prix n'a
+  jamais varié, « ressemble à une valeur reportée ») ; le prix de vente au plafond de la fourchette d'UEX pour ce
+  terminal (et combien de terminaux affichent exactement ce prix) ; le plan achète tout le stock affiché (le prix monte
+  quand le stock baisse : non modélisé) ; les deux terminaux sont dans la même orbite chez UEX (0 Gm : le vol est un saut
+  local fixe de 2 minutes et le cycle est une hypothèse, dit plus fort quand ce sont deux corps différents) ; l'acheteur
+  à 72-85 % de son inventaire (l'avertissement d'UEX lui-même), un plan qui vend plus que ce que le terminal demande, ou
+  une marge sous 10 % du prix d'achat ; des prix de 2 jours ou plus ; une vitesse quantique inconnue avec un vol long ;
+  une marchandise sur laquelle aucun terminal n'a de relevé. **Non disponibles, donc non affichés :** taille des pads,
+  données de piraterie ou de criminalité, temps de chargement, consommation de carburant, impact réel sur le prix et
+  historique complet des prix (« prix identique depuis 22 jours » demanderait `commodities_prices_history`, environ
+  deux appels par extrémité de tronçon et dix relevés au plus : non demandé). Le classement n'est **pas** modifié :
+  l'objectif décide toujours de l'ordre ; une option dont le niveau dépasse celui de la première carte porte le repère
+  *Mieux vérifiée que la première de la liste*. Le *premier trajet prudent* est un quart de chaque tronçon, entre 100
+  et 150 SCU et jamais plus que le tronçon, valorisé avec la marge par SCU du planificateur (une estimation qui ignore
+  l'impact sur le prix), avec la consigne de vérifier le prix et le stock réels au terminal, de mesurer le vrai prix de
+  vente et la vraie durée du cycle, et de n'augmenter qu'ensuite. Les prix du marché, leurs âges et les nombres de
+  relevés ne dérivent pas du solde et s'affichent toujours ; pour un plan dimensionné par le solde, la mise est omise.
+  Ce sont des règles empiriques aux seuils choisis (3 jours, 2 jours, 10 %, un quart de tronçon), jamais une garantie.
 - **Cartes.** La première est la tête de liste (grand chiffre, contour) ; les autres sont des lignes discrètes ; les
   chaînes (A>B>C, sans retour chiffré) sont à part et non comparables. Chaque carte a *Appliquer comme plan* (le
   serveur construit le plan à partir de sa propre option, par identifiant : l'aller, le retour nommé dans la note ; la

@@ -77,6 +77,10 @@ export interface Leg {
   sellUpdatedAt: number | null;
   /** Which end limited the quantity. */
   limitedBy: "cargo" | "budget" | "stock";
+  /** SCU the buy terminal showed for sale, before the hold and budget caps. Absent on a leg built from a UEX route row. */
+  stockScu?: number;
+  /** UEX inventory code (1 to 7, 0 = no report) at the sell terminal. Absent on a leg built from a UEX route row. */
+  sellStatus?: number;
 }
 
 export interface LegOptions {
@@ -169,6 +173,8 @@ export function buildLegs(rows: readonly PriceRow[], o: LegOptions): LegSet {
           buyUpdatedAt: a.updatedAt,
           sellUpdatedAt: b.updatedAt,
           limitedBy,
+          stockScu: a.scuBuy,
+          sellStatus: b.statusSell,
         });
       }
     }

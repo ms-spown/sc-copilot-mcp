@@ -181,7 +181,7 @@ describe("Feature: a card says what it knows and what it estimates", () => {
     const m = tradeCardModel(L, o, "profit_per_hour");
     expect(m.big.kind).toBe("hour");
     expect(NBSP_FREE(m.big.value)).toMatch(/^≈ \+\d/);
-    expect(m.big.unit).toBe("aUEC par heure, estimé");
+    expect(m.big.unit).toBe("aUEC par heure, estimé (aucun relevé joueur)");
     expect(m.badges.map((b: any) => b.text)).toContain("estimation UEX · aucun relevé de joueur");
     expect(m.badges.find((b: any) => /prudence/.test(b.text)).text).toMatch(/\(heuristique\)$/);
     expect(m.badges.find((b: any) => /estimation UEX/.test(b.text)).estimate).toBe(true);
@@ -190,13 +190,16 @@ describe("Feature: a card says what it knows and what it estimates", () => {
 
   it("Given the 'fastest' objective, Then the big figure is the cycle time", () => {
     const m = tradeCardModel(L, answer({ objective: "speed" }).options[0], "speed");
-    expect(m.big).toMatchObject({ kind: "time", unit: "par cycle, estimé" });
+    expect(m.big).toMatchObject({ kind: "time", unit: "par cycle, estimé (aucun relevé joueur)" });
   });
 
   it("Given no quantum speed, Then the card falls back to the trip profit and says the duration is unknown", () => {
     const o = answer({}, "nospeed").options[0];
     const m = tradeCardModel(L, o, "profit_per_hour");
-    expect(m.big).toMatchObject({ kind: "trip", unit: "aUEC par trajet (durée inconnue)" });
+    expect(m.big).toMatchObject({
+      kind: "trip",
+      unit: "aUEC par trajet (durée inconnue) (aucun relevé joueur)",
+    });
     expect(m.badges.map((b: any) => b.text)).toContain("durée inconnue");
   });
 

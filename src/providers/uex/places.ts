@@ -20,6 +20,8 @@ export interface TerminalPlace extends Place {
   planetId: number;
   systemName: string | null;
   planetName: string | null;
+  /** The moon the terminal is on (UEX `moon_name`); null on a planet, a station or a point of interest. */
+  moonName: string | null;
   kind: PlaceKind;
   /** UEX `is_armistice` of the station, city or outpost; null when the place is not in UEX's tables. */
   armistice: boolean | null;
@@ -104,6 +106,7 @@ export async function loadPlaces(client: HttpClient): Promise<PlaceIndex> {
       orbit: toNumber(t.id_orbit) ?? 0,
       systemName: label(t.star_system_name, 40),
       planetName: label(t.planet_name, 60),
+      moonName: label(t.moon_name, 60),
       kind,
       armistice: facts?.armistice ?? null,
       jurisdiction: facts?.jurisdiction ?? null,

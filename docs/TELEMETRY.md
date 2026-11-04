@@ -858,6 +858,32 @@ searches again by itself after a short quiet time; before the first click no sea
   jurisdiction, system, kind of place, number of flights), always labelled "(heuristique)"; UEX has no piracy data.
   Prices older than 7 days are flagged "périmés". The ship's quantum speed comes from the server's own state (the flown
   ship's wiki sheet, then the same lookup as `uex_plan_trade`), never from the page.
+- **Reliability ("Fiabilité").** Every card (options, chains, "Et ensuite ?") carries a block whose summary, always visible,
+  names the level of the evidence behind its prices in words (a symbol and a border repeat it; colour is never the only cue):
+  *Relevée par des joueurs* (every price rests on at least one player report and none is older than 3 days), *Partiellement
+  relevée* (some prices do, some do not or are unknown, or a reported price is older than 3 days), *Estimation non vérifiée*
+  (no player report on any price, UEX counting 0 on at least one) or *Relevés non vérifiés* (the report check failed or
+  was skipped: nothing is claimed either way). The level also appears under the big figure ("aUEC par heure, estimé
+  (aucun relevé joueur)"). Folded under the summary: up to five reasons, most decisive first, each with its source and the
+  age of the price it rests on, then the reasons that did not fit (named, not dropped), a *prudent first run* and a fixed
+  sentence on what the estimate leaves out (loading time, fuel, pad size, piracy, the effect of the player's own buying and
+  selling on the price). The reasons, each computed from data the planner already reads and **shown only when the data is
+  there** (a signal that was not read is never a reassuring one): no player report (with, when UEX's range for the
+  price never varied, "looks like a carried-over value"); the sell price at the top of UEX's range for that terminal (and
+  how many terminals show exactly that price); the plan buys the whole displayed stock (the price rises as stock drops: not
+  modelled); the two terminals are in the same UEX orbit (0 Gm, so the flight is a fixed 2-minute local hop and the cycle is
+  an assumption, said louder when the terminals are on different bodies); the buyer at 72-85 % of its inventory (UEX's own
+  warning), a plan selling more than the terminal asks for, or a margin under 10 % of the buy price; prices 2 days old or
+  more; an unknown quantum speed with a long flight; a commodity no terminal has a report for. **Not available, so not
+  shown:** pad size, piracy or crime data, loading time, fuel burn, the real price impact, and a full price history (a
+  "price identical for 22 days" claim would need `commodities_prices_history`, about two calls per leg end and ten
+  snapshots at most; it is not requested). The ranking is **not** changed: the objective still decides the order; an option
+  whose level is better than the first card's gets a *Mieux vérifiée que la première de la liste* marker. The *prudent
+  first run* is a quarter of each leg, between 100 and 150 SCU and never more than the leg, valued with the planner's own
+  per-SCU margin (an estimate that ignores price impact), with the instruction to check the real price and stock at the
+  terminal, measure the real sell price and the real cycle time, and scale up only afterwards. Market prices, ages and
+  report counts are not derived from the balance and always show; for a plan sized from the balance the outlay is left out.
+  These are rules of thumb with chosen thresholds (3 days, 2 days, 10 %, a quarter of a leg), never a guarantee.
 - **Cards.** The first is the headline (big number, ring); the others are quiet rows; chains (A>B>C, no priced return)
   are apart and not comparable. Each card has *Appliquer comme plan* (the server builds the plan from its own option, by
   id: the outbound leg, the return named in the note; the commerce card then follows that route: planned profit,

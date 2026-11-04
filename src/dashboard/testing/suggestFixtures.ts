@@ -2,10 +2,17 @@
  * TEST SUPPORT (also used by scripts/dashboard-preview.mjs): made-up answers of `sc_trade_suggest`, in the exact shape
  * the server builds (dashboard/tradeSuggest.ts). Invented figures: not UEX data, not a real market.
  */
+import type { LegMarket } from "../../providers/uex/legMarket.js";
+import type { LegView, TripOption } from "../../providers/uex/tripPlanner.js";
+import { assessReliability, markBetterChecked } from "../routeReliability.js";
 import type { SuggestLeg, SuggestOption } from "../tradeSuggest.js";
 import { preflightAnswer, type PreflightVariant } from "./preflightFixtures.js";
 
 type Rep = "reported" | "estimate" | "unverified";
+
+/** What a made-up leg knows beyond the card's fields: the market facts the reliability block reads. */
+const MARKET = new WeakMap<SuggestLeg, Partial<LegMarket>>();
+const BODIES = new WeakMap<SuggestLeg, { from: string; to: string }>();
 
 function leg(
   commodity: string,
@@ -14,7 +21,96 @@ function leg(
   buy: number,
   sell: number,
   scu: number,
-  opts: { age?: number; rep?: Rep; arm?: boolean | null; limited?: SuggestLeg["limited_by"] } = {},
+  opts: {
+    age?: number;
+    rep?: Rep;
+    arm?: boolean | null;
+    limited?: SuggestLeg["limited_by"];
+    market?: Partial<LegMarket>;
+    bodies?: { from: string; to: string };
+  } = {},
+): SuggestLeg {
+  const made = legBase(commodity, from, to, buy, sell, scu, opts);
+  if (opts.market) MARKET.set(made, opts.market);
+  if (opts.bodies) BODIES.set(made, opts.bodies);
+  return made;
+}
+
+/** The reliability block the server would build for these made-up legs (same code, made-up facts). */
+function reliabilityOf(
+  mode: SuggestOption["mode"],
+  legs: SuggestLeg[],
+  minutes: number | null,
+  priv = false,
+) {
+  const place = (terminal: string, body: string | null) => ({
+    terminal,
+    terminal_id: 1,
+    system: "Stanton",
+    planet: body,
+    body,
+    kind: null,
+    armistice_zone: null,
+    jurisdiction: null,
+  });
+  const views = legs.map((l, i): LegView => {
+    const reports = l.report_status === "reported" ? 3 : l.report_status === "estimate" ? 0 : null;
+    const bodies = BODIES.get(l);
+    const extra = MARKET.get(l) ?? {};
+    return {
+      commodity: l.commodity,
+      from: place(l.from, bodies?.from ?? `Corps ${i * 2 + 1}`),
+      to: place(l.to, bodies?.to ?? `Corps ${i * 2 + 2}`),
+      buy_price: l.buy_price,
+      sell_price: l.sell_price,
+      profit_per_scu: l.profit_per_scu,
+      scu: l.scu,
+      limited_by: l.limited_by === "hidden" ? "budget" : l.limited_by,
+      cost: l.buy_price * l.scu,
+      profit_for_leg: l.profit_per_scu * l.scu,
+      destination_demand_scu: null,
+      price_updated: { buy: null, sell: null },
+      price_age_days: { buy: l.age_days, sell: l.age_days },
+      stale: false,
+      report_status: l.report_status,
+      reports: { origin: reports, destination: reports },
+      is_estimate: null,
+      estimated_sides: [],
+      market: {
+        buy_range: null,
+        sell_range: null,
+        stock_scu: null,
+        sell_inventory: null,
+        sell_peers: null,
+        commodity_reports: null,
+        ...extra,
+      },
+    };
+  });
+  const o = {
+    mode,
+    legs: views,
+    trip: {
+      flights_gm: mode === "two_leg" ? [10, 10] : [10, 10],
+      cycle_seconds: minutes === null ? null : minutes * 60,
+    },
+  } as unknown as TripOption;
+  return assessReliability(o, {
+    speedKnown: minutes !== null,
+    stopMinutes: 8,
+    localHopMinutes: 2,
+    private: priv,
+  });
+}
+
+function legBase(
+  commodity: string,
+  from: string,
+  to: string,
+  buy: number,
+  sell: number,
+  scu: number,
+  opts: { age?: number; rep?: Rep; arm?: boolean | null; limited?: SuggestLeg["limited_by"] },
 ): SuggestLeg {
   return {
     commodity,
@@ -80,24 +176,34 @@ function option(
               ],
     },
     ...(priv ? {} : { cost: legs[0]!.buy_price * legs[0]!.scu }),
+    reliability: reliabilityOf(mode, legs, minutes, priv),
     ...extra,
   };
 }
 
-export type SuggestVariant = "ok" | "empty" | "wait" | "error" | "nospeed" | "reported";
+export type SuggestVariant = "ok" | "empty" | "wait" | "error" | "nospeed" | "reported" | "mixed";
 
 /** Candidates in the order of the profit-per-hour objective; the objective re-orders them as the planner would. */
-function candidates(priv: boolean, speed: boolean): SuggestOption[] {
+function candidates(priv: boolean, speed: boolean, mixed = false): SuggestOption[] {
   const m = (v: number | null) => (speed ? v : null);
   return [
     option(
       "000000000000000000000000000000a0",
       "round_trip",
       [
-        leg("Laranite", "Port Tressler", "Area18 TDD", 189, 457, 696, { arm: false, age: 0.6 }),
+        leg("Laranite", "Port Tressler", "Area18 TDD", 189, 457, 696, {
+          arm: false,
+          age: 0.6,
+          limited: "stock",
+          market: {
+            sell_range: { low: 380, high: 457 },
+            sell_peers: { same_price: 6, priced: 8 },
+          },
+        }),
         leg("Medical Supplies", "Area18 TDD", "Port Tressler", 1180, 1412, 120, {
           arm: false,
           age: 0.6,
+          market: { sell_inventory: { code: 6, fill: "72-85%" } },
         }),
       ],
       m(46),
@@ -107,7 +213,12 @@ function candidates(priv: boolean, speed: boolean): SuggestOption[] {
     option(
       "000000000000000000000000000000a1",
       "one_way",
-      [leg("Agricium", "Lorville CBD", "Area18 TDD", 2410, 2790, 400, { age: 1.1 })],
+      [
+        leg("Agricium", "Lorville CBD", "Area18 TDD", 2410, 2790, 400, {
+          age: 1.1,
+          rep: mixed ? "reported" : "estimate",
+        }),
+      ],
       m(38),
       0,
       priv,
@@ -116,7 +227,10 @@ function candidates(priv: boolean, speed: boolean): SuggestOption[] {
       "000000000000000000000000000000a2",
       "round_trip",
       [
-        leg("Gold", "Everus Harbor", "Seraphim Station", 5870, 6210, 300, { age: 2.3 }),
+        leg("Gold", "Everus Harbor", "Seraphim Station", 5870, 6210, 300, {
+          age: 2.3,
+          rep: mixed ? "reported" : "estimate",
+        }),
         leg("Processed Food", "Seraphim Station", "Everus Harbor", 1410, 1520, 300, { age: 2.3 }),
       ],
       m(29),
@@ -219,7 +333,7 @@ export function suggestAnswer(
   const priv = args["budget_private"] === true;
   lastSearchPrivate = priv;
   const speed = variant !== "nospeed";
-  let list = candidates(priv, speed);
+  let list = candidates(priv, speed, variant === "mixed");
   let chainList = args["round_trip_only"] ? [] : chains(priv, speed);
   if (args["avoid_pyro"] || args["armistice_only"]) list = list.filter((o) => o.safety.points <= 2);
   if (args["armistice_only"]) list = list.filter((o) => o.safety.points === 0);
@@ -234,6 +348,7 @@ export function suggestAnswer(
   }
   const key = KEY[String(args["objective"] ?? "profit_per_hour")] ?? KEY["profit_per_hour"]!;
   list.sort((a, b) => key(a) - key(b));
+  markBetterChecked(list);
   const all = [...list, ...chainList];
   const counts = { reported: 0, estimate: 0, unverified: 0 };
   for (const o of all) counts[o.report_status]++;

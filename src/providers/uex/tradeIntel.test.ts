@@ -396,6 +396,7 @@ describe("safety heuristic", () => {
     orbit: o.terminalId,
     systemName: "Stanton",
     planetName: "ArcCorp",
+    moonName: null,
     kind: "station",
     armistice: true,
     jurisdiction: null,

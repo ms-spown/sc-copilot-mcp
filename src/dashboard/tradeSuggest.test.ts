@@ -32,6 +32,7 @@ function fakeOption(i: number, over: Partial<TripOption> = {}): TripOption {
       terminal_id: 11,
       system: "Stanton",
       planet: "Hurston",
+      body: "Hurston",
       kind: "city",
       armistice_zone: true,
       jurisdiction: "UEE",
@@ -41,6 +42,7 @@ function fakeOption(i: number, over: Partial<TripOption> = {}): TripOption {
       terminal_id: 22,
       system: "Stanton",
       planet: "ArcCorp",
+      body: "ArcCorp",
       kind: "city",
       armistice_zone: true,
       jurisdiction: "UEE",
@@ -60,6 +62,7 @@ function fakeOption(i: number, over: Partial<TripOption> = {}): TripOption {
     reports: { origin: 0, destination: 0 },
     is_estimate: true,
     estimated_sides: ["origin" as const, "destination" as const],
+    market: null,
   });
   return {
     rank: i + 1,

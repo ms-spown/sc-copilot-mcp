@@ -39,6 +39,30 @@ versions follow [Semantic Versioning](https://semver.org/).
   built (420.3 kB as the vitest guard measures it from the sources); the internal budget of `check:page-size` and of
   `pageBudget.test.ts` goes from 420 kB to 440 kB (the larger measure plus about 5 %, our own guard, nothing removed to fit it).
 
+### Added (route reliability: every route card says how far its estimate can be trusted)
+- **Marc's feedback:** the "plus rentable" ranking rests on assumptions the card never showed (a UEX price nobody reported, a
+  sell price at the ceiling of its range, the whole displayed stock bought, a cycle made of fixed stops and a 0 Gm "same orbit"
+  hop), which an agent asked to verify then found one by one. They are now on the card.
+- **A "Fiabilité" block on every card** (options, chains, "Et ensuite ?"): its summary, always visible, gives the level in words
+  (*Relevée par des joueurs*, *Partiellement relevée*, *Estimation non vérifiée*, *Relevés non vérifiés*; a symbol and a border
+  repeat it, colour is never the only cue) and the same level sits under the big figure ("aUEC par heure, estimé (aucun relevé
+  joueur)"). Folded under it: up to five reasons in plain French, most decisive first, each with its source and the age of the
+  price it rests on; the reasons that did not fit, named; a **prudent first run** (a quarter of each leg, 100 to 150 SCU, never
+  more than the leg, valued with the planner's own per-SCU margin and labelled an estimate, with the instruction to check the
+  real price and stock, measure the real sell price and cycle time, and scale up afterwards); and a fixed sentence on what the
+  estimate leaves out. Rules and thresholds are in `src/dashboard/routeReliability.ts` and `docs/TELEMETRY.md`; they are rules of
+  thumb, never a guarantee, and a signal that was not read never produces a reason nor lifts the level.
+- **Ranking:** the objectives' maths and the order are unchanged (the planner is shared with `uex_plan_trade`); an option better
+  evidenced than the first card of its list gets a *Mieux vérifiée que la première de la liste* marker. No sort option, no
+  tie-break: exact ties almost never happen, and a silent reorder would change what the objective means.
+- **Planner (also `uex_plan_trade`):** each leg now carries `market` (UEX's recorded low and high of the price at both
+  terminals, the stock shown at the buyer, the inventory level of the seller with UEX's legend percentage, how many terminals show
+  exactly the sell price, how many terminals have a player report on the commodity), read from the per-commodity answer the planner
+  already requested for the report check (no extra call for round trips and chains; one extra read for each commodity of a shown
+  one-way route, at most four, inside the same deadline) and null when it was not read. Each place now carries `body` (its moon,
+  else its planet). Nothing here is derived from the balance; for a plan sized from the balance the outlay is left out of the block.
+- **Tool surface:** no tool name or input schema changed (the golden file is untouched); the new fields are in the answers.
+
 ### Added (a Sessions view: the dedicated tab, with archive and delete per session)
 - **Marc's request:** "on a session line I must be able to click delete, archive, etc., and see the stats when I select it ...
   not many sessions inline, and a dedicated tab for the sessions view."
