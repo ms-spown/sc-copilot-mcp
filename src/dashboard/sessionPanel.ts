@@ -474,7 +474,7 @@ export function sessionExportText(value: unknown, max: number): string {
 }
 
 /**
- * The answer of sc_session_debrief, rebuilt: two bounded strings and the choices it was made with. Dropped (null) when it
+ * The answer of sc_session_export (the dashboard's own tool), rebuilt: two bounded strings and the choices it was made with. Dropped (null) when it
  * holds amounts the View was not allowed to draw, or the balances although they were not asked for.
  */
 export function sessionDebriefNormalize(
@@ -633,8 +633,9 @@ export function sessionPanel(doc: any, L: any, api: any): any {
   const btnCopy = button("Copier le bilan", () => void onExport("copy"), "mini");
   const btnMd = button("Télécharger .md", () => void onExport("md"), "mini");
   const btnCsv = button("Télécharger .csv", () => void onExport("csv"), "mini");
+  const btnCsvFr = button("Télécharger .csv (Excel FR)", () => void onExport("csvfr"), "mini");
   const btnBalances = button("Soldes de départ et final : non", () => onToggleBalances(), "mini");
-  add(exportRow, btnCopy, btnMd, btnCsv, btnBalances);
+  add(exportRow, btnCopy, btnMd, btnCsv, btnCsvFr, btnBalances);
   const exportHint = el("p", "ses-note", "");
   const exportMsg = el("p", "ses-note", "");
   exportMsg.setAttribute("role", "status");
@@ -746,8 +747,26 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     void loadMenu();
   }
 
+  /** A closed menu keeps no data and no text (they may hold balances): reopening fetches them again. */
+  function blankMenu() {
+    st.list = null;
+    st.stats = null;
+    st.detail = null;
+    st.asked = null;
+    st.view = "list";
+    for (const n of statEls.concat(factEls, tripEls, breakEls)) setText(n, "");
+    for (const r of rows) {
+      setText(r.n, "");
+      setText(r.when, "");
+      setText(r.detail, "");
+      setText(r.result, "");
+    }
+    setText(detailTitle, "");
+  }
+
   function closeMenu() {
     clearExport(true);
+    blankMenu();
     st.open = false;
     resetConfirm();
     renderMenu();
@@ -813,6 +832,11 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     st.exportToken++;
     st.exportText = null;
     st.exportMsg = "";
+    // The nodes are emptied HERE, not by a later render: a render that returns early (the menu is closed) must not leave a
+    // report, with its amounts, in the page.
+    setText(exportPre, "");
+    setText(exportMsg, "");
+    show(exportPre, false);
     if (resetChoice) st.exportBalances = false;
   }
 
@@ -851,12 +875,14 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     st.exportMsg = "Préparation du bilan…";
     renderMenu();
     try {
-      const res = await api.call("sc_session_debrief", {
-        id: d.session.id,
-        format: "both",
-        include_balance: money,
-        include_start_balance: withBalances,
-      });
+      const csvFr = kind === "csvfr";
+      const res = await api.call(
+        "sc_session_export",
+        Object.assign(
+          { id: d.session.id, include_balance: money, include_start_balance: withBalances },
+          csvFr ? { csv_delimiter: ";" } : {},
+        ),
+      );
       if (token !== st.exportToken) return;
       // The balance was hidden (or shown) while the report was made: a report made with the other choice is dropped.
       if (!!st.ctx.showBalance !== money) {
@@ -868,7 +894,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       const out = sessionDebriefNormalize(res, money, withBalances);
       if (!out) throw new Error("réponse inattendue");
       const number = String(d.session.number).replace(/[^0-9]/g, "") || "x";
-      const csv = kind === "csv";
+      const csv = kind === "csv" || csvFr;
       const text = csv ? out.csv : out.markdown;
       if (!text) throw new Error("bilan vide");
       if (kind === "copy") {
@@ -910,6 +936,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     const canDownload = !!(api.canDownload && api.canDownload());
     show(btnMd, canDownload);
     show(btnCsv, canDownload);
+    show(btnCsvFr, canDownload);
     show(btnBalances, money);
     setText(
       btnBalances,
@@ -921,8 +948,8 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       money
         ? st.exportBalances
           ? "Le bilan contient des montants et les soldes de départ et final. Relis-le avant de le partager."
-          : "Le bilan contient des montants, mais pas les soldes de départ et final."
-        : "Solde masqué : le bilan ne contient aucun montant (trajets, durées, SCU).",
+          : "Le bilan contient des montants, mais pas les soldes de départ et final. Relis-le avant de le partager."
+        : "Solde masqué : le bilan ne contient aucun montant (trajets, durées, SCU). Relis-le avant de le partager.",
     );
     setText(exportMsg, st.exportMsg);
     show(exportMsg, !!st.exportMsg);
@@ -1205,6 +1232,10 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     root,
     /** For the tests only. */
     state: () => st,
+    /** The page is going away: nothing of a report stays in it. */
+    dropExport() {
+      clearExport(true);
+    },
     render(rawBar: any, ctx: any) {
       st.ctx = { showBalance: !!(ctx && ctx.showBalance), now: ctx && ctx.now ? ctx.now : 0 };
       // A report made with the other balance choice is not reused: it goes, and so does the start-balance choice.

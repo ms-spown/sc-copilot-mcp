@@ -9,18 +9,24 @@ versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 - **Session report: take a session out of the server.** The stats were in `sc_session_stats` and the session bar, with no
   clean way to share them with a crew or an org, keep a log or paste the trips into a spreadsheet. New pure formatter
-  `src/providers/sessions/debrief.ts`, new tool `sc_session_debrief` (`format` markdown, csv or both; `id` or `last`;
-  `include_balance`; `include_start_balance`) and, in the detail of a session in the dashboard, **Copier le bilan** (clipboard,
-  with a selectable block when the host refuses it) and **Télécharger .md** / **.csv** (only where the page can make a file;
-  never required). The Markdown report (French, UTC, deterministic) has the header (times, active time, game version and
-  channel, breaks and why), the key numbers (trips, per hour, gross margin, fees, best trip, efficiency against the plan, route
-  reliability with its runs, confidence and the "marchandise non vérifiée (lien par prix)" caveat), a trips table with
-  mesuré / calculé / estimé / inconnu tags, what is unexplained, and a footer on what is measured and what is estimated. The CSV
-  (English columns, RFC 4180, spreadsheet-formula safe) has one row per trip. Amounts exist only when the balance is shown /
-  `include_balance`; the start and last balance only with the separate `include_start_balance`; unknown stays unknown, never
-  0; no trend is invented. Labels and the note are cleaned, capped and escaped but their content is not checked: the
-  report says to read it before sharing. A 500-trip session is bounded (the table keeps the newest 100 and says so). The prompt
-  `session_debrief` and the server instructions tell Claude it can produce it. Docs EN/FR, SECURITY.
+  `src/providers/sessions/debrief.ts`; new tool `sc_session_debrief` for the model (small on purpose, because a tool result is part
+  of the conversation: Markdown by default, about 28 000 characters at most, 20 table rows per session, a CSV only on request with
+  100 rows, never both, the text not duplicated in `structuredContent`, `csv_delimiter`, `id` or `last`, `include_balance`,
+  `include_start_balance`); new app-only tool `sc_session_export` for the dashboard (the whole session, strict input); and, in the
+  detail of a session, **Copier le bilan** (clipboard, with a selectable block when the host refuses it), **Télécharger .md**, **.csv**
+  and **.csv (Excel FR)** (semicolon, decimal comma; only where the page can make a file, never required). The Markdown report
+  (French, UTC, deterministic) has the header (times, active time, game version and channel, breaks and why), the key numbers
+  (trips, per hour, gross margin, fees, best trip, efficiency against the plan, route reliability with its runs, confidence and the
+  "marchandise non vérifiée (lien par prix)" caveat), a trips table with mesuré / calculé / estimé / inconnu tags, what is
+  unexplained, and a footer on what is measured and what is estimated. The CSV (English columns, RFC 4180) has one row per trip;
+  a text cell that could start a formula in a spreadsheet is prefixed with an apostrophe (a mitigation for Excel and LibreOffice,
+  not a guarantee for every program). Amounts exist only when the balance is shown / `include_balance`; the start and last balance
+  only with the separate `include_start_balance` (their difference can show with amounts); unknown stays unknown, never 0; no trend
+  is invented. Labels and the note are cleaned, capped and escaped but their content is not checked: the report says to read it
+  before sharing. A closed menu, a hidden balance, a left detail or a page that goes away now EMPTY the report and the session
+  detail from the page (they were only hidden). A run stored twice in an older file now counts once in the session bar and the
+  statistics, as in the report. The prompt `session_debrief` and the server instructions tell Claude it can produce it. Docs EN/FR,
+  SECURITY.
 
 ## [2.3.0] - 2026-11-04
 

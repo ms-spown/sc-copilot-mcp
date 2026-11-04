@@ -13,7 +13,7 @@ import {
 import { Scenario } from "./testing/scenario.js";
 
 /**
- * Feature: the "Copier le bilan" control of the session detail. The text comes from the server (sc_session_debrief, tested
+ * Feature: the "Copier le bilan" control of the session detail. The text comes from the server (sc_session_export, tested
  * on its own); here the page is run as it ships against the fake host: copy first, a selectable fallback when the host
  * refuses the clipboard, a file only when the page can make one, and no amount that the balance choice does not allow.
  */
@@ -57,7 +57,7 @@ async function showBalance(w: PageWorld) {
 
 const pre = (w: PageWorld) => findAll(w.root, (n) => n.className === "ses-export-pre")[0]!;
 const debriefCalls = (w: PageWorld) =>
-  w.host.log.tools.filter((t) => t.name === "sc_session_debrief");
+  w.host.log.tools.filter((t) => t.name === "sc_session_export");
 const control = (w: PageWorld, label: string) =>
   findAll(w.root, (n) => n.tag === "button" && n.textContent === label)[0];
 
@@ -118,13 +118,13 @@ describe("Feature: copy the report", () => {
     await openDetail(w);
     expect(isShown(findButton(w.root, "Copier le bilan"))).toBe(true);
     expect(text(w)).toContain("Solde masqué : le bilan ne contient aucun montant");
+    expect(text(w)).toContain("Relis-le avant de le partager.");
     // the start-balance choice does not exist while the balance is hidden
     expect(isShown(control(w, "Soldes de départ et final : non")!)).toBe(false);
     findButton(w.root, "Copier le bilan").click();
     await w.advance(500);
     expect(debriefCalls(w).at(-1)!.args).toEqual({
       id: "s_fixture_2",
-      format: "both",
       include_balance: false,
       include_start_balance: false,
     });
@@ -161,7 +161,7 @@ describe("Feature: copy the report", () => {
     await showBalance(w);
     await openDetail(w);
     expect(text(w)).toContain(
-      "Le bilan contient des montants, mais pas les soldes de départ et final.",
+      "Le bilan contient des montants, mais pas les soldes de départ et final. Relis-le avant de le partager.",
     );
     findButton(w.root, "Copier le bilan").click();
     await w.advance(500);
@@ -237,7 +237,7 @@ describe("Feature: a text that must not outlive the balance choice", () => {
     const copied: string[] = [];
     const w = await page({ clipboard: copied });
     w.host.overrides.tool = (name, args) =>
-      name === "sc_session_debrief"
+      name === "sc_session_export"
         ? { ...sessionToolAnswer(name, { ...args, include_balance: true }, 0) }
         : sessionToolAnswer(name, args, 0);
     await openDetail(w);
@@ -252,7 +252,7 @@ describe("Feature: a text that must not outlive the balance choice", () => {
   it("Given the tool fails, Then the control says so and keeps working", async () => {
     const w = await page({ clipboard: [] });
     w.host.overrides.tool = (name, args) =>
-      name === "sc_session_debrief"
+      name === "sc_session_export"
         ? new Error("the session file is busy")
         : sessionToolAnswer(name, args, 0);
     await openDetail(w);
@@ -270,6 +270,7 @@ describe("Feature: files, only when the page can make one", () => {
     expect(isShown(findButton(w.root, "Copier le bilan"))).toBe(true);
     expect(isShown(findButton(w.root, "Télécharger .md"))).toBe(false);
     expect(isShown(findButton(w.root, "Télécharger .csv"))).toBe(false);
+    expect(isShown(findButton(w.root, "Télécharger .csv (Excel FR)"))).toBe(false);
   });
 
   it("Given a page that can, Then .md and .csv are offered as files, the CSV with a byte-order mark for spreadsheets", async () => {
@@ -290,5 +291,101 @@ describe("Feature: files, only when the page can make one", () => {
     // a file is never the only way: nothing is kept on screen, the copy button is still there
     expect(isShown(pre(w))).toBe(false);
     expect(isShown(findButton(w.root, "Copier le bilan"))).toBe(true);
+  });
+});
+
+/** Every node of the page, hidden or not, with the text it holds. */
+const allText = (w: PageWorld) => {
+  const parts: string[] = [];
+  const walk = (n: any) => {
+    parts.push(n.textContent ?? "");
+    for (const c of n.children ?? []) walk(c);
+  };
+  walk(w.root);
+  return NB(parts.join("\n"));
+};
+
+describe("Feature: a report is gone from the page, not just hidden, whenever the player lets go of it", () => {
+  const withReport = async () => {
+    const w = await page({ clipboard: "refuses" });
+    await showBalance(w);
+    await openDetail(w);
+    control(w, "Soldes de départ et final : non")!.click();
+    await w.advance(50);
+    findButton(w.root, "Copier le bilan").click();
+    await w.advance(500);
+    expect(NB(pre(w).textContent)).toMatch(NET);
+    expect(pre(w).textContent).toMatch(BALANCES);
+    return w;
+  };
+  const gone = (w: PageWorld) => {
+    expect(pre(w).textContent).toBe("");
+    // the whole DOM, hidden nodes included: no amount of the report, no balance, no copy of the text
+    const all = allText(w);
+    expect(all).not.toContain("# Bilan de la session 2");
+    expect(all).not.toContain("Fin (UTC)");
+    expect(all).not.toContain("au dernier relevé");
+    // (the page's own polite zone may still say "Copie impossible": it holds no text of the report)
+    const msg = findAll(
+      w.root,
+      (n) => n.className === "ses-note" && n.attrs["role"] === "status",
+    )[0];
+    expect(msg!.textContent).toBe("");
+  };
+
+  it("Given the menu is closed, Then the text is not left in the DOM", async () => {
+    const w = await withReport();
+    findButton(w.root, "Fermer").click();
+    await w.advance(100);
+    gone(w);
+  });
+
+  it("Given the balance is hidden again with the menu closed, Then it is gone and does not come back when the menu opens", async () => {
+    const w = await withReport();
+    findButton(w.root, "Fermer").click();
+    await w.advance(100);
+    findAll(
+      w.root,
+      (n) => n.tag === "button" && /Masquer le solde/.test(n.textContent),
+    )[0]!.click();
+    await w.advance(3 * SECOND);
+    gone(w);
+    expect(allText(w)).not.toMatch(BALANCES);
+    findAll(w.root, (n) => n.tag === "button" && n.textContent.startsWith("Sessions"))[0]!.click();
+    await w.advance(500);
+    expect(pre(w).textContent).toBe("");
+    expect(allText(w)).not.toMatch(NET);
+  });
+
+  it("Given the player leaves the detail, Then it is gone", async () => {
+    const w = await withReport();
+    findButton(w.root, "Retour à la liste").click();
+    await w.advance(100);
+    gone(w);
+  });
+
+  it("Given the page is hidden for good (pagehide), Then it is gone", async () => {
+    const w = await withReport();
+    w.firePageHide();
+    await w.advance(100);
+    gone(w);
+  });
+});
+
+describe("Feature: the CSV for Excel in French", () => {
+  it("Given the 'Excel FR' download, Then the server is asked for the semicolon file and it is offered with a byte-order mark", async () => {
+    const files: { name: string; mime: string; text: string }[] = [];
+    const w = await page({ clipboard: [], downloads: files });
+    await openDetail(w);
+    findButton(w.root, "Télécharger .csv (Excel FR)").click();
+    await w.advance(500);
+    expect(debriefCalls(w).at(-1)!.args).toMatchObject({ csv_delimiter: ";" });
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({ name: "bilan-session-2.csv", mime: "text/csv" });
+    expect(files[0]!.text.startsWith("\uFEFFsession;ended_at;kind;label;scu\r\n")).toBe(true);
+    // the plain button asks for no delimiter
+    findButton(w.root, "Télécharger .csv").click();
+    await w.advance(500);
+    expect(debriefCalls(w).at(-1)!.args).not.toHaveProperty("csv_delimiter");
   });
 });

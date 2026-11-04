@@ -2130,6 +2130,8 @@ export function dashboardMain(win: any, doc: any, L: any): any {
     stopTimers();
     // The action bar's own timers (a re-search after an option changed, a wait) must not fire in a dead View.
     if (R.tradeActions) R.tradeActions.dispose();
+    // A report held for hand copying (it may hold amounts) does not survive the page.
+    if (R.sessions && R.sessions.dropExport) R.sessions.dropExport();
     if (timer !== null) win.clearTimeout(timer);
     timer = null;
     closeChannel();

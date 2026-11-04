@@ -602,8 +602,7 @@
           "type": "string",
           "enum": [
             "markdown",
-            "csv",
-            "both"
+            "csv"
           ],
           "description": "Default markdown. csv is the trips only."
         },
@@ -614,6 +613,14 @@
         "include_start_balance": {
           "type": "boolean",
           "description": "With include_balance only: also the balance at the start and at the last sighting. Default false. The player must ask for it."
+        },
+        "csv_delimiter": {
+          "type": "string",
+          "enum": [
+            ",",
+            ";"
+          ],
+          "description": "CSV separator: \",\" (default) or \";\" (Excel in French opens it in columns; decimal comma)."
         },
         "id": {
           "type": "string",
@@ -636,6 +643,46 @@
           "type": "string",
           "maxLength": 500
         }
+      }
+    }
+  },
+  {
+    "name": "sc_session_export",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 48,
+          "description": "A session id."
+        },
+        "include_balance": {
+          "type": "boolean",
+          "description": "Include aUEC figures (results, margins, fees, rate). Default false. Ask the player first: the answer goes into the conversation."
+        },
+        "include_start_balance": {
+          "type": "boolean",
+          "description": "With include_balance only: also the balance at the start and at the last sighting. Default false. The player must ask for it."
+        },
+        "csv_delimiter": {
+          "type": "string",
+          "enum": [
+            ",",
+            ";"
+          ],
+          "description": "CSV separator: \",\" (default) or \";\" (Excel in French opens it in columns; decimal comma)."
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://sc-copilot/live-dashboard.html",
+        "visibility": [
+          "app"
+        ]
       }
     }
   },

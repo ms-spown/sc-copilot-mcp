@@ -306,4 +306,14 @@ describe("Feature: a run stored twice by an older build counts once in every sum
     ]);
     expect(a.money.turnover_auec).toBe(90_000);
   });
+
+  it("Given a run stored twice, Then the bar and the stats count it once, like the debrief", () => {
+    const sess = played(1, { trips: [run("aaaaaa000001", 60), run("aaaaaa000002", 1300)] });
+    const sum = summarizeSession(sess);
+    expect(sum.trips).toBe(1);
+    expect(sum.contracts).toBe(0);
+    const a = aggregate([sess]);
+    expect(a.trips).toBe(1);
+    expect(a.contracts).toBe(0);
+  });
 });

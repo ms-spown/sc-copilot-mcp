@@ -284,7 +284,7 @@ export function sessionToolAnswer(name: string, args: Record<string, any>, nowMs
         : [],
     };
   }
-  if (name === "sc_session_debrief") {
+  if (name === "sc_session_export") {
     // A made-up report with the same shape as the server's (the real text is built by providers/sessions/debrief.ts and
     // tested there): amounts only with include_balance, the balances only with include_start_balance on top.
     const balances = include && args["include_start_balance"] === true;
@@ -301,21 +301,23 @@ export function sessionToolAnswer(name: string, args: Record<string, any>, nowMs
       "| --- | --- | ---: |",
       "| 2026-11-03 19:10 | Cargaison · Waste Disposal \\| Easy | 96 |",
     ].join("\n");
+    const d = args["csv_delimiter"] === ";" ? ";" : ",";
     const csv =
-      "session,ended_at,kind,label,scu" +
-      (include ? ",net_auec" : "") +
-      "\r\n2,2026-11-03T19:10:00Z,trade,Waste Disposal | Easy,96" +
-      (include ? ",84000" : "") +
+      ["session", "ended_at", "kind", "label", "scu", ...(include ? ["net_auec"] : [])].join(d) +
+      "\r\n" +
+      ["2", "2026-11-03T19:10:00Z", "trade", '"Waste Disposal | Easy"', d === ";" ? "96,5" : "96.5"]
+        .concat(include ? ["84000"] : [])
+        .join(d) +
       "\r\n";
     return {
-      format: "both",
       sessions: [2],
       trips_total: 9,
-      markdown_rows: 9,
-      csv_rows: 9,
+      markdown_omitted: 0,
+      csv_omitted: 0,
       truncated: false,
       money_included: include,
       balances_included: balances,
+      csv_delimiter: d,
       markdown,
       csv,
     };

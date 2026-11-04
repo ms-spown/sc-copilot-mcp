@@ -1,18 +1,30 @@
 import { z } from "zod";
 import { sanitizeUntrusted } from "../core/untrusted.js";
-import { DEBRIEF_MAX_TEXT, DEBRIEF_LIMITS } from "../providers/sessions/debrief.js";
+import { DASHBOARD_URI } from "../dashboard/constants.js";
+import {
+  DEBRIEF_EXPORT_MAX_TEXT,
+  DEBRIEF_FOR_EXPORT,
+  DEBRIEF_FOR_MODEL,
+  DEBRIEF_LIMITS,
+  DEBRIEF_MODEL_MAX_TEXT,
+  type Debrief,
+} from "../providers/sessions/debrief.js";
 import type { SessionManager } from "../providers/sessions/manager.js";
 import { MONEY_WITHHELD_NOTE } from "../providers/sessions/stats.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
 
 /**
- * sc_session_debrief: the report of a saved play session (or of the newest few) as Markdown and/or CSV, to TAKE OUT of
- * the server (share with a crew, keep a log, paste into a spreadsheet). The text is built by providers/sessions/debrief.ts
- * (pure); this file only chooses which sessions and what the caller may see.
+ * The session report (providers/sessions/debrief.ts, pure) as two tools, because the model and the player do not need the
+ * same size:
  *
- * Why a tool of its own and not a `format` on sc_session_current: its answers are long strings, and every string of a
- * session-file answer is cut at 200 characters by the registry (catalog.ts `maxText`), a limit that must stay for the
- * others; this one declares a larger bound sized to the report's own caps (DEBRIEF_MAX_TEXT).
+ * - `sc_session_debrief` is for the MODEL: a report is part of the conversation (and goes to the provider), so it is small:
+ *   at most about 28 000 characters of text, Markdown by default, a CSV only when asked and then 100 rows at most. Its
+ *   `structuredContent` holds metadata only (the text is not sent twice).
+ * - `sc_session_export` is for the dashboard (app-only, never meant for the model): the WHOLE report of one session, Markdown
+ *   and CSV, for the "Copier le bilan" and download controls, bounded at a sane maximum (DEBRIEF_FOR_EXPORT).
+ *
+ * Why tools of their own and not a `format` on sc_session_current: every string of a session-file answer is cut at 200
+ * characters by the registry (catalog.ts `maxText`), a limit that must stay for the others.
  *
  * Money: every aUEC figure comes from the player's balance. Without include_balance the report has none (counts,
  * durations, SCU, labels) and says so. With it, amounts appear, but the balance at the start and at the last sighting only
@@ -22,8 +34,49 @@ import type { ToolDefinition, ToolResult } from "./types.js";
 const OFF =
   "Sessions are off: they need live telemetry (SC_TELEMETRY=on in the server's entry) and are switched off by SC_SESSIONS=off. Nothing is read or written.";
 
-const NOTE_FOR_THE_MODEL =
-  "Give the report to the player as it is (the CSV in a code block). Add no figure, round nothing, invent no trend; unknown stays unknown. Say when amounts are withheld and ask before include_balance. The player decides where it goes: send it nowhere.";
+const APP_ONLY_META = { ui: { resourceUri: DASHBOARD_URI, visibility: ["app"] } };
+
+const includeBalanceProp = {
+  type: "boolean",
+  description:
+    "Include aUEC figures (results, margins, fees, rate). Default false. Ask the player first: the answer goes into the conversation.",
+};
+const includeStartBalanceProp = {
+  type: "boolean",
+  description:
+    "With include_balance only: also the balance at the start and at the last sighting. Default false. The player must ask for it.",
+};
+const delimiterProp = {
+  type: "string",
+  enum: [",", ";"],
+  description:
+    'CSV separator: "," (default) or ";" (Excel in French opens it in columns; decimal comma).',
+};
+
+const textResult = (text: string): ToolResult => ({
+  content: [{ type: "text", text }],
+  isError: true,
+});
+
+/** The sessions to report on, from the arguments; `error` when they contradict. */
+function pick(parsed: { id?: string | undefined; last?: number | undefined }) {
+  if (parsed.id !== undefined && parsed.last !== undefined) return "Pass id or last, not both.";
+  return {
+    ...(parsed.id !== undefined ? { id: parsed.id } : {}),
+    ...(parsed.last !== undefined ? { last: parsed.last } : {}),
+  };
+}
+
+const meta = (d: Debrief) => ({
+  sessions: d.sessions,
+  trips_total: d.trips_total,
+  markdown_omitted: d.markdown_omitted,
+  csv_omitted: d.csv_omitted,
+  truncated: d.truncated,
+  money_included: d.money_included,
+  balances_included: d.balances_included,
+  csv_delimiter: d.csv_delimiter,
+});
 
 export function sessionDebriefTools({ sessions }: { sessions?: SessionManager }): ToolDefinition[] {
   const enabled = () => sessions?.enabled === true;
@@ -31,25 +84,18 @@ export function sessionDebriefTools({ sessions }: { sessions?: SessionManager })
     {
       name: "sc_session_debrief",
       description:
-        "The report of the player's saved play session, to SHARE or KEEP (crew, org, spreadsheet): Markdown with header (time, active time, game version, breaks), key numbers (trips, per hour, gross margin, fees, best trip, efficiency against the plan, route reliability with runs and confidence), a trips table with measured/computed/estimated/unknown tags, what is unexplained, and a plain footer; and/or a CSV of the trips (English columns). Text in French. Without include_balance there is NO aUEC amount (counts, times, SCU, labels only) and the report says so; with it amounts appear, but never the balance at start and end unless include_start_balance is true too: ask the player, the report is meant to be shared. format: markdown (default), csv or both. id: a past session; last: the newest N (1 to 10). A long CSV is better downloaded from the dashboard. Needs SC_TELEMETRY=on.",
+        "The report of the player's saved play session (or the newest N), to share or keep: Markdown (default; header, key numbers, trips table with measured/computed/estimated/unknown tags, what is unexplained, footer) or the trips as CSV (format csv, 100 rows at most). Text in French, about 28,000 characters at most, older trips cut with a count. Without include_balance there is NO aUEC amount (counts, times, SCU, labels) and the report says so; with it amounts appear, but the start and end balances only with include_start_balance too: ask the player, the report is meant to be shared. Give the Markdown as it is, add no figure, send it nowhere. The player downloads the full Markdown and CSV from the session bar of the dashboard: mention it. id: a past session; last: the newest N (1 to 10). Needs SC_TELEMETRY=on.",
       inputSchema: {
         type: "object",
         properties: {
           format: {
             type: "string",
-            enum: ["markdown", "csv", "both"],
+            enum: ["markdown", "csv"],
             description: "Default markdown. csv is the trips only.",
           },
-          include_balance: {
-            type: "boolean",
-            description:
-              "Include aUEC figures (results, margins, fees, rate). Default false. Ask the player first: the answer goes into the conversation.",
-          },
-          include_start_balance: {
-            type: "boolean",
-            description:
-              "With include_balance only: also the balance at the start and at the last sighting. Default false. The player must ask for it.",
-          },
+          include_balance: includeBalanceProp,
+          include_start_balance: includeStartBalanceProp,
+          csv_delimiter: delimiterProp,
           id: { type: "string", maxLength: 48, description: "A session id from sc_session_list." },
           last: {
             type: "number",
@@ -59,54 +105,49 @@ export function sessionDebriefTools({ sessions }: { sessions?: SessionManager })
       },
       advertised: enabled,
       handler: async (args: unknown): Promise<ToolResult> => {
-        if (!sessions || !sessions.enabled) {
-          return { content: [{ type: "text", text: OFF }], isError: true };
-        }
+        if (!sessions || !sessions.enabled) return textResult(OFF);
         const parsed = z
           .object({
-            format: z.enum(["markdown", "csv", "both"]).optional(),
+            format: z.enum(["markdown", "csv"]).optional(),
             include_balance: z.boolean().optional(),
             include_start_balance: z.boolean().optional(),
+            csv_delimiter: z.enum([",", ";"]).optional(),
             id: z.string().max(48).optional(),
             last: z.number().int().min(1).max(DEBRIEF_LIMITS.sessions).optional(),
           })
           .parse(args || {});
-        if (parsed.id !== undefined && parsed.last !== undefined) {
-          return {
-            content: [{ type: "text", text: "Pass id or last, not both." }],
-            isError: true,
-          };
-        }
+        const which = pick(parsed);
+        if (typeof which === "string") return textResult(which);
         const format = parsed.format ?? "markdown";
         const money = parsed.include_balance === true;
         const balancesAsked = parsed.include_start_balance === true;
         const d = await sessions.debrief({
-          ...(parsed.id !== undefined ? { id: parsed.id } : {}),
-          ...(parsed.last !== undefined ? { last: parsed.last } : {}),
+          ...which,
           includeMoney: money,
           includeBalances: money && balancesAsked,
+          limits: {
+            ...DEBRIEF_FOR_MODEL,
+            ...(parsed.csv_delimiter ? { csvDelimiter: parsed.csv_delimiter } : {}),
+          },
         });
         const persistence = { status: sessions.notice ?? "ok" };
         if (!d) {
-          return build({
-            report: null,
-            message: parsed.id
-              ? "No session with this id. Call sc_session_list for the ids."
-              : "No session to report yet. One starts when the game is seen running with telemetry on, or with sc_session_new.",
-            persistence,
-          });
+          return answer(
+            {
+              report: null,
+              message: parsed.id
+                ? "No session with this id. Call sc_session_list for the ids."
+                : "No session to report yet. One starts when the game is seen running with telemetry on, or with sc_session_new.",
+              persistence,
+            },
+            {},
+          );
         }
-        return build({
+        const omitted = format === "csv" ? d.csv_omitted : d.markdown_omitted;
+        const value = {
           format,
-          sessions: d.sessions,
-          trips_total: d.trips_total,
-          markdown_rows: d.markdown_rows,
-          csv_rows: d.csv_rows,
-          truncated: d.truncated,
-          money_included: d.money_included,
-          balances_included: d.balances_included,
-          ...(format !== "csv" ? { markdown: d.markdown } : {}),
-          ...(format !== "markdown" ? { csv: d.csv } : {}),
+          ...meta(d),
+          ...(format === "markdown" ? { markdown: d.markdown } : { csv: d.csv }),
           ...(money ? {} : { money_note: MONEY_WITHHELD_NOTE }),
           ...(balancesAsked && !money
             ? {
@@ -114,19 +155,83 @@ export function sessionDebriefTools({ sessions }: { sessions?: SessionManager })
                   "include_start_balance was ignored: the balances are given only together with include_balance.",
               }
             : {}),
-          note_for_the_model: NOTE_FOR_THE_MODEL,
+          ...(omitted > 0
+            ? {
+                truncation_note: `${omitted} older trips are not in this text. The player downloads the full report from the session bar of the dashboard.`,
+              }
+            : {}),
           persistence,
+        };
+        // The text goes to the model once; the structured copy has the metadata only.
+        const { markdown: _m, csv: _c, ...structured } = value as Record<string, unknown>;
+        void [_m, _c];
+        return answer(value, structured);
+      },
+    },
+    {
+      name: "sc_session_export",
+      description:
+        "For the dashboard only, not for the model: the whole report of one saved session (Markdown and CSV) for the 'Copier le bilan' and download controls. Same privacy rules as sc_session_debrief. Needs SC_TELEMETRY=on.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string", maxLength: 48, description: "A session id." },
+          include_balance: includeBalanceProp,
+          include_start_balance: includeStartBalanceProp,
+          csv_delimiter: delimiterProp,
+        },
+        required: ["id"],
+      },
+      advertised: enabled,
+      requiresUi: true,
+      meta: APP_ONLY_META,
+      handler: async (args: unknown): Promise<ToolResult> => {
+        if (!sessions || !sessions.enabled) return textResult(OFF);
+        const parsed = z
+          .object({
+            id: z.string().min(1).max(48),
+            include_balance: z.boolean().optional(),
+            include_start_balance: z.boolean().optional(),
+            csv_delimiter: z.enum([",", ";"]).optional(),
+          })
+          .strict()
+          .parse(args || {});
+        const money = parsed.include_balance === true;
+        const d = await sessions.debrief({
+          id: parsed.id,
+          includeMoney: money,
+          includeBalances: money && parsed.include_start_balance === true,
+          limits: {
+            ...DEBRIEF_FOR_EXPORT,
+            ...(parsed.csv_delimiter ? { csvDelimiter: parsed.csv_delimiter } : {}),
+          },
         });
+        if (!d) return textResult("No session with this id.");
+        const structured = { ...meta(d), markdown: d.markdown, csv: d.csv };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Session report ready (${d.trips_total} trips). It is for the dashboard.`,
+            },
+          ],
+          structuredContent: sanitizeUntrusted(structured, DEBRIEF_EXPORT_MAX_TEXT) as Record<
+            string,
+            unknown
+          >,
+        };
       },
     },
   ];
 }
 
-/** The answer: the text for the model (`content`) and the same data for the dashboard (`structuredContent`). */
-function build(value: Record<string, unknown>): ToolResult {
+/** The answer: the text for the model (`content`) and its metadata (`structuredContent`). */
+function answer(value: Record<string, unknown>, structured: Record<string, unknown>): ToolResult {
   return {
     content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
-    // The registry cleans `content`; the structured copy is cleaned here with the same rule and the report's own bound.
-    structuredContent: sanitizeUntrusted(value, DEBRIEF_MAX_TEXT) as Record<string, unknown>,
+    structuredContent: sanitizeUntrusted(
+      Object.keys(structured).length > 0 ? structured : value,
+      DEBRIEF_MODEL_MAX_TEXT,
+    ) as Record<string, unknown>,
   };
 }

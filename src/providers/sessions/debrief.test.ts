@@ -5,6 +5,8 @@ import {
   CSV_COLUMNS_MONEY,
   csvNumber,
   csvText,
+  DEBRIEF_FOR_EXPORT,
+  DEBRIEF_FOR_MODEL,
   DEBRIEF_LIMITS,
   debriefText,
   fmtInt,
@@ -22,7 +24,7 @@ import type { Session, Trip } from "./types.js";
 const NB = (s: string) => s.replace(/[\u00a0\u202f]/g, " ");
 
 /** A small RFC 4180 reader (quotes, doubled quotes, commas and CRLF inside quotes), to prove the CSV round-trips. */
-function parseCsv(text: string): string[][] {
+function parseCsv(text: string, delimiter = ","): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
@@ -37,7 +39,7 @@ function parseCsv(text: string): string[][] {
         } else quoted = false;
       } else cell += c;
     } else if (c === '"') quoted = true;
-    else if (c === ",") {
+    else if (c === delimiter) {
       row.push(cell);
       cell = "";
     } else if (c === "\r" && text[i + 1] === "\n") {
@@ -686,5 +688,196 @@ describe("Feature: honest about what it does not know", () => {
     const d = buildDebrief([s], { includeMoney: false });
     expect(d.trips_total).toBe(1);
     expect(d.markdown).toContain("enregistré(s) deux fois");
+  });
+});
+
+describe("Feature: CSV injection, for any program that splits on another separator", () => {
+  // the auditor's cases, and the neighbours
+  const attacks = [
+    "a;+cmd|' /C calc'!A0",
+    'x;=HYPERLINK("http://evil.example","click")',
+    "a,@SUM(1+1)",
+    "a|=1+1",
+    "ok; -2+3",
+    "ok,\t=1",
+    "=1+1",
+    "@x",
+    "\t=1",
+    "plain;text;here",
+  ];
+
+  it("Given a formula starter after any separator, Then the cell is text (apostrophe) and quoted, so it is one cell", () => {
+    for (const a of attacks) {
+      const cell = csvText(a, 80);
+      const dangerous = /(^|[;,|])[ ]*[=+\-@]/.test(a) || /^[\t=+\-@]/.test(a);
+      if (dangerous) expect(cell.replace(/^"/, "").startsWith("'"), a).toBe(true);
+      // one cell whichever of the two delimiters reads it
+      for (const d of [",", ";"]) expect(parseCsv(cell + "\r\n", d)[0], a + d).toHaveLength(1);
+      // quoted whenever it holds either separator
+      if (/[;,]/.test(a)) expect(cell.startsWith('"'), a).toBe(true);
+    }
+    expect(csvText("Gold", 80)).toBe("Gold");
+    expect(csvText("100 - 50", 80)).toBe("100 - 50");
+  });
+
+  it("Given a whole export of those labels, Then every row has the same columns with either delimiter, and no cell starts with a formula starter", () => {
+    const s = session(1, {
+      trips: attacks.map((l, i) =>
+        trip({
+          key: (i + 1).toString(16).padStart(8, "0"),
+          ended_at: stamp(i),
+          label: l,
+          commodity: l,
+          buy_terminal: l,
+          sell_terminal: l,
+          scu: 96.5,
+          net_auec: -250,
+          net_kind: "balance_delta",
+        }),
+      ),
+    });
+    for (const delim of [",", ";"] as const) {
+      const d = buildDebrief([s], { includeMoney: true, csvDelimiter: delim });
+      expect(d.csv_delimiter).toBe(delim);
+      const rows = parseCsv(d.csv, delim);
+      expect(rows).toHaveLength(attacks.length + 1);
+      expect(rows[0]!.length).toBe(CSV_COLUMNS_BASE.length + CSV_COLUMNS_MONEY.length);
+      for (const r of rows) {
+        expect(r).toHaveLength(rows[0]!.length);
+        for (const cell of r)
+          expect(/^[\t\r]|^[=+\-@][^0-9]/.test(cell.replace(/^-?\d.*/, "0")), cell).toBe(false);
+      }
+      const h = rows[0]!;
+      // numbers: a decimal point with the comma file, a decimal comma with the semicolon file
+      expect(rows[1]![h.indexOf("scu")]).toBe(delim === ";" ? "96,5" : "96.5");
+      expect(rows[1]![h.indexOf("net_auec")]).toBe("-250");
+    }
+    expect(buildDebrief([s], { includeMoney: true }).csv.split("\r\n")[0]).toContain(",");
+    expect(
+      buildDebrief([s], { includeMoney: true, csvDelimiter: ";" }).csv.split("\r\n")[0],
+    ).not.toContain(",");
+  });
+
+  it("Given a number, Then the decimal comma is for the semicolon file only", () => {
+    expect(csvNumber(96.5, 2)).toBe("96.5");
+    expect(csvNumber(96.5, 2, true)).toBe("96,5");
+    expect(csvNumber(1200, 2, true)).toBe("1200");
+  });
+});
+
+describe("Feature: the counted column says what the Markdown says", () => {
+  it("Given a trip with no known result, Then it is not counted; with a margin only or a net, it is", () => {
+    const s = session(1, {
+      active_ms: 3_600_000,
+      trips: [
+        trip({
+          key: "0000000a",
+          ended_at: stamp(1),
+          label: "none",
+          commodity: "A",
+          started_at: stamp(-1),
+        }),
+        trip({
+          key: "0000000b",
+          ended_at: stamp(2),
+          label: "gross",
+          commodity: "B",
+          started_at: stamp(-2),
+          gross_margin_auec: 10,
+        }),
+        trip({
+          key: "0000000c",
+          commodity: "C",
+          started_at: stamp(-3),
+          ended_at: stamp(3),
+          label: "net",
+          net_auec: 5,
+          net_kind: "balance_delta",
+        }),
+      ],
+    });
+    const d = buildDebrief([s], { includeMoney: true });
+    const rows = parseCsv(d.csv);
+    const h = rows[0]!;
+    const counted = Object.fromEntries(
+      rows.slice(1).map((r) => [r[h.indexOf("label")], r[h.indexOf("counted")]]),
+    );
+    expect(counted).toEqual({ none: "no", gross: "yes", net: "yes" });
+  });
+});
+
+describe("Feature: the two presets", () => {
+  const worst = '|`<>&\\*_"'.repeat(20) + "é".repeat(60);
+  const many = (sessions: number, trips: number): Session[] =>
+    Array.from({ length: sessions }, (_, k) =>
+      session(k + 1, {
+        id: `s_big_${k + 1}`,
+        active_ms: 3_600_000,
+        note: "n".repeat(500),
+        trips: Array.from({ length: trips }, (_, i) =>
+          trip({
+            key: (k * 1000 + i + 1).toString(16).padStart(8, "0"),
+            started_at: stamp(k * 100_000 + i * 60 - 30),
+            ended_at: stamp(k * 100_000 + i * 60),
+            label: worst,
+            commodity: worst,
+            buy_terminal: worst,
+            sell_terminal: worst,
+            scu: 96,
+            cost_auec: 123_456,
+            revenue_auec: 234_567,
+            gross_margin_auec: 111_111,
+            fees_auec: 1000,
+            fees_method: "mesure",
+            net_auec: 100_000,
+            net_kind: "balance_delta",
+          }),
+        ),
+      }),
+    );
+
+  it("Given 10 sessions of 500 hostile trips, Then the model's report is under 28 000 characters, in both formats", () => {
+    const d = buildDebrief(many(10, 500), { includeMoney: true, ...DEBRIEF_FOR_MODEL });
+    expect(d.markdown.length).toBeLessThanOrEqual(DEBRIEF_FOR_MODEL.maxChars);
+    expect(d.csv.length).toBeLessThanOrEqual(DEBRIEF_FOR_MODEL.csvChars + 2000);
+    expect(d.csv_rows).toBeLessThanOrEqual(DEBRIEF_FOR_MODEL.csvRows);
+    expect(d.markdown_rows).toBeLessThanOrEqual(DEBRIEF_FOR_MODEL.markdownRowsPerSession * 10);
+    expect(d.truncated).toBe(true);
+    expect(d.markdown_omitted).toBe(d.trips_total - d.markdown_rows);
+    expect(d.csv_omitted).toBe(d.trips_total - d.csv_rows);
+    expect(d.markdown).toContain("se télécharge depuis la barre de session");
+    expect(d.markdown).not.toContain("rapport tronqué");
+  });
+
+  it("Given one session of 500 trips, Then the model gets at most 20 table rows and the player's export gets all of them", () => {
+    const one = many(1, 500);
+    const model = buildDebrief(one, { includeMoney: false, ...DEBRIEF_FOR_MODEL });
+    expect(model.markdown_rows).toBeLessThanOrEqual(20);
+    const light = session(2, {
+      active_ms: 3_600_000,
+      trips: Array.from({ length: 500 }, (_, i) =>
+        trip({
+          key: (i + 1).toString(16).padStart(8, "0"),
+          ended_at: stamp(i),
+          started_at: stamp(i - 1),
+          label: "Cargo " + i,
+          commodity: "G" + i,
+          scu: 8,
+        }),
+      ),
+    });
+    const full = buildDebrief([light], { includeMoney: false, ...DEBRIEF_FOR_EXPORT });
+    expect(full.markdown_rows).toBe(500);
+    expect(full.csv_rows).toBe(500);
+    expect(full.markdown_omitted).toBe(0);
+    expect(full.csv_omitted).toBe(0);
+    expect(full.truncated).toBe(false);
+  });
+
+  it("Given a bound so small that even the text around the table does not fit, Then it is cut with a note and never exceeds it", () => {
+    const d = buildDebrief(many(3, 5), { includeMoney: true, maxChars: 2000 });
+    expect(d.markdown.length).toBeLessThanOrEqual(2000);
+    expect(d.markdown).toContain("rapport tronqué");
+    expect(d.truncated).toBe(true);
   });
 });

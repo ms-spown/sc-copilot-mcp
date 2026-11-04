@@ -36,7 +36,7 @@ import {
   type CalibrationReport,
   type CalibrationSection,
 } from "./calibration.js";
-import { buildDebrief, type Debrief } from "./debrief.js";
+import { buildDebrief, type Debrief, type DebriefOptions } from "./debrief.js";
 import type { SessionStore } from "./store.js";
 import type { TripInput } from "./types.js";
 import type { Session, StoreState } from "./types.js";
@@ -523,6 +523,8 @@ export class SessionManager {
     last?: number;
     includeMoney: boolean;
     includeBalances: boolean;
+    /** Size and format limits (DEBRIEF_FOR_MODEL or DEBRIEF_FOR_EXPORT) and the CSV separator. */
+    limits?: Partial<DebriefOptions>;
   }): Promise<Debrief | null> {
     this.poke();
     const state = await this.deps.store.read();
@@ -535,6 +537,7 @@ export class SessionManager {
     }
     if (picked.length === 0) return null;
     return buildDebrief(picked, {
+      ...opts.limits,
       includeMoney: opts.includeMoney,
       includeBalances: opts.includeBalances,
       // The ratios come from the balance: built only for a caller that was allowed it.

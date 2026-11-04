@@ -1,5 +1,5 @@
 import { calibrationKey } from "../../dashboard/calibrationPanel.js";
-import { sessionInterruptionLabel, sessionQualityLabel } from "../../dashboard/sessionPanel.js";
+import { sessionInterruptionLabel, sessionQualityLabel } from "../../core/sessionLabels.js";
 import { stripInvisible } from "../../core/untrusted.js";
 import type { CalibrationGroup, CalibrationReport } from "./calibration.js";
 import {
@@ -47,10 +47,30 @@ export const DEBRIEF_LIMITS = {
 } as const;
 
 /**
- * The bound the registry applies to each string of a debrief answer (catalog.ts `maxText` of sc_session_debrief, a test keeps
- * them equal). Above the worst case the caps below allow, so a report is never cut by the envelope.
+ * What the MODEL gets (sc_session_debrief): a report is part of the conversation, so it is small. At most 28 000 characters
+ * of text in total, 20 table rows per session, 100 CSV rows; the player gets the rest from the dashboard (DEBRIEF_FOR_EXPORT).
  */
-export const DEBRIEF_MAX_TEXT = 400_000;
+export const DEBRIEF_FOR_MODEL = {
+  markdownRowsPerSession: 20,
+  csvRows: 100,
+  csvChars: 28_000,
+  maxChars: 28_000,
+} as const;
+
+/** What the PLAYER gets through the dashboard (sc_session_export, app-only): one whole session, bounded at a sane maximum. */
+export const DEBRIEF_FOR_EXPORT = {
+  markdownRows: 500,
+  markdownTableChars: 150_000,
+  csvRows: 500,
+  csvChars: 150_000,
+} as const;
+
+/**
+ * The bound the registry applies to each string of a debrief answer (catalog.ts `maxText`; a test keeps them equal). Above
+ * the worst case of each preset, so a report is never cut by the envelope.
+ */
+export const DEBRIEF_MODEL_MAX_TEXT = 40_000;
+export const DEBRIEF_EXPORT_MAX_TEXT = 400_000;
 
 export interface DebriefOptions {
   /** The balance was allowed: aUEC figures are included. False: the non-monetary report. */
@@ -59,8 +79,17 @@ export interface DebriefOptions {
   includeBalances?: boolean;
   /** The route calibration over the player's history. Used only with includeMoney. */
   calibration?: CalibrationReport | null;
+  /** Table rows (pooled, the newest). */
   markdownRows?: number;
+  /** Or, per session covered (wins over markdownRows). */
+  markdownRowsPerSession?: number;
+  markdownTableChars?: number;
   csvRows?: number;
+  csvChars?: number;
+  /** A hard bound on the whole Markdown: the table is cut to fit, and the text itself as a last resort. */
+  maxChars?: number;
+  /** "," (default) or ";" (Excel in French opens the file in columns, numbers with a decimal comma). */
+  csvDelimiter?: "," | ";";
 }
 
 export interface Debrief {
@@ -74,6 +103,10 @@ export interface Debrief {
   csv_rows: number;
   /** True when the Markdown table or the CSV does not hold every trip. */
   truncated: boolean;
+  /** Trips left out of the Markdown table / of the CSV. */
+  markdown_omitted: number;
+  csv_omitted: number;
+  csv_delimiter: "," | ";";
   money_included: boolean;
   balances_included: boolean;
 }
@@ -111,22 +144,27 @@ export function markdownText(value: unknown, max: number): string {
   );
 }
 
+/** A formula starter at the start of a cell, or right after a separator a spreadsheet may split on (; , tab |). */
+const FORMULA_START = /(^|[;,\t|])[ ]*[=+\-@\r]/;
+
 /**
- * One CSV text cell (RFC 4180 quoting). A cell a spreadsheet would read as a formula (it starts with = + - @, a tab or a
- * carriage return) is prefixed with an apostrophe, so it stays text. Numbers never go through here.
+ * One CSV text cell (RFC 4180 quoting). A cell a spreadsheet could read as a formula is prefixed with an apostrophe, so it
+ * stays text: it starts with = + - @ (or a tab or carriage return), or has one right after a ; , tab or | (a program that
+ * splits on another separator than ours would otherwise start a formula there). A cell that holds a comma, a semicolon, a
+ * quote or a line break is quoted, whichever delimiter the file uses. Numbers never go through here.
  */
 export function csvText(value: unknown, max: number): string {
   let t = debriefText(value, max);
-  if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;
-  return /[",\r\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  if (/^[=+\-@\t\r]/.test(t) || FORMULA_START.test(t)) t = "'" + t;
+  return /[",;\r\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
 }
 
-/** A number cell: a plain decimal, empty when unknown. */
-export function csvNumber(value: number | null | undefined, decimals = 0): string {
+/** A number cell: a plain decimal (a decimal comma when the file is semicolon-separated), empty when unknown. */
+export function csvNumber(value: number | null | undefined, decimals = 0, comma = false): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "";
   const r = Number(value.toFixed(decimals));
   if (!Number.isSafeInteger(Math.round(r * 100))) return "";
-  return String(r);
+  return comma ? String(r).replace(".", ",") : String(r);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -665,7 +703,8 @@ export const CSV_COLUMNS_MONEY = [
   "plan_link",
 ] as const;
 
-function csvRow(r: Row, money: boolean): string {
+function csvRow(r: Row, money: boolean, delim: "," | ";"): string {
+  const comma = delim === ";";
   const cells: string[] = [
     String(r.session),
     isoSec(r.endedAt),
@@ -674,7 +713,7 @@ function csvRow(r: Row, money: boolean): string {
     csvText(r.commodity, PLACE_MAX),
     csvText(r.buy, PLACE_MAX),
     csvText(r.sell, PLACE_MAX),
-    csvNumber(r.scu, 2),
+    csvNumber(r.scu, 2, comma),
   ];
   if (money && r.m !== null) {
     const m = r.m;
@@ -688,12 +727,13 @@ function csvRow(r: Row, money: boolean): string {
       // column is the session's total) and says why.
       r.excluded ? "" : csvNumber(m.net),
       r.excluded ? "excluded_overlap" : netMethod(m),
-      r.excluded ? "no" : "yes",
+      // Counted in the totals only when the trip has a result (the Markdown says "inconnu" for the others).
+      !r.excluded && (m.net ?? m.grossMargin) !== null ? "yes" : "no",
       csvNumber(m.planned),
       m.planLink ?? "",
     );
   }
-  return cells.join(",");
+  return cells.join(delim);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -741,34 +781,51 @@ function withoutMoneyFields(s: Session): Session {
   };
 }
 
-/** The newest items of a list, at most `maxItems` and as many as fit in `maxChars` once rendered (at least one). */
+/** The newest items of a list, at most `maxItems` and as many as fit in `maxChars` once rendered (`min` of them at least). */
 function newest<T>(
   items: readonly T[],
   render: (x: T) => string,
   maxItems: number,
   maxChars: number,
+  min = 1,
 ): T[] {
   const out: T[] = [];
   let used = 0;
   for (let i = items.length - 1; i >= 0 && out.length < maxItems; i--) {
     const len = render(items[i]!).length + 2;
-    if (out.length > 0 && used + len > maxChars) break;
+    if (out.length >= min && used + len > maxChars) break;
     used += len;
     out.unshift(items[i]!);
   }
   return out;
 }
 
+function omittedNote(shown: number, total: number, csvHoldsAll: boolean): string {
+  const lead =
+    shown === 0
+      ? `Aucun trajet n’est listé ici (limite de taille) : ${total} omis`
+      : `${shown} derniers trajets sur ${total} : les ${total - shown} plus anciens sont omis ici`;
+  return `${lead}${csvHoldsAll ? " (le CSV les contient)" : ""}. Le bilan complet (Markdown et CSV) se télécharge depuis la barre de session du tableau de bord.`;
+}
+
 export function buildDebrief(sessions: readonly Session[], options: DebriefOptions): Debrief {
   const money = options.includeMoney === true;
   const balances = money && options.includeBalances === true;
-  const mdCap = Math.max(1, Math.floor(options.markdownRows ?? DEBRIEF_LIMITS.markdownRows));
   const csvCap = Math.max(1, Math.floor(options.csvRows ?? DEBRIEF_LIMITS.csvRows));
+  const delim = options.csvDelimiter === ";" ? ";" : ",";
   const picked = [...sessions]
     .map((s) => (money ? s : withoutMoneyFields(s)))
     .sort((a, b) => a.number - b.number || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     .slice(-DEBRIEF_LIMITS.sessions);
   const multi = picked.length > 1;
+  const mdCap = Math.max(
+    1,
+    Math.floor(
+      options.markdownRowsPerSession !== undefined
+        ? options.markdownRowsPerSession * Math.max(1, picked.length)
+        : (options.markdownRows ?? DEBRIEF_LIMITS.markdownRows),
+    ),
+  );
 
   const built = picked.map((s) => {
     const sum = summarizeSession(s);
@@ -778,15 +835,15 @@ export function buildDebrief(sessions: readonly Session[], options: DebriefOptio
   const allRows = built.flatMap((b) => b.rows);
   const duplicates = built.reduce((a, b) => a + b.duplicates, 0);
 
-  const header = [...CSV_COLUMNS_BASE, ...(money ? CSV_COLUMNS_MONEY : [])].join(",");
-  const csvRows = newest(allRows, (r) => csvRow(r, money), csvCap, DEBRIEF_LIMITS.csvChars);
-  const csv = [header, ...csvRows.map((r) => csvRow(r, money))].join("\r\n") + "\r\n";
-  const shown = newest(
+  const header = [...CSV_COLUMNS_BASE, ...(money ? CSV_COLUMNS_MONEY : [])].join(delim);
+  const csvRows = newest(
     allRows,
-    (r) => tableRow(r, money, multi),
-    mdCap,
-    DEBRIEF_LIMITS.markdownTableChars,
+    (r) => csvRow(r, money, delim),
+    csvCap,
+    options.csvChars ?? DEBRIEF_LIMITS.csvChars,
+    options.maxChars !== undefined ? 0 : 1,
   );
+  const csv = [header, ...csvRows.map((r) => csvRow(r, money, delim))].join("\r\n") + "\r\n";
 
   const md: string[] = [];
   md.push(
@@ -859,65 +916,91 @@ export function buildDebrief(sessions: readonly Session[], options: DebriefOptio
     md.push("");
   }
 
-  // The table.
-  md.push("## Trajets");
-  if (allRows.length === 0) {
-    md.push("Aucun trajet enregistré.");
-  } else {
-    if (shown.length < allRows.length)
-      md.push(
-        `_${shown.length} derniers trajets sur ${allRows.length} : les ${allRows.length - shown.length} plus anciens sont omis ici${csvRows.length === allRows.length ? " (le CSV les contient)" : ""}._`,
-      );
-    md.push(...tableHeader(money, multi));
-    for (const r of shown) md.push(tableRow(r, money, multi));
-    if (money)
-      md.push(
-        `_${DASH} : sans objet pour ce type de trajet. « inconnu » : non relevé, jamais compté comme zéro._`,
-      );
-  }
-  md.push("");
-
+  // The tail (what is not explained, the footer) is built first: the table gets what the size bound leaves.
+  const tail: string[] = [];
   if (duplicates > 0)
     unexplainedAll.push(
       `${duplicates} trajet(s) enregistré(s) deux fois (ancien fichier) ne sont listés qu’une fois.`,
     );
-  md.push("## Ce qui n’est pas expliqué");
-  if (unexplainedAll.length === 0) md.push("Rien à signaler dans les données de ce bilan.");
-  else for (const u of unexplainedAll) md.push(`- ${u.trim()}`);
-  md.push("");
+  tail.push("## Ce qui n’est pas expliqué");
+  if (unexplainedAll.length === 0) tail.push("Rien à signaler dans les données de ce bilan.");
+  else for (const u of unexplainedAll) tail.push(`- ${u.trim()}`);
+  tail.push("");
 
   // The plain footer.
-  md.push("## Lecture");
-  md.push(
+  tail.push("## Lecture");
+  tail.push(
     "- **Mesuré** : la variation du solde du joueur (télémétrie du jeu) et les heures où le jeu a été vu en cours d’exécution. **Calculé** : une marge brute (revenu moins coût) ou un net (marge moins frais) tiré du journal de jeu. **Estimé** : le temps par trajet, les frais déduits, l’efficacité face au plan et la fiabilité des routes. **Inconnu** : non relevé, jamais remplacé par zéro.",
   );
-  md.push(
+  tail.push(
     "- Les prix UEX sont collaboratifs (déclarés par des joueurs, parfois anciens) : un profit prévu est une estimation. Le journal de jeu ne nomme pas les marchandises : un plan rattaché à un trajet par les prix lui ressemble, ce n’est pas une preuve. Un achat, une amende ou une réparation faits entre deux trajets se mêlent à une variation du solde.",
   );
   if (money)
-    md.push(
+    tail.push(
       balances
         ? "- Ce bilan contient des montants et, à ta demande, les soldes de départ et du dernier relevé. Relis-le avant de le partager."
         : "- Ce bilan contient des montants, mais pas les soldes de départ ni du dernier relevé. Relis-le avant de le partager.",
     );
   else
-    md.push(
+    tail.push(
       "- Ce bilan ne contient aucun montant en aUEC : afficher le solde dans le tableau de bord, ou autoriser include_balance, pour l’obtenir avec les chiffres d’argent.",
     );
-  md.push(
+  tail.push(
     "- Le serveur n’enregistre aucun pseudo, identifiant de compte, adresse, GUID, ligne brute du journal ni chemin ; les libellés des trajets et la note du joueur sont repris tels que saisis, après nettoyage, et leur contenu n’est pas contrôlé : relis-les avant de partager.",
   );
 
+  // The table.
+  const header2 = tableHeader(money, multi);
+  const restChars = md.join("\n").length + tail.join("\n").length + 700;
+  const tableBudget = Math.min(
+    options.markdownTableChars ?? DEBRIEF_LIMITS.markdownTableChars,
+    options.maxChars !== undefined ? Math.max(0, options.maxChars - restChars) : Infinity,
+  );
+  const shown = newest(
+    allRows,
+    (r) => tableRow(r, money, multi),
+    mdCap,
+    tableBudget,
+    options.maxChars !== undefined ? 0 : 1,
+  );
+  md.push("## Trajets");
+  if (allRows.length === 0) {
+    md.push("Aucun trajet enregistré.");
+  } else {
+    if (shown.length < allRows.length)
+      md.push(`_${omittedNote(shown.length, allRows.length, csvRows.length === allRows.length)}_`);
+    if (shown.length > 0) {
+      md.push(...header2);
+      for (const r of shown) md.push(tableRow(r, money, multi));
+      if (money)
+        md.push(
+          `_${DASH} : sans objet pour ce type de trajet. « inconnu » : non relevé, jamais compté comme zéro._`,
+        );
+    }
+  }
+  md.push("");
+  md.push(...tail);
+
   const truncated = shown.length < allRows.length || csvRows.length < allRows.length;
 
+  let markdown = md.join("\n") + "\n";
+  if (options.maxChars !== undefined && markdown.length > options.maxChars) {
+    const note =
+      "\n_… rapport tronqué à la taille maximale ; le bilan complet se télécharge depuis la barre de session du tableau de bord._\n";
+    const cut = markdown.slice(0, Math.max(0, options.maxChars - note.length));
+    markdown = cut.slice(0, Math.max(cut.lastIndexOf("\n"), 0)) + note;
+  }
   return {
-    markdown: md.join("\n") + "\n",
+    markdown,
     csv,
     sessions: picked.map((s) => s.number),
     trips_total: allRows.length,
     markdown_rows: shown.length,
     csv_rows: csvRows.length,
-    truncated,
+    truncated: truncated || markdown.includes("rapport tronqué"),
+    markdown_omitted: allRows.length - shown.length,
+    csv_omitted: allRows.length - csvRows.length,
+    csv_delimiter: delim,
     money_included: money,
     balances_included: balances,
   };

@@ -149,16 +149,16 @@ export function effectiveResults(
 
 export function summarizeSession(s: Session): SessionSummary {
   const end = Math.max(ms(s.ended_at) || 0, ms(s.last_activity_at));
-  const trips = s.trips.filter(isTrip);
   const eff = effectiveResults(s.trips);
+  // A run stored twice (an older file) is ONE trip in every count and every sum: only the latest-ending copy counts.
+  const counted = eff.filter((e) => !e.duplicate).map((e) => e.trip);
+  const trips = counted.filter(isTrip);
   const withResult = eff.filter((e) => e.result !== null);
   const netTrips = withResult.length > 0 ? sum(withResult.map((e) => e.result as number)) : null;
   const measuredNets = known(eff.map((e) => (e.excluded ? null : e.trip.net_auec)));
   const change =
     s.start_balance !== null && s.last_balance !== null ? s.last_balance - s.start_balance : null;
   const net = netTrips ?? change;
-  // A run stored twice (an older file) must not count twice in any sum: only the latest-ending copy does.
-  const counted = eff.filter((e) => !e.duplicate).map((e) => e.trip);
   const revenue = known(counted.map((t) => t.revenue_auec));
   const cost = known(counted.map((t) => t.cost_auec));
   const fees = known(counted.map((t) => t.fees_auec));
@@ -184,7 +184,7 @@ export function summarizeSession(s: Session): SessionSummary {
     game_version: s.game_version,
     game_channel: s.game_channel,
     trips: trips.length,
-    contracts: s.trips.length - trips.length,
+    contracts: counted.length - trips.length,
     trips_with_net: withResult.length,
     trips_dropped: s.trips_dropped,
     trips_per_hour:
@@ -322,8 +322,9 @@ export function aggregate(
   );
   const picked = opts.last ? used.slice(-opts.last) : used;
   const sums = picked.map(summarizeSession);
-  const allTrips = picked.flatMap((s) => s.trips);
   const allEff = picked.flatMap((s) => effectiveResults(s.trips));
+  // Each run once, even when an older file stored it twice (the same rule as summarizeSession).
+  const allTrips = allEff.filter((e) => !e.duplicate).map((e) => e.trip);
   const tripsOnly = allTrips.filter(isTrip);
   const active = sum(sums.map((s) => s.active_ms));
 
