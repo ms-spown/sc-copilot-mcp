@@ -1019,14 +1019,20 @@ describe("Feature: estimated, measured and ratio side by side on a route card, i
       "1er tronçon (Gold) · similaires (marchandise non vérifiée) · pas assez pour un ratio (3 trajets minimum)",
     );
     expect(card).not.toContain("Réalisé ÷ prévu");
-    // no ratio of any kind (the fold only names the 50 %, 200 % and 500 % bounds; the reliability block may name the
-    // margin of a leg as a share of its buy price, which is a market fact, not a measured ratio)
-    expect(
-      card
-        .replace(/≈ 50 % et ≈ 200 %|500 %/g, "")
-        .replace(/marge fine \([^)]*\)/g, "")
-        .replace(/Fiabilité[\s\S]*?(?=Appliquer comme plan|Demander à l’agent)/, ""),
-    ).not.toMatch(/\d\s?%/);
+    // no ratio of any kind (the fold only names the 50 %, 200 % and 500 % bounds). The reliability block is taken out by ITS OWN
+    // element (it may name the margin of a leg as a share of its buy price: a market fact, not a measured ratio); everything
+    // else of the card, the calibration cells included, is scanned.
+    const shell = cardsOf(w).find(
+      (c) =>
+        findAll(c, (n) => n.tag === "h4")[0]?.textContent ===
+        "Everus Harbor → Seraphim Station → Everus Harbor",
+    )!;
+    for (const n of findAll(shell, (n) => n.className.split(" ").includes("ta-rel")))
+      n.attrs["data-hidden"] = "1";
+    const calibrationOnly = NBSP_FREE(visibleText(shell));
+    expect(calibrationOnly).toContain("Mesuré");
+    expect(calibrationOnly).not.toContain("Fiabilité");
+    expect(calibrationOnly.replace(/≈ 50 % et ≈ 200 %|500 %/g, "")).not.toMatch(/\d\s?%/);
     expect(card).not.toContain("Si tu refais");
     expect(card).not.toContain("estimé ·");
     expect(card).not.toContain(" aUEC par trajet, en moyenne");

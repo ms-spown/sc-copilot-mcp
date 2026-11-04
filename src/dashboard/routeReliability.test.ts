@@ -90,7 +90,7 @@ describe("Feature: each signal on its own gives one reason, with its source", ()
     expect(r.reasons[0].text).toContain(`${fmtNum(1)} prix sur ${fmtNum(2)} sans relevé joueur`);
   });
 
-  it("Given a price that never moved in UEX's range and has no report, Then the reason says it looks carried over, with the price", () => {
+  it("Given a price that never moved in UEX's range and has no report, Then nothing more is claimed than the missing report", () => {
     const r = assessReliability(
       option([
         leg(
@@ -101,9 +101,10 @@ describe("Feature: each signal on its own gives one reason, with its source", ()
       CTX,
     );
     const text = r.reasons[0].text;
-    expect(text).toContain("n’a jamais varié");
-    expect(text).toContain(`achat ${fmtNum(3376)}`);
-    expect(text).toContain("valeur reportée");
+    expect(text).toContain(`${fmtNum(1)} prix sur ${fmtNum(2)} sans relevé joueur`);
+    // "never varied" would only restate "no report": it is not said
+    expect(text).not.toContain("jamais varié");
+    expect(text).not.toContain("valeur reportée");
   });
 
   it("Given a flat price WITH a player report, Then it is not called carried over", () => {
@@ -120,9 +121,14 @@ describe("Feature: each signal on its own gives one reason, with its source", ()
     const t = r.reasons[0].text;
     expect(t).toContain(fmtNum(5500));
     expect(t).toContain(`${fmtNum(4800)} à ${fmtNum(5500)}`);
+    expect(t).toContain("au plus haut de la fourchette connue d’UEX");
+    expect(t).toContain("sans indication de période");
+    expect(t).not.toContain("meilleur cas");
     expect(t).not.toContain("terminaux sur");
     expect(r.reasons[0].source).toContain("fourchette");
-    expect(r.reasons[0].source).toContain("prix relevé il y a");
+    // the age is the price's date, not a claim that a player reported it
+    expect(r.reasons[0].source).toContain("prix mis à jour il y a");
+    expect(r.reasons[0].source).not.toContain("relevé il y a");
   });
 
   it("Given several terminals at exactly that price, Then the reason says how many of how many", () => {
@@ -136,7 +142,7 @@ describe("Feature: each signal on its own gives one reason, with its source", ()
       CTX,
     );
     expect(r.reasons[0].text).toContain(
-      `${fmtNum(6)} terminaux sur ${fmtNum(8)} affichent exactement ce prix`,
+      `ce prix est partagé par ${fmtNum(6)} terminaux sur ${fmtNum(8)}`,
     );
   });
 
@@ -246,7 +252,7 @@ describe("Feature: each signal on its own gives one reason, with its source", ()
   it("Given prices two days old or more, Then 'old_prices' gives each age; given fresher prices, Then nothing", () => {
     const r = assessReliability(option([leg({ price_age_days: { buy: 2.9, sell: 0.9 } })]), CTX);
     expect(codes(r)).toEqual(["old_prices"]);
-    expect(r.reasons[0].text).toContain(`achat relevé il y a ${fmtNum(2.9, 1)}\u00a0j`);
+    expect(r.reasons[0].text).toContain(`achat mis à jour il y a ${fmtNum(2.9, 1)}\u00a0j`);
     expect(r.reasons[0].text).not.toContain("vente relevé");
     expect(
       codes(assessReliability(option([leg({ price_age_days: { buy: 1.9, sell: 0.9 } })]), CTX)),
@@ -332,8 +338,7 @@ describe("Feature: the reasons are bounded and ordered", () => {
     expect(r.others).toEqual(["prix anciens", "marchandise jamais relevée"]);
     const text = r.reasons.map((x) => x.text).join(" ");
     expect(text).toContain(`0 relevé joueur sur cette route`);
-    expect(text).toContain(`achat aller ${fmtNum(3376)}`);
-    expect(text).toContain(`${fmtNum(6)} terminaux sur ${fmtNum(8)}`);
+    expect(text).toContain(`ce prix est partagé par ${fmtNum(6)} terminaux sur ${fmtNum(8)}`);
     expect(text).toContain(`tout le stock affiché (${fmtNum(597)}\u00a0SCU)`);
     expect(text).toContain("deux corps différents");
     expect(text).toContain("72 à 85%");
@@ -465,6 +470,84 @@ describe("Feature: better-evidenced options are marked, never reordered", () => 
   it("Given an empty list or options with no reliability, Then it does nothing and does not throw", () => {
     expect(() => markBetterChecked([])).not.toThrow();
     expect(() => markBetterChecked([{}, {}])).not.toThrow();
+  });
+});
+
+describe("Feature: the line under the big figure tells the truth about the reports", () => {
+  it("Given only some prices without a report, Then it says 'relevés partiels', never 'aucun relevé joueur'", () => {
+    const r = assessReliability(
+      option([
+        leg({ reports: { origin: 0, destination: 4 } }),
+        leg({ reports: { origin: 4, destination: 4 } }),
+      ]),
+      CTX,
+    );
+    expect(r.level).toBe("partial");
+    expect(r.reasons[0].text).toContain(`${fmtNum(1)} prix sur ${fmtNum(4)} sans relevé joueur`);
+    expect(r.why).toBe("relevés partiels");
+  });
+
+  it("Given every price at 0 reports, Then it says 'aucun relevé joueur'", () => {
+    const r = assessReliability(option([leg({ reports: { origin: 0, destination: 0 } })]), CTX);
+    expect(r.why).toBe("aucun relevé joueur");
+  });
+
+  it("Given every price reported but one older than three days, Then the label says so instead of 'partiellement relevée'", () => {
+    const r = assessReliability(option([leg({ price_age_days: { buy: 4, sell: 0.5 } })]), CTX);
+    expect(r.level).toBe("partial");
+    expect(r.label).toBe("Relevée, mais prix de plus de 3 jours");
+    const mixed = assessReliability(option([leg({ reports: { origin: 0, destination: 4 } })]), CTX);
+    expect(mixed.label).toBe("Partiellement relevée");
+  });
+});
+
+describe("Feature: reasons are merged by kind and market facts that were not read are said", () => {
+  it("Given two legs with the same kind of reason, Then one reason holds both sentences, 'Aller' and 'Retour'", () => {
+    const a = leg({ limited_by: "stock", scu: 300 });
+    const b = leg({ limited_by: "stock", scu: 120 });
+    const r = assessReliability(option([a, b]), CTX);
+    expect(codes(r)).toEqual(["whole_stock"]);
+    expect(r.reasons[0].text).toContain(
+      `Aller : le plan achète tout le stock affiché (${fmtNum(300)}`,
+    );
+    expect(r.reasons[0].text).toContain(
+      `Retour : le plan achète tout le stock affiché (${fmtNum(120)}`,
+    );
+  });
+
+  it("Given a leg whose market was not read, Then 'marché non lu' is among the other points", () => {
+    expect(assessReliability(option([leg({}, null)]), CTX).others).toEqual(["marché non lu"]);
+    expect(assessReliability(option([leg()]), CTX).others).toEqual([]);
+  });
+
+  it("Given a buyer at the maximum of its inventory (code 7), Then the reason says it may refuse the sale", () => {
+    const r = assessReliability(
+      option([leg({}, { sell_inventory: { code: 7, fill: "86-100%" } })]),
+      CTX,
+    );
+    expect(codes(r)).toEqual(["sale_pressure"]);
+    expect(r.reasons[0].text).toContain("maximum de son inventaire");
+  });
+});
+
+describe("Feature: the better-evidenced marker needs player reports", () => {
+  it("Given a later card that is itself an estimate or unchecked, Then it is never marked", () => {
+    const estimate = assessReliability(
+      option([leg({ reports: { origin: 0, destination: 0 } })]),
+      CTX,
+    );
+    const unchecked = assessReliability(
+      option([leg({ reports: { origin: null, destination: null } })]),
+      CTX,
+    );
+    const first = { reliability: { ...estimate, evidence_rank: 0 as const } };
+    const list = [first, { reliability: estimate }, { reliability: unchecked }];
+    markBetterChecked(list);
+    expect(list.map((o) => o.reliability.better_than_first === true)).toEqual([
+      false,
+      false,
+      false,
+    ]);
   });
 });
 

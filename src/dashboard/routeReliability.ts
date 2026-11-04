@@ -41,7 +41,7 @@ export type ReasonCode =
 export interface ReliabilityReason {
   code: ReasonCode;
   text: string;
-  /** Where the fact comes from and how old it is ("UEX · relevé il y a 2,9 j"). */
+  /** Where the fact comes from and how old it is ("UEX · prix mis à jour il y a 2,9 j"). */
   source: string;
 }
 
@@ -104,6 +104,9 @@ const LABEL: Record<ReliabilityLevel, string> = {
   estimate: "Estimation non vérifiée",
   unchecked: "Relevés non vérifiés",
 };
+
+/** The "partial" level when every price has a report but one is older than RELIABLE_MAX_AGE_DAYS (or undated). */
+const LABEL_OLD = "Relevée, mais prix de plus de 3 jours";
 
 const RANK: Record<ReliabilityLevel, 0 | 1 | 2 | 3> = {
   reported: 3,
@@ -191,8 +194,8 @@ const ageWords = (days: number | null): string =>
   days === null
     ? "date du prix inconnue"
     : days < 0.05
-      ? "prix relevé à l’instant"
-      : `prix relevé il y a ${fmtNum(days, 1)}\u00a0j`;
+      ? "prix mis à jour à l’instant"
+      : `prix mis à jour il y a ${fmtNum(days, 1)}\u00a0j`;
 
 /** The oldest known age of a set of prices; null when none has a date. */
 const oldest = (ages: (number | null)[]): number | null => {
@@ -262,7 +265,6 @@ export function assessReliability(o: TripOption, ctx: ReliabilityContext): Relia
       "UEX · vérification des relevés non faite",
     );
   } else if (zero.length > 0) {
-    const flat = zero.filter((e) => e.range !== null && e.range.low === e.range.high);
     const head =
       zero.length === ends.length
         ? `0 relevé joueur sur cette route : les ${fmtNum(ends.length)} prix sont des estimations UEX.`
@@ -271,22 +273,9 @@ export function assessReliability(o: TripOption, ctx: ReliabilityContext): Relia
               ? `, ${fmtNum(unknown.length)} non vérifié${unknown.length > 1 ? "s" : ""}`
               : ""
           }.`;
-    const flatList = flat
-      .slice(0, 2)
-      .map(
-        (e) =>
-          `${e.side === "buy" ? "achat" : "vente"}${legName(o, e.leg) ? ` ${legName(o, e.leg).toLowerCase()}` : ""} ${fmtNum(e.price)}`,
-      )
-      .join(", ");
-    const flatText =
-      flat.length === 0
-        ? ""
-        : flat.length === 1
-          ? ` Un de ces prix n’a jamais varié dans la fourchette connue d’UEX (${flatList}) : il ressemble à une valeur reportée plus qu’à une lecture.`
-          : ` ${fmtNum(flat.length)} de ces prix n’ont jamais varié dans la fourchette connue d’UEX (${flatList}${flat.length > 2 ? ", …" : ""}) : ils ressemblent à des valeurs reportées plus qu’à des lectures.`;
     add(
       "no_reports",
-      head + flatText,
+      head,
       `UEX · nombre de relevés joueurs · ${ageWords(oldest(zero.map((e) => e.age)))}`,
     );
   }
@@ -302,11 +291,11 @@ export function assessReliability(o: TripOption, ctx: ReliabilityContext): Relia
       const peers = l.market?.sell_peers;
       add(
         "sell_ceiling",
-        `${prefix(name)}le prix de vente (${fmtNum(sell.price)}) est au plafond de la fourchette UEX de ce terminal (${fmtNum(r.low)} à ${fmtNum(r.high)})${
+        `${prefix(name)}le prix de vente (${fmtNum(sell.price)}) est au plus haut de la fourchette connue d’UEX pour ce terminal (${fmtNum(r.low)} à ${fmtNum(r.high)}, sans indication de période)${
           peers && peers.same_price >= SAME_PRICE_PEERS
-            ? `, et ${fmtNum(peers.same_price)} terminaux sur ${fmtNum(peers.priced)} affichent exactement ce prix`
+            ? `; ce prix est partagé par ${fmtNum(peers.same_price)} terminaux sur ${fmtNum(peers.priced)}`
             : ""
-        } : c’est le meilleur cas, pas le cas courant.`,
+        }.`,
         `UEX · fourchette du terminal · ${ageWords(sell.age)}`,
       );
     }
@@ -326,6 +315,10 @@ export function assessReliability(o: TripOption, ctx: ReliabilityContext): Relia
     if (inv && inv.code === 6) {
       parts.push(
         `le terminal acheteur est très rempli${inv.fill ? ` (${inv.fill.replace("-", " à ")})` : ""} : UEX prévient que le prix baisse vite quand on vend`,
+      );
+    } else if (inv && inv.code === 7) {
+      parts.push(
+        "UEX indique que le terminal acheteur est au maximum de son inventaire : plus de demande, il peut refuser la vente",
       );
     }
     if (l.destination_demand_scu !== null && l.scu > l.destination_demand_scu) {
@@ -389,7 +382,7 @@ export function assessReliability(o: TripOption, ctx: ReliabilityContext): Relia
       `Prix anciens : ${oldAges
         .map(
           (e) =>
-            `${e.side === "buy" ? "achat" : "vente"}${legName(o, e.leg) ? ` ${legName(o, e.leg).toLowerCase()}` : ""} relevé il y a ${fmtNum(e.age as number, 1)}\u00a0j`,
+            `${e.side === "buy" ? "achat" : "vente"}${legName(o, e.leg) ? ` ${legName(o, e.leg).toLowerCase()}` : ""} mis à jour il y a ${fmtNum(e.age as number, 1)}\u00a0j`,
         )
         .join(", ")}. Un prix communautaire bouge en quelques heures.`,
       "UEX · date de relevé des prix",
@@ -405,15 +398,39 @@ export function assessReliability(o: TripOption, ctx: ReliabilityContext): Relia
     );
   }
 
-  found.sort((a, b) => ORDER.indexOf(a.code) - ORDER.indexOf(b.code));
-  const reasons = found.slice(0, MAX_REASONS);
+  // One reason per code: the legs of a reason are merged into its text (each sentence already says "Aller" or "Retour").
+  const merged: ReliabilityReason[] = [];
+  for (const code of ORDER) {
+    const same = found.filter((r) => r.code === code);
+    if (same.length === 0) continue;
+    merged.push({
+      code,
+      text: same.map((r) => r.text).join(" "),
+      source: [...new Set(same.map((r) => r.source))].join(" ; "),
+    });
+  }
+  const reasons = merged.slice(0, MAX_REASONS);
+  const others = merged.slice(MAX_REASONS).map((r) => WHY[r.code]);
+  // Market facts that were not read (a failed read, the cap on extra reads): said, so that no silence reads as reassurance.
+  if (o.legs.some((l) => !l.market)) others.push("marché non lu");
+  // What sits under the big figure: the top reason, in a few words. "Aucun relevé" only when EVERY price is at 0.
+  const top = reasons[0]?.code;
+  const why =
+    top === "no_reports"
+      ? zero.length === ends.length
+        ? WHY.no_reports
+        : "relevés partiels"
+      : top
+        ? WHY[top]
+        : LABEL[level].toLowerCase();
+  const onlyOld = level === "partial" && ends.every((e) => (e.reports ?? 0) >= 1);
   return {
     level,
-    label: LABEL[level],
+    label: onlyOld ? LABEL_OLD : LABEL[level],
     evidence_rank: RANK[level],
-    why: reasons.length > 0 ? WHY[reasons[0].code] : LABEL[level].toLowerCase(),
+    why,
     reasons,
-    others: [...new Set(found.slice(MAX_REASONS).map((r) => WHY[r.code]))],
+    others,
     limits: RELIABILITY_LIMITS_NOTE,
     trial: trialOf(o, ctx),
   };
@@ -446,6 +463,12 @@ export function markBetterChecked(list: { reliability?: Reliability }[]): void {
   if (!first) return;
   for (let i = 1; i < list.length; i++) {
     const r = list[i].reliability;
-    if (r && r.evidence_rank > first.evidence_rank) r.better_than_first = true;
+    // Never on a card labelled "Estimation non vérifiée" or "Relevés non vérifiés": only a card with player reports is "better".
+    if (
+      r &&
+      r.evidence_rank > first.evidence_rank &&
+      (r.level === "reported" || r.level === "partial")
+    )
+      r.better_than_first = true;
   }
 }

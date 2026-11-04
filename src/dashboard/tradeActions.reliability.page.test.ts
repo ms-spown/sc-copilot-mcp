@@ -73,13 +73,13 @@ describe("Feature: every route card shows its reliability, the level without ope
     const t = textOf(first);
     expect(t).toContain("Fiabilité : Estimation non vérifiée");
     expect(t).toContain("Aller : le prix de vente");
-    expect(t).toContain(`le prix de vente (${fmtNum(457)}) est au plafond`);
+    expect(t).toContain(`le prix de vente (${fmtNum(457)}) est au plus haut`);
     expect(t).toContain("le plan achète tout le stock affiché");
     expect(t).toContain("le prix monte quand le stock baisse");
     expect(t).toContain("pas modélisé");
     expect(t).toContain("0 relevé joueur sur cette route");
     expect(t).toContain("(UEX · ");
-    expect(t).toContain("prix relevé il y a");
+    expect(t).toContain("prix mis à jour il y a");
     expect(t).toContain("Retour : le terminal acheteur est très rempli (72 à 85%)");
   });
 
@@ -235,7 +235,7 @@ describe("Feature: a plan sized from the balance keeps its outlay off the block"
     await w.advance(200);
     expect(asked.filter((a) => a.action === "search").at(-1).budget_private).toBe(true);
     const first = textOf(blocks(w)[0]!);
-    expect(first).toContain("au plafond");
+    expect(first).toContain("au plus haut");
     expect(first).not.toContain("immobilisés");
   });
 });

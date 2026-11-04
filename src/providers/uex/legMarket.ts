@@ -50,7 +50,7 @@ export interface LegMarket {
   sell_inventory: { code: number; fill: string | null } | null;
   /** Terminals showing exactly this sell price, of the terminals with a recent sell price for this commodity. */
   sell_peers: { same_price: number; priced: number } | null;
-  /** Terminals with at least one player report on this commodity, of the terminals with a price for it. */
+  /** Terminals with at least one player report on this commodity, of the terminals with a price and a report count for it. null: no count at all. */
   commodity_reports: { reported: number; terminals: number } | null;
 }
 
@@ -103,7 +103,10 @@ export function legMarket(
   const status = leg.sellStatus ?? sellRow?.statusSell ?? 0;
   const level = status > 0 ? BUILT_IN_LEGEND.sell.find((l) => l.code === status) : undefined;
   const stock = leg.stockScu ?? buyRow?.scuBuy ?? 0;
-  const priced = rows.filter((r) => r.buyPrice > 0 || r.sellPrice > 0);
+  // Only rows UEX gave a report count for: a count that is missing is never read as 0.
+  const priced = rows.filter(
+    (r) => (r.buyPrice > 0 || r.sellPrice > 0) && (r.buyReports !== null || r.sellReports !== null),
+  );
   return {
     buy_range: buyRow ? range(buyRow.buyLow, buyRow.buyHigh) : null,
     sell_range: sellRow ? range(sellRow.sellLow, sellRow.sellHigh) : null,

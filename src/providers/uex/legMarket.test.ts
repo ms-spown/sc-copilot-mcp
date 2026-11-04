@@ -133,6 +133,18 @@ describe("Feature: the facts of one leg", () => {
     });
   });
 
+  it("Given rows with no report count at all, Then they are not counted as 0, and with none counted there is no figure", () => {
+    const noCount = parseMarketRows([
+      { id_terminal: 10, price_buy: 3376 },
+      { id_terminal: 20, price_sell: 5500 },
+      { id_terminal: 21, price_sell: 5000 },
+      raw(22, { price_sell: 5100, price_sell_users_rows: 1 }),
+    ]);
+    // three rows carry no count: only the one that does is part of the figure
+    expect(legMarket(LEG, noCount, OPTS)!.commodity_reports).toEqual({ reported: 1, terminals: 1 });
+    expect(legMarket(LEG, noCount.slice(0, 3), OPTS)!.commodity_reports).toBeNull();
+  });
+
   it("Given the leg's own stock and status (from the price file), Then they win over the rows", () => {
     const m = legMarket({ ...LEG, stockScu: 597, sellStatus: 5 }, rows(), OPTS)!;
     expect(m.stock_scu).toBe(597);

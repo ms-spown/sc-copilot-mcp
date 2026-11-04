@@ -713,25 +713,29 @@ export async function planTrips(deps: Dependencies, req: TripRequest): Promise<T
         if (!marketRows.has(l.commodityId)) extra.set(l.commodityId, l.commodity);
       }
     }
-    for (const [id] of [...extra].slice(0, MAX_EXTRA_MARKET_COMMODITIES)) {
-      if (left() <= 0) break;
-      try {
-        const res = await withDeadline(
-          fetchWithCache(
-            deps.uexClient,
-            "/commodities_prices",
-            { params: { id_commodity: id } },
-            { record: false },
-          ),
-          left(),
-          "reading market facts",
-        );
-        const d = unwrapData(res.data);
-        if (d.kind === "rows") marketRows.set(id, parseMarketRows(d.rows));
-      } catch (error) {
-        // Optional facts: a failure leaves them out (market: null) without a note per commodity.
-        if (isBreaker(error)) break;
-      }
+    // In parallel (at most MAX_EXTRA_MARKET_COMMODITIES requests), all inside the plan's deadline. Optional facts: a failure
+    // leaves them out (market: null) without a note per commodity.
+    if (left() > 0) {
+      await Promise.all(
+        [...extra].slice(0, MAX_EXTRA_MARKET_COMMODITIES).map(async ([id]) => {
+          try {
+            const res = await withDeadline(
+              fetchWithCache(
+                deps.uexClient,
+                "/commodities_prices",
+                { params: { id_commodity: id } },
+                { record: false },
+              ),
+              left(),
+              "reading market facts",
+            );
+            const d = unwrapData(res.data);
+            if (d.kind === "rows") marketRows.set(id, parseMarketRows(d.rows));
+          } catch {
+            // left out
+          }
+        }),
+      );
     }
   }
   if (failures.length > 0) {
@@ -1021,4 +1025,23 @@ async function fuelBlock(client: HttpClient, now: number): Promise<TripPlanResul
     rows_updated_within_7_days: rows ? fresh : null,
     median_age_days: median,
   };
+}
+
+/**
+ * The answer as the MODEL tool (`uex_plan_trade`) returns it: without `market` on the legs and `body` on the places. Those two
+ * exist for the dashboard's reliability block (it calls `planTrips` directly); they make each option 26 to 35 % bigger, and the
+ * tool's answer is cut to a character budget by dropping whole options, so keeping them would return fewer options than before.
+ */
+export function forModelTool(result: TripPlanResult): TripPlanResult {
+  const without = (value: object, key: string): Record<string, unknown> =>
+    Object.fromEntries(Object.entries(value).filter(([k]) => k !== key));
+  const strip = (o: TripOption): TripOption => ({
+    ...o,
+    legs: o.legs.map((l) => ({
+      ...without(l, "market"),
+      from: without(l.from, "body"),
+      to: without(l.to, "body"),
+    })) as unknown as LegView[],
+  });
+  return { ...result, options: result.options.map(strip), chains: result.chains.map(strip) };
 }

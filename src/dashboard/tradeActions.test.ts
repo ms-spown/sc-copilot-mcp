@@ -249,6 +249,37 @@ describe("Feature: the message to the agent is fixed text and never holds the ba
     expect(m.length).toBeLessThanOrEqual(2600);
   });
 
+  it("Given a card with a reliability reading, Then the message carries the level, the top reasons and the first run, within the cap and without cutting the closing order", () => {
+    const o = answer().options[0];
+    expect(o.reliability).not.toBeNull();
+    const m = NBSP_FREE(tradeAgentMessage(L, o, view({ showBalance: true })));
+    expect(m).toContain(
+      "Fiabilité selon le tableau de bord (heuristique, jamais une garantie) : Estimation non vérifiée",
+    );
+    expect(m).toContain("Point relevé : 0 relevé joueur sur cette route");
+    expect(m).toContain("Trajet de test proposé : Premier trajet de test : 150 puis 100 SCU");
+    expect(m.length).toBeLessThanOrEqual(2600);
+    expect(m).toMatch(/une meilleure alternative si elle existe\.$/);
+    // an enormous reading is cut before the recipe and the order are
+    const big = answer().options[0];
+    big.reliability.reasons = big.reliability.reasons.map((r: any) => ({
+      ...r,
+      text: "x".repeat(700),
+    }));
+    const long = NBSP_FREE(tradeAgentMessage(L, big, view({ showBalance: true })));
+    expect(long.length).toBeLessThanOrEqual(2600);
+    expect(long).toContain("rejoue exactement l’appel du tableau de bord");
+    expect(long).toMatch(/une meilleure alternative si elle existe\.$/);
+  });
+
+  it("Given a budget that is the balance, Then only the level of the reliability reading is in the message", () => {
+    const o = answer({ budget_private: true }).options[0];
+    const m = NBSP_FREE(tradeAgentMessage(L, o, view({ priv: true })));
+    expect(m).toContain("Fiabilité selon le tableau de bord");
+    expect(m).not.toContain("Point relevé");
+    expect(m).not.toContain("Trajet de test proposé");
+  });
+
   it("Given a budget that is the balance, Then no quantity, total or hourly figure is in it", () => {
     const o = answer({ budget_private: true }).options[0];
     const m = NBSP_FREE(tradeAgentMessage(L, o, view({ priv: true })));

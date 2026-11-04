@@ -192,8 +192,8 @@ export function tradeCleanReliability(raw: any): any {
   const reasons = (Array.isArray(raw.reasons) ? raw.reasons : [])
     .slice(0, 5)
     .map((r: any) => ({
-      text: r && typeof r === "object" ? tradeText(r.text, 480) : "",
-      source: r && typeof r === "object" ? tradeText(r.source, 160) : "",
+      text: r && typeof r === "object" ? tradeText(r.text, 800) : "",
+      source: r && typeof r === "object" ? tradeText(r.source, 260) : "",
     }))
     .filter((r: any) => r.text !== "");
   const trial =
@@ -890,7 +890,7 @@ export function tradeReliabilityModel(rel: any): any {
         : rel.level === "estimate"
           ? "○"
           : "?";
-  const more = rel.others.length > 0 ? "Aussi relevé : " + rel.others.join(", ") + "." : "";
+  const more = rel.others.length > 0 ? "Autres points : " + rel.others.join(", ") + "." : "";
   return {
     level: rel.level,
     icon,
@@ -1147,10 +1147,33 @@ export function tradeAgentMessage(L: any, o: any, view: any): string {
       " et dis explicitement ce qui diffère et pourquoi (stock, âge des prix, hypothèses) avant de donner ton verdict ; dis-moi ensuite ce qui peut mal tourner et propose une meilleure alternative si elle existe." +
       (view.showBalance === true ? "" : " Ne lis pas mon solde."),
   );
-  // Fit: the figures of the steps go first when the message is too long; everything else is bounded (names are cut at 60).
+  // The dashboard's own reliability reading (server-written French, no name in it): the level always, and, when no figure derives from
+  // the balance, its top reasons and the prudent first run. They go right after the steps when the message is too long.
+  const rl = o.reliability;
+  const relLines: string[] = [];
+  if (rl) {
+    parts.push(
+      "Fiabilité selon le tableau de bord (heuristique, jamais une garantie) : " +
+        rl.label +
+        (rl.why && rl.label.toLowerCase() !== rl.why ? " (" + rl.why + ")" : "") +
+        ".",
+    );
+    if (!view.priv) {
+      for (let i = 0; i < rl.reasons.length && i < 3; i++)
+        relLines.push("Point relevé : " + rl.reasons[i].text.slice(0, 300));
+      if (rl.trial && rl.trial.lines.length > 1)
+        relLines.push(
+          "Trajet de test proposé : " + rl.trial.lines[0] + " " + rl.trial.lines[1].slice(0, 160),
+        );
+    }
+  }
+  // Fit: the figures of the steps go first when the message is too long, then the reliability lines; everything else is bounded
+  // (names are cut at 60). The recipe and the closing order are never cut.
   const kept = steps.slice();
-  const whole = () => parts.concat(kept, rest).join(" ");
+  const keptRel = relLines.slice();
+  const whole = () => parts.concat(kept, keptRel, rest).join(" ");
   while (kept.length > 0 && whole().length > 2600) kept.pop();
+  while (keptRel.length > 0 && whole().length > 2600) keptRel.pop();
   return whole();
 }
 
