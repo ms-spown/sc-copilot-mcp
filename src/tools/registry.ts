@@ -118,7 +118,12 @@ export interface ToolRegistry {
   listResources(): ResourceDefinition[];
   /** One advertised resource with its text; throws for an unknown one or one whose feature is off. */
   readResource(uri: string): ResourceDefinition & { body: string };
-  call(name: string, args: unknown): Promise<ToolResult>;
+  /**
+   * Runs a tool. A tool that needs a View (`requiresUi`: the dashboard and its app-only tools) is refused, as an unknown
+   * tool, to a client that did not declare the UI extension: listing it only to Views is not enough, a client can call any
+   * name. A client that declares the extension and exposes an app-only tool to its model is outside this server's control.
+   */
+  call(name: string, args: unknown, context?: ClientContext): Promise<ToolResult>;
 }
 
 /** The dashboard View needs its two app-only tools: a scoped list must never open a View that cannot poll. */
@@ -265,10 +270,11 @@ export function createRegistry(
       }
       return { ...resource, body: resource.text() };
     },
-    async call(name, args) {
+    async call(name, args, context) {
       try {
         const tool = byName.get(name);
-        if (!tool) throw new Error(`Unknown tool: ${name}`);
+        if (!tool || (tool.requiresUi === true && context?.ui !== true))
+          throw new Error(`Unknown tool: ${name}`);
         const meta = CATALOG[name];
         return await runWithProvenance(async (ctx) => {
           const result = await tool.handler(args);

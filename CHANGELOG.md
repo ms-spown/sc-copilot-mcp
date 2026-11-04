@@ -25,7 +25,9 @@ versions follow [Semantic Versioning](https://semver.org/).
   is invented. Labels and the note are cleaned, capped and escaped but their content is not checked: the report says to read it
   before sharing. A closed menu, a hidden balance, a left detail or a page that goes away now EMPTY the report and the session
   detail from the page (they were only hidden). A run stored twice in an older file now counts once in the session bar and the
-  statistics, as in the report. The prompt `session_debrief` and the server instructions tell Claude it can produce it. Docs EN/FR,
+  statistics, as in the report. App-only tools (`sc_live_poll`, `sc_live_mark`, `sc_trade_suggest`, `sc_session_export`) are now
+  refused by name, as unknown tools, to a client that did not declare the UI extension (listing them only to Views was not
+  enough). The CSV puts an apostrophe after every separator that precedes a formula starter, not only at the start of a cell. The prompt `session_debrief` and the server instructions tell Claude it can produce it. Docs EN/FR,
   SECURITY.
 
 ## [2.3.0] - 2026-11-04

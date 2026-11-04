@@ -318,8 +318,8 @@ export function sessionToolAnswer(name: string, args: Record<string, any>, nowMs
       money_included: include,
       balances_included: balances,
       csv_delimiter: d,
-      markdown,
-      csv,
+      // only the text asked for (kind), like the server
+      ...(args["kind"] === "csv" ? { csv } : { markdown }),
     };
   }
   if (name === "sc_session_new")

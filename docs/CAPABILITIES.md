@@ -14,8 +14,9 @@ live telemetry.
 65 tools exist. While live telemetry is off (the default) 52 are listed to the client, because `sc_live_state`,
 `sc_live_events`, `sc_live_dashboard`, `sc_live_poll`, `sc_live_mark` and `sc_trade_suggest` are hidden until telemetry
 is on, and so are the seven session tools (`sc_session_current`, `sc_session_list`, `sc_session_stats`,
-`sc_session_new`, `sc_session_end`, `sc_session_debrief`, `sc_session_export`). The four dashboard tools are also listed only to a client that can show them
-(Claude Desktop), never to Claude Code.
+`sc_session_new`, `sc_session_end`, `sc_session_debrief`, `sc_session_export`). The app-only tools (the four of the dashboard and `sc_session_export`) are listed only to a client that can show them
+(Claude Desktop), never to Claude Code, and are refused by name ("Unknown tool") to a client that did not declare the UI
+extension; a host that does declare it and exposes them to the model is outside this server's control.
 
 ### What it does not do
 

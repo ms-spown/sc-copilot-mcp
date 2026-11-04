@@ -656,6 +656,14 @@
           "maxLength": 48,
           "description": "A session id."
         },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "md",
+            "csv"
+          ],
+          "description": "The text wanted."
+        },
         "include_balance": {
           "type": "boolean",
           "description": "Include aUEC figures (results, margins, fees, rate). Default false. Ask the player first: the answer goes into the conversation."
@@ -674,7 +682,8 @@
         }
       },
       "required": [
-        "id"
+        "id",
+        "kind"
       ]
     },
     "_meta": {

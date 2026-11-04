@@ -326,25 +326,36 @@ describe("Feature: a long session stays small for the model and whole for the da
     expect(csv.text.length).toBeLessThan(60_000);
   });
 
-  it("Given the dashboard's tool, Then it gives the whole session, Markdown and CSV, as structured data only", async () => {
+  /** The View's own call: a client that declared the UI extension. */
+  const asView = (t: ReturnType<typeof rig>) => (args: Record<string, unknown>) =>
+    t.registry.call("sc_session_export", args, { ui: true });
+  const sessionId = async (t: ReturnType<typeof rig>) =>
+    JSON.parse((await t.registry.call("sc_session_list", {})).content[0]!.text).data.sessions[0].id;
+
+  it("Given the dashboard's tool, Then it gives the whole session, the one text asked for, as structured data only", async () => {
     const t = rig(true, manyTrips(499));
     await t.play(14);
-    const list = JSON.parse((await t.registry.call("sc_session_list", {})).content[0]!.text);
-    const id = list.data.sessions[0].id;
-    const r = await t.registry.call("sc_session_export", { id, include_balance: true });
+    const id = await sessionId(t);
+    const exp = asView(t);
+    const r = await exp({ id, kind: "md", include_balance: true });
     const sc = r.structuredContent as any;
     expect(sc.trips_total).toBe(500);
-    expect(sc.csv.split("\r\n").length).toBe(502);
     expect(sc.markdown_omitted).toBe(0);
     expect(sc.markdown).not.toContain("[truncated");
     expect(sc.markdown).toMatch(digits(GROSS));
     expect(sc.markdown).not.toMatch(startDigits);
+    // only the text asked for: half the size
+    expect(sc.csv).toBeUndefined();
     // the text content says nothing of the report: it is not for the model
     expect(r.content[0]!.text.length).toBeLessThan(2000);
     expect(r.content[0]!.text).not.toContain("Bilan");
+    const c = (await exp({ id, kind: "csv", include_balance: true })).structuredContent as any;
+    expect(c.markdown).toBeUndefined();
+    expect(c.csv.split("\r\n").length).toBe(502);
+    expect(c.csv_omitted).toBe(0);
     // the semicolon file
-    const fr = await t.registry.call("sc_session_export", { id, csv_delimiter: ";" });
-    expect((fr.structuredContent as any).csv.split("\r\n")[0]).toContain("session;ended_at;");
+    const fr = (await exp({ id, kind: "csv", csv_delimiter: ";" })).structuredContent as any;
+    expect(fr.csv.split("\r\n")[0]).toContain("session;ended_at;");
   });
 
   it("Given the export tool, Then it is app-only, strict, private like the other one and absent without a View", async () => {
@@ -354,32 +365,54 @@ describe("Feature: a long session stays small for the model and whole for the da
     expect(withUi).toBeTruthy();
     expect((withUi as any)._meta.ui.visibility).toEqual(["app"]);
     expect(t.registry.list().some((x) => x.name === "sc_session_export")).toBe(false);
-    const list = JSON.parse((await t.registry.call("sc_session_list", {})).content[0]!.text);
-    const id = list.data.sessions[0].id;
-    // strict input: an unknown key, a missing id, a bad delimiter
-    expect((await t.registry.call("sc_session_export", { id, last: 3 })).isError).toBe(true);
-    expect((await t.registry.call("sc_session_export", {})).isError).toBe(true);
-    expect((await t.registry.call("sc_session_export", { id, csv_delimiter: "\t" })).isError).toBe(
-      true,
-    );
-    expect((await t.registry.call("sc_session_export", { id: "s_nope_nope" })).isError).toBe(true);
+    const id = await sessionId(t);
+    const exp = asView(t);
+    // strict input: an unknown key, a missing id or kind, a bad delimiter or kind
+    expect((await exp({ id, kind: "md", last: 3 })).isError).toBe(true);
+    expect((await exp({ kind: "md" })).isError).toBe(true);
+    expect((await exp({ id })).isError).toBe(true);
+    expect((await exp({ id, kind: "both" })).isError).toBe(true);
+    expect((await exp({ id, kind: "csv", csv_delimiter: "\t" })).isError).toBe(true);
+    expect((await exp({ id: "s_nope_nope", kind: "md" })).isError).toBe(true);
     // privacy matrix
     for (const flag of [false, true]) {
-      const r = await t.registry.call("sc_session_export", {
-        id,
-        include_start_balance: flag,
-      });
+      const r = await exp({ id, kind: "md", include_start_balance: flag });
       const all = JSON.stringify(r.structuredContent) + r.content[0]!.text;
       for (const n of [BALANCE, NET, GROSS, COST]) expect(all, String(n)).not.toMatch(digits(n));
     }
-    const plain = await t.registry.call("sc_session_export", { id, include_balance: true });
+    const plain = await exp({ id, kind: "md", include_balance: true });
     expect(JSON.stringify(plain.structuredContent)).not.toMatch(startDigits);
-    const withBalances = await t.registry.call("sc_session_export", {
+    const withBalances = await exp({
       id,
+      kind: "md",
       include_balance: true,
       include_start_balance: true,
     });
     expect(JSON.stringify(withBalances.structuredContent)).toMatch(startDigits);
+  });
+
+  it("Given a client that did not declare the UI extension, Then every app-only tool is refused by name, the export one included", async () => {
+    const t = rig();
+    await t.play(30);
+    const id = await sessionId(t);
+    const args: Record<string, Record<string, unknown>> = {
+      sc_session_export: { id, kind: "md", include_balance: true, include_start_balance: true },
+      sc_live_poll: {},
+      sc_live_mark: { action: "start" },
+      sc_trade_suggest: { action: "search" },
+      sc_live_dashboard: {},
+    };
+    for (const [name, a] of Object.entries(args)) {
+      for (const context of [undefined, {}, { ui: false }]) {
+        const r = await t.registry.call(name, a, context);
+        expect(r.isError, name).toBe(true);
+        expect(r.content[0]!.text, name).toContain("Unknown tool");
+        // nothing of the session came out
+        expect(JSON.stringify(r), name).not.toMatch(startDigits);
+      }
+      const ok = await t.registry.call(name, a, { ui: true });
+      expect(JSON.stringify(ok.content), name).not.toContain("Unknown tool");
+    }
   });
 
   it("Given the export tool and a scoped list that opens the dashboard, Then the View's tool is in it", () => {

@@ -903,7 +903,8 @@ compares what the plan promised with what you really got (`src/providers/session
   CRLF line ends and an empty cell for what is unknown (never 0). `counted` is `yes` only for a trip that has a result (the Markdown
   says *inconnu* for the others). **Separator.** Comma by default; **Excel in French expects a semicolon**, so use
   **Télécharger .csv (Excel FR)** (or `csv_delimiter` ";"): the file opens in columns, with a decimal comma. **Formulas.** A
-  text cell that starts with `=`, `+`, `-` or `@`, or has one right after a `;`, `,`, tab or `|`, is prefixed with an apostrophe,
+  text cell that starts with `=`, `+`, `-` or `@` is prefixed with an apostrophe, and so is every `;`, `,`, tab or `|` inside it
+  that is followed by one (an apostrophe is put right after the separator, so a reader that splits the cell there finds no formula),
   and a cell that holds a comma, a semicolon, a quote or a line break is quoted. That stops the usual formula injection in Excel
   and LibreOffice; it is a mitigation, not a promise about every program that can open a CSV: read a file from someone else
   before opening it, as you would any spreadsheet.

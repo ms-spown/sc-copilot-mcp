@@ -691,6 +691,11 @@ describe("Feature: honest about what it does not know", () => {
   });
 });
 
+/** The cell as a reader gets it, and its pieces when something splits it on ; , tab or | (spaces before a piece ignored). */
+const readCell = (cell: string) => parseCsv(cell + "\r\n")[0]![0]!;
+const pieces = (text: string) => text.split(/[;,\t|]/).map((x) => x.trimStart());
+const startsFormula = (piece: string) => /^[=+\-@\r\t]/.test(piece);
+
 describe("Feature: CSV injection, for any program that splits on another separator", () => {
   // the auditor's cases, and the neighbours
   const attacks = [
@@ -709,8 +714,10 @@ describe("Feature: CSV injection, for any program that splits on another separat
   it("Given a formula starter after any separator, Then the cell is text (apostrophe) and quoted, so it is one cell", () => {
     for (const a of attacks) {
       const cell = csvText(a, 80);
-      const dangerous = /(^|[;,|])[ ]*[=+\-@]/.test(a) || /^[\t=+\-@]/.test(a);
+      const dangerous = /^[\t=+\-@]/.test(a);
       if (dangerous) expect(cell.replace(/^"/, "").startsWith("'"), a).toBe(true);
+      // a reader that splits the text on ; , tab or | sees no piece that starts with a formula character
+      expect(pieces(readCell(cell)).filter(startsFormula), a).toEqual([]);
       // one cell whichever of the two delimiters reads it
       for (const d of [",", ";"]) expect(parseCsv(cell + "\r\n", d)[0], a + d).toHaveLength(1);
       // quoted whenever it holds either separator
@@ -718,6 +725,9 @@ describe("Feature: CSV injection, for any program that splits on another separat
     }
     expect(csvText("Gold", 80)).toBe("Gold");
     expect(csvText("100 - 50", 80)).toBe("100 - 50");
+    // the auditor's cases, exactly
+    expect(csvText("a;+cmd|' /C calc'!A0", 80)).toBe("\"a;'+cmd|' /C calc'!A0\"");
+    expect(csvText('x;=HYPERLINK("u","y")', 80)).toBe('"x;\'=HYPERLINK(""u"",""y"")"');
   });
 
   it("Given a whole export of those labels, Then every row has the same columns with either delimiter, and no cell starts with a formula starter", () => {
@@ -879,5 +889,108 @@ describe("Feature: the two presets", () => {
     expect(d.markdown.length).toBeLessThanOrEqual(2000);
     expect(d.markdown).toContain("rapport tronqué");
     expect(d.truncated).toBe(true);
+  });
+});
+
+describe("Feature: the escaping is complete and reversible (every occurrence, the escape character first)", () => {
+  const alphabet = [
+    "\\",
+    "\\\\",
+    "|",
+    "\\|",
+    "\\\\|",
+    "`",
+    "*",
+    "_",
+    "[",
+    "]",
+    "~",
+    "#",
+    "@",
+    "<",
+    ">",
+    "&",
+    "&amp;",
+    "&lt;",
+    "&#65;",
+    "R&R",
+    "://",
+    "http://",
+    "www.",
+    "WWW.",
+    '"',
+    '""',
+    ",",
+    ";",
+    "=",
+    "+",
+    "-",
+    " ",
+    "\r\n",
+    "\n",
+    "\t",
+    "a",
+    "é",
+  ];
+  let seed = 424242;
+  const rnd = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 2 ** 32;
+  };
+  const sample = () =>
+    Array.from(
+      { length: Math.floor(rnd() * 12) },
+      () => alphabet[Math.floor(rnd() * alphabet.length)]!,
+    ).join("");
+
+  /** The reverse of markdownText: drop one backslash level, then decode the three entities. */
+  const unescapeMd = (s: string) =>
+    s
+      .replace(/\\(.)/g, "$1")
+      .replace(/&(lt|gt|amp);/g, (_m, n: string) => ({ lt: "<", gt: ">", amp: "&" })[n]!);
+
+  it("Given any mix of special characters, Then undoing the escape gives the cleaned text back, and nothing special is left bare", () => {
+    for (let n = 0; n < 2000; n++) {
+      const x = sample();
+      const out = markdownText(x, 200);
+      expect(unescapeMd(out), JSON.stringify(x)).toBe(debriefText(x, 200));
+      const bare = out.replace(/\\./g, "").replace(/&(lt|gt|amp);/g, "");
+      expect(bare, JSON.stringify(x)).not.toMatch(/[\\`*_[\]|~#@<>]/);
+    }
+  });
+
+  it("Given the named sequences, Then each occurrence is escaped, backslash first", () => {
+    expect(markdownText("\\|", 80)).toBe("\\\\\\|");
+    expect(markdownText("\\\\|", 80)).toBe("\\\\\\\\\\|");
+    expect(markdownText("a|b|c|d", 80)).toBe("a\\|b\\|c\\|d");
+    expect(markdownText("`a` `b`", 80)).toBe("\\`a\\` \\`b\\`");
+    expect(markdownText("www.a WWW.b", 80)).toBe("www\\.a WWW\\.b");
+    expect(markdownText("http://a http://b", 80)).toBe("http\\://a http\\://b");
+    expect(markdownText("&amp;&amp;", 80)).toBe("&amp;amp;&amp;amp;");
+    expect(markdownText("a\r\nb", 80)).toBe("a b");
+  });
+
+  it("Given any mix, Then the CSV cell reads back as the cleaned text (apostrophe when it could start a formula), quotes doubled", () => {
+    for (let n = 0; n < 2000; n++) {
+      const x = sample();
+      const cleaned = debriefText(x, 200);
+      const cell = csvText(x, 200);
+      for (const d of [",", ";"]) {
+        const row = parseCsv(cell + "\r\n", d);
+        expect(row, JSON.stringify(x)).toHaveLength(1);
+        expect(row[0], JSON.stringify(x)).toHaveLength(1);
+        // the reference: an apostrophe after every separator that precedes a formula starter, then one at the start
+        const marked = cleaned.replace(/([;,\t|][ ]*)(?=[=+\-@\r])/g, "$1'");
+        const expected = /^[=+\-@\t\r]/.test(marked) ? "'" + marked : marked;
+        expect(row[0]![0], JSON.stringify(x)).toBe(expected);
+        // and a reader that splits the text itself finds no piece that starts with a formula character
+        expect(pieces(row[0]![0]!).filter(startsFormula), JSON.stringify(x)).toEqual([]);
+      }
+      // quoted exactly when the text holds a quote, a comma, a semicolon or a line break; every quote inside is doubled
+      const read = parseCsv(cell + "\r\n")[0]![0]!;
+      const quoted = /[",;\r\n]/.test(read);
+      expect(cell.startsWith('"'), JSON.stringify(x)).toBe(quoted);
+      if (quoted) expect(cell.slice(1, -1).replace(/""/g, "")).not.toContain('"');
+    }
   });
 });

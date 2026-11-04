@@ -71,7 +71,7 @@
 | [`sc_session_new`](#sc_session_new) | local | session file (local) | user | untrusted_text | Starts a new play session now (the player pressed or asked for 'Nouvelle session'): the current one is closed with its numbers kept, the new one starts from the balance just seen. |
 | [`sc_session_end`](#sc_session_end) | local | session file (local) | user | untrusted_text | Ends the current play session now (the player asked to finish it); its numbers stay in the history. |
 | [`sc_session_debrief`](#sc_session_debrief) | local | session file (local) | user | untrusted_text | The report of the player's saved play session (or the newest N), to share or keep: Markdown (default; header, key numbers, trips table with measured/computed/estimated/unknown tags, what is unexplained, footer) or the trips as CSV (format csv, 100 rows at most). |
-| [`sc_session_export`](#sc_session_export) | local | session file (local) | user | untrusted_text | For the dashboard only, not for the model: the whole report of one saved session (Markdown and CSV) for the 'Copier le bilan' and download controls. |
+| [`sc_session_export`](#sc_session_export) | local | session file (local) | user | untrusted_text | For the dashboard only, not for the model: the whole report of one saved session, as Markdown or as CSV (kind), for the 'Copier le bilan' and download controls. |
 | [`sc_fleet_get`](#sc_fleet_get) | core, local | fleet file (local) + uex + star-citizen.wiki | user | untrusted_text | The player's own ships, from a local file, each with its public stats (manufacturer, role, size, crew, cargo SCU, health, shields, speed) from UEX and the Star Citizen Wiki. |
 | [`sc_fleet_upsert`](#sc_fleet_upsert) | local | fleet file (local) | user | structured | Add a ship to the player's local fleet file, or change the note of one already there (same name and origin). |
 | [`sc_fleet_remove`](#sc_fleet_remove) | local | fleet file (local) | user | structured | Remove a ship from the player's local fleet file, by name. |
@@ -777,13 +777,14 @@ The report of the player's saved play session (or the newest N), to share or kee
 
 ### sc_session_export
 
-For the dashboard only, not for the model: the whole report of one saved session (Markdown and CSV) for the 'Copier le bilan' and download controls. Same privacy rules as sc_session_debrief. Needs SC_TELEMETRY=on.
+For the dashboard only, not for the model: the whole report of one saved session, as Markdown or as CSV (kind), for the 'Copier le bilan' and download controls. Refused to a client that did not declare the UI extension. Same privacy rules as sc_session_debrief. Needs SC_TELEMETRY=on.
 
 *Source:* session file (local) · *Kind:* user · *Trust:* untrusted_text · *Profiles:* local
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `id` | string | yes | A session id. |
+| `kind` | `md` \| `csv` | yes | The text wanted. |
 | `include_balance` | boolean | no | Include aUEC figures (results, margins, fees, rate). Default false. Ask the player first: the answer goes into the conversation. |
 | `include_start_balance` | boolean | no | With include_balance only: also the balance at the start and at the last sighting. Default false. The player must ask for it. |
 | `csv_delimiter` | `,` \| `;` | no | CSV separator: "," (default) or ";" (Excel in French opens it in columns; decimal comma). |

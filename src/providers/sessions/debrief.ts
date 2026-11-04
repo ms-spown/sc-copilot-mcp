@@ -60,9 +60,9 @@ export const DEBRIEF_FOR_MODEL = {
 /** What the PLAYER gets through the dashboard (sc_session_export, app-only): one whole session, bounded at a sane maximum. */
 export const DEBRIEF_FOR_EXPORT = {
   markdownRows: 500,
-  markdownTableChars: 150_000,
+  markdownTableChars: 120_000,
   csvRows: 500,
-  csvChars: 150_000,
+  csvChars: 100_000,
 } as const;
 
 /**
@@ -70,7 +70,7 @@ export const DEBRIEF_FOR_EXPORT = {
  * the worst case of each preset, so a report is never cut by the envelope.
  */
 export const DEBRIEF_MODEL_MAX_TEXT = 40_000;
-export const DEBRIEF_EXPORT_MAX_TEXT = 400_000;
+export const DEBRIEF_EXPORT_MAX_TEXT = 200_000;
 
 export interface DebriefOptions {
   /** The balance was allowed: aUEC figures are included. False: the non-monetary report. */
@@ -131,31 +131,40 @@ export function debriefText(value: unknown, max: number): string {
  * broken. The text is already one line (see debriefText).
  */
 export function markdownText(value: unknown, max: number): string {
-  return (
-    debriefText(value, max)
-      // Only an ampersand that could open an entity needs escaping ("R&R" stays as written for a plain-text reader).
-      .replace(/&(?=#?\w+;)/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/[\\`*_[\]|~#]/g, (c) => "\\" + c)
-      .replace(/:(?=\/\/)/g, "\\:")
-      .replace(/@/g, "\\@")
-      .replace(/\bwww\./gi, (m) => m.slice(0, 3) + "\\.")
-  );
+  // ONE pass over the text, every occurrence (global), so that nothing the replacement adds is itself rewritten and no
+  // escape character is left unescaped: the backslash is in the same class as the characters it protects.
+  return debriefText(value, max).replace(MARKDOWN_SPECIAL, markdownEscape);
 }
 
-/** A formula starter at the start of a cell, or right after a separator a spreadsheet may split on (; , tab |). */
-const FORMULA_START = /(^|[;,\t|])[ ]*[=+\-@\r]/;
+/**
+ * What one pass escapes, in this order of alternatives: an escape character or a character that opens markup, a table cell, a
+ * link, an address (\ ` * _ [ ] | ~ # @), the two angle brackets, an ampersand that could open an entity ("R&R" stays as
+ * written for a plain-text reader), the colon of a scheme, and the "www" of a bare address.
+ */
+const MARKDOWN_SPECIAL = /[\\`*_[\]|~#@]|[<>]|&(?=#?\w+;)|:(?=\/\/)|\bwww\./gi;
+
+function markdownEscape(m: string): string {
+  if (m === "<") return "&lt;";
+  if (m === ">") return "&gt;";
+  if (m === "&") return "&amp;";
+  if (m.length > 1) return m.slice(0, 3) + "\\."; // www.
+  return "\\" + m;
+}
+
+/** A formula starter right after a separator that a spreadsheet may split on (; , tab |), spaces allowed between. */
+const AFTER_SEPARATOR = /([;,\t|][ ]*)(?=[=+\-@\r])/g;
 
 /**
  * One CSV text cell (RFC 4180 quoting). A cell a spreadsheet could read as a formula is prefixed with an apostrophe, so it
- * stays text: it starts with = + - @ (or a tab or carriage return), or has one right after a ; , tab or | (a program that
- * splits on another separator than ours would otherwise start a formula there). A cell that holds a comma, a semicolon, a
+ * stays text: it starts with = + - @ (or a tab or carriage return), and every ; , tab or | that is followed by one gets an
+ * apostrophe after it too (a program that splits on another separator than ours would otherwise start a formula there). A cell that holds a comma, a semicolon, a
  * quote or a line break is quoted, whichever delimiter the file uses. Numbers never go through here.
  */
 export function csvText(value: unknown, max: number): string {
-  let t = debriefText(value, max);
-  if (/^[=+\-@\t\r]/.test(t) || FORMULA_START.test(t)) t = "'" + t;
+  // An apostrophe after EVERY separator that is followed by a formula starter (a reader that splits there would start a
+  // formula in that piece), then one at the start of the cell.
+  let t = debriefText(value, max).replace(AFTER_SEPARATOR, "$1'");
+  if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;
   return /[",;\r\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
 }
 

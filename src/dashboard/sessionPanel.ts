@@ -481,15 +481,16 @@ export function sessionDebriefNormalize(
   raw: any,
   allowMoney: boolean,
   allowBalances: boolean,
+  kind: string,
 ): any {
-  if (!raw || typeof raw !== "object" || typeof raw.markdown !== "string") return null;
+  const field = kind === "csv" ? raw && raw.csv : raw && raw.markdown;
+  if (!raw || typeof raw !== "object" || typeof field !== "string") return null;
   if (raw.money_included === true && !allowMoney) return null;
   if (raw.balances_included === true && !(allowMoney && allowBalances)) return null;
-  const markdown = sessionExportText(raw.markdown, 200000);
-  if (!markdown) return null;
+  const text = sessionExportText(field, 200000);
+  if (!text) return null;
   return {
-    markdown,
-    csv: sessionExportText(raw.csv, 400000),
+    text,
     money: raw.money_included === true,
     balances: raw.balances_included === true,
     truncated: raw.truncated === true,
@@ -747,13 +748,8 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     void loadMenu();
   }
 
-  /** A closed menu keeps no data and no text (they may hold balances): reopening fetches them again. */
-  function blankMenu() {
-    st.list = null;
-    st.stats = null;
-    st.detail = null;
-    st.asked = null;
-    st.view = "list";
+  /** Every text the menu holds (statistics, rows, detail) is emptied: they may hold amounts. State is left alone. */
+  function blankNodes() {
     for (const n of statEls.concat(factEls, tripEls, breakEls)) setText(n, "");
     for (const r of rows) {
       setText(r.n, "");
@@ -762,6 +758,16 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       setText(r.result, "");
     }
     setText(detailTitle, "");
+  }
+
+  /** A closed menu keeps no data and no text (they may hold balances): reopening fetches them again. */
+  function blankMenu() {
+    st.list = null;
+    st.stats = null;
+    st.detail = null;
+    st.asked = null;
+    st.view = "list";
+    blankNodes();
   }
 
   function closeMenu() {
@@ -777,6 +783,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     clearExport(true);
     st.view = "list";
     st.detail = null;
+    blankNodes();
     renderMenu();
   }
 
@@ -879,7 +886,12 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       const res = await api.call(
         "sc_session_export",
         Object.assign(
-          { id: d.session.id, include_balance: money, include_start_balance: withBalances },
+          {
+            id: d.session.id,
+            kind: kind === "csv" || kind === "csvfr" ? "csv" : "md",
+            include_balance: money,
+            include_start_balance: withBalances,
+          },
           csvFr ? { csv_delimiter: ";" } : {},
         ),
       );
@@ -891,11 +903,16 @@ export function sessionPanel(doc: any, L: any, api: any): any {
         renderMenu();
         return;
       }
-      const out = sessionDebriefNormalize(res, money, withBalances);
+      const out = sessionDebriefNormalize(
+        res,
+        money,
+        withBalances,
+        kind === "csv" || csvFr ? "csv" : "md",
+      );
       if (!out) throw new Error("réponse inattendue");
       const number = String(d.session.number).replace(/[^0-9]/g, "") || "x";
       const csv = kind === "csv" || csvFr;
-      const text = csv ? out.csv : out.markdown;
+      const text = out.text;
       if (!text) throw new Error("bilan vide");
       if (kind === "copy") {
         await offerText(text, "");
@@ -1235,6 +1252,7 @@ export function sessionPanel(doc: any, L: any, api: any): any {
     /** The page is going away: nothing of a report stays in it. */
     dropExport() {
       clearExport(true);
+      blankMenu();
     },
     render(rawBar: any, ctx: any) {
       st.ctx = { showBalance: !!(ctx && ctx.showBalance), now: ctx && ctx.now ? ctx.now : 0 };
@@ -1242,6 +1260,8 @@ export function sessionPanel(doc: any, L: any, api: any): any {
       if ((st.exportText !== null || st.exportMsg) && st.exportMoney !== st.ctx.showBalance)
         clearExport(true);
       else if (!st.ctx.showBalance && st.exportBalances) st.exportBalances = false;
+      // The balance is hidden again: nothing the menu drew with it stays in the page, even in nodes that are not shown.
+      if (!st.ctx.showBalance && st.asked === true) blankNodes();
       const bar2 = sessionBarNormalize(rawBar, st.ctx.showBalance);
       const info = sessionBarInfo(L, bar2, st.ctx);
       st.info = info;

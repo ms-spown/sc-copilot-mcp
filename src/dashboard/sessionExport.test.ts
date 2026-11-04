@@ -63,33 +63,36 @@ const control = (w: PageWorld, label: string) =>
 
 describe("Feature: the pure part", () => {
   it("Given an answer, Then the View rebuilds two bounded, clean strings", () => {
-    const out = sessionDebriefNormalize(
-      {
-        markdown: "# Bilan\u202e\u200b\nligne\u0007",
-        csv: "a,b\r\n" + "x".repeat(500_000),
-        money_included: false,
-        balances_included: false,
-        truncated: true,
-        trips_total: 12,
-      },
-      false,
-      false,
-    );
-    expect(out.markdown).toBe("# Bilan\nligne");
-    expect(out.csv.length).toBe(400_000);
-    expect(out.csv.startsWith("a,b\r\n")).toBe(true);
-    expect(out.truncated).toBe(true);
+    const raw = {
+      markdown: "# Bilan\u202e\u200b\nligne\u0007",
+      csv: "a,b\r\n" + "x".repeat(500_000),
+      money_included: false,
+      balances_included: false,
+      truncated: true,
+      trips_total: 12,
+    };
+    const md = sessionDebriefNormalize(raw, false, false, "md");
+    expect(md.text).toBe("# Bilan\nligne");
+    expect(md.truncated).toBe(true);
+    const csv = sessionDebriefNormalize(raw, false, false, "csv");
+    expect(csv.text.length).toBe(200_000);
+    expect(csv.text.startsWith("a,b\r\n")).toBe(true);
+    // the text of the other kind is not what was asked for
+    expect(sessionDebriefNormalize({ markdown: "# x" }, false, false, "csv")).toBeNull();
     expect(sessionExportText(42, 10)).toBe("");
   });
 
   it("Given an answer with amounts the View may not draw, or balances nobody asked for, Then it is dropped", () => {
     const base = { markdown: "# x", csv: "", truncated: false, trips_total: 1 };
-    expect(sessionDebriefNormalize({ ...base, money_included: true }, false, false)).toBeNull();
+    expect(
+      sessionDebriefNormalize({ ...base, money_included: true }, false, false, "md"),
+    ).toBeNull();
     expect(
       sessionDebriefNormalize(
         { ...base, money_included: true, balances_included: true },
         true,
         false,
+        "md",
       ),
     ).toBeNull();
     expect(
@@ -97,6 +100,7 @@ describe("Feature: the pure part", () => {
         { ...base, money_included: false, balances_included: true },
         false,
         true,
+        "md",
       ),
     ).toBeNull();
     expect(
@@ -104,10 +108,11 @@ describe("Feature: the pure part", () => {
         { ...base, money_included: true, balances_included: true },
         true,
         true,
+        "md",
       ),
     ).not.toBeNull();
     for (const bad of [null, 3, "x", [], {}, { markdown: 3 }, { markdown: "" }])
-      expect(sessionDebriefNormalize(bad, true, true)).toBeNull();
+      expect(sessionDebriefNormalize(bad, true, true, "md")).toBeNull();
   });
 });
 
@@ -125,6 +130,7 @@ describe("Feature: copy the report", () => {
     await w.advance(500);
     expect(debriefCalls(w).at(-1)!.args).toEqual({
       id: "s_fixture_2",
+      kind: "md",
       include_balance: false,
       include_start_balance: false,
     });
@@ -325,6 +331,8 @@ describe("Feature: a report is gone from the page, not just hidden, whenever the
     expect(all).not.toContain("# Bilan de la session 2");
     expect(all).not.toContain("Fin (UTC)");
     expect(all).not.toContain("au dernier relevé");
+    // the detail's own balance facts too ("Solde : 216 000 aUEC → 526 500 aUEC"): they came with the same balance choice
+    expect(all).not.toMatch(BALANCES);
     // (the page's own polite zone may still say "Copie impossible": it holds no text of the report)
     const msg = findAll(
       w.root,
@@ -357,11 +365,27 @@ describe("Feature: a report is gone from the page, not just hidden, whenever the
     expect(allText(w)).not.toMatch(NET);
   });
 
-  it("Given the player leaves the detail, Then it is gone", async () => {
+  it("Given the player leaves the detail, Then it is gone, and so are the detail's balances", async () => {
     const w = await withReport();
     findButton(w.root, "Retour à la liste").click();
     await w.advance(100);
     gone(w);
+  });
+
+  it("Given the balance is hidden with the menu open in the detail, Then no amount is left anywhere in the page", async () => {
+    const w = await withReport();
+    findAll(
+      w.root,
+      (n) => n.tag === "button" && /Masquer le solde/.test(n.textContent),
+    )[0]!.click();
+    await w.advance(3 * SECOND);
+    gone(w);
+    expect(allText(w)).not.toMatch(NET);
+    // and from the list, with its hidden rows
+    findButton(w.root, "Retour à la liste").click();
+    await w.advance(500);
+    expect(allText(w)).not.toMatch(NET);
+    expect(allText(w)).not.toMatch(BALANCES);
   });
 
   it("Given the page is hidden for good (pagehide), Then it is gone", async () => {
@@ -369,6 +393,7 @@ describe("Feature: a report is gone from the page, not just hidden, whenever the
     w.firePageHide();
     await w.advance(100);
     gone(w);
+    expect(allText(w)).not.toMatch(NET);
   });
 });
 

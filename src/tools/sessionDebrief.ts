@@ -171,16 +171,17 @@ export function sessionDebriefTools({ sessions }: { sessions?: SessionManager })
     {
       name: "sc_session_export",
       description:
-        "For the dashboard only, not for the model: the whole report of one saved session (Markdown and CSV) for the 'Copier le bilan' and download controls. Same privacy rules as sc_session_debrief. Needs SC_TELEMETRY=on.",
+        "For the dashboard only, not for the model: the whole report of one saved session, as Markdown or as CSV (kind), for the 'Copier le bilan' and download controls. Refused to a client that did not declare the UI extension. Same privacy rules as sc_session_debrief. Needs SC_TELEMETRY=on.",
       inputSchema: {
         type: "object",
         properties: {
           id: { type: "string", maxLength: 48, description: "A session id." },
+          kind: { type: "string", enum: ["md", "csv"], description: "The text wanted." },
           include_balance: includeBalanceProp,
           include_start_balance: includeStartBalanceProp,
           csv_delimiter: delimiterProp,
         },
-        required: ["id"],
+        required: ["id", "kind"],
       },
       advertised: enabled,
       requiresUi: true,
@@ -190,6 +191,7 @@ export function sessionDebriefTools({ sessions }: { sessions?: SessionManager })
         const parsed = z
           .object({
             id: z.string().min(1).max(48),
+            kind: z.enum(["md", "csv"]),
             include_balance: z.boolean().optional(),
             include_start_balance: z.boolean().optional(),
             csv_delimiter: z.enum([",", ";"]).optional(),
@@ -207,7 +209,11 @@ export function sessionDebriefTools({ sessions }: { sessions?: SessionManager })
           },
         });
         if (!d) return textResult("No session with this id.");
-        const structured = { ...meta(d), markdown: d.markdown, csv: d.csv };
+        // Only the text asked for: half the size, and nothing the View will not show.
+        const structured = {
+          ...meta(d),
+          ...(parsed.kind === "md" ? { markdown: d.markdown } : { csv: d.csv }),
+        };
         return {
           content: [
             {

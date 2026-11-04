@@ -960,8 +960,9 @@ vraiment obtenu (`src/providers/sessions/calibration.ts`, un module pur).
   des fins de ligne CRLF et une cellule vide pour ce qui est inconnu (jamais 0). `counted` vaut `yes` seulement pour un trajet qui
   a un résultat (le Markdown dit *inconnu* pour les autres). **Séparateur.** Virgule par défaut ; **Excel en français attend le
   point-virgule** : utilisez **Télécharger .csv (Excel FR)** (ou `csv_delimiter` ";") : le fichier s'ouvre en colonnes, avec une
-  virgule décimale. **Formules.** Une cellule de texte qui commence par `=`, `+`, `-` ou `@`, ou qui en a un juste après un `;`,
-  un `,`, une tabulation ou un `|`, est précédée d'une apostrophe, et une cellule qui contient une virgule, un
+  virgule décimale. **Formules.** Une cellule de texte qui commence par `=`, `+`, `-` ou `@` est précédée d'une apostrophe, et chaque `;`,
+  `,`, tabulation ou `|` qui en précède un à l'intérieur reçoit une apostrophe juste après (un lecteur qui coupe la cellule
+  là ne trouve aucune formule), et une cellule qui contient une virgule, un
   point-virgule, un guillemet ou un saut de ligne est entre guillemets. Cela arrête l'injection de formule usuelle dans Excel et
   LibreOffice ; c'est une atténuation, pas une promesse pour tous les programmes qui ouvrent un CSV : relisez un fichier reçu
   d'un autre avant de l'ouvrir, comme n'importe quel tableur.
