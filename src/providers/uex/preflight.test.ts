@@ -356,8 +356,11 @@ describe("Feature: the check reads UEX through the guarded client", () => {
 
   it("Given a second check within the cache's memory, Then UEX is not asked again and the read age shows it", async () => {
     const uex = fakeUex(() => ({ status: "ok", data: rows(205, 495) }));
-    await runPreflight({ client: uex.client, now: () => NOW }, PLAN);
-    const again = await runPreflight({ client: uex.client, now: () => NOW + 120_000 }, PLAN);
+    // The cache stamps a read with the REAL clock, so the age is measured against the real clock too: a fixed date in the
+    // past of the machine (the old NOW constant) gave an age of 0 once the wall clock had passed it.
+    const t0 = Date.now();
+    await runPreflight({ client: uex.client, now: () => t0 }, PLAN);
+    const again = await runPreflight({ client: uex.client, now: () => t0 + 120_000 }, PLAN);
     expect(uex.calls).toHaveLength(2);
     expect(again.requests).toBe(0);
     expect(again.read_age_s).toBeGreaterThanOrEqual(120 - 5);
