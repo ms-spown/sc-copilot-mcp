@@ -151,8 +151,8 @@ function markdownEscape(m: string): string {
   return "\\" + m;
 }
 
-/** A formula starter right after a separator that a spreadsheet may split on (; , tab |), spaces allowed between. */
-const AFTER_SEPARATOR = /([;,\t|][ ]*)(?=[=+\-@\r])/g;
+/** A formula starter right after a separator that a spreadsheet may split on (; , tab |), spaces and one quote allowed between. */
+const AFTER_SEPARATOR = /([;,\t|][ ]*"?)(?=[=+\-@\r])/g;
 
 /**
  * One CSV text cell (RFC 4180 quoting). A cell a spreadsheet could read as a formula is prefixed with an apostrophe, so it

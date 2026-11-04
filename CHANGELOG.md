@@ -6,6 +6,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The page's style sheet is shipped compacted (`compactCss` in `src/dashboard/page.ts`: comments, indentation and the blanks
+  around `{ } ; , :` out, strings untouched; a test has a CSS parser read both sheets and compares them): about 6.7 kB less
+  in the shipped page, to keep room under the 360 kB budget. `docs/TOOLS.md` and the golden file changed with this release
+  (the `action` enum of `sc_trade_suggest` gains `preflight`, and its description and the one of `sc_session_stats` say more).
+
 ### Added
 - **Session report: take a session out of the server.** The stats were in `sc_session_stats` and the session bar, with no
   clean way to share them with a crew or an org, keep a log or paste the trips into a spreadsheet. New pure formatter
@@ -30,6 +36,34 @@ versions follow [Semantic Versioning](https://semver.org/).
   enough). The CSV puts an apostrophe after every separator that precedes a formula starter, not only at the start of a cell. The prompt `session_debrief` and the server instructions tell Claude it can produce it. Docs EN/FR,
   SECURITY.
 
+
+- **Pre-flight check: does the plan still hold, before leaving?** On the commerce card, *Vérifier avant de partir* asks the
+  app-only tool `sc_trade_suggest` (new action `preflight`, no argument, same strict input, throttle, short memory and
+  in-flight sharing as the search; no new listed tool) to re-read the CURRENT UEX prices of the plan in force at its buy and
+  sell terminals: ONE cached `GET /commodities_prices` by goods name plus the cached `GET /game_versions` (two GETs per
+  click at most, plus the client's usual retries; a guard refuses a fourth GET; no new host, never a POST), filtered
+  locally to the exact goods, then to the terminal by UEX id when the planner built the plan (kept server-side, never sent
+  by the page) else by exact normalised name, and to the row of LIVE's game version. The verdict is per leg and overall:
+  **Toujours valable** (the only green: both legs fresh AND backed by at least one player report), **Inchangé · estimation
+  UEX** (nothing moved but a price is UEX's own estimate: neutral, never green), **À surveiller** (margin down 15 % to
+  30 %, a row older than 7 days, undated or dated in the future, low or saturating stock, or an unusual gain, which the card
+  explains), **Dérivé** (margin down 30 % or more or no longer positive, out of stock, no demand, no price) or **Impossible de
+  vérifier** (UEX down, a stale cache copy, terminal not found or ambiguous, incomplete plan: never green). The thresholds
+  are named constants and choices, sent with each answer. It shows the plan's price against the current one and the drift,
+  the margin per SCU now against planned, the age of UEX's row, the player reports (estimates labelled), the stock status and
+  the next action. The answer holds unit prices and per-SCU margins only: the balance is never used or revealed and a plan
+  sized from the balance stays private. The page refuses a green verdict that no leg backs and ignores an answer made for
+  another plan; *Demander à l'agent* posts a fixed text with no quantity. Docs EN/FR, SECURITY.
+- **The price moved at the kiosk.** The game's `TransactionCostMismatch` refusals, which the trade journal already lists as
+  failed transactions, now raise an alert on the commerce card (and one line in the small view) for 10 minutes: "Le prix a
+  changé pendant l'achat (ou la vente) : transaction refusée, le prix affiché n'est plus valable", with the time and the
+  side, and a nudge to run the pre-flight check again. An error that follows several requests is counted once, as
+  ambiguous. No amount travels (a time, a side, a kind), so it is shown with or without the balance and crosses the channel
+  between Views (rebuilt on reception). The session counts them (`price_refusals`, additive and optional, the file stays
+  version 2, a watermark keeps the count idempotent) and `sc_session_current`, `sc_session_list` and `sc_session_stats` report
+  it (a total and per session). The alert is muted once a later transaction of the same side and kind went through, and its
+  live region holds only the stable sentence and the absolute time. Nothing is parsed a second time. Measured read-only on the reference install's 95 logs: 2
+  refusals, 162 and 247 ms after the request.
 - **End-to-end replay of a complete trade run (tests only).** Every part of the trade and session pipeline was tested on
   its own; none had been played together. A harness (`src/testing/replay/`) now drives the real objects from one
   synthetic timeline: a Game.log that grows (commerce lines, errors, contracts, connection lines), telemetry frames

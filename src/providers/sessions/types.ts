@@ -150,6 +150,14 @@ export const SessionSchema = z.object({
   last_commodity: cleanText(PLACE_MAX).nullable().default(null),
   last_context_at: iso.nullable().default(null),
   note: cleanText(NOTE_MAX).default(""),
+  /**
+   * Transactions the game refused during this session because the price moved (TransactionCostMismatch): a count of
+   * events, no amount. Additive and optional (a file written before it reads as 0; the format stays version 2).
+   * `price_refusal_last_at` is the watermark that keeps the count idempotent: only a refusal NEWER than it is added, so
+   * seeing the same log twice, or by two server processes, counts it once.
+   */
+  price_refusals: count.default(0),
+  price_refusal_last_at: iso.nullable().default(null),
   updated_at: iso,
 });
 export type Session = z.infer<typeof SessionSchema>;

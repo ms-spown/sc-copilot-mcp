@@ -704,6 +704,8 @@ describe("Feature: CSV injection, for any program that splits on another separat
     "a,@SUM(1+1)",
     "a|=1+1",
     "ok; -2+3",
+    'x;"=1',
+    'x; "+1',
     "ok,\t=1",
     "=1+1",
     "@x",
@@ -980,7 +982,7 @@ describe("Feature: the escaping is complete and reversible (every occurrence, th
         expect(row, JSON.stringify(x)).toHaveLength(1);
         expect(row[0], JSON.stringify(x)).toHaveLength(1);
         // the reference: an apostrophe after every separator that precedes a formula starter, then one at the start
-        const marked = cleaned.replace(/([;,\t|][ ]*)(?=[=+\-@\r])/g, "$1'");
+        const marked = cleaned.replace(/([;,\t|][ ]*"?)(?=[=+\-@\r])/g, "$1'");
         const expected = /^[=+\-@\t\r]/.test(marked) ? "'" + marked : marked;
         expect(row[0]![0], JSON.stringify(x)).toBe(expected);
         // and a reader that splits the text itself finds no piece that starts with a formula character

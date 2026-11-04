@@ -102,6 +102,8 @@ export interface SessionSummary {
   minutes_per_trip: number | null;
   last_location: string | null;
   last_commodity: string | null;
+  /** Transactions the game refused because the price moved (a count: no amount, so it is not under `money`). */
+  price_refusals: number;
   note: string;
   money: SessionMoney;
 }
@@ -200,6 +202,7 @@ export function summarizeSession(s: Session): SessionSummary {
         : null,
     last_location: s.last_location,
     last_commodity: s.last_commodity,
+    price_refusals: s.price_refusals ?? 0,
     note: s.note,
     money: {
       start_balance_auec: s.start_balance,
@@ -308,7 +311,15 @@ export interface AggregateStats {
   contracts: number;
   active_ms: number;
   trips_per_hour: number | null;
-  per_session: { number: number; started_at: string; trips: number; active_ms: number }[];
+  /** Transactions the game refused because the price moved, over these sessions (a count: no amount). */
+  price_refusals: number;
+  per_session: {
+    number: number;
+    started_at: string;
+    trips: number;
+    active_ms: number;
+    price_refusals: number;
+  }[];
   money: AggregateMoney;
   basis: string;
 }
@@ -425,11 +436,13 @@ export function aggregate(
       tripsOnly.length > 0 && active >= MIN_RATE_ACTIVE_MS
         ? Math.round((tripsOnly.length / (active / 3_600_000)) * 10) / 10
         : null,
+    price_refusals: sum(sums.map((s) => s.price_refusals)),
     per_session: sums.slice(-12).map((s) => ({
       number: s.number,
       started_at: s.started_at,
       trips: s.trips,
       active_ms: s.active_ms,
+      price_refusals: s.price_refusals,
     })),
     money: {
       sessions_with_net: withNet.length,
