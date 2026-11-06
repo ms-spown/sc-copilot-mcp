@@ -182,6 +182,7 @@ const PAIRS = [
   ["README.md", "README.fr.md"],
   ["docs/TELEMETRY.md", "docs/TELEMETRY.fr.md"],
   ["docs/USING_WITH_CLAUDE.md", "docs/USING_WITH_CLAUDE.fr.md"],
+  ["docs/CHATGPT.md", "docs/CHATGPT.fr.md"],
 ] as const;
 
 /** The numbers of the prose, normalised: "3,200" and "3 200" are 3200, "0,25" and "0.25" are 0.25. */

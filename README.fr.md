@@ -278,6 +278,24 @@ l'activer** : c'est une fonction non documentée du jeu, et le risque est le vô
   autorisée ni interdite, les conditions de RSI s'appliquent à vous, et le risque est le vôtre. Le détail est dans
   [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md#risques), et le reste de cette page explique tout ce qui précède.
 
+## L'utiliser depuis ChatGPT (optionnel)
+
+ChatGPT (web ou application) peut utiliser ce serveur par le Secure MCP Tunnel d'OpenAI : le programme d'OpenAI,
+`tunnel-client`, tourne sur votre PC, ouvre une connexion sortante vers OpenAI et démarre ce serveur pour ChatGPT. Le
+serveur lui-même ne change pas (stdio seulement, aucun nouvel hôte). Une commande installe le tout :
+
+```bash
+npm run chatgpt -- setup --tunnel-id tunnel_...   # télécharge le tunnel-client épinglé, vérifie son SHA-256, écrit son profil
+npm run chatgpt -- key                            # collez la clé d'exécution ; rien ne s'affiche
+npm run chatgpt -- start --balance hidden         # gardez la fenêtre ouverte ; Ctrl+C l'arrête
+```
+
+Tant que le tunnel tourne, ChatGPT reçoit toutes les réponses des outils, **le solde aUEC compris sauf si vous démarrez
+avec `--balance hidden`**. Il faut une organisation sur la plateforme OpenAI (un tunnel et une clé d'exécution
+restreinte) et un compte ChatGPT avec le mode développeur. **Non vérifié :** une conversation complète par un vrai
+tunnel, et l'affichage du tableau de bord en direct par ChatGPT. Pas à pas, confidentialité et dépannage :
+[docs/CHATGPT.fr.md](docs/CHATGPT.fr.md).
+
 ## Limites à connaître
 
 - **Les prix participatifs peuvent être erronés.** Lisez `data_age` (`null` signifie qu'UEX n'a fourni aucune date) et le `updated_at` de chaque ligne, et vérifiez la
@@ -303,6 +321,7 @@ l'activer** : c'est une fonction non documentée du jeu, et le risque est le vô
 - [docs/TOOLS.md](docs/TOOLS.md) : chaque outil et chaque paramètre (généré)
 - [docs/ROADMAP.md](docs/ROADMAP.md) : où en est le projet, ce qui vient ensuite, ce qui est vérifié et ce qui ne l'est pas
 - [docs/TELEMETRY.fr.md](docs/TELEMETRY.fr.md) : la télémétrie en direct optionnelle, ses données et ses risques
+- [docs/CHATGPT.fr.md](docs/CHATGPT.fr.md) : utiliser ce serveur depuis ChatGPT par le Secure MCP Tunnel d'OpenAI
 - [docs/USING_WITH_CLAUDE.fr.md](docs/USING_WITH_CLAUDE.fr.md) : le bloc à coller dans un projet Claude, ce que le serveur
   dit déjà à Claude de lui-même, et un test canari pour le vérifier
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),

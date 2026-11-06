@@ -57,6 +57,22 @@ export function userConfigDir(
 }
 
 /**
+ * The ChatGPT bridge (`npm run chatgpt`): OpenAI's tunnel-client, the profile written for it and the runtime key
+ * file. Kept per machine (not in the roaming profile on Windows). Never read by the server.
+ */
+export function userChatGptDir(
+  env: Env = process.env,
+  platform: string = process.platform,
+  home: string = os.homedir(),
+): string {
+  if (env.SCMCP_CHATGPT_DIR) return path.resolve(env.SCMCP_CHATGPT_DIR);
+  if (platform === "win32") return path.join(local(env, home), APP, "chatgpt");
+  if (platform === "darwin")
+    return path.join(home, "Library", "Application Support", APP, "chatgpt");
+  return path.join(env.XDG_DATA_HOME || path.join(home, ".local", "share"), APP, "chatgpt");
+}
+
+/**
  * The last three path parts: enough to recognise a file, without the user's folder names (which
  * include their Windows user name). Every path a tool shows the model goes through this.
  */

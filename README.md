@@ -258,6 +258,23 @@ short "Read this first" block).
   forbidden using it, the RSI terms apply to you, and the risk is yours. The details are in
   [docs/TELEMETRY.md](docs/TELEMETRY.md#risks), and the rest of that page explains everything above.
 
+## Using it from ChatGPT (optional)
+
+ChatGPT (web or desktop) can use this server through OpenAI's Secure MCP Tunnel: OpenAI's own program,
+`tunnel-client`, runs on your PC, opens an outbound connection to OpenAI and starts this server for ChatGPT. The server
+itself is unchanged (stdio only, no new host). One command sets it up:
+
+```bash
+npm run chatgpt -- setup --tunnel-id tunnel_...   # downloads the pinned tunnel-client, checks its SHA-256, writes its profile
+npm run chatgpt -- key                            # paste the runtime API key; nothing is shown
+npm run chatgpt -- start --balance hidden         # keep the window open; Ctrl+C stops it
+```
+
+With the tunnel running, ChatGPT receives every tool answer, **the aUEC balance included unless you start with
+`--balance hidden`**. You need an OpenAI Platform organization (a tunnel and a restricted runtime key) and a ChatGPT
+account with Developer mode. **Unverified:** a full conversation through a real tunnel, and whether ChatGPT shows the
+live dashboard. Step by step, privacy and troubleshooting: [docs/CHATGPT.md](docs/CHATGPT.md).
+
 ## Limits you should know
 
 - **Crowdsourced prices can be wrong.** Read `data_age` (null means UEX gave no date) and the per-row `updated_at`, and sanity-check a route before flying 696 SCU.
@@ -278,6 +295,7 @@ short "Read this first" block).
 - [docs/TOOLS.md](docs/TOOLS.md): every tool and parameter (generated)
 - [docs/ROADMAP.md](docs/ROADMAP.md): where the project stands, what is next, what is verified and what is not
 - [docs/TELEMETRY.md](docs/TELEMETRY.md): the optional live telemetry, its data and its risks
+- [docs/CHATGPT.md](docs/CHATGPT.md): using this server from ChatGPT through OpenAI's Secure MCP Tunnel
 - [docs/USING_WITH_CLAUDE.md](docs/USING_WITH_CLAUDE.md): the block to paste into a Claude project, what the server
   already tells Claude by itself, and a canary test to check it
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),

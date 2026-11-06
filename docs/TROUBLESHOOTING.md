@@ -94,6 +94,10 @@ without changing anything; `npm run doctor` repeats it. Full explanations and th
 A source changed after a patch. Run `npm run check:sources`: it names the file and field. Please open a
 "A data source changed or broke" issue with its output (see [CONTRIBUTING.md](../CONTRIBUTING.md)).
 
+## ChatGPT (the Secure MCP Tunnel)
+
+See the troubleshooting table of [CHATGPT.md](CHATGPT.md#troubleshooting). First steps: `npm run chatgpt -- doctor`, then `npm run chatgpt -- status` while the tunnel runs.
+
 ## Windows specifics
 
 - Paths with spaces are fine; the installer writes absolute paths as JSON.
