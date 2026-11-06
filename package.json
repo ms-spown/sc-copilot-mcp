@@ -28,7 +28,8 @@
     "test:stress": "node scripts/test-stress.mjs",
     "telemetry": "node scripts/telemetry.mjs",
     "sessions": "node scripts/sessions.mjs",
-    "check:telemetry-silence": "node scripts/check-no-telemetry-connection.mjs"
+    "check:telemetry-silence": "node scripts/check-no-telemetry-connection.mjs",
+    "chatgpt": "node scripts/chatgpt-tunnel.mjs"
   },
   "repository": {
     "type": "git",

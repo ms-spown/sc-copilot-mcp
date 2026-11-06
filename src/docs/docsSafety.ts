@@ -67,9 +67,14 @@ export interface CheckOptions {
  * not here on purpose: see ALLOWED_PATH_PREFIXES.
  */
 export const ALLOWED_LINK_HOSTS: readonly string[] = [
+  "chatgpt.com", // ChatGPT's connector settings (docs/CHATGPT.md, npm run chatgpt)
   "img.shields.io", // licence badge
   "keepachangelog.com", // CHANGELOG format reference
   "modelcontextprotocol.io", // the protocol this server speaks
+  // The tunnel-client download (src/install/chatgptTunnel.ts: pinned URLs, size and SHA-256). Used by `npm run chatgpt -- setup`
+  // only, never by the server, whose hosts are ALLOWED_API_HOSTS.
+  "persistent.oaistatic.com",
+  "platform.openai.com", // OpenAI Platform pages where the player creates the tunnel and its runtime key (docs/CHATGPT.md)
   "semver.org", // CHANGELOG versioning reference
   "star-citizen.wiki", // Star Citizen Wiki
   "starcitizen.tools", // Star Citizen Tools wiki
@@ -89,6 +94,7 @@ export const ALLOWED_PATH_PREFIXES: Readonly<Record<string, readonly string[]>> 
     "KrovaxCode/SCMDB_DATA", // SCMDB data (README, NOTICE)
     "ShipBit/wingman-ai", // source of the telemetry schema (GPLv3, THIRD_PARTY.md)
     "modelcontextprotocol/ext-apps", // MCP Apps (docs/MCP_APP_SPIKE.md)
+    "openai/tunnel-client", // OpenAI's Secure MCP Tunnel client, Apache-2.0 (docs/CHATGPT.md, THIRD_PARTY.md)
   ],
 };
 
