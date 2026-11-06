@@ -6,7 +6,8 @@ import zlib from "node:zlib";
  * the bytes and returns the files, so a test can hand it any hostile archive.
  *
  * It refuses rather than guesses: a name with a folder, a drive, "..", a control character or an unusual
- * character (no zip-slip: nothing can land outside the target folder), a duplicate name (case-insensitive, as on
+ * character (no zip-slip: nothing can land outside the target folder), a Windows device name (CON, NUL, COM1...) or a
+ * name ending in a dot or a space (Windows would open a device or drop the end), a duplicate name (case-insensitive, as on
  * Windows), a method other than stored or deflate, an encrypted entry, ZIP64, a size or a count over the limits, an
  * inflated size that is not the declared one, and a CRC-32 that does not match.
  */
@@ -36,6 +37,8 @@ const EOCD = 0x06054b50;
 const CENTRAL = 0x02014b50;
 const LOCAL = 0x04034b50;
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+/** Reserved device names of Windows, with or without an extension (`NUL.txt` opens the device, not a file). */
+const WINDOWS_DEVICE = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
 
 function findEndOfCentralDirectory(buf: Buffer): number {
   // The record is 22 bytes plus a comment of at most 65535 bytes, at the very end.
@@ -86,7 +89,7 @@ export function readZip(buf: Buffer, limits: ZipLimits = DEFAULT_ZIP_LIMITS): Zi
     const name = buf.toString("latin1", p + 46, nameEnd);
     p = nameEnd + extraLength + commentLength;
 
-    if (!SAFE_NAME.test(name) || name === "." || name === "..")
+    if (!SAFE_NAME.test(name) || /[. ]$/.test(name) || WINDOWS_DEVICE.test(name))
       throw new ZipError(
         `unexpected entry name ${JSON.stringify(name)} (only plain file names at the root).`,
       );

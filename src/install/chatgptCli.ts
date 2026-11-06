@@ -72,7 +72,20 @@ const OPTIONS: Record<Command, string[]> = {
   help: [],
 };
 
+/** The flags this command knows: the only arguments an error message may name. */
+const ALL_FLAGS = new Set(Object.values(OPTIONS).flat());
+
 export function parseArgs(argv: string[]): ParsedArgs | { error: string } {
+  // A key typed on the command line has already leaked before this runs: npm prints the command line ("> node
+  // scripts/chatgpt-tunnel.mjs key sk-...", measured) and the shell keeps it in its history. Say so, without repeating it.
+  if (argv.some((a) => /^(--?)?sk-/i.test(a)))
+    return {
+      error:
+        "An argument looks like an API key (not repeated here). A key is never typed on the command line: npm has " +
+        "printed the command line and your shell keeps it in its history. Revoke that key at " +
+        "https://platform.openai.com/settings/organization/api-keys, create a new one, then run " +
+        "npm run chatgpt -- key and paste it.",
+    };
   const [first, ...rest] = argv;
   const command: Command | null =
     first === undefined || first === "help" || first === "--help" || first === "-h"
@@ -81,12 +94,22 @@ export function parseArgs(argv: string[]): ParsedArgs | { error: string } {
         ? "start"
         : ((["setup", "key", "start", "doctor", "status"] as const).find((c) => c === first) ??
           null);
-  if (!command) return { error: `Unknown command: ${first}` };
+  // What the user typed is never repeated: a key pasted in the wrong place must not end up on screen or in a log.
+  if (!command)
+    return {
+      error:
+        "Unknown command (not repeated here: it may be a secret). Commands: setup, key, start, doctor, status, help.",
+    };
   const out: ParsedArgs = { command, dryRun: false, remove: false, verbose: false };
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (!OPTIONS[command].includes(arg))
-      return { error: `${command} takes no option ${arg}. See: npm run chatgpt -- help` };
+      return {
+        error: ALL_FLAGS.has(arg)
+          ? `${command} takes no option ${arg}. See: npm run chatgpt -- help`
+          : `${command} got an unexpected argument (not repeated here: it may be a secret). ` +
+            "A key is never typed on the command line: run npm run chatgpt -- key, then paste it.",
+      };
     if (arg === "--dry-run") {
       out.dryRun = true;
       continue;
@@ -144,6 +167,10 @@ export interface CliDeps {
    */
   asset?: TunnelAsset | null;
   readSecret(prompt: string): Promise<string>;
+  /** fs.renameSync unless a test replaces it. */
+  rename?: (from: string, to: string) => void;
+  /** Waits between rename retries; setTimeout unless a test replaces it. */
+  sleep?: (ms: number) => Promise<void>;
   probe: PortProbe;
   isAlive(pid: number): boolean;
   /** Runs a program with the terminal attached and resolves its exit code. */
@@ -178,7 +205,6 @@ export function layout(home: string, platform: string): Layout {
 export interface BridgeState {
   version: 1;
   tunnelClientVersion: string;
-  binarySha256: string;
   tunnelId: string;
   port: number;
   entry: string;
@@ -233,12 +259,106 @@ export function removeTree(target: string): void {
   } else fs.unlinkSync(target);
 }
 
+/** The pinned archive of this machine (tests may substitute a hand-made one). */
+function pinnedAsset(deps: CliDeps): TunnelAsset | null {
+  return deps.asset !== undefined ? deps.asset : selectAsset(deps.platform, deps.arch);
+}
+
+const RETRIED = new Set(["EPERM", "EBUSY", "EACCES"]);
+
+/** A rename, retried a few times when Windows (an antivirus scan, an Explorer window) holds the folder for a moment. */
+async function renameRetry(deps: CliDeps, from: string, to: string): Promise<void> {
+  const rename = deps.rename ?? fs.renameSync;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (let attempt = 1; ; attempt++) {
+    try {
+      rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (!RETRIED.has(code) || attempt >= 5) throw error;
+      await sleep(250 * attempt);
+    }
+  }
+}
+
 function fileSha(file: string): string | null {
   try {
     return sha256(fs.readFileSync(file));
   } catch {
     return null;
   }
+}
+
+type LockResult = { ok: true } | { held: number } | { busy: true };
+
+/** Creates `target` with its full content in one step (a hard link of a finished file), or fails with EEXIST. */
+function createWithContent(tmp: string, target: string, content: string): void {
+  try {
+    fs.linkSync(tmp, target);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EEXIST") throw error;
+    // A file system without hard links (FAT, some network drives): exclusive create, then write.
+    const fd = fs.openSync(target, "wx");
+    try {
+      fs.writeSync(fd, content);
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+}
+
+/**
+ * Takes the run lock. A lock held by a live launcher wins. A stale one (dead process, unreadable) is renamed to a name
+ * of our own first, which only one contender can do; if what we moved turns out to be a live lock written meanwhile,
+ * it is put back without overwriting anything.
+ */
+function acquireLock(deps: CliDeps, lay: Layout, tunnelId: string): LockResult {
+  fs.mkdirSync(lay.home, { recursive: true });
+  const content = JSON.stringify({
+    pid: deps.pid,
+    tunnelId,
+    startedAt: deps.now().toISOString(),
+  } satisfies LockInfo);
+  const tmp = `${lay.lock}.${deps.pid}.tmp`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    fs.writeFileSync(tmp, content);
+    try {
+      createWithContent(tmp, lay.lock, content);
+      return { ok: true };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    } finally {
+      removeFile(tmp);
+    }
+    const current = readLock(lay.lock);
+    if (current && current.pid !== deps.pid && deps.isAlive(current.pid))
+      return { held: current.pid };
+    const moved = `${lay.lock}.stale-${deps.pid}`;
+    try {
+      fs.renameSync(lay.lock, moved);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue; // another start moved it: try again
+      throw error;
+    }
+    const was = readLock(moved);
+    if (was && was.pid !== deps.pid && deps.isAlive(was.pid)) {
+      try {
+        fs.linkSync(moved, lay.lock);
+      } catch {
+        // someone else already holds a new lock
+      }
+      removeFile(moved);
+      return { held: was.pid };
+    }
+    removeFile(moved);
+  }
+  return { busy: true };
+}
+
+function releaseLock(deps: CliDeps, lay: Layout): void {
+  if (readLock(lay.lock)?.pid === deps.pid) removeFile(lay.lock);
 }
 
 interface LockInfo {
@@ -305,7 +425,7 @@ async function setup(args: ParsedArgs, deps: CliDeps, lay: Layout): Promise<numb
     out(`dist/index.js is missing in ${deps.repoRoot}. ${BUILD_HINT}`);
     return 1;
   }
-  const asset = deps.asset !== undefined ? deps.asset : selectAsset(deps.platform, deps.arch);
+  const asset = pinnedAsset(deps);
   if (!asset) {
     out(
       `OpenAI publishes no tunnel-client ${TUNNEL_CLIENT_VERSION} for ${deps.platform}/${deps.arch}. ` +
@@ -335,10 +455,7 @@ async function setup(args: ParsedArgs, deps: CliDeps, lay: Layout): Promise<numb
   }
 
   const running = runningPid(deps, lay);
-  const recorded = previous?.tunnelClientVersion === TUNNEL_CLIENT_VERSION;
-  const currentSha = recorded ? fileSha(lay.binary) : null;
-  let binarySha = previous?.binarySha256 ?? "";
-  if (recorded && currentSha !== null && currentSha === previous?.binarySha256) {
+  if (fileSha(lay.binary) === asset.binarySha256) {
     out(`tunnel-client ${TUNNEL_CLIENT_VERSION} is already installed and unchanged: ${lay.binDir}`);
   } else if (dry) {
     out(`Would download tunnel-client ${TUNNEL_CLIENT_VERSION} (OpenAI, Apache-2.0):`);
@@ -371,8 +488,16 @@ async function setup(args: ParsedArgs, deps: CliDeps, lay: Layout): Promise<numb
       out(`The archive lacks ${missing.join(", ")}. Nothing was installed.`);
       return 1;
     }
-    out(`SHA-256 checked: ${asset.sha256}`);
+    const exe = files.find((f) => f.name === binaryName(deps.platform));
+    if (!exe || sha256(exe.data) !== asset.binarySha256) {
+      out(
+        `The archive passed its check but its ${binaryName(deps.platform)} is not the pinned one. Nothing was installed.`,
+      );
+      return 1;
+    }
+    out(`SHA-256 checked: archive ${asset.sha256}, ${exe.name} ${asset.binarySha256}`);
     const partial = `${lay.binDir}.partial-${deps.pid}`;
+    const aside = `${lay.binDir}.old-${deps.pid}`;
     try {
       removeTree(partial);
       fs.mkdirSync(partial, { recursive: true });
@@ -381,15 +506,47 @@ async function setup(args: ParsedArgs, deps: CliDeps, lay: Layout): Promise<numb
           deps.platform !== "win32" && /^(tunnel-client|cloudflared)$/.test(f.name);
         fs.writeFileSync(path.join(partial, f.name), f.data, { mode: executable ? 0o755 : 0o644 });
       }
-      removeTree(lay.binDir);
-      fs.renameSync(partial, lay.binDir);
     } catch (error) {
       removeTree(partial);
-      out(`Could not install into ${lay.binDir}: ${(error as Error).message}`);
-      out("If a tunnel-client is running from that folder, stop it and run setup again.");
+      out(`Could not write into ${partial}: ${(error as Error).message}. Nothing was installed.`);
       return 1;
     }
-    binarySha = sha256(files.find((f) => f.name === binaryName(deps.platform))!.data);
+    // Swap: the old copy is moved aside, the new one moved in, and the old one is put back if that fails, so a failed
+    // reinstall never leaves the player without a working tunnel-client.
+    let movedAside = false;
+    try {
+      removeTree(aside);
+      if (fs.existsSync(lay.binDir)) {
+        await renameRetry(deps, lay.binDir, aside);
+        movedAside = true;
+      }
+      await renameRetry(deps, partial, lay.binDir);
+    } catch (error) {
+      if (movedAside && !fs.existsSync(lay.binDir)) {
+        try {
+          await renameRetry(deps, aside, lay.binDir);
+        } catch {
+          out(`The previous copy stays in ${aside}.`);
+        }
+      }
+      try {
+        removeTree(partial);
+      } catch {
+        // a leftover partial folder is harmless: the next setup removes it
+      }
+      out(`Could not install into ${lay.binDir}: ${(error as Error).message}`);
+      out(
+        "If a tunnel-client is running from that folder, or an antivirus is scanning it, stop it and run setup again.",
+      );
+      return 1;
+    }
+    try {
+      removeTree(aside);
+    } catch {
+      out(
+        `The previous copy could not be deleted (${aside}); it is harmless and can be deleted by hand.`,
+      );
+    }
     out(`Installed: ${lay.binary}`);
   }
 
@@ -410,7 +567,6 @@ async function setup(args: ParsedArgs, deps: CliDeps, lay: Layout): Promise<numb
   const state: BridgeState = {
     version: 1,
     tunnelClientVersion: TUNNEL_CLIENT_VERSION,
-    binarySha256: binarySha,
     tunnelId,
     port,
     entry,
@@ -442,8 +598,17 @@ async function setup(args: ParsedArgs, deps: CliDeps, lay: Layout): Promise<numb
 async function key(args: ParsedArgs, deps: CliDeps, lay: Layout): Promise<number> {
   const out = deps.out;
   if (args.remove) {
+    // Leftovers of an interrupted write (control-plane-api-key.<pid>.tmp) hold the key too.
+    const base = path.basename(lay.keyFile);
+    const leftovers = fs.existsSync(lay.home)
+      ? fs
+          .readdirSync(lay.home)
+          .filter((n) => n.startsWith(`${base}.`) && n.endsWith(".tmp"))
+          .map((n) => path.join(lay.home, n))
+      : [];
+    leftovers.forEach(removeFile);
     if (!fs.existsSync(lay.keyFile)) {
-      out("No saved key.");
+      out(leftovers.length > 0 ? "Leftover key files deleted." : "No saved key.");
       return 0;
     }
     removeFile(lay.keyFile);
@@ -494,12 +659,15 @@ function readiness(deps: CliDeps, lay: Layout): Ready | null {
   const problems: string[] = [];
   if (!fs.existsSync(lay.profile))
     problems.push(`The profile is missing (${lay.profile}): run setup again.`);
+  // Compared with the hash pinned in code, never with a value stored in this (writable) folder.
+  const asset = pinnedAsset(deps);
   const sha = fileSha(lay.binary);
-  if (state.tunnelClientVersion !== TUNNEL_CLIENT_VERSION || sha === null)
+  if (!asset) problems.push(`OpenAI publishes no tunnel-client for ${deps.platform}/${deps.arch}.`);
+  else if (state.tunnelClientVersion !== TUNNEL_CLIENT_VERSION || sha === null)
     problems.push(`tunnel-client ${TUNNEL_CLIENT_VERSION} is not installed: run setup again.`);
-  else if (sha !== state.binarySha256)
+  else if (sha !== asset.binarySha256)
     problems.push(
-      `${lay.binary} is not the file setup checked (it changed on disk): run setup again to reinstall it.`,
+      `${lay.binary} is not the pinned tunnel-client (it changed on disk): run setup again to reinstall it.`,
     );
   if (!fs.existsSync(state.entry))
     problems.push(`The server is missing (${state.entry}). ${BUILD_HINT} Then run setup again.`);
@@ -524,14 +692,44 @@ async function start(args: ParsedArgs, deps: CliDeps, lay: Layout): Promise<numb
     return 1;
   }
   out("Runtime key: present.");
-  const other = runningPid(deps, lay);
-  if (other !== null) {
+  const alreadyRunning = (pid: number) =>
     out(
-      `A tunnel started by this command is already running (process ${other}). Keep only one per tunnel ID: ` +
+      `A tunnel started by this command is already running (process ${pid}). Keep only one per tunnel ID: ` +
         `use that window, or stop it with Ctrl+C. If none is running, delete ${lay.lock}.`,
     );
-    return 1;
+  // The lock is taken BEFORE anything that waits (the port probe), so two starts a few milliseconds apart cannot both
+  // pass. A dry run takes no lock and only reports.
+  if (args.dryRun) {
+    const other = runningPid(deps, lay);
+    if (other !== null) {
+      alreadyRunning(other);
+      return 1;
+    }
+  } else {
+    const lock = acquireLock(deps, lay, state.tunnelId);
+    if ("held" in lock) {
+      alreadyRunning(lock.held);
+      return 1;
+    }
+    if ("busy" in lock) {
+      out(`Another start is in progress (${lay.lock}). Try again in a moment.`);
+      return 1;
+    }
   }
+  try {
+    return await startLocked(args, deps, lay, state);
+  } finally {
+    if (!args.dryRun) releaseLock(deps, lay);
+  }
+}
+
+async function startLocked(
+  args: ParsedArgs,
+  deps: CliDeps,
+  lay: Layout,
+  state: BridgeState,
+): Promise<number> {
+  const out = deps.out;
   if ((await deps.probe(state.port)) === "open") {
     out(
       `Something already listens on 127.0.0.1:${state.port}: probably a tunnel-client still running ` +
@@ -573,41 +771,12 @@ async function start(args: ParsedArgs, deps: CliDeps, lay: Layout): Promise<numb
     out("Dry run: nothing was started.");
     return 0;
   }
-  const acquire = (): number | null => {
-    try {
-      return fs.openSync(lay.lock, "wx");
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EEXIST") return null;
-      throw error;
-    }
-  };
-  let fd = acquire();
-  if (fd === null) {
-    // runningPid said above that no live launcher holds it: a stale lock from a crash or a closed window.
-    removeFile(lay.lock);
-    fd = acquire();
-  }
-  if (fd === null) {
-    out(`Another start is in progress (${lay.lock}). Try again in a moment.`);
-    return 1;
-  }
-  const lock: LockInfo = {
-    pid: deps.pid,
-    tunnelId: state.tunnelId,
-    startedAt: deps.now().toISOString(),
-  };
-  fs.writeSync(fd, JSON.stringify(lock));
-  fs.closeSync(fd);
-  try {
-    out(
-      "The window stays quiet while all is well; warnings and errors appear here. Check with: npm run chatgpt -- status",
-    );
-    const code = await deps.exec(lay.binary, runArgs, child.env);
-    out(`tunnel-client stopped (exit code ${code}).`);
-    return code;
-  } finally {
-    if (readLock(lay.lock)?.pid === deps.pid) removeFile(lay.lock);
-  }
+  out(
+    "The window stays quiet while all is well; warnings and errors appear here. Check with: npm run chatgpt -- status",
+  );
+  const code = await deps.exec(lay.binary, runArgs, child.env);
+  out(`tunnel-client stopped (exit code ${code}).`);
+  return code;
 }
 
 async function doctor(deps: CliDeps, lay: Layout): Promise<number> {

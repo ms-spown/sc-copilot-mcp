@@ -34,10 +34,18 @@ describe("Feature: the pinned tunnel-client release", () => {
     expect(new Set(TUNNEL_ASSETS.map((a) => a.sha256)).size).toBe(6);
   });
 
-  it("Given the Windows x64 asset, Then its SHA-256 is the one measured on 2026-11-06", () => {
+  it("Given the Windows x64 asset, Then its archive and executable SHA-256 are the ones measured on 2026-11-06", () => {
     expect(selectAsset("win32", "x64")?.sha256).toBe(
       "1d0ecc3a54f2a51e27a635ac155f40fbb95df58c52cdeddf6c75532cc0bbeb25",
     );
+    expect(selectAsset("win32", "x64")?.binarySha256).toBe(
+      "7e93a39a567c87154a0aef2091b81100d78f9093c4603412cc2b55bed3dfe5ea",
+    );
+  });
+
+  it("Given the table, Then every asset pins its executable's SHA-256 too, all different", () => {
+    for (const a of TUNNEL_ASSETS) expect(a.binarySha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(new Set(TUNNEL_ASSETS.map((a) => a.binarySha256)).size).toBe(6);
   });
 
   it.each([
@@ -206,6 +214,15 @@ describe("Feature: the environment handed to tunnel-client and to the server", (
     MCP_COMMAND: "evil",
     HEALTH_LISTEN_ADDR: ":8080",
     TUNNEL_CLIENT_CONFIG: "other.yaml",
+    OPEN_WEB_UI: "true",
+    PID_FILE: "C:\\x.pid",
+    TRACING_ENABLED: "true",
+    TRACING_FILE: "C:\\trace.json",
+    HTTPS_PROXY: "http://proxy.example:3128",
+    https_proxy: "http://proxy.example:3128",
+    HTTP_PROXY: "http://proxy.example:3128",
+    NO_PROXY: "localhost",
+    XDG_CONFIG_HOME: "/home/x/.config",
     SC_INSTALL_DIR: "D:\\StarCitizen\\LIVE",
     UNDEFINED_ONE: undefined,
   };
@@ -222,6 +239,10 @@ describe("Feature: the environment handed to tunnel-client and to the server", (
       "MCP_COMMAND",
       "HEALTH_LISTEN_ADDR",
       "TUNNEL_CLIENT_CONFIG",
+      "OPEN_WEB_UI",
+      "PID_FILE",
+      "TRACING_ENABLED",
+      "TRACING_FILE",
     ]) {
       expect(env[name], name).toBeUndefined();
       expect(removed).toContain(name);
@@ -229,6 +250,9 @@ describe("Feature: the environment handed to tunnel-client and to the server", (
     expect(JSON.stringify(removed)).not.toContain("sk-");
     expect(env.PATH).toBe("C:\\Windows");
     expect(env.SC_INSTALL_DIR).toBe("D:\\StarCitizen\\LIVE");
+    // Kept on purpose (docs/CHATGPT.md, SECURITY.md): some players need a proxy, and the server uses XDG_CONFIG_HOME.
+    for (const kept of ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "NO_PROXY", "XDG_CONFIG_HOME"])
+      expect(env[kept], kept).toBeDefined();
     expect("UNDEFINED_ONE" in env).toBe(false);
   });
 

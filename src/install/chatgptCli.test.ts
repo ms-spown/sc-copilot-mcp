@@ -11,7 +11,7 @@ import {
   type ParsedArgs,
 } from "./chatgptCli.js";
 import { selectAsset, type TunnelAsset } from "./chatgptTunnel.js";
-import { fakeTunnelArchive } from "./testing/zipFixture.js";
+import { FAKE_BINARY, fakeTunnelArchive } from "./testing/zipFixture.js";
 import { sha256 } from "./tunnelDownload.js";
 
 const ID = "tunnel_0123456789abcdef0123456789abcdef";
@@ -51,6 +51,7 @@ function harness(overrides: Partial<CliDeps> = {}): Harness {
     ...(selectAsset("win32", "x64") as TunnelAsset),
     size: archive.length,
     sha256: sha256(archive),
+    binarySha256: sha256(Buffer.from(FAKE_BINARY)),
   };
   const h: Harness = {
     deps: null as never,
@@ -134,10 +135,45 @@ describe("Feature: the command line of npm run chatgpt", () => {
     [["key", "--dry-run"], /takes no option/],
     [["status", "--port", "8080"], /takes no option/],
     [["start", "--profiles", "core;calc"], /commas/],
+    [["start", "--remove"], /start takes no option --remove/],
   ])("Given %j, When parsed, Then it is refused", (argv, message) => {
     const a = parseArgs(argv as string[]);
     expect("error" in a && a.error).toMatch(message);
   });
+
+  it.each([
+    [["key", SECRET]],
+    [[SECRET]],
+    [["start", SECRET]],
+    [["setup", SECRET]],
+    [["setup", "--tunnel-id", SECRET]],
+    [["start", "--profiles", SECRET]],
+    [["start", "--balance", SECRET]],
+    [["setup", "--port", SECRET]],
+    [["status", `--${SECRET}`]],
+  ])(
+    "Given a key typed on the command line (%j), When parsed, Then it is refused without being repeated",
+    (argv) => {
+      const a = parseArgs(argv);
+      expect(a).toHaveProperty("error");
+      expect(JSON.stringify(a)).not.toContain("TESTSECRET");
+      // npm has already printed the command line by then: the player is told to revoke the key.
+      expect("error" in a && a.error).toMatch(/Revoke that key/);
+    },
+  );
+
+  it.each([
+    [["key", "hunter2-not-a-key-but-private"]],
+    [["hunter2-not-a-key-but-private"]],
+    [["start", "--hunter2-not-a-key-but-private"]],
+  ])(
+    "Given another unknown argument (%j), When parsed, Then it is refused without being repeated",
+    (argv) => {
+      const a = parseArgs(argv);
+      expect(a).toHaveProperty("error");
+      expect(JSON.stringify(a)).not.toContain("hunter2");
+    },
+  );
 });
 
 describe("Feature: setup installs the pinned tunnel-client and writes the profile", () => {
@@ -178,6 +214,46 @@ describe("Feature: setup installs the pinned tunnel-client and writes the profil
     expect(yaml).toContain(OTHER_ID);
     expect(yaml).toContain("127.0.0.1:8090");
     expect(h.lines.join("\n")).toContain(`it replaces ${ID}`);
+  });
+
+  it("Given an archive that passes its check but holds another executable, When setup runs, Then nothing is installed", async () => {
+    const h = harness();
+    h.deps.asset = { ...h.deps.asset!, binarySha256: "0".repeat(64) };
+    expect(await runChatgpt(args(["setup", "--tunnel-id", ID]), h.deps)).toBe(1);
+    expect(filesUnder(home)).toEqual([]);
+    expect(h.lines.join("\n")).toContain("is not the pinned one");
+  });
+
+  it("Given Windows holding the folder for a moment (EBUSY), When setup installs, Then it retries and succeeds", async () => {
+    let failures = 2;
+    const waits: number[] = [];
+    const h = harness({
+      rename: (from, to) => {
+        if (failures-- > 0) throw Object.assign(new Error("busy"), { code: "EBUSY" });
+        fs.renameSync(from, to);
+      },
+      sleep: async (ms) => {
+        waits.push(ms);
+      },
+    });
+    expect(await runChatgpt(args(["setup", "--tunnel-id", ID]), h.deps)).toBe(0);
+    expect(waits).toHaveLength(2);
+    expect(fs.readFileSync(layout(home, "win32").binary, "utf8")).toBe(FAKE_BINARY);
+  });
+
+  it("Given a reinstall whose swap fails, When setup runs, Then the previous copy is put back", async () => {
+    const h = harness();
+    await runChatgpt(args(["setup", "--tunnel-id", ID]), h.deps);
+    const lay = layout(home, "win32");
+    fs.writeFileSync(lay.binary, "previous copy"); // not the pinned one: setup reinstalls
+    h.deps.sleep = async () => undefined;
+    h.deps.rename = (from, to) => {
+      if (from.includes(".partial-")) throw Object.assign(new Error("denied"), { code: "EPERM" });
+      fs.renameSync(from, to);
+    };
+    expect(await runChatgpt(args(["setup", "--tunnel-id", ID]), h.deps)).toBe(1);
+    expect(fs.readFileSync(lay.binary, "utf8")).toBe("previous copy");
+    expect(fs.readdirSync(path.dirname(lay.binDir))).toEqual(["v0.0.19"]);
   });
 
   it("Given an archive whose SHA-256 is not the pinned one, When setup runs, Then nothing is extracted or written", async () => {
@@ -230,6 +306,17 @@ describe("Feature: the runtime key is stored in its own file and never shown", (
     await runChatgpt(args(["doctor"]), h.deps);
     h.port = "open";
     await runChatgpt(args(["status"]), h.deps);
+    // A key pasted in the wrong place on the command line: refused, never echoed (what the script prints).
+    for (const argv of [
+      ["key", SECRET],
+      [SECRET],
+      ["start", SECRET],
+      ["setup", "--tunnel-id", SECRET],
+    ]) {
+      const parsed = parseArgs(argv);
+      if ("error" in parsed) h.lines.push(parsed.error);
+      else await runChatgpt(parsed, h.deps);
+    }
 
     const lay = layout(home, "win32");
     expect(fs.readFileSync(lay.keyFile, "utf8")).toBe(SECRET);
@@ -254,8 +341,11 @@ describe("Feature: the runtime key is stored in its own file and never shown", (
   it("Given a saved key, When key --remove runs, Then the file is gone and the player is told to revoke it", async () => {
     const h = harness();
     await runChatgpt(args(["key"]), h.deps);
+    const leftover = `${layout(home, "win32").keyFile}.999.tmp`;
+    fs.writeFileSync(leftover, SECRET);
     expect(await runChatgpt(args(["key", "--remove"]), h.deps)).toBe(0);
     expect(fs.existsSync(layout(home, "win32").keyFile)).toBe(false);
+    expect(fs.existsSync(leftover)).toBe(false);
     expect(h.lines.join("\n")).toContain("revoke");
   });
 });
@@ -318,6 +408,47 @@ describe("Feature: start runs one tunnel-client with the profile and the player'
     expect(await runChatgpt(args(["start"]), h.deps)).toBe(1);
     expect(h.lines.join("\n")).toContain("already running (process 777)");
     expect(h.execs).toHaveLength(0);
+  });
+
+  it("Given two starts a few milliseconds apart and a slow port probe, When both run, Then only one runs tunnel-client", async () => {
+    const h = harness();
+    await ready(h);
+    const slow = async () => {
+      await new Promise((r) => setTimeout(r, 40));
+      return "closed" as const;
+    };
+    const execs: number[] = [];
+    const make = (pid: number) =>
+      harness({
+        pid,
+        probe: slow,
+        isAlive: (p) => p === 101 || p === 102,
+        exec: async () => {
+          execs.push(pid);
+          await new Promise((r) => setTimeout(r, 100));
+          return 0;
+        },
+      });
+    const a = make(101);
+    const b = make(102);
+    const results = await Promise.all([
+      runChatgpt(args(["start", "--balance", "hidden"]), a.deps),
+      new Promise((r) => setTimeout(r, 5)).then(() =>
+        runChatgpt(args(["start", "--balance", "hidden"]), b.deps),
+      ),
+    ]);
+    expect(execs).toHaveLength(1);
+    expect([...results].sort()).toEqual([0, 1]);
+    expect([...a.lines, ...b.lines].join("\n")).toMatch(/already running \(process 10[12]\)/);
+    expect(fs.existsSync(layout(home, "win32").lock)).toBe(false);
+  });
+
+  it("Given an unreadable lock left behind, When start runs, Then it is taken over", async () => {
+    const h = harness();
+    await ready(h);
+    fs.writeFileSync(layout(home, "win32").lock, "not json");
+    expect(await runChatgpt(args(["start"]), h.deps)).toBe(0);
+    expect(h.execs).toHaveLength(1);
   });
 
   it("Given a stale lock from a closed window, When start runs, Then it takes over", async () => {

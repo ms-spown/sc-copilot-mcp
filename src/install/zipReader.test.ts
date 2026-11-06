@@ -29,6 +29,29 @@ describe("Feature: the tunnel-client archive is read strictly", () => {
     expect(() => readZip(makeZip([{ name, data: "x" }]))).toThrow(ZipError);
   });
 
+  it.each(["CON", "nul", "Aux", "PRN.txt", "COM1", "com9.dll", "LPT1", "lpt0.exe", "NUL.tar.gz"])(
+    "Given the Windows device name %s, When read, Then the archive is refused",
+    (name) => {
+      expect(() => readZip(makeZip([{ name, data: "x" }]))).toThrow(ZipError);
+    },
+  );
+
+  it.each(["tunnel-client.exe.", "LICENSE.", "a "])(
+    "Given the name %j ending in a dot or a space (Windows drops it), When read, Then the archive is refused",
+    (name) => {
+      expect(() => readZip(makeZip([{ name, data: "x" }]))).toThrow(ZipError);
+    },
+  );
+
+  it("Given ordinary names that only look like devices, When read, Then they are accepted", () => {
+    const zip = makeZip([
+      { name: "console.txt", data: "a" },
+      { name: "COM10", data: "b" },
+      { name: "nullish", data: "c" },
+    ]);
+    expect(readZip(zip).map((f) => f.name)).toEqual(["console.txt", "COM10", "nullish"]);
+  });
+
   it("Given the same name twice in different cases, When read, Then it is refused (Windows would merge them)", () => {
     const zip = makeZip([
       { name: "LICENSE", data: "a" },

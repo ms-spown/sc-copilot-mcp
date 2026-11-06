@@ -46,10 +46,19 @@ commande, `npm run chatgpt`, le télécharge, le configure et le lance.
   `--balance hidden` (cela règle `SC_BALANCE=hidden` pour ce serveur). Le bouton « Masquer le solde » du tableau de
   bord ne le remplace pas ici : il ne protège que le processus serveur du tableau de bord où vous cliquez, et ChatGPT
   n'affiche peut-être pas du tout le tableau de bord.
-- **La télémétrie en direct** reste éteinte sauf si vous démarrez avec `--telemetry on` et activez aussi le côté jeu
-  (voir [TELEMETRY.fr.md](TELEMETRY.fr.md), lisez d'abord ses risques).
-- **La clé d'exécution** (un secret OpenAI, voir plus bas) reste dans un fichier sur votre PC que seul tunnel-client
-  lit. Elle n'est jamais affichée, jamais écrite dans le profil ni dans ce dépôt, et jamais transmise à ce serveur.
+- **La télémétrie en direct** suit `SC_TELEMETRY` : `--telemetry on` l'allume pour la session, `--telemetry off`
+  l'éteint, et sans l'un ni l'autre la valeur déjà présente dans l'environnement de la fenêtre, s'il y en a une, est
+  transmise telle quelle. Le côté jeu doit aussi être activé (voir [TELEMETRY.fr.md](TELEMETRY.fr.md), lisez d'abord
+  ses risques).
+- **Les outils réservés au tableau de bord.** Certains outils n'existent que pour le tableau de bord et portent
+  `visibility: ["app"]` (l'hôte ne devrait laisser que le tableau de bord les appeler, pas le modèle), par exemple
+  `sc_session_manage`, qui peut supprimer une session enregistrée. ChatGPT ne respecte peut-être pas cette marque :
+  son modèle pourrait alors les voir et les appeler. Pour les écarter, démarrez avec `--profiles core,trade,data`
+  (ils sont tous dans le profil `local` ; SECURITY.md cite cette limite).
+- **La clé d'exécution** (un secret OpenAI, voir plus bas) reste dans un fichier sur votre PC, que cette commande ne
+  confie qu'à tunnel-client, par son chemin. Elle n'est jamais affichée, jamais écrite dans le profil ni dans ce dépôt,
+  et jamais transmise à ce serveur. Comme tout fichier de votre dossier utilisateur, d'autres programmes de votre
+  compte Windows pourraient la lire.
 - **Ce que ce serveur envoie sur le réseau ne change pas** : les mêmes sources de données qu'avant, rien d'autre.
 
 ## Avant de commencer
@@ -108,13 +117,15 @@ npm run chatgpt -- key
 ```
 
 Collez la clé et appuyez sur Entrée. Rien n'apparaît pendant le collage, pas même des étoiles ; c'est voulu. Vous
-pouvez aussi la passer par un tube : `Get-Clipboard | npm run chatgpt -- key`.
+pouvez aussi la passer par un tube : `Get-Clipboard | npm run chatgpt -- key`. Ne tapez jamais la clé sur la ligne
+de commande elle-même (après `npm run chatgpt`) : npm affiche la ligne de commande et votre shell la garde dans son
+historique. La commande la refuse et vous dit de révoquer cette clé.
 
 La clé va dans un seul fichier, `control-plane-api-key`, dans le même dossier. Le profil ne fait que désigner ce
 fichier, et tunnel-client le lit au démarrage. Pourquoi un fichier et pas une variable d'environnement : une variable
-d'environnement utilisateur est transmise à chaque programme que vous lancez, ce serveur compris ; le fichier n'est lu
-que par tunnel-client. Comme tout fichier de votre dossier utilisateur, les programmes qui tournent sous votre compte
-Windows peuvent le lire. Pour le supprimer : `npm run chatgpt -- key --remove` (et révoquez la clé sur la plateforme
+d'environnement utilisateur est transmise à chaque programme que vous lancez, ce serveur compris ; le fichier n'est
+confié qu'à tunnel-client. Comme tout fichier de votre dossier utilisateur, les programmes qui tournent sous votre
+compte Windows peuvent quand même le lire. Pour le supprimer : `npm run chatgpt -- key --remove` (et révoquez la clé sur la plateforme
 si vous ne l'utilisez plus).
 
 ## Étape 4 : démarrer le tunnel
@@ -142,9 +153,15 @@ environnement à ce serveur. Demandez ensuite `sc_data_status` à ChatGPT pour v
 
 `start` refuse de tourner deux fois pour la même installation (un seul tunnel-client par ID de tunnel, comme OpenAI
 l'exige), refuse quand le port d'état est pris, et retire de l'environnement qu'il transmet toute variable que
-tunnel-client lirait de lui-même (`CONTROL_PLANE_*`, `OPENAI_*`, `LOG_*`, `ALLOW_REMOTE_UI`...). Ainsi une clé ou un
-réglage resté dans votre environnement ne peut ni passer devant le profil ni atteindre ce serveur ; la commande nomme
-ce qu'elle a retiré, jamais les valeurs.
+tunnel-client lirait de lui-même (`CONTROL_PLANE_*`, `OPENAI_*`, `MCP_*`, `LOG_*`, `TRACING_*`, `ALLOW_REMOTE_UI`,
+`OPEN_WEB_UI`, `PID_FILE`...). Ainsi une clé ou un réglage resté dans votre environnement ne peut ni passer devant le
+profil ni atteindre ce serveur ; la commande nomme ce qu'elle a retiré, jamais les valeurs.
+
+Gardées exprès : les variables de proxy (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`), car certains joueurs ne joignent
+internet que par un proxy, et `XDG_CONFIG_HOME`, que ce serveur utilise aussi. Un proxy défini là transporte le trafic
+de tunnel-client vers OpenAI, clé d'exécution comprise : n'en laissez jamais un qui pointe vers un outil de débogage.
+Toutes les autres variables de la fenêtre (jetons compris) atteignent aussi tunnel-client, car le serveur qu'il démarre
+a besoin de l'environnement.
 
 Pour vérifier qu'OpenAI est joint, dans une autre fenêtre :
 
@@ -201,7 +218,8 @@ Non vérifié :
   fait quand cette page a été écrite) ;
 - **l'affichage du tableau de bord en direct par ChatGPT** (la MCP App de ce serveur). La documentation d'OpenAI
   évoque des ressources d'interface, rien de plus précis pour ce genre de page ; les outils qui n'existent que pour le
-  tableau de bord peuvent manquer dans ChatGPT ;
+  tableau de bord peuvent manquer dans ChatGPT, ou être visibles de son modèle (voir
+  [Ce qui quitte votre PC](#ce-qui-quitte-votre-pc)) ;
 - les offres ChatGPT qui proposent le mode développeur et les tunnels ;
 - la façon dont ChatGPT gère beaucoup d'outils à la fois : s'il peine, essayez `--profiles core` ;
 - Linux et macOS.

@@ -20,6 +20,12 @@ export interface TunnelAsset {
   size: number;
   /** SHA-256 from the release's SHA256SUMS.txt, read on 2026-11-06. The network is never trusted for it. */
   sha256: string;
+  /**
+   * SHA-256 of the tunnel-client executable inside that archive, computed on 2026-11-06 from the archive above after
+   * checking its own hash. The executable is not Authenticode-signed (measured on Windows: NotSigned), so this pinned
+   * value is its integrity check before every start and doctor: never a value read back from the install folder.
+   */
+  binarySha256: string;
 }
 
 export const TUNNEL_ASSETS: readonly TunnelAsset[] = [
@@ -29,6 +35,7 @@ export const TUNNEL_ASSETS: readonly TunnelAsset[] = [
     url: "https://persistent.oaistatic.com/tunnel-client/v0.0.19/tunnel-client-v0.0.19-windows-amd64.zip",
     size: 29539887,
     sha256: "1d0ecc3a54f2a51e27a635ac155f40fbb95df58c52cdeddf6c75532cc0bbeb25",
+    binarySha256: "7e93a39a567c87154a0aef2091b81100d78f9093c4603412cc2b55bed3dfe5ea",
   },
   {
     os: "windows",
@@ -36,6 +43,7 @@ export const TUNNEL_ASSETS: readonly TunnelAsset[] = [
     url: "https://persistent.oaistatic.com/tunnel-client/v0.0.19/tunnel-client-v0.0.19-windows-arm64.zip",
     size: 26742842,
     sha256: "a054bfb19d72b446cc9802a7987a17eab517502355d27b18e51814bbb0b32731",
+    binarySha256: "501ae14cfcc67915f29233988599eac1903946c4bf024f3e24d6669d01ecf6d0",
   },
   {
     os: "linux",
@@ -43,6 +51,7 @@ export const TUNNEL_ASSETS: readonly TunnelAsset[] = [
     url: "https://persistent.oaistatic.com/tunnel-client/v0.0.19/tunnel-client-v0.0.19-linux-amd64.zip",
     size: 29433736,
     sha256: "9ee9448592345a9dd1517fb79791ab54d24f051142eb92bcbe8cd355effc9142",
+    binarySha256: "56d0120886ce91bfe31e7a5600f6a6594199a02e9b3eac671d5da0d7480c97a3",
   },
   {
     os: "linux",
@@ -50,6 +59,7 @@ export const TUNNEL_ASSETS: readonly TunnelAsset[] = [
     url: "https://persistent.oaistatic.com/tunnel-client/v0.0.19/tunnel-client-v0.0.19-linux-arm64.zip",
     size: 26855239,
     sha256: "5a19e556c4a8736ab7a6fde6f0568f6e7411fa2dff21186fc15bc30e9b98a603",
+    binarySha256: "8a50b25d6055bc6e3e3a5c18c098637ab2be63f6e453b8ebebd02433deadba04",
   },
   {
     os: "darwin",
@@ -57,6 +67,7 @@ export const TUNNEL_ASSETS: readonly TunnelAsset[] = [
     url: "https://persistent.oaistatic.com/tunnel-client/v0.0.19/tunnel-client-v0.0.19-darwin-amd64.zip",
     size: 30293654,
     sha256: "dff97674c77cac59e6ab3d901e6cff50fb17a5784c01d8959d1f4adb3afdf4bf",
+    binarySha256: "dfd9f50aa6846ba76223d4ceb86ab9408b794881b650b000ec0ef6fd2a8b775b",
   },
   {
     os: "darwin",
@@ -64,6 +75,7 @@ export const TUNNEL_ASSETS: readonly TunnelAsset[] = [
     url: "https://persistent.oaistatic.com/tunnel-client/v0.0.19/tunnel-client-v0.0.19-darwin-arm64.zip",
     size: 28329144,
     sha256: "2243d024b77af8ee4b4ab7a1447949e5fc8d82bcd2d51b178927f2da9e47ecfd",
+    binarySha256: "4a82a4591933241850966ab3484cb39e65fad11b7e83b43891f6599f9638bd7f",
   },
 ];
 
@@ -266,8 +278,15 @@ export function renderProfile(input: ProfileInput): string {
 /**
  * Variables tunnel-client reads by itself. Its precedence is flags > environment > YAML, so a variable left in the
  * player's environment (a CONTROL_PLANE_TUNNEL_ID of another project, an OPENAI_API_KEY, LOG_HTTP_RAW_UNSAFE,
- * ALLOW_REMOTE_UI...) would silently override the profile. They are removed from the child's environment, which
- * also keeps every OpenAI key away from this server (it inherits tunnel-client's environment).
+ * ALLOW_REMOTE_UI, OPEN_WEB_UI...) would silently override the profile. They are removed from the child's environment,
+ * which also keeps every OpenAI key away from this server (it inherits tunnel-client's environment). The list follows
+ * the variables tunnel-client 0.0.19 reads for its own settings.
+ *
+ * Kept ON PURPOSE: the proxy variables (HTTP_PROXY, HTTPS_PROXY, NO_PROXY and their lower-case forms), because some
+ * players can only reach the internet through one; and XDG_CONFIG_HOME, which this server also uses. A proxy set there
+ * carries tunnel-client's traffic to OpenAI, runtime key header included (readable by a proxy whose certificate the
+ * machine trusts). Every other variable of the player (tokens included) reaches tunnel-client too, because this
+ * server, its child, needs the environment (SC_*, SCMCP_*, paths). docs/CHATGPT.md and SECURITY.md say both.
  */
 const TUNNEL_PREFIXES = [
   "CONTROL_PLANE_",
@@ -279,9 +298,12 @@ const TUNNEL_PREFIXES = [
   "CLOUDFLARED_",
   "HARPOON_",
   "TUNNEL_CLIENT_",
+  "TRACING_",
 ];
 const TUNNEL_NAMES = new Set([
   "ALLOW_REMOTE_UI",
+  "OPEN_WEB_UI",
+  "PID_FILE",
   "FORWARD_REQUEST_ID",
   "CA_BUNDLE",
   "PROXY_CHECK_INTERVAL",

@@ -61,11 +61,14 @@ export function makeZip(entries: FixtureEntry[]): Buffer {
   return Buffer.concat([...parts, cd, end]);
 }
 
+/** The fake executable's content in `fakeTunnelArchive` (tests pin its SHA-256 like the real one). */
+export const FAKE_BINARY = "fake tunnel-client binary for tests";
+
 /** A stand-in for the Windows tunnel-client archive: the same names, tiny fake contents (no real program). */
 export function fakeTunnelArchive(platform = "win32"): Buffer {
   const exe = platform === "win32" ? ".exe" : "";
   return makeZip([
-    { name: `tunnel-client${exe}`, data: "fake tunnel-client binary for tests" },
+    { name: `tunnel-client${exe}`, data: FAKE_BINARY },
     { name: `cloudflared${exe}`, data: "fake cloudflared binary for tests" },
     { name: "cloudflared-manifest.json", data: "{}" },
     { name: "LICENSE", data: "Apache License 2.0 (test stand-in)" },

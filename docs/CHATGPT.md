@@ -41,10 +41,16 @@ program from OpenAI, `tunnel-client`, that runs on your PC and starts this serve
   results, rates, trade amounts) reach ChatGPT. To keep them out, start the tunnel with `--balance hidden` (it sets
   `SC_BALANCE=hidden` for this server). The dashboard's "Masquer le solde" button is not a substitute here: it only
   protects the server process of the dashboard you click, and ChatGPT may not show the dashboard at all.
-- **Live telemetry** stays off unless you start with `--telemetry on` and also switch the game side on (see
-  [TELEMETRY.md](TELEMETRY.md), read its risks first).
-- **The runtime key** (an OpenAI secret, see below) stays in a file on your PC that only tunnel-client reads. It is
-  never printed, never written in the profile or in this repository, and never passed to this server.
+- **Live telemetry** follows `SC_TELEMETRY`: `--telemetry on` turns it on for the run, `--telemetry off` turns it off,
+  and without either the value already in the window's environment, if any, is passed on as it is. The game side must
+  be switched on too (see [TELEMETRY.md](TELEMETRY.md), read its risks first).
+- **Dashboard-only tools.** Some tools exist only for the dashboard and are marked `visibility: ["app"]` (the host
+  should let only the dashboard call them, not the model), for example `sc_session_manage`, which can delete a saved
+  session. ChatGPT may not honour that mark, so its model could see and call them. To leave them out, start with
+  `--profiles core,trade,data` (they are all in the `local` profile; SECURITY.md lists this limit).
+- **The runtime key** (an OpenAI secret, see below) stays in a file on your PC, which this command hands to
+  tunnel-client only, by its path. It is never printed, never written in the profile or in this repository, and never
+  passed to this server. Like any file of your user folder, other programs of your Windows account could read it.
 - **What this server sends over a network does not change**: the same data sources as before, nothing else.
 
 ## Before you start
@@ -101,12 +107,14 @@ npm run chatgpt -- key
 ```
 
 Paste the key and press Enter. Nothing appears while you paste, not even stars; that is on purpose. You can also
-pipe it: `Get-Clipboard | npm run chatgpt -- key`.
+pipe it: `Get-Clipboard | npm run chatgpt -- key`. Never type the key on the command line itself (after
+`npm run chatgpt`): npm prints the command line and your shell keeps it in its history. The command refuses it and
+tells you to revoke that key.
 
 The key goes into one file, `control-plane-api-key`, in the same folder. The profile only points to that file, and
 tunnel-client reads it at start. Why a file and not an environment variable: a user environment variable is handed to
-every program you start, this server included; the file is read by tunnel-client only. Like any file of your user
-folder, programs running under your Windows account can read it. To delete it: `npm run chatgpt -- key --remove`
+every program you start, this server included; the file is given to tunnel-client only. Like any file of your user
+folder, programs running under your Windows account can still read it. To delete it: `npm run chatgpt -- key --remove`
 (and revoke the key on the Platform if you no longer use it).
 
 ## Step 4: start the tunnel
@@ -134,9 +142,15 @@ environment on to this server. Then ask ChatGPT for `sc_data_status` to see what
 
 `start` refuses to run twice for the same setup (one tunnel-client per tunnel ID, as OpenAI requires), refuses when
 the status port is taken, and removes from the environment it passes on every variable tunnel-client would read by
-itself (`CONTROL_PLANE_*`, `OPENAI_*`, `LOG_*`, `ALLOW_REMOTE_UI`...). So a key or a setting left in your
-environment can neither override the profile nor reach this server; the command names what it removed, never the
-values.
+itself (`CONTROL_PLANE_*`, `OPENAI_*`, `MCP_*`, `LOG_*`, `TRACING_*`, `ALLOW_REMOTE_UI`, `OPEN_WEB_UI`, `PID_FILE`...).
+So a key or a setting left in your environment can neither override the profile nor reach this server; the command
+names what it removed, never the values.
+
+Kept on purpose: the proxy variables (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`), because some players can only reach
+the internet through a proxy, and `XDG_CONFIG_HOME`, which this server uses too. A proxy set there carries
+tunnel-client's traffic to OpenAI, runtime key included: never leave one pointing at a debugging tool. Every other
+variable of the window (tokens included) reaches tunnel-client as well, because the server it starts needs the
+environment.
 
 To check that OpenAI is reached, in another window:
 
@@ -191,7 +205,8 @@ Not verified:
 - a real conversation in ChatGPT through a real tunnel (it needs a tunnel and a key; the maintainer had not run it
   when this page was written);
 - **whether ChatGPT shows the live dashboard** (this server's MCP App). OpenAI's documentation mentions UI resources,
-  nothing more precise for this kind of page; the tools that only exist for the dashboard may be missing in ChatGPT;
+  nothing more precise for this kind of page; the tools that only exist for the dashboard may be missing in ChatGPT,
+  or visible to its model (see [What leaves your PC](#what-leaves-your-pc));
 - which ChatGPT plans offer Developer mode and tunnels;
 - how ChatGPT copes with many tools at once: if it struggles, try `--profiles core`;
 - Linux and macOS.
